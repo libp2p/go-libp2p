@@ -1,12 +1,12 @@
 package main
 
 import (
-	context "context"
-	metrics "go-libp2p/p2p/metrics"
+	metrics "github.com/ipfs/go-libp2p/p2p/metrics"
+	tu "github.com/ipfs/go-libp2p/testutil"
+	ma "github.com/jbenet/go-multiaddr"
 	swarm "go-libp2p/p2p/net/swarm"
 	peer "go-libp2p/p2p/peer"
-	tu "go-libp2p/testutil"
-	ma "go-multiaddr"
+	context "golang.org/x/net/context"
 )
 
 func main() {
