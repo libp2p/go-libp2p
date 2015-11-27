@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	ps "github.com/jbenet/go-peerstream"
+	ps "gx/QmQMkNFMuh1UJbdaggASZpLtCroTnAYcWNenYL5hrzLJrT/go-peerstream"
 	spdy "gx/QmRmT6MSnfhRDW1PTUGSd3z4fqXK48GUequQAZzeT4c5iC/go-stream-muxer/spdystream"
 )
 
