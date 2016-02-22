@@ -56,8 +56,8 @@ $ GO15VENDOREXPERIMENT=1 go test ./p2p/<path of folder you want to run>
   - [libp2p-identify]()
   - [libp2p-ping]()
   - Transports
-    - [abstract-transport](https://github.com/diasdavid/abstract-transport)
-    - [abstract-connection](https://github.com/diasdavid/abstract-connection)
+    - [abstract-transport](https://github.com/diasdavid/interface-transport)
+    - [abstract-connection](https://github.com/diasdavid/interface-connection)
     - [libp2p-tcp]()
     - [libp2p-udp]()
     - [libp2p-udt]()
@@ -65,7 +65,7 @@ $ GO15VENDOREXPERIMENT=1 go test ./p2p/<path of folder you want to run>
     - [libp2p-webrtc]()
     - [libp2p-cjdns]()
   - Stream Muxing
-    - [abstract-stream-muxer](https://github.com/diasdavid/abstract-stream-muxer)
+    - [abstract-stream-muxer](https://github.com/diasdavid/interface-stream-muxer)
     - [libp2p-spdy]()
     - [libp2p-multiplex]()
   - Crypto Channel
@@ -80,7 +80,7 @@ $ GO15VENDOREXPERIMENT=1 go test ./p2p/<path of folder you want to run>
   - [libp2p-railing]()
 - **Distributed Record Store**
   - [libp2p-record]()
-  - [abstract-record-store](https://github.com/diasdavid/abstract-record-store)
+  - [abstract-record-store](https://github.com/diasdavid/interface-record-store)
   - [libp2p-distributed-record-store]()
   - [libp2p-kad-record-store]()
 - **Generic**
