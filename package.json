@@ -1,7 +1,7 @@
 {
   "name": "go-libp2p",
   "author": "whyrusleeping",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "gxDependencies": [
     {
       "name": "go-semver",
