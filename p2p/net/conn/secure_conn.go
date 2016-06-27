@@ -122,3 +122,7 @@ func (c *secureConn) Write(buf []byte) (int, error) {
 func (c *secureConn) ReleaseMsg(m []byte) {
 	c.secure.ReadWriter().ReleaseMsg(m)
 }
+
+func (c *secureConn) SetRemotePeer(p peer.ID) {
+	c.insecure.SetRemotePeer(p)
+}

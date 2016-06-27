@@ -50,6 +50,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi pstore.PeerInfo) error {
 	if len(rh.Network().ConnsToPeer(pi.ID)) > 0 {
 		return nil
 	}
+	log.Error("not already connected to: ", pi.ID)
 
 	// if we were given some addresses, keep + use them.
 	if len(pi.Addrs) > 0 {

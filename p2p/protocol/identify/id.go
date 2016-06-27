@@ -6,6 +6,8 @@ import (
 
 	semver "github.com/coreos/go-semver/semver"
 	ggio "github.com/gogo/protobuf/io"
+	ci "github.com/ipfs/go-libp2p-crypto"
+	peer "github.com/ipfs/go-libp2p-peer"
 	pstore "github.com/ipfs/go-libp2p-peerstore"
 	host "github.com/ipfs/go-libp2p/p2p/host"
 	mstream "github.com/ipfs/go-libp2p/p2p/metrics/stream"
@@ -154,6 +156,14 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c inet.Conn) {
 	// "public" address, at least in relation to us.
 	mes.ObservedAddr = c.RemoteMultiaddr().Bytes()
 
+	pubk := ids.Host.Peerstore().PubKey(ids.Host.ID())
+	data, err := pubk.Bytes()
+	if err != nil {
+		log.Error("failed to marshal public key: ", err)
+	}
+
+	mes.PublicKey = data
+
 	// set listen addrs, get our latest addrs from Host.
 	laddrs := ids.Host.Addrs()
 	mes.ListenAddrs = make([][]byte, len(laddrs))
@@ -188,6 +198,18 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
 			continue
 		}
 		lmaddrs = append(lmaddrs, maddr)
+	}
+
+	pubk, err := ci.UnmarshalPublicKey(mes.GetPublicKey())
+	if err != nil {
+		log.Error("couldnt parse pubkey: ", err)
+	} else {
+		pid, err := peer.IDFromPublicKey(pubk)
+		if err != nil {
+			log.Error("couldnt get id from pubkey: ", err)
+		} else {
+			c.SetRemotePeer(pid)
+		}
 	}
 
 	// if the address reported by the connection roughly matches their annoucned
