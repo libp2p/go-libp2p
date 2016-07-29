@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	onion "github.com/david415/ipfs-onion-transport"
 	peer "github.com/ipfs/go-libp2p-peer"
 	pstore "github.com/ipfs/go-libp2p-peerstore"
 	transport "github.com/ipfs/go-libp2p-transport"
@@ -30,6 +31,7 @@ import (
 	yamux "github.com/whyrusleeping/go-smux-yamux"
 	mafilter "github.com/whyrusleeping/multiaddr-filter"
 	context "golang.org/x/net/context"
+	"golang.org/x/net/proxy"
 )
 
 var log = logging.Logger("swarm2")
@@ -108,6 +110,15 @@ func NewSwarm(ctx context.Context, listenAddrs []ma.Multiaddr,
 		return mconn.WrapConn(bwc, c)
 	}
 
+	// POC setup for onion transport
+	auth := proxy.Auth{
+		User:     "",
+		Password: "",
+	}
+	controlNet := "tcp"
+	controlAddr := "127.0.0.1:9051"
+	onionTransport := NewOnionTransport(controlNet, controlAddr, nil, &auth)
+
 	s := &Swarm{
 		swarm:  ps.NewSwarm(PSTransport),
 		local:  local,
@@ -118,6 +129,7 @@ func NewSwarm(ctx context.Context, listenAddrs []ma.Multiaddr,
 		transports: []transport.Transport{
 			transport.NewTCPTransport(),
 			transport.NewUtpTransport(),
+			onionTransport,
 		},
 		bwc:         bwc,
 		fdRateLimit: make(chan struct{}, concurrentFdDials),

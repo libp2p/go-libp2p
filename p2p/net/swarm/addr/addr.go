@@ -3,6 +3,7 @@ package addrutil
 import (
 	"fmt"
 
+	onion "github.com/david415/ipfs-onion-transport"
 	logging "github.com/ipfs/go-log"
 	ma "github.com/jbenet/go-multiaddr"
 	manet "github.com/jbenet/go-multiaddr-net"
@@ -21,6 +22,7 @@ var SupportedTransportStrings = []string{
 	"/ip6/udp/utp",
 	// "/ip4/udp/udt", disabled because the lib doesnt work on arm
 	// "/ip6/udp/udt", disabled because the lib doesnt work on arm
+	"/onion",
 }
 
 // SupportedTransportProtocols is the list of supported transports for the swarm.
