@@ -111,10 +111,18 @@ func NewSwarm(ctx context.Context, listenAddrs []ma.Multiaddr,
 	}
 
 	// POC setup for onion transport
+
+	// The Tor socks user and password can be set to random values
+	// to tell little-t tor to make a new circuit.
+	// It's probably OK to leave them blank because when connecting
+	// to a new onion a new tor circuit will have to be created anyway.
 	auth := proxy.Auth{
 		User:     "",
 		Password: "",
 	}
+
+	// XXX FIXME: The tor control net and addr should be user specified!
+	// Note: for sandboxing purposes UNIX domain sockets are preferred instead of TCP.
 	controlNet := "tcp"
 	controlAddr := "127.0.0.1:9051"
 	onionTransport := NewOnionTransport(controlNet, controlAddr, nil, &auth)
