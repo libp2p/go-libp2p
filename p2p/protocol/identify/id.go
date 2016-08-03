@@ -172,8 +172,8 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c inet.Conn) {
 func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
 	p := c.RemotePeer()
 
-	// mes.Protocols
-
+	//TODO: mes.Protocols
+	
 	// mes.ObservedAddr
 	ids.consumeObservedAddress(mes.GetObservedAddr(), c)
 
