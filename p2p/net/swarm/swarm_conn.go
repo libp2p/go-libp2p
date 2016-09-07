@@ -92,6 +92,11 @@ func (c *Conn) Close() error {
 	return c.StreamConn().Close()
 }
 
+func (c *Conn) SetRemotePeer(p peer.ID) {
+	c.StreamConn().AddGroup(p)
+	c.RawConn().SetRemotePeer(p)
+}
+
 func wrapConn(psc *ps.Conn) (*Conn, error) {
 	// grab the underlying connection.
 	if _, ok := psc.NetConn().(conn.Conn); !ok {
