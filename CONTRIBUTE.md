@@ -5,7 +5,7 @@ before reporting things, and help us with the open ones.
 
 Guidelines:
 
-- read the [libp2p spec](https://github.com/ipfs/specs/tree/master/protocol/network)
+- read the [libp2p spec](https://github.com/ipfs/specs/tree/master/libp2p)
 - please make branches + pull-request, even if working on the main repository
 - ask questions or talk about things in [Issues](https://github.com/ipfs/go-ipfs/issues) or #ipfs on freenode.
 - ensure you are able to contribute (no legal issues please-- we use the DCO)
