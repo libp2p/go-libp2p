@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func TestFilter(t *testing.T) {

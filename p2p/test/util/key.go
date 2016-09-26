@@ -11,7 +11,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	testutil "github.com/libp2p/go-libp2p/testutil"
 
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = logging.Logger("boguskey")

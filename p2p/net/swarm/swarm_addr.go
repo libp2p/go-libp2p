@@ -4,7 +4,7 @@ import (
 	conn "github.com/libp2p/go-libp2p/p2p/net/conn"
 	addrutil "github.com/libp2p/go-libp2p/p2p/net/swarm/addr"
 
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // ListenAddresses returns a list of addresses at which this swarm listens.

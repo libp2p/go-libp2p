@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	lgbl "github.com/ipfs/go-libp2p-loggables"
-	ma "github.com/jbenet/go-multiaddr"
 	ps "github.com/jbenet/go-peerstream"
 	transport "github.com/libp2p/go-libp2p-transport"
 	mconn "github.com/libp2p/go-libp2p/p2p/metrics/conn"
 	inet "github.com/libp2p/go-libp2p/p2p/net"
 	conn "github.com/libp2p/go-libp2p/p2p/net/conn"
+	ma "github.com/multiformats/go-multiaddr"
 	context "golang.org/x/net/context"
 )
 

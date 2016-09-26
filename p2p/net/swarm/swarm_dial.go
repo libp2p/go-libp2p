@@ -9,9 +9,9 @@ import (
 
 	lgbl "github.com/ipfs/go-libp2p-loggables"
 	peer "github.com/ipfs/go-libp2p-peer"
-	ma "github.com/jbenet/go-multiaddr"
 	conn "github.com/libp2p/go-libp2p/p2p/net/conn"
 	addrutil "github.com/libp2p/go-libp2p/p2p/net/swarm/addr"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // Diagram of dial sync:

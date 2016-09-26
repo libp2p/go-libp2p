@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // TestObsAddrSet

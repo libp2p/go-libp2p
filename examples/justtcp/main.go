@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	ma "github.com/jbenet/go-multiaddr"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tcpt "github.com/libp2p/go-tcp-transport"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func fatal(i interface{}) {

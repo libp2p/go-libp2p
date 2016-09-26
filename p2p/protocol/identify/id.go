@@ -9,11 +9,11 @@ import (
 	ic "github.com/ipfs/go-libp2p-crypto"
 	peer "github.com/ipfs/go-libp2p-peer"
 	pstore "github.com/ipfs/go-libp2p-peerstore"
-	ma "github.com/jbenet/go-multiaddr"
 	host "github.com/libp2p/go-libp2p/p2p/host"
 	mstream "github.com/libp2p/go-libp2p/p2p/metrics/stream"
 	inet "github.com/libp2p/go-libp2p/p2p/net"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
+	ma "github.com/multiformats/go-multiaddr"
 	msmux "github.com/whyrusleeping/go-multistream"
 	context "golang.org/x/net/context"
 

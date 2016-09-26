@@ -5,7 +5,7 @@ import (
 	"time"
 
 	pstore "github.com/ipfs/go-libp2p-peerstore"
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // ObservedAddr is an entry for an address reported by our peers.

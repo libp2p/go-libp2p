@@ -9,7 +9,7 @@ import (
 	"time"
 
 	peer "github.com/ipfs/go-libp2p-peer"
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/whyrusleeping/mafmt"
 
 	conn "github.com/libp2p/go-libp2p/p2p/net/conn"

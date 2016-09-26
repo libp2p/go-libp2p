@@ -7,7 +7,6 @@ import (
 	peer "github.com/ipfs/go-libp2p-peer"
 	pstore "github.com/ipfs/go-libp2p-peerstore"
 	logging "github.com/ipfs/go-log"
-	ma "github.com/jbenet/go-multiaddr"
 	goprocess "github.com/jbenet/goprocess"
 	metrics "github.com/libp2p/go-libp2p/p2p/metrics"
 	mstream "github.com/libp2p/go-libp2p/p2p/metrics/stream"
@@ -15,6 +14,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p/p2p/protocol"
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	relay "github.com/libp2p/go-libp2p/p2p/protocol/relay"
+	ma "github.com/multiformats/go-multiaddr"
 	context "golang.org/x/net/context"
 
 	msmux "github.com/whyrusleeping/go-multistream"

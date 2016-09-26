@@ -8,7 +8,7 @@ import (
 	ic "github.com/ipfs/go-libp2p-crypto"
 	peer "github.com/ipfs/go-libp2p-peer"
 	secio "github.com/ipfs/go-libp2p-secio"
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 	context "golang.org/x/net/context"
 )
 

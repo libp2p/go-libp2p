@@ -7,10 +7,10 @@ import (
 
 	peer "github.com/ipfs/go-libp2p-peer"
 	logging "github.com/ipfs/go-log"
-	mh "github.com/jbenet/go-multihash"
 	host "github.com/libp2p/go-libp2p/p2p/host"
 	inet "github.com/libp2p/go-libp2p/p2p/net"
 	protocol "github.com/libp2p/go-libp2p/p2p/protocol"
+	mh "github.com/multiformats/go-multihash"
 	context "golang.org/x/net/context"
 )
 

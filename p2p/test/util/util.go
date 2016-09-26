@@ -10,7 +10,7 @@ import (
 	swarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tu "github.com/libp2p/go-libp2p/testutil"
 
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 	context "golang.org/x/net/context"
 )
 

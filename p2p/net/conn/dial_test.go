@@ -17,7 +17,7 @@ import (
 	tu "github.com/libp2p/go-libp2p/testutil"
 	tcpt "github.com/libp2p/go-tcp-transport"
 
-	ma "github.com/jbenet/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 	msmux "github.com/whyrusleeping/go-multistream"
 	grc "github.com/whyrusleeping/gorocheck"
 	context "golang.org/x/net/context"
