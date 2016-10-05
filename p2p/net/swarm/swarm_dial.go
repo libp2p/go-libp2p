@@ -85,14 +85,25 @@ type dialbackoff struct {
 }
 
 type backoffPeer struct {
-	tries int
-	until time.Time
+	Tries int
+	Until time.Time
 }
 
 func (db *dialbackoff) init() {
 	if db.entries == nil {
 		db.entries = make(map[peer.ID]*backoffPeer)
 	}
+}
+
+func (db *dialbackoff) Listing() map[peer.ID]*backoffPeer {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	out := make(map[peer.ID]*backoffPeer)
+	for k, v := range db.entries {
+		p := *v
+		out[k] = &p
+	}
+	return out
 }
 
 // Backoff returns whether the client should backoff from dialing
@@ -102,7 +113,7 @@ func (db *dialbackoff) Backoff(p peer.ID) (backoff bool) {
 	defer db.lock.Unlock()
 	db.init()
 	bp, found := db.entries[p]
-	if found && time.Now().Before(bp.until) {
+	if found && time.Now().Before(bp.Until) {
 		return true
 	}
 
@@ -122,18 +133,18 @@ func (db *dialbackoff) AddBackoff(p peer.ID) {
 	bp, ok := db.entries[p]
 	if !ok {
 		db.entries[p] = &backoffPeer{
-			tries: 1,
-			until: time.Now().Add(baseBackoffTime),
+			Tries: 1,
+			Until: time.Now().Add(baseBackoffTime),
 		}
 		return
 	}
 
-	expTimeAdd := time.Second * time.Duration(bp.tries*bp.tries)
+	expTimeAdd := time.Second * time.Duration(bp.Tries*bp.Tries)
 	if expTimeAdd > maxBackoffTime {
 		expTimeAdd = maxBackoffTime
 	}
-	bp.until = time.Now().Add(baseBackoffTime + expTimeAdd)
-	bp.tries++
+	bp.Until = time.Now().Add(baseBackoffTime + expTimeAdd)
+	bp.Tries++
 }
 
 // Clear removes a backoff record. Clients should call this after a
