@@ -16,8 +16,8 @@ import (
 func TestHostSimple(t *testing.T) {
 
 	ctx := context.Background()
-	h1 := New(testutil.GenSwarmNetwork(t, ctx))
-	h2 := New(testutil.GenSwarmNetwork(t, ctx))
+	h1, _ := New(testutil.GenSwarmNetwork(t, ctx))
+	h2, _ := New(testutil.GenSwarmNetwork(t, ctx))
 	defer h1.Close()
 	defer h2.Close()
 
@@ -64,8 +64,8 @@ func TestHostSimple(t *testing.T) {
 }
 
 func getHostPair(ctx context.Context, t *testing.T) (host.Host, host.Host) {
-	h1 := New(testutil.GenSwarmNetwork(t, ctx))
-	h2 := New(testutil.GenSwarmNetwork(t, ctx))
+	h1, _ := New(testutil.GenSwarmNetwork(t, ctx))
+	h2, _ := New(testutil.GenSwarmNetwork(t, ctx))
 
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
 	if err := h1.Connect(ctx, h2pi); err != nil {
@@ -170,8 +170,8 @@ func TestHostProtoPreknowledge(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1 := New(testutil.GenSwarmNetwork(t, ctx))
-	h2 := New(testutil.GenSwarmNetwork(t, ctx))
+	h1, _ := New(testutil.GenSwarmNetwork(t, ctx))
+	h2, _ := New(testutil.GenSwarmNetwork(t, ctx))
 
 	conn := make(chan protocol.ID)
 	handler := func(s inet.Stream) {

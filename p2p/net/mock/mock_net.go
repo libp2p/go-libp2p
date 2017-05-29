@@ -84,7 +84,7 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps pstore.Peerstore) (host.Ho
 		return nil, err
 	}
 
-	h := bhost.New(n)
+	h, _ := bhost.New(n)
 	h.NegotiateTimeout = 0
 
 	mn.proc.AddChild(n.proc)

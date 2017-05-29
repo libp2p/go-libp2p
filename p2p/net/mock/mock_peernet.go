@@ -8,9 +8,11 @@ import (
 
 	"github.com/jbenet/goprocess"
 	goprocessctx "github.com/jbenet/goprocess/context"
+	iconn "github.com/libp2p/go-libp2p-interface-conn"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
+	tpt "github.com/libp2p/go-libp2p-transport"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -218,6 +220,14 @@ func (pn *peernet) Process() goprocess.Process {
 // LocalPeer the network's LocalPeer
 func (pn *peernet) LocalPeer() peer.ID {
 	return pn.peer
+}
+
+func (pn *peernet) AddDialer(d iconn.SingleDialer) {
+	panic("mocknet doesnt support adding dialers")
+}
+
+func (pn *peernet) AddListener(l tpt.Listener) error {
+	return fmt.Errorf("mocknet doesnt support adding listeners")
 }
 
 // Peers returns the connected peers

@@ -9,6 +9,7 @@ import (
 
 	logging "github.com/ipfs/go-log"
 	goprocess "github.com/jbenet/goprocess"
+	circuit "github.com/libp2p/go-libp2p-circuit"
 	metrics "github.com/libp2p/go-libp2p-metrics"
 	mstream "github.com/libp2p/go-libp2p-metrics/stream"
 	inet "github.com/libp2p/go-libp2p-net"
@@ -51,10 +52,12 @@ type BasicHost struct {
 	proc goprocess.Process
 
 	bwc metrics.Reporter
+
+	relay *circuit.Relay
 }
 
 // New constructs and sets up a new *BasicHost with given Network
-func New(net inet.Network, opts ...interface{}) *BasicHost {
+func New(net inet.Network, opts ...interface{}) (*BasicHost, error) {
 	h := &BasicHost{
 		network:          net,
 		mux:              msmux.NewMultistreamMuxer(),
@@ -81,6 +84,14 @@ func New(net inet.Network, opts ...interface{}) *BasicHost {
 			}
 		case metrics.Reporter:
 			h.bwc = o
+		case *circuit.Relay:
+			net.AddDialer(o.Dialer())
+
+			list := o.Listener()
+			err := net.AddListener(list)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -89,7 +100,7 @@ func New(net inet.Network, opts ...interface{}) *BasicHost {
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
-	return h
+	return h, nil
 }
 
 // newConnHandler is the remote-opened conn handler for inet.Network
