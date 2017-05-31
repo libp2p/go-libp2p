@@ -19,6 +19,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+// Mocknet is an interface representing a network of peers. Each peer
+// has its own net.Network. Mocknet can add and remove peers,
+// link different networks and provide a representation of the state
+// of the system via LinkMaps.
 type Mocknet interface {
 
 	// GenPeer generates a peer and its inet.Network in the Mocknet

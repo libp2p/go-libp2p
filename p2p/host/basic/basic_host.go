@@ -1,3 +1,4 @@
+// Package basichost provides a basic libp2p Host implementation.
 package basichost
 
 import (
@@ -21,6 +22,8 @@ import (
 
 var log = logging.Logger("basichost")
 
+// NegotiateTimeout sets a deadline to perform stream handling
+// negotiation (exchange of protocol IDs)
 var NegotiateTimeout = time.Second * 60
 
 // AddrsFactory functions can be passed to New in order to override
@@ -58,7 +61,9 @@ type BasicHost struct {
 	bwc metrics.Reporter
 }
 
-// New constructs and sets up a new *BasicHost with given Network
+// New constructs and sets up a new *BasicHost with given Network. It can take
+// additional options. Currently NATPortMap (see "Constants"
+// documentation) and a custom metrics.Reporter are supported.
 func New(net inet.Network, opts ...interface{}) *BasicHost {
 	h := &BasicHost{
 		network:          net,
@@ -177,12 +182,12 @@ func (h *BasicHost) Network() inet.Network {
 	return h.network
 }
 
-// Mux returns the Mux multiplexing incoming streams to protocol handlers
+// Mux returns the Mux multiplexing incoming streams to protocol handlers.
 func (h *BasicHost) Mux() *msmux.MultistreamMuxer {
 	return h.mux
 }
 
-// IDService returns
+// IDService returns the IDService for this host.
 func (h *BasicHost) IDService() *identify.IDService {
 	return h.ids
 }
@@ -211,7 +216,7 @@ func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(string) bool, 
 	})
 }
 
-// RemoveStreamHandler returns ..
+// RemoveStreamHandler removes the handler matching the given protocol ID.
 func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
 	h.Mux().RemoveHandler(string(pid))
 }

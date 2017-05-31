@@ -6,7 +6,7 @@ message Identify {
   optional string protocolVersion = 5; // e.g. ipfs/1.0.0
 
   // agentVersion is like a UserAgent string in browsers, or client version in bittorrent
-  // includes the client name and client.
+  // includes the client name and client version.
   optional string agentVersion = 6; // e.g. go-ipfs/0.1.0
 
   // publicKey is this node's public key (which also gives its node.ID)

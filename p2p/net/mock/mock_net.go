@@ -38,6 +38,7 @@ type mocknet struct {
 	sync.Mutex
 }
 
+// New initializes and returns a default implementation of Mocknet.
 func New(ctx context.Context) Mocknet {
 	return &mocknet{
 		nets:  map[peer.ID]*peernet{},

@@ -1,3 +1,6 @@
+// Package identify provides an identity service for libp2p hosts. This service
+// allows to exchange information about supported protocols and observed
+// addresses between hosts.
 package identify
 
 import (
@@ -31,6 +34,7 @@ const ID = "/ipfs/id/1.0.0"
 // TODO(jbenet): fix the versioning mess.
 const LibP2PVersion = "ipfs/0.1.0"
 
+// ClientVersion is similar to a UserAgent string.
 var ClientVersion = "go-libp2p/3.3.4"
 
 // IDService is a structure that implements ProtocolIdentify.
@@ -55,6 +59,9 @@ type IDService struct {
 	observedAddrs ObservedAddrSet
 }
 
+// NewIDService creates a new IDService by attaching
+// a stream handler to the given host, making it ready to interact
+// with other hosts running this service.
 func NewIDService(h host.Host) *IDService {
 	s := &IDService{
 		Host:   h,
@@ -69,6 +76,9 @@ func (ids *IDService) OwnObservedAddrs() []ma.Multiaddr {
 	return ids.observedAddrs.Addrs()
 }
 
+// IdentifyConn handles newly stablished connections, pushes and extracts
+// the necessary information so they can be used: protocol, observed addresses,
+// public key... The IDService's host peerstore is updated after the handshake.
 func (ids *IDService) IdentifyConn(c inet.Conn) {
 	ids.currmu.Lock()
 	if wait, found := ids.currid[c]; found {
@@ -117,6 +127,9 @@ func (ids *IDService) IdentifyConn(c inet.Conn) {
 	}
 }
 
+// RequestHandler handles an identity service request
+// by writing protocol version, host addresses, observed addresses
+// etc. to the stream.
 func (ids *IDService) RequestHandler(s inet.Stream) {
 	defer s.Close()
 	c := s.Conn()
@@ -134,6 +147,9 @@ func (ids *IDService) RequestHandler(s inet.Stream) {
 		c.RemotePeer(), c.RemoteMultiaddr())
 }
 
+// ResponseHandler handles an identity service response
+// by reading the message information and updating the
+// IDService's host accordingly.
 func (ids *IDService) ResponseHandler(s inet.Stream) {
 	defer s.Close()
 	c := s.Conn()

@@ -45,6 +45,8 @@ type ObservedAddrSet struct {
 	ttl   time.Duration
 }
 
+// Addrs returns a slice of multiaddresses observed. The addresses
+// must have not timed out and must have been seen more than once.
 func (oas *ObservedAddrSet) Addrs() []ma.Multiaddr {
 	oas.Lock()
 	defer oas.Unlock()
@@ -70,6 +72,7 @@ func (oas *ObservedAddrSet) Addrs() []ma.Multiaddr {
 	return addrs
 }
 
+// Add includes a new multiaddress in the observed addresses set.
 func (oas *ObservedAddrSet) Add(addr ma.Multiaddr, observer ma.Multiaddr) {
 	oas.Lock()
 	defer oas.Unlock()
@@ -112,12 +115,15 @@ func observerGroup(m ma.Multiaddr) string {
 	return ma.Split(m)[0].String()
 }
 
+// SetTTL sets the time to live for addresses in the ObservedAddrSet.
 func (oas *ObservedAddrSet) SetTTL(ttl time.Duration) {
 	oas.Lock()
 	defer oas.Unlock()
 	oas.ttl = ttl
 }
 
+// TTL returns the time to live for addressed tracked by the
+// ObservedAddrSet. If not set, it defaults to peerstore.OwnObservedTTL.
 func (oas *ObservedAddrSet) TTL() time.Duration {
 	oas.Lock()
 	defer oas.Unlock()

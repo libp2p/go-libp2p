@@ -6,21 +6,73 @@
 [![GoDoc](https://godoc.org/github.com/ipfs/go-libp2p?status.svg)](https://godoc.org/github.com/libp2p/go-libp2p)
 [![Build Status](https://travis-ci.org/ipfs/go-libp2p.svg?branch=master)](https://travis-ci.org/libp2p/go-libp2p)
 
-![](https://raw.githubusercontent.com/diasdavid/specs/libp2p-spec/protocol/network/figs/logo.png)
+<p align="center">
+  <img src="https://github.com/libp2p/libp2p/raw/master/logo/libp2p-logo.png" />
+</p>
 
 > libp2p implementation in Go
 
 # Description
 
 [libp2p](https://github.com/libp2p/specs) is a networking stack and library modularized out of [The IPFS Project](https://github.com/ipfs/ipfs), and bundled separately for other tools to use.
->
-libp2p is the product of a long, and arduous quest of understanding -- a deep dive into the internet's network stack, and plentiful peer-to-peer protocols from the past. Building large scale peer-to-peer systems has been complex and difficult in the last 15 years, and libp2p is a way to fix that. It is a "network stack" -- a protocol suite -- that cleanly separates concerns, and enables sophisticated applications to only use the protocols they absolutely need, without giving up interoperability and upgradeability. libp2p grew out of IPFS, but it is built so that lots of people can use it, for lots of different projects.
->
-> We will be writing a set of docs, posts, tutorials, and talks to explain what p2p is, why it is tremendously useful, and how it can help your existing and new projects. But in the meantime, check out
->
-> - [**The IPFS Network Spec**](https://github.com/libp2p/specs), which grew into libp2p
-> - [**go-libp2p implementation**](https://github.com/libp2p/go-libp2p)
-> - [**js-libp2p implementation**](https://github.com/libp2p/js-libp2p)
+
+> libp2p is the product of a long, and arduous quest of understanding -- a deep dive into the internet's network stack, and plentiful peer-to-peer protocols from the past. Building large scale peer-to-peer systems has been complex and difficult in the last 15 years, and libp2p is a way to fix that. It is a "network stack" -- a protocol suite -- that cleanly separates concerns, and enables sophisticated applications to only use the protocols they absolutely need, without giving up interoperability and upgradeability. libp2p grew out of IPFS, but it is built so that lots of people can use it, for lots of different projects.
+
+This is the entry point for the Go implementation of `libp2p`, which is formed by multiple modules, usually accessible under the `github.com/libp2p/go-libp2p-*` namespace.
+
+# Usage
+
+The vast majority of `go-libp2p` modules live in their own repositories. This repository is the apex of the Go `libp2p` stack, and primarily serves to track the working-version set of all the different modules.
+
+This is done using [Gx](https://github.com/whyrusleeping/gx) and its companion [Gx-go](https://github.com/whyrusleeping/gx-go).
+
+The [`package.json`](https://github.com/libp2p/go-libp2p/blob/master/package.json) file maintains the current list of dependencies which, when used, provide a working version of the stack.
+
+**Any `go-libp2p` application (including the examples in this repository) need to have their imports rewritten with Gx, otherwise compilation will fail.**
+
+The process to get `go-libp2p` working in your project is as follows:
+
+* Make sure you install Gx and Gx-go:
+
+```
+go get -u github.com/whyrusleeping/gx
+go get -u github.com/whyrusleeping/gx-go
+```
+
+* Initialize Gx in the base folder of your project's repository. This will create a `package.json` file:
+
+```
+gx init
+```
+
+* Import `go-libp2p` to your project. This will import `go-libp2p` on its latest published version:
+
+```
+gx import github.com/libp2p/go-libp2p
+```
+
+* Download and install all the `go-libp2p` dependencies:
+
+```
+gx install --verbose --global
+```
+
+* Write your `go-libp2p` code normally and use regular imports (i.e. `import "github.com/libp2p/go-libp2p-net"`)
+* Before compiling, run a Gx-go-rewrite command in the base folder of your repository: You will see that your `go-libp2p-*` imports have been rewritten to something like `gx/ipfs/QmVtMT3fD7DzQNW7hdm6Xe6KPstzcggrhNpeVZ4422UpKK/go-libp2p-net`:
+
+```
+gx-go rewrite
+```
+
+* With the imports rewritten, you can now compile your `go-libp2p`. If you don't rewrite your imports, your build will error as `go-libp2p` does not build on master.
+* Before committing, it is customary to undo the rewrites with:
+
+```
+gx-go rewrite --undo
+```
+
+Most projects include these steps in a `Makefile` for convenience. [Here is an example](https://github.com/libp2p/go-libp2p-raft/blob/master/Makefile).
+
 
 # Contribute
 
@@ -29,21 +81,10 @@ libp2p implementation in Go is a work in progress. As such, there's a few things
  - **Perform code reviews**.
  - **Add tests**. There can never be enough tests.
 
-# Usage
-
-`go-libp2p` repo will be a place holder for the list of Go modules that compose Go libp2p, as well as its entry point.
-
-## Install
-
-```bash
-$ go get -d github.com/libp2p/go-libp2p
-$ cd $GOPATH/src/github.com/libp2p/go-libp2p
-$ make
-```
 
 # Examples
 
-Examples can be found on the [examples folder](examples).
+Examples and information on how to run them can be found on the [examples folder](examples) and their respective READMEs.
 
 # Run tests
 
@@ -52,7 +93,6 @@ $ cd $GOPATH/src/github.com/libp2p/go-libp2p
 $ make deps
 $ go test ./p2p/<path of module you want to run tests for>
 ```
-
 
 ## Links
 - [**Specs**](https://github.com/libp2p/specs)

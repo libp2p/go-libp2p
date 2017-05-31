@@ -26,6 +26,7 @@ type transportObject struct {
 	arrivalTime time.Time
 }
 
+// NewStream returns a new mock stream, which implements net.Stream.
 func NewStream(p net.Conn) *stream {
 	s := &stream{
 		Pipe:      p,

@@ -1,3 +1,6 @@
+// Package discovery provides mDNS announcements and discovery for libp2p hosts.
+// It can be used to auto-discover peers in networks where mDNS (multicast)
+// is not blocked.
 package discovery
 
 import (
@@ -21,14 +24,20 @@ import (
 
 var log = logging.Logger("mdns")
 
+// ServiceTag is used to identify the mDNS service
 const ServiceTag = "_ipfs-discovery._udp"
 
+// Service provides an interface for mDNS service implementations.
+// Currently they support registration and removal of notifees, which
+// are notified when a new peer is found.
 type Service interface {
 	io.Closer
 	RegisterNotifee(Notifee)
 	UnregisterNotifee(Notifee)
 }
 
+// Notifee is an interface which allows to be notified
+// when a new peer is found by a mDNS service.
 type Notifee interface {
 	HandlePeerFound(pstore.PeerInfo)
 }
@@ -61,6 +70,10 @@ func getDialableListenAddrs(ph host.Host) ([]*net.TCPAddr, error) {
 	return out, nil
 }
 
+// NewMdnsService creates and initializes a new Service. It receives a
+// cancellable context (used to cancel mDNS polling), a Host (whose information
+// is multicasted to the local network), and an interval which specifies how
+// often to perform mDNS queries.
 func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Duration) (Service, error) {
 
 	// TODO: dont let mdns use logging...

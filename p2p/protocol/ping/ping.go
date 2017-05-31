@@ -1,3 +1,6 @@
+// Package ping provides a ping service for libp2p hosts. It allows to measure
+// round-trip latencies by sending data to a destination which echoes it
+// back to the source.
 package ping
 
 import (
@@ -16,22 +19,29 @@ import (
 
 var log = logging.Logger("ping")
 
+// PingSize determines the size of the data written to the inet.Stream.
 const PingSize = 32
 
+// ID is the protocol ID for the PingService
 const ID = "/ipfs/ping/1.0.0"
 
 const pingTimeout = time.Second * 60
 
+// PingService enables sending and responding to Ping requests.
 type PingService struct {
 	Host host.Host
 }
 
+// NewPingService creates a PinService on the given
+// host by enabling it to perform and respond to pings.
 func NewPingService(h host.Host) *PingService {
 	ps := &PingService{h}
 	h.SetStreamHandler(ID, ps.PingHandler)
 	return ps
 }
 
+// PingHandler is a Stream handler which reads data from a
+// stream and echoes it back.
 func (p *PingService) PingHandler(s inet.Stream) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -67,8 +77,11 @@ func (p *PingService) PingHandler(s inet.Stream) {
 	}
 }
 
-func (ps *PingService) Ping(ctx context.Context, p peer.ID) (<-chan time.Duration, error) {
-	s, err := ps.Host.NewStream(ctx, p, ID)
+// Ping triggers pings to a given peer. It provides a from which latencies
+// for each ping can be read. Pings happen continuosly until the given context
+// is cancelled.
+func (p *PingService) Ping(ctx context.Context, pid peer.ID) (<-chan time.Duration, error) {
+	s, err := p.Host.NewStream(ctx, pid, ID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +101,7 @@ func (ps *PingService) Ping(ctx context.Context, p peer.ID) (<-chan time.Duratio
 					return
 				}
 
-				ps.Host.Peerstore().RecordLatency(p, t)
+				p.Host.Peerstore().RecordLatency(pid, t)
 				select {
 				case out <- t:
 				case <-ctx.Done():
@@ -118,7 +131,7 @@ func ping(s inet.Stream) (time.Duration, error) {
 	}
 
 	if !bytes.Equal(buf, rbuf) {
-		return 0, errors.New("ping packet was incorrect!")
+		return 0, errors.New("ping packet was incorrect")
 	}
 
 	return time.Since(before), nil
