@@ -2,6 +2,7 @@ package basichost
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -292,7 +293,17 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	}
 
 	if pref != "" {
-		return h.newStream(ctx, p, pref)
+		s, err := h.newStream(ctx, p, pref)
+		if err != msmux.ErrNotSupported {
+			return s, err
+		}
+
+		log.Warning("protocol preference selection failed: %s [%s] %s", p, pids, pref)
+
+		// protocol selection failed, clear ALL remembered protocols for them
+		if err := h.Peerstore().SetProtocols(p); err != nil {
+			return nil, fmt.Errorf("clearing peerstore protocols: %s", err)
+		}
 	}
 
 	var protoStrs []string
