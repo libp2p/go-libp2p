@@ -11,14 +11,18 @@ import (
 	"log"
 	mrand "math/rand"
 
+	"github.com/golang/glog"
+	ds "github.com/ipfs/go-datastore"
 	golog "github.com/ipfs/go-log"
 	crypto "github.com/libp2p/go-libp2p-crypto"
 	host "github.com/libp2p/go-libp2p-host"
+	kad "github.com/libp2p/go-libp2p-kad-dht"
 	net "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	rhost "github.com/libp2p/go-libp2p/p2p/host/routed"
 	ma "github.com/multiformats/go-multiaddr"
 	gologging "github.com/whyrusleeping/go-logging"
 	msmux "github.com/whyrusleeping/go-smux-multistream"
@@ -107,6 +111,17 @@ func makeBasicHost(listenPort int, secio bool, randseed int64) (host.Host, error
 	return basicHost, nil
 }
 
+func makeKadHost(h host.Host) (host.Host, error) {
+	dhtRouting := kad.NewDHT(context.Background(), h, ds.NewMapDatastore())
+	if err := dhtRouting.Bootstrap(context.Background()); err != nil {
+		glog.Errorf("Error bootstraping dht: %v", err)
+		return nil, err
+	}
+
+	rHost := rhost.Wrap(h, dhtRouting)
+	return rHost, nil
+}
+
 func main() {
 	// LibP2P code uses golog to log messages. They log with different
 	// string IDs (i.e. "swarm"). We can control the verbosity level for
@@ -125,7 +140,11 @@ func main() {
 	}
 
 	// Make a host that listens on the given multiaddress
-	ha, err := makeBasicHost(*listenF, *secio, *seed)
+	ho, err := makeBasicHost(*listenF, *secio, *seed)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ha, err := makeKadHost(ho)
 	if err != nil {
 		log.Fatal(err)
 	}
