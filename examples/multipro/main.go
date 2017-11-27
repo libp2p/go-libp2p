@@ -46,6 +46,7 @@ func main() {
 
 	log.Printf("This is a conversation between %s and %s\n", h1.host.ID(), h2.host.ID())
 
+	// send messages using the protocols
 	h1.pingProtocol.Ping(h2)
 	h2.pingProtocol.Ping(h1)
 	h1.echoProtocol.Echo(h2)
