@@ -47,22 +47,13 @@ func main() {
 
 	log.Printf("This is a conversation between %s and %s\n", h1.host.ID(), h2.host.ID())
 
-	// send a ping from h1 to h2
 	h1.pingProtocol.Ping(h2)
-
-	// pause main until pong was received and processed by h2
-	<-done
-
-	// send a ping from h1 to h2
 	h2.pingProtocol.Ping(h1)
-
-	<-done
-
 	h1.echoProtocol.Echo(h2)
-
-	<-done
-
 	h2.echoProtocol.Echo(h1)
 
-	<-done
+	// block until all responses have been processed
+	for i := 0; i < 4; i++ {
+		<-done
+	}
 }
