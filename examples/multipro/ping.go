@@ -22,7 +22,7 @@ const pingResponse = "/ping/pingresp/0.0.1"
 type PingProtocol struct {
 	host     host.Host                   // local host
 	requests map[string]*p2p.PingRequest // used to access request data from response handlers
-	done     chan bool                   // only for demo purposes to hold main from terminating
+	done     chan bool                   // only for demo purposes to stop main from terminating
 }
 
 func NewPingProtocol(host host.Host, done chan bool) *PingProtocol {
@@ -106,7 +106,7 @@ func (p *PingProtocol) Ping(node *Node) bool {
 		return false
 	}
 
-	// store request so response handler has access to it
+	// store ref request so response handler has access to it
 	p.requests[req.MessageData.Id] = req
 	log.Printf("%s: Ping to: %s was sent. Message Id: %s, Message: %s", p.host.ID(), node.host.ID(), req.MessageData.Id, req.Message)
 	return true

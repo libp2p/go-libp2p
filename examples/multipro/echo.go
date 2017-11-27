@@ -10,9 +10,9 @@ import (
 	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 
 	uuid "github.com/google/uuid"
+	"github.com/ipfs/go-ipfs/thirdparty/assert"
 	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
-	"github.com/ipfs/go-ipfs/thirdparty/assert"
 )
 
 // pattern: /protocol-name/request-or-response-message/version
@@ -21,7 +21,7 @@ const echoResponse = "/echo/echoresp/0.0.1"
 
 type EchoProtocol struct {
 	host     host.Host                   // local host
-	requests map[string] *p2p.EchoRequest // used to access request data from response handlers
+	requests map[string]*p2p.EchoRequest // used to access request data from response handlers
 	done     chan bool                   // only for demo purposes to hold main from terminating
 }
 
@@ -34,7 +34,6 @@ func NewEchoProtocol(host host.Host, done chan bool) *EchoProtocol {
 
 // remote peer requests handler
 func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
-
 	// get request data
 	data := &p2p.EchoRequest{}
 	decoder := protobufCodec.Multicodec(nil).Decoder(bufio.NewReader(s))

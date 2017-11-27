@@ -17,7 +17,7 @@ import (
 const clientVersion = "go-p2p-node/0.0.1"
 
 // helper method - writes a protobuf go data object to a network stream
-// data - address of protobuf go data object to send
+// data - reference of protobuf go data object to send (not the object itself)
 // s - network stream to write the data to
 func sendDataObject(data interface{}, s inet.Stream) bool {
 	writer := bufio.NewWriter(s)
@@ -35,12 +35,11 @@ func sendDataObject(data interface{}, s inet.Stream) bool {
 // nodeId - message author id
 // messageId - unique for requests, copied from request for responses
 func NewMessageData(nodeId string, messageId string, gossip bool) *p2p.MessageData {
-	return &p2p.MessageData{
-		ClientVersion: clientVersion,
-		NodeId:        nodeId,
-		Timestamp:     time.Now().Unix(),
-		Id:            messageId,
-		Gossip:        gossip}
+	return &p2p.MessageData{ClientVersion: clientVersion,
+		NodeId:    nodeId,
+		Timestamp: time.Now().Unix(),
+		Id:        messageId,
+		Gossip:    gossip}
 }
 
 // Node type - implements one or more p2p protocols
@@ -50,9 +49,9 @@ type Node struct {
 	echoProtocol *EchoProtocol // echp protocl imp
 }
 
-// create a new node with its supported protocols
+// create a new node with its implemented protocols
 func NewNode(host host.Host, done chan bool) *Node {
 	return &Node{host: host,
-	pingProtocol: NewPingProtocol(host, done),
-	echoProtocol: NewEchoProtocol(host, done)}
+		pingProtocol: NewPingProtocol(host, done),
+		echoProtocol: NewEchoProtocol(host, done)}
 }
