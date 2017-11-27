@@ -45,8 +45,9 @@ func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
 
 	log.Printf("%s: Received echo request from %s. Message: %s", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.Message)
 
-	// send response to sender
 	log.Printf("%s: Sending echo response to %s. Message id: %s...", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id)
+
+	// send response to request send using the message string he provided
 	resp := &p2p.EchoResponse{
 		MessageData: NewMessageData(e.host.ID().String(), data.MessageData.Id, false),
 		Message:     data.Message}
@@ -85,7 +86,7 @@ func (e *EchoProtocol) onEchoResponse(s inet.Stream) {
 
 	assert.True(req.Message == data.Message, nil, "Expected echo to respond with request message")
 
-	log.Printf("%s: Received Echo response from %s. Message id:%s. Message: %s.", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id, data.Message)
+	log.Printf("%s: Received echo response from %s. Message id:%s. Message: %s.", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id, data.Message)
 	e.done <- true
 }
 

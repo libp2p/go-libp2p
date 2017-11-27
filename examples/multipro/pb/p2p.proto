@@ -10,7 +10,7 @@ message MessageData {
     string id = 3;        // allows requesters to use request data when processing a response
     bool gossip = 4;      // true to have receiver peer gossip the message to neighbors
     string nodeId = 5;    // id of node that created the message (not the peer that may have sent it)
-    string sign = 6;      // signature of message data + method specific data by message authoring node
+    bytes sign = 6;      // signature of message data + method specific data by message authoring node
 }
 
 //// ping protocol

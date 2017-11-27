@@ -18,7 +18,7 @@ import (
 func makeRandomNode(port int, done chan bool) *Node {
 	// Ignoring most errors for brevity
 	// See echo example for more details and better implementation
-	priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	priv, pub, _ := crypto.GenerateKeyPair(crypto.Secp256k1, 256)
 	pid, _ := peer.IDFromPublicKey(pub)
 	listen, _ := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port))
 	peerStore := ps.NewPeerstore()
@@ -47,10 +47,10 @@ func main() {
 	log.Printf("This is a conversation between %s and %s\n", h1.host.ID(), h2.host.ID())
 
 	// send messages using the protocols
-	h1.pingProtocol.Ping(h2)
-	h2.pingProtocol.Ping(h1)
-	h1.echoProtocol.Echo(h2)
-	h2.echoProtocol.Echo(h1)
+	h1.Ping(h2)
+	h2.Ping(h1)
+	h1.Echo(h2)
+	h2.Echo(h1)
 
 	// block until all responses have been processed
 	for i := 0; i < 4; i++ {
