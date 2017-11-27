@@ -16,7 +16,6 @@ import (
 
 // helper method - create a lib-p2p host to listen on a port
 func makeRandomNode(port int, done chan bool) *Node {
-
 	// Ignoring most errors for brevity
 	// See echo example for more details and better implementation
 	priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)

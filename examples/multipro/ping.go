@@ -48,10 +48,8 @@ func (p *PingProtocol) onPingRequest(s inet.Stream) {
 
 	// send response to sender
 	log.Printf("%s: Sending ping response to %s. Message id: %s...", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id)
-	resp := &p2p.PingResponse{
-		MessageData: NewMessageData(p.host.ID().String(), data.MessageData.Id, false),
-		Message:     fmt.Sprintf("Ping response from %s", p.host.ID()),
-	}
+	resp := &p2p.PingResponse{MessageData: NewMessageData(p.host.ID().String(), data.MessageData.Id, false),
+		Message: fmt.Sprintf("Ping response from %s", p.host.ID())}
 
 	s, respErr := p.host.NewStream(context.Background(), s.Conn().RemotePeer(), pingResponse)
 	if respErr != nil {
@@ -93,10 +91,8 @@ func (p *PingProtocol) Ping(node *Node) bool {
 	log.Printf("%s: Sending ping to: %s....", p.host.ID(), node.host.ID())
 
 	// create message data
-	req := &p2p.PingRequest{
-		MessageData: NewMessageData(p.host.ID().String(), uuid.New().String(), false),
-		Message:     fmt.Sprintf("Ping from %s", p.host.ID()),
-	}
+	req := &p2p.PingRequest{MessageData: NewMessageData(p.host.ID().String(), uuid.New().String(), false),
+		Message: fmt.Sprintf("Ping from %s", p.host.ID())}
 
 	s, err := p.host.NewStream(context.Background(), node.host.ID(), pingRequest)
 	if err != nil {

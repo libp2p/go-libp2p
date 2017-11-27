@@ -33,7 +33,7 @@ func sendDataObject(data interface{}, s inet.Stream) bool {
 
 // helper method - generate message data shared between all node's p2p protocols
 // nodeId - message author id
-// mesageId - unique for requests, copied from request for responses
+// messageId - unique for requests, copied from request for responses
 func NewMessageData(nodeId string, messageId string, gossip bool) *p2p.MessageData {
 	return &p2p.MessageData{
 		ClientVersion: clientVersion,
