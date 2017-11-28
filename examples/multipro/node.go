@@ -1,10 +1,10 @@
 package main
 
 import (
+	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	"github.com/gogo/protobuf/proto"
 	host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	"log"
 )
 

@@ -3,12 +3,12 @@ package main
 import (
 	"bufio"
 	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
+	"github.com/gogo/protobuf/proto"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
+	"gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 	"log"
 	"time"
-	"github.com/gogo/protobuf/proto"
-	"gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 )
 
 // node version
@@ -33,7 +33,7 @@ func sendProtoMessage(data proto.Message, s inet.Stream) bool {
 // messageId - unique for requests, copied from request for responses
 func NewMessageData(node *Node, messageId string, gossip bool) *p2p.MessageData {
 
-	// this creates a protobuf data for a public key
+	// Create protobufs bin data for a public key
 	nodePubKey, err := node.Peerstore().PubKey(node.ID()).Bytes()
 
 	if err != nil {
@@ -41,9 +41,9 @@ func NewMessageData(node *Node, messageId string, gossip bool) *p2p.MessageData 
 	}
 
 	return &p2p.MessageData{ClientVersion: clientVersion,
-		NodeId:    peer.IDB58Encode(node.ID()),
+		NodeId:     peer.IDB58Encode(node.ID()),
 		NodePubKey: nodePubKey,
-		Timestamp: time.Now().Unix(),
-		Id:        messageId,
-		Gossip:    gossip}
+		Timestamp:  time.Now().Unix(),
+		Id:         messageId,
+		Gossip:     gossip}
 }
