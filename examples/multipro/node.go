@@ -4,15 +4,44 @@ import (
 	host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	"github.com/gogo/protobuf/proto"
+
+	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
+	"log"
 )
 
+func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) bool {
+
+	// store a temp ref to sig and remove it from data
+	sign := data.Sign
+	data.Sign = ""
+
+	//log.Print("Signature: %s", []byte(sign))
+
+	// marshall data without the sig to binary format
+	bin, err := proto.Marshal(message)
+	if err != nil {
+		// todo: log
+		return false
+	}
+
+	// restore sig in message data (for possible future use)
+	data.Sign = sign
+
+	peerId, err := peer.IDB58Decode(data.NodeId)
+
+	if err != nil {
+		log.Fatal(err, "Failed to decode node id")
+		return false
+	}
+
+	return n.verifyData(bin, []byte(sign), peerId)
+}
+
 func (n Node) signProtoMessage(message proto.Message) ([]byte, error) {
-	// sign the data
 	data, err := proto.Marshal(message)
 	if err != nil {
 		return nil, err
 	}
-
 	return n.signData(data)
 }
 
@@ -22,8 +51,10 @@ func (n Node) signData(data []byte) ([]byte, error) {
 	return res, err
 }
 
-func (n Node) verifyData(data []byte, signature []byte, signerHostId peer.ID) bool {
-	key := n.Peerstore().PubKey(signerHostId)
+// precondition: we have info about the signer peer in the local peer store
+func (n Node) verifyData(data []byte, signature []byte, peerId peer.ID) bool {
+	key := n.Peerstore().PubKey(peerId)
+	//log.Print ("%s %s %s", peerId, key, peerId.String())
 	res, err := key.Verify(data, signature)
 	return res == true && err == nil
 }
