@@ -27,6 +27,8 @@ func makeRandomNode(port int, done chan bool) *Node {
 	n, _ := swarm.NewNetwork(context.Background(), []ma.Multiaddr{listen}, pid, peerStore, nil)
 	host := bhost.New(n)
 
+	log.Printf("New host id (base58 multihash):%s, length:%d", host.ID().Pretty(), len(host.ID().Pretty()))
+
 	return NewNode(host, done)
 }
 

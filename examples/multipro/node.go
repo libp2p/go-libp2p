@@ -1,13 +1,28 @@
 package main
 
 import (
+	"github.com/gogo/protobuf/proto"
 	host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	"github.com/gogo/protobuf/proto"
-
-	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
+	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	"log"
 )
+
+// Node type - a p2p host implementing one or more p2p protocols
+type Node struct {
+	host.Host     // lib-p2p host
+	*PingProtocol // ping protocol impl
+	*EchoProtocol // echo protocol impl
+	// add other protocols here...
+}
+
+// create a new node with its implemented protocols
+func NewNode(host host.Host, done chan bool) *Node {
+	node := &Node{Host: host}
+	node.PingProtocol = NewPingProtocol(node, done)
+	node.EchoProtocol = NewEchoProtocol(node, done)
+	return node
+}
 
 func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) bool {
 
@@ -15,12 +30,10 @@ func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) 
 	sign := data.Sign
 	data.Sign = ""
 
-	//log.Print("Signature: %s", []byte(sign))
-
 	// marshall data without the sig to binary format
 	bin, err := proto.Marshal(message)
 	if err != nil {
-		// todo: log
+		log.Fatal(err, "failed to marshal pb message")
 		return false
 	}
 
@@ -28,13 +41,12 @@ func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) 
 	data.Sign = sign
 
 	peerId, err := peer.IDB58Decode(data.NodeId)
-
 	if err != nil {
-		log.Fatal(err, "Failed to decode node id")
+		log.Fatal(err, "Failed to decode node id from base58")
 		return false
 	}
 
-	return n.verifyData(bin, []byte(sign), peerId)
+	return n.verifyData(bin, []byte(sign), peerId, []byte(data.NodePubKey))
 }
 
 func (n Node) signProtoMessage(message proto.Message) ([]byte, error) {
@@ -52,25 +64,24 @@ func (n Node) signData(data []byte) ([]byte, error) {
 }
 
 // precondition: we have info about the signer peer in the local peer store
-func (n Node) verifyData(data []byte, signature []byte, peerId peer.ID) bool {
+func (n Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyData []byte) bool {
+
+	// todo: restore pub key from message and use it
 	key := n.Peerstore().PubKey(peerId)
-	//log.Print ("%s %s %s", peerId, key, peerId.String())
+
+	//todo: fix this
+	//key, err := key.UnmarshalPublicKey(pubKeyData)
+
+	if key == nil {
+		log.Fatal("Failed to find public key for %s in local peer store.", peerId.String())
+		return false
+	}
+
 	res, err := key.Verify(data, signature)
-	return res == true && err == nil
-}
+	if err != nil {
+		log.Fatal("Error authenticating data")
+		return false
+	}
 
-// Node type - a host with one or more implemented p2p protocols
-type Node struct {
-	host.Host     // lib-p2p host
-	*PingProtocol // ping protocol impl
-	*EchoProtocol // echo protocol impl
-	// add other protocols here...
-}
-
-// create a new node with its implemented protocols
-func NewNode(host host.Host, done chan bool) *Node {
-	node := &Node{Host: host}
-	node.PingProtocol = NewPingProtocol(node, done)
-	node.EchoProtocol = NewEchoProtocol(node, done)
-	return node
+	return res
 }

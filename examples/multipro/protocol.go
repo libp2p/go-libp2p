@@ -2,14 +2,13 @@ package main
 
 import (
 	"bufio"
-	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
+	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
 	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 	"log"
 	"time"
-	//host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
-	//"bytes"
 	"github.com/gogo/protobuf/proto"
+	"gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 )
 
 // node version
@@ -31,11 +30,19 @@ func sendProtoMessage(data proto.Message, s inet.Stream) bool {
 }
 
 // helper method - generate message data shared between all node's p2p protocols
-// nodeId - message author id
 // messageId - unique for requests, copied from request for responses
-func NewMessageData(nodeId string, messageId string, gossip bool) *p2p.MessageData {
+func NewMessageData(node *Node, messageId string, gossip bool) *p2p.MessageData {
+
+	// this creates a protobuf data for a public key
+	nodePubKey, err := node.Peerstore().PubKey(node.ID()).Bytes()
+
+	if err != nil {
+		panic("Failed to get public key for sender node from peer store.")
+	}
+
 	return &p2p.MessageData{ClientVersion: clientVersion,
-		NodeId:    nodeId,
+		NodeId:    peer.IDB58Encode(node.ID()),
+		NodePubKey: string(nodePubKey),
 		Timestamp: time.Now().Unix(),
 		Id:        messageId,
 		Gossip:    gossip}
