@@ -26,10 +26,10 @@ type PingProtocol struct {
 }
 
 func NewPingProtocol(host host.Host, done chan bool) *PingProtocol {
-	p := PingProtocol{host: host, requests: make(map[string]*p2p.PingRequest), done: done}
+	p := &PingProtocol{host: host, requests: make(map[string]*p2p.PingRequest), done: done}
 	host.SetStreamHandler(pingRequest, p.onPingRequest)
 	host.SetStreamHandler(pingResponse, p.onPingResponse)
-	return &p
+	return p
 }
 
 // remote peer requests handler

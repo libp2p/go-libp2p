@@ -44,7 +44,7 @@ func NewMessageData(nodeId string, messageId string, gossip bool) *p2p.MessageDa
 
 // Node type - implements one or more p2p protocols
 type Node struct {
-	host          host.Host // lib-p2p host
+	host       	  host.Host // lib-p2p host
 	*PingProtocol           // ping protocol impl
 	*EchoProtocol           // echo protocol impl
 }
