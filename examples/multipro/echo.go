@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/go-ipfs/thirdparty/assert"
 	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
+	"gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 )
 
 // pattern: /protocol-name/request-or-response-message/version
@@ -51,13 +52,23 @@ func (e EchoProtocol) onEchoRequest(s inet.Stream) {
 		MessageData: NewMessageData(e.node.ID().String(), data.MessageData.Id, false),
 		Message:     data.Message}
 
+	// sign the data
+	signature, err := e.node.signProtoMessage(resp)
+	if err != nil {
+		log.Fatal("failed to sign response")
+		return
+	}
+
+	// add the signature to the message
+	resp.MessageData.Sign = string(signature)
+
 	s, respErr := e.node.NewStream(context.Background(), s.Conn().RemotePeer(), echoResponse)
 	if respErr != nil {
 		log.Fatal(respErr)
 		return
 	}
 
-	ok := sendDataObject(resp, s)
+	ok := sendProtoMessage(resp, s)
 
 	if ok {
 		log.Printf("%s: Echo response to %s sent.", s.Conn().LocalPeer().String(), s.Conn().RemotePeer().String())
@@ -89,21 +100,30 @@ func (e EchoProtocol) onEchoResponse(s inet.Stream) {
 	e.done <- true
 }
 
-func (e EchoProtocol) Echo(node *Node) bool {
-	log.Printf("%s: Sending echo to: %s....", e.node.ID(), node.ID())
+func (e EchoProtocol) Echo(host host.Host) bool {
+	log.Printf("%s: Sending echo to: %s....", e.node.ID(), host.ID())
 
 	// create message data
 	req := &p2p.EchoRequest{
 		MessageData: NewMessageData(e.node.ID().String(), uuid.New().String(), false),
 		Message:     fmt.Sprintf("Echo from %s", e.node.ID())}
 
-	s, err := e.node.NewStream(context.Background(), node.ID(), echoRequest)
+	signature, err := e.node.signProtoMessage(req)
+	if err != nil {
+		log.Fatal("failed to sign message")
+		return false
+	}
+
+	// add the signature to the message
+	req.MessageData.Sign = string(signature)
+
+	s, err := e.node.NewStream(context.Background(), host.ID(), echoRequest)
 	if err != nil {
 		log.Fatal(err)
 		return false
 	}
 
-	ok := sendDataObject(req, s)
+	ok := sendProtoMessage(req, s)
 
 	if !ok {
 		return false
@@ -111,6 +131,6 @@ func (e EchoProtocol) Echo(node *Node) bool {
 
 	// store request so response handler has access to it
 	e.requests[req.MessageData.Id] = req
-	log.Printf("%s: Echo to: %s was sent. Message Id: %s, Message: %s", e.node.ID(), node.ID(), req.MessageData.Id, req.Message)
+	log.Printf("%s: Echo to: %s was sent. Message Id: %s, Message: %s", e.node.ID(), host.ID(), req.MessageData.Id, req.Message)
 	return true
 }

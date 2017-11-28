@@ -11,6 +11,7 @@ import (
 	uuid "github.com/google/uuid"
 	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
+	"gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 )
 
 // pattern: /protocol-name/request-or-response-message/version
@@ -45,18 +46,29 @@ func (p PingProtocol) onPingRequest(s inet.Stream) {
 
 	log.Printf("%s: Received ping request from %s. Message: %s", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.Message)
 
-	// send response to sender
+	// generate response message
 	log.Printf("%s: Sending ping response to %s. Message id: %s...", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id)
 	resp := &p2p.PingResponse{MessageData: NewMessageData(p.node.ID().String(), data.MessageData.Id, false),
 		Message: fmt.Sprintf("Ping response from %s", p.node.ID())}
 
+	// sign the data
+	signature, err := p.node.signProtoMessage(resp)
+	if err != nil {
+		log.Fatal("failed to sign response")
+		return
+	}
+
+	// add the signature to the message
+	resp.MessageData.Sign = string(signature)
+
+	// send the response
 	s, respErr := p.node.NewStream(context.Background(), s.Conn().RemotePeer(), pingResponse)
 	if respErr != nil {
 		log.Fatal(respErr)
 		return
 	}
 
-	ok := sendDataObject(resp, s)
+	ok := sendProtoMessage(resp, s)
 
 	if ok {
 		log.Printf("%s: Ping response to %s sent.", s.Conn().LocalPeer().String(), s.Conn().RemotePeer().String())
@@ -86,20 +98,30 @@ func (p PingProtocol) onPingResponse(s inet.Stream) {
 	p.done <- true
 }
 
-func (p PingProtocol) Ping(node *Node) bool {
-	log.Printf("%s: Sending ping to: %s....", p.node.ID(), node.ID())
+func (p PingProtocol) Ping(host host.Host) bool {
+	log.Printf("%s: Sending ping to: %s....", p.node.ID(), host.ID())
 
 	// create message data
 	req := &p2p.PingRequest{MessageData: NewMessageData(p.node.ID().String(), uuid.New().String(), false),
 		Message: fmt.Sprintf("Ping from %s", p.node.ID())}
 
-	s, err := p.node.NewStream(context.Background(), node.Host.ID(), pingRequest)
+	// sign the data
+	signature, err := p.node.signProtoMessage(req)
+	if err != nil {
+		log.Fatal("failed to sign pb data")
+		return false
+	}
+
+	// add the signature to the message
+	req.MessageData.Sign = string(signature)
+
+	s, err := p.node.NewStream(context.Background(), host.ID(), pingRequest)
 	if err != nil {
 		log.Fatal(err)
 		return false
 	}
 
-	ok := sendDataObject(req, s)
+	ok := sendProtoMessage(req, s)
 
 	if !ok {
 		return false
@@ -107,6 +129,6 @@ func (p PingProtocol) Ping(node *Node) bool {
 
 	// store ref request so response handler has access to it
 	p.requests[req.MessageData.Id] = req
-	log.Printf("%s: Ping to: %s was sent. Message Id: %s, Message: %s", p.node.ID(), node.ID(), req.MessageData.Id, req.Message)
+	log.Printf("%s: Ping to: %s was sent. Message Id: %s, Message: %s", p.node.ID(), host.ID(), req.MessageData.Id, req.Message)
 	return true
 }
