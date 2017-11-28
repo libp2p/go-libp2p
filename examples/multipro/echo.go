@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 
-	host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 
 	uuid "github.com/google/uuid"
@@ -20,20 +19,20 @@ const echoRequest = "/echo/echoreq/0.0.1"
 const echoResponse = "/echo/echoresp/0.0.1"
 
 type EchoProtocol struct {
-	host     host.Host                   // local host
+	node     *Node                       // local host
 	requests map[string]*p2p.EchoRequest // used to access request data from response handlers
 	done     chan bool                   // only for demo purposes to hold main from terminating
 }
 
-func NewEchoProtocol(host host.Host, done chan bool) *EchoProtocol {
-	e := EchoProtocol{host: host, requests: make(map[string]*p2p.EchoRequest), done: done}
-	host.SetStreamHandler(echoRequest, e.onEchoRequest)
-	host.SetStreamHandler(echoResponse, e.onEchoResponse)
+func NewEchoProtocol(node *Node, done chan bool) *EchoProtocol {
+	e := EchoProtocol{node: node, requests: make(map[string]*p2p.EchoRequest), done: done}
+	node.SetStreamHandler(echoRequest, e.onEchoRequest)
+	node.SetStreamHandler(echoResponse, e.onEchoResponse)
 	return &e
 }
 
 // remote peer requests handler
-func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
+func (e EchoProtocol) onEchoRequest(s inet.Stream) {
 	// get request data
 	data := &p2p.EchoRequest{}
 	decoder := protobufCodec.Multicodec(nil).Decoder(bufio.NewReader(s))
@@ -49,10 +48,10 @@ func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
 
 	// send response to request send using the message string he provided
 	resp := &p2p.EchoResponse{
-		MessageData: NewMessageData(e.host.ID().String(), data.MessageData.Id, false),
+		MessageData: NewMessageData(e.node.ID().String(), data.MessageData.Id, false),
 		Message:     data.Message}
 
-	s, respErr := e.host.NewStream(context.Background(), s.Conn().RemotePeer(), echoResponse)
+	s, respErr := e.node.NewStream(context.Background(), s.Conn().RemotePeer(), echoResponse)
 	if respErr != nil {
 		log.Fatal(respErr)
 		return
@@ -66,7 +65,7 @@ func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
 }
 
 // remote echo response handler
-func (e *EchoProtocol) onEchoResponse(s inet.Stream) {
+func (e EchoProtocol) onEchoResponse(s inet.Stream) {
 	data := &p2p.EchoResponse{}
 	decoder := protobufCodec.Multicodec(nil).Decoder(bufio.NewReader(s))
 	err := decoder.Decode(data)
@@ -90,15 +89,15 @@ func (e *EchoProtocol) onEchoResponse(s inet.Stream) {
 	e.done <- true
 }
 
-func (e *EchoProtocol) Echo(node *Node) bool {
-	log.Printf("%s: Sending echo to: %s....", e.host.ID(), node.host.ID())
+func (e EchoProtocol) Echo(node *Node) bool {
+	log.Printf("%s: Sending echo to: %s....", e.node.ID(), node.ID())
 
 	// create message data
 	req := &p2p.EchoRequest{
-		MessageData: NewMessageData(e.host.ID().String(), uuid.New().String(), false),
-		Message:     fmt.Sprintf("Echo from %s", e.host.ID())}
+		MessageData: NewMessageData(e.node.ID().String(), uuid.New().String(), false),
+		Message:     fmt.Sprintf("Echo from %s", e.node.ID())}
 
-	s, err := e.host.NewStream(context.Background(), node.host.ID(), echoRequest)
+	s, err := e.node.NewStream(context.Background(), node.ID(), echoRequest)
 	if err != nil {
 		log.Fatal(err)
 		return false
@@ -112,6 +111,6 @@ func (e *EchoProtocol) Echo(node *Node) bool {
 
 	// store request so response handler has access to it
 	e.requests[req.MessageData.Id] = req
-	log.Printf("%s: Echo to: %s was sent. Message Id: %s, Message: %s", e.host.ID(), node.host.ID(), req.MessageData.Id, req.Message)
+	log.Printf("%s: Echo to: %s was sent. Message Id: %s, Message: %s", e.node.ID(), node.ID(), req.MessageData.Id, req.Message)
 	return true
 }

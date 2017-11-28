@@ -41,10 +41,10 @@ func main() {
 	// Make 2 hosts
 	h1 := makeRandomNode(port1, done)
 	h2 := makeRandomNode(port2, done)
-	h1.host.Peerstore().AddAddrs(h2.host.ID(), h2.host.Addrs(), ps.PermanentAddrTTL)
-	h2.host.Peerstore().AddAddrs(h1.host.ID(), h1.host.Addrs(), ps.PermanentAddrTTL)
+	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), ps.PermanentAddrTTL)
+	h2.Peerstore().AddAddrs(h1.ID(), h1.Addrs(), ps.PermanentAddrTTL)
 
-	log.Printf("This is a conversation between %s and %s\n", h1.host.ID(), h2.host.ID())
+	log.Printf("This is a conversation between %s and %s\n", h1.ID(), h2.ID())
 
 	// send messages using the protocols
 	h1.Ping(h2)
