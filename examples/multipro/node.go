@@ -33,7 +33,7 @@ func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) 
 	// marshall data without the sig to binary format
 	bin, err := proto.Marshal(message)
 	if err != nil {
-		log.Fatal(err, "failed to marshal pb message")
+		log.Println(err, "failed to marshal pb message")
 		return false
 	}
 
@@ -42,7 +42,7 @@ func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) 
 
 	peerId, err := peer.IDB58Decode(data.NodeId)
 	if err != nil {
-		log.Fatal(err, "Failed to decode node id from base58")
+		log.Println(err, "Failed to decode node id from base58")
 		return false
 	}
 
@@ -73,13 +73,13 @@ func (n Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyDa
 	//key, err := key.UnmarshalPublicKey(pubKeyData)
 
 	if key == nil {
-		log.Fatal("Failed to find public key for %s in local peer store.", peerId.String())
+		log.Println("Failed to find public key for %s in local peer store.", peerId.String())
 		return false
 	}
 
 	res, err := key.Verify(data, signature)
 	if err != nil {
-		log.Fatal("Error authenticating data")
+		log.Println("Error authenticating data")
 		return false
 	}
 

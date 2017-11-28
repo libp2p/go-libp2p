@@ -22,7 +22,7 @@ func sendProtoMessage(data proto.Message, s inet.Stream) bool {
 	enc := protobufCodec.Multicodec(nil).Encoder(writer)
 	err := enc.Encode(data)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return false
 	}
 	writer.Flush()
@@ -42,7 +42,7 @@ func NewMessageData(node *Node, messageId string, gossip bool) *p2p.MessageData 
 
 	return &p2p.MessageData{ClientVersion: clientVersion,
 		NodeId:    peer.IDB58Encode(node.ID()),
-		NodePubKey: string(nodePubKey),
+		NodePubKey: nodePubKey,
 		Timestamp: time.Now().Unix(),
 		Id:        messageId,
 		Gossip:    gossip}
