@@ -8,12 +8,9 @@ import (
 	"log"
 )
 
-// node version
-const clientVersion = "go-p2p-node/0.0.1"
-
 // helper method - writes a protobuf go data object to a network stream
-// data - reference of protobuf go data object to send (not the object itself)
-// s - network stream to write the data to
+// data: reference of protobuf go data object to send (not the object itself)
+// s: network stream to write the data to
 func sendProtoMessage(data proto.Message, s inet.Stream) bool {
 	writer := bufio.NewWriter(s)
 	enc := protobufCodec.Multicodec(nil).Encoder(writer)

@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// node client version
+const clientVersion = "go-p2p-node/0.0.1"
+
 // Node type - a p2p host implementing one or more p2p protocols
 type Node struct {
 	host.Host     // lib-p2p host
@@ -93,7 +96,7 @@ func (n *Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyD
 		return false
 	}
 
-	// verify that message author node id matches the provided public key
+	// verify that message author node id matches the provided node public key
 	if idFromKey != peerId {
 		log.Println(err, "Node id and provided public key mismatch")
 		return false
