@@ -5,6 +5,8 @@ import (
 	"github.com/gogo/protobuf/proto"
 	host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
+
+	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	"log"
 )
 
@@ -46,7 +48,7 @@ func (n *Node) authenticateMessage(message proto.Message, data *p2p.MessageData)
 		return false
 	}
 
-	return n.verifyData(bin, []byte(sign), peerId, []byte(data.NodePubKey))
+	return n.verifyData(bin, []byte(sign), peerId, data.NodePubKey)
 }
 
 func (n *Node) signProtoMessage(message proto.Message) ([]byte, error) {
@@ -66,20 +68,31 @@ func (n *Node) signData(data []byte) ([]byte, error) {
 // precondition: we have info about the signer peer in the local peer store
 func (n *Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyData []byte) bool {
 
-	// todo: restore pub key from message and not from the local peer store and use it
-	key := n.Peerstore().PubKey(peerId)
+	key, err := crypto.UnmarshalPublicKey(pubKeyData)
 
-	//todo: fix this
-	//key, err := key.UnmarshalPublicKey(pubKeyData)
+	if err != nil {
+		log.Println(err, "Failed to extract key from message key data")
+		return false
+	}
 
-	if key == nil {
-		log.Println("Failed to find public key for %s in local peer store.", peerId.String())
+	// extract node id from the provided public key
+	idFromKey, err := peer.IDFromPublicKey(key)
+
+	if err != nil {
+		log.Println(err, "Failed to extract peer id from public key")
+		return false
+	}
+
+	// verify that message author node id matches the provided public key
+	if idFromKey != peerId {
+		log.Println(err, "Node id and provided public key mismatch")
 		return false
 	}
 
 	res, err := key.Verify(data, signature)
+
 	if err != nil {
-		log.Println	("Error authenticating data")
+		log.Println(err, "Error authenticating data")
 		return false
 	}
 

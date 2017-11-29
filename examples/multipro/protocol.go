@@ -33,7 +33,8 @@ func sendProtoMessage(data proto.Message, s inet.Stream) bool {
 // messageId - unique for requests, copied from request for responses
 func NewMessageData(node *Node, messageId string, gossip bool) *p2p.MessageData {
 
-	// Create protobufs bin data for a public key
+	// Add protobufs bin data for message author public key
+	// this is useful for authenticating  messages forwarded by a node authored by another node
 	nodePubKey, err := node.Peerstore().PubKey(node.ID()).Bytes()
 
 	if err != nil {
