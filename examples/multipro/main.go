@@ -46,7 +46,7 @@ func main() {
 
 	log.Printf("This is a conversation between %s and %s\n", h1.ID(), h2.ID())
 
-	// test implemented protocols
+	// send messages using the protocols
 	h1.Ping(h2.Host)
 	h2.Ping(h1.Host)
 	h1.Echo(h2.Host)

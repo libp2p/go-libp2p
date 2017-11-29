@@ -1,13 +1,17 @@
 package main
 
 import (
+	"log"
+	"time"
+	"bufio"
+
 	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	"github.com/gogo/protobuf/proto"
 	host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	"log"
-	"time"
+	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
+	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 )
 
 // node client version
@@ -115,7 +119,6 @@ func (n *Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyD
 // helper method - generate message data shared between all node's p2p protocols
 // messageId: unique for requests, copied from request for responses
 func (n *Node) NewMessageData(messageId string, gossip bool) *p2p.MessageData {
-
 	// Add protobufs bin data for message author public key
 	// this is useful for authenticating  messages forwarded by a node authored by another node
 	nodePubKey, err := n.Peerstore().PubKey(n.ID()).Bytes()
@@ -131,3 +134,19 @@ func (n *Node) NewMessageData(messageId string, gossip bool) *p2p.MessageData {
 		Id:         messageId,
 		Gossip:     gossip}
 }
+
+// helper method - writes a protobuf go data object to a network stream
+// data: reference of protobuf go data object to send (not the object itself)
+// s: network stream to write the data to
+func sendProtoMessage(data proto.Message, s inet.Stream) bool {
+	writer := bufio.NewWriter(s)
+	enc := protobufCodec.Multicodec(nil).Encoder(writer)
+	err := enc.Encode(data)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	writer.Flush()
+	return true
+}
+

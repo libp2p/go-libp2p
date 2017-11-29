@@ -10,7 +10,7 @@ import (
 
 	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	uuid "github.com/google/uuid"
-	"github.com/ipfs/go-ipfs/thirdparty/assert"
+	assert "github.com/ipfs/go-ipfs/thirdparty/assert"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
 	"gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 )
