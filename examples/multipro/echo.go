@@ -57,7 +57,7 @@ func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
 	// send response to the request using the message string he provided
 
 	resp := &p2p.EchoResponse{
-		MessageData: NewMessageData(e.node, data.MessageData.Id, false),
+		MessageData: e.node.NewMessageData(data.MessageData.Id, false),
 		Message:     data.Message}
 
 	// sign the data
@@ -121,7 +121,7 @@ func (e *EchoProtocol) Echo(host host.Host) bool {
 
 	// create message data
 	req := &p2p.EchoRequest{
-		MessageData: NewMessageData(e.node, uuid.New().String(), false),
+		MessageData: e.node.NewMessageData(uuid.New().String(), false),
 		Message:     fmt.Sprintf("Echo from %s", e.node.ID())}
 
 	signature, err := e.node.signProtoMessage(req)

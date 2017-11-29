@@ -2,13 +2,10 @@ package main
 
 import (
 	"bufio"
-	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	"github.com/gogo/protobuf/proto"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
-	"gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 	"log"
-	"time"
 )
 
 // node version
@@ -27,24 +24,4 @@ func sendProtoMessage(data proto.Message, s inet.Stream) bool {
 	}
 	writer.Flush()
 	return true
-}
-
-// helper method - generate message data shared between all node's p2p protocols
-// messageId - unique for requests, copied from request for responses
-func NewMessageData(node *Node, messageId string, gossip bool) *p2p.MessageData {
-
-	// Add protobufs bin data for message author public key
-	// this is useful for authenticating  messages forwarded by a node authored by another node
-	nodePubKey, err := node.Peerstore().PubKey(node.ID()).Bytes()
-
-	if err != nil {
-		panic("Failed to get public key for sender from local peer store.")
-	}
-
-	return &p2p.MessageData{ClientVersion: clientVersion,
-		NodeId:     peer.IDB58Encode(node.ID()),
-		NodePubKey: nodePubKey,
-		Timestamp:  time.Now().Unix(),
-		Id:         messageId,
-		Gossip:     gossip}
 }

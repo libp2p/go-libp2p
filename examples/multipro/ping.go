@@ -56,7 +56,7 @@ func (p *PingProtocol) onPingRequest(s inet.Stream) {
 	// generate response message
 	log.Printf("%s: Sending ping response to %s. Message id: %s...", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id)
 
-	resp := &p2p.PingResponse{MessageData: NewMessageData(p.node, data.MessageData.Id, false),
+	resp := &p2p.PingResponse{MessageData: p.node.NewMessageData(data.MessageData.Id, false),
 		Message: fmt.Sprintf("Ping response from %s", p.node.ID())}
 
 	// sign the data
@@ -117,7 +117,7 @@ func (p *PingProtocol) Ping(host host.Host) bool {
 	log.Printf("%s: Sending ping to: %s....", p.node.ID(), host.ID())
 
 	// create message data
-	req := &p2p.PingRequest{MessageData: NewMessageData(p.node, uuid.New().String(), false),
+	req := &p2p.PingRequest{MessageData: p.node.NewMessageData(uuid.New().String(), false),
 		Message: fmt.Sprintf("Ping from %s", p.node.ID())}
 
 	// sign the data
