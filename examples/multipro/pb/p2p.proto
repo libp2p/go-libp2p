@@ -30,7 +30,8 @@ message PingResponse {
 
     // response specific data
     string message = 2;
-    // ... add any data here
+
+    // ... add any additional message data here
 }
 
 //// echo protocol
@@ -41,7 +42,8 @@ message EchoRequest {
 
     // method specific data
     string message = 2;
-    // add any data here....
+
+    // add any additional message data here....
 }
 
 message EchoResponse {
@@ -49,5 +51,7 @@ message EchoResponse {
 
     // response specific data
     string message = 2;
-    // ... add any data here
+
+    // ... add any additional message data here....
 }
+

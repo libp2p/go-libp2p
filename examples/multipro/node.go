@@ -35,6 +35,7 @@ func NewNode(host host.Host, done chan bool) *Node {
 func (n *Node) authenticateMessage(message proto.Message, data *p2p.MessageData) bool {
 
 	// store a temp ref to signature and remove it from message data
+	// sign is a string to allow easy reset to zero-value (empty string)
 	sign := data.Sign
 	data.Sign = ""
 

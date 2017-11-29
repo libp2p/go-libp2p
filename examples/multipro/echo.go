@@ -29,6 +29,10 @@ func NewEchoProtocol(node *Node, done chan bool) *EchoProtocol {
 	e := EchoProtocol{node: node, requests: make(map[string]*p2p.EchoRequest), done: done}
 	node.SetStreamHandler(echoRequest, e.onEchoRequest)
 	node.SetStreamHandler(echoResponse, e.onEchoResponse)
+
+	// design note: to implement fire-and-forget style messages you may just skip specifying a response callback.
+	// a fire-and-forget message will just include a request and not specify a response object
+
 	return &e
 }
 
