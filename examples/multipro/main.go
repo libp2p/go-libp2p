@@ -27,8 +27,6 @@ func makeRandomNode(port int, done chan bool) *Node {
 	n, _ := swarm.NewNetwork(context.Background(), []ma.Multiaddr{listen}, pid, peerStore, nil)
 	host := bhost.New(n)
 
-	log.Printf("New host id (base58 multihash):%s, length:%d", host.ID().Pretty(), len(host.ID().Pretty()))
-
 	return NewNode(host, done)
 }
 
@@ -48,7 +46,7 @@ func main() {
 
 	log.Printf("This is a conversation between %s and %s\n", h1.ID(), h2.ID())
 
-	// send messages using the protocols
+	// test implemented protocols
 	h1.Ping(h2.Host)
 	h2.Ping(h1.Host)
 	h1.Echo(h2.Host)
