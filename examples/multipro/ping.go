@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"log"
 
-	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
-
 	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	uuid "github.com/google/uuid"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
 	"gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
+	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 )
 
 // pattern: /protocol-name/request-or-response-message/version
@@ -76,7 +75,7 @@ func (p *PingProtocol) onPingRequest(s inet.Stream) {
 		return
 	}
 
-	ok := sendProtoMessage(resp, s)
+	ok := p.node.sendProtoMessage(resp, s)
 
 	if ok {
 		log.Printf("%s: Ping response to %s sent.", s.Conn().LocalPeer().String(), s.Conn().RemotePeer().String())
@@ -136,7 +135,7 @@ func (p *PingProtocol) Ping(host host.Host) bool {
 		return false
 	}
 
-	ok := sendProtoMessage(req, s)
+	ok := p.node.sendProtoMessage(req, s)
 
 	if !ok {
 		return false

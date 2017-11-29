@@ -47,7 +47,6 @@ The idea is to use lib-p2p protocol multiplexing on a per-message basis.
 5. Full access to request data when processing a response.
 
 ## Author
-
 @avive
 
 

@@ -1,16 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"log"
 	"time"
-	"bufio"
 
 	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
 	"github.com/gogo/protobuf/proto"
+	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
 	host "gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
 	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
 )
 
@@ -37,7 +37,6 @@ func NewNode(host host.Host, done chan bool) *Node {
 // message: a protobufs go data object
 // data: common p2p message data
 func (n *Node) authenticateMessage(message proto.Message, data *p2p.MessageData) bool {
-
 	// store a temp ref to signature and remove it from message data
 	// sign is a string to allow easy reset to zero-value (empty string)
 	sign := data.Sign
@@ -138,7 +137,7 @@ func (n *Node) NewMessageData(messageId string, gossip bool) *p2p.MessageData {
 // helper method - writes a protobuf go data object to a network stream
 // data: reference of protobuf go data object to send (not the object itself)
 // s: network stream to write the data to
-func sendProtoMessage(data proto.Message, s inet.Stream) bool {
+func (n *Node) sendProtoMessage(data proto.Message, s inet.Stream) bool {
 	writer := bufio.NewWriter(s)
 	enc := protobufCodec.Multicodec(nil).Encoder(writer)
 	err := enc.Encode(data)
@@ -149,4 +148,3 @@ func sendProtoMessage(data proto.Message, s inet.Stream) bool {
 	writer.Flush()
 	return true
 }
-

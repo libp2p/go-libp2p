@@ -80,7 +80,7 @@ func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
 		return
 	}
 
-	ok := sendProtoMessage(resp, s)
+	ok := e.node.sendProtoMessage(resp, s)
 
 	if ok {
 		log.Printf("%s: Echo response to %s sent.", s.Conn().LocalPeer().String(), s.Conn().RemotePeer().String())
@@ -143,7 +143,7 @@ func (e *EchoProtocol) Echo(host host.Host) bool {
 		return false
 	}
 
-	ok := sendProtoMessage(req, s)
+	ok := e.node.sendProtoMessage(req, s)
 
 	if !ok {
 		return false
