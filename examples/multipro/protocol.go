@@ -37,7 +37,7 @@ func NewMessageData(node *Node, messageId string, gossip bool) *p2p.MessageData 
 	nodePubKey, err := node.Peerstore().PubKey(node.ID()).Bytes()
 
 	if err != nil {
-		panic("Failed to get public key for sender node from peer store.")
+		panic("Failed to get public key for sender from local peer store.")
 	}
 
 	return &p2p.MessageData{ClientVersion: clientVersion,

@@ -24,7 +24,7 @@ func NewNode(host host.Host, done chan bool) *Node {
 	return node
 }
 
-func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) bool {
+func (n *Node) authenticateMessage(message proto.Message, data *p2p.MessageData) bool {
 
 	// store a temp ref to sig and remove it from data
 	sign := data.Sign
@@ -49,7 +49,7 @@ func (n Node) authenticateMessage(message proto.Message, data *p2p.MessageData) 
 	return n.verifyData(bin, []byte(sign), peerId, []byte(data.NodePubKey))
 }
 
-func (n Node) signProtoMessage(message proto.Message) ([]byte, error) {
+func (n *Node) signProtoMessage(message proto.Message) ([]byte, error) {
 	data, err := proto.Marshal(message)
 	if err != nil {
 		return nil, err
@@ -57,16 +57,16 @@ func (n Node) signProtoMessage(message proto.Message) ([]byte, error) {
 	return n.signData(data)
 }
 
-func (n Node) signData(data []byte) ([]byte, error) {
+func (n *Node) signData(data []byte) ([]byte, error) {
 	key := n.Peerstore().PrivKey(n.ID())
 	res, err := key.Sign(data)
 	return res, err
 }
 
 // precondition: we have info about the signer peer in the local peer store
-func (n Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyData []byte) bool {
+func (n *Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyData []byte) bool {
 
-	// todo: restore pub key from message and use it
+	// todo: restore pub key from message and not from the local peer store and use it
 	key := n.Peerstore().PubKey(peerId)
 
 	//todo: fix this
@@ -79,7 +79,7 @@ func (n Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyDa
 
 	res, err := key.Verify(data, signature)
 	if err != nil {
-		log.Println("Error authenticating data")
+		log.Println	("Error authenticating data")
 		return false
 	}
 

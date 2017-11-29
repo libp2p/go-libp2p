@@ -33,7 +33,7 @@ func NewEchoProtocol(node *Node, done chan bool) *EchoProtocol {
 }
 
 // remote peer requests handler
-func (e EchoProtocol) onEchoRequest(s inet.Stream) {
+func (e *EchoProtocol) onEchoRequest(s inet.Stream) {
 	// get request data
 	data := &p2p.EchoRequest{}
 	decoder := protobufCodec.Multicodec(nil).Decoder(bufio.NewReader(s))
@@ -86,7 +86,7 @@ func (e EchoProtocol) onEchoRequest(s inet.Stream) {
 }
 
 // remote echo response handler
-func (e EchoProtocol) onEchoResponse(s inet.Stream) {
+func (e *EchoProtocol) onEchoResponse(s inet.Stream) {
 	data := &p2p.EchoResponse{}
 	decoder := protobufCodec.Multicodec(nil).Decoder(bufio.NewReader(s))
 	err := decoder.Decode(data)
@@ -120,7 +120,7 @@ func (e EchoProtocol) onEchoResponse(s inet.Stream) {
 	e.done <- true
 }
 
-func (e EchoProtocol) Echo(host host.Host) bool {
+func (e *EchoProtocol) Echo(host host.Host) bool {
 	log.Printf("%s: Sending echo to: %s....", e.node.ID(), host.ID())
 
 	// create message data
