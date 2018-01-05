@@ -139,9 +139,9 @@
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmYijbtjCxFEjSXaudaQAUz3LN5VKLssm8WCUsRoqzXmQR",
+      "hash": "QmQoXyRXtorcAtWwnud9HBod3vjPC8vTu1gJnsg9PLwuiT",
       "name": "go-libp2p-peerstore",
-      "version": "1.4.10"
+      "version": "1.4.11"
     },
     {
       "author": "whyrusleeping",
@@ -187,15 +187,15 @@
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmU4vCDZTPLDqSDKguWbHCiUe46mZUtmM2g2suBZ9NE8ko",
+      "hash": "Qmegn1aFLQmbCg4xurYgLug9TJ3rTVFjJ3L5fD3m9m4qMf",
       "name": "go-libp2p-net",
-      "version": "2.0.3"
+      "version": "2.0.4"
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmaL2WYJGbWKqHoLujoi9GQ5jj4JVFrBqHUBWmEYzJPVWT",
+      "hash": "QmazrTQKkjFcajz55duY9eCePfjv1mVWH3xJbn5bu7qUXQ",
       "name": "go-libp2p-metrics",
-      "version": "2.0.2"
+      "version": "2.0.3"
     },
     {
       "author": "whyrusleeping",
@@ -205,15 +205,15 @@
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmP46LGWhzVZTMmt5akNNLfoV8qL4h5wTwmzQxLyDafggd",
+      "hash": "QmbEk4hyXjohArLiff8inoGsoywzfPD71SqD4qHZBiWQyr",
       "name": "go-libp2p-host",
-      "version": "2.1.3"
+      "version": "2.1.4"
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmUhvp4VoQ9cKDVLqAxciEKdm8ymBx2Syx4C1Tv6SmSTPa",
+      "hash": "QmaNqYUXoM5x2gUVLKSdXBDBrw4maNydw1rpxbzPPuSQ8b",
       "name": "go-libp2p-swarm",
-      "version": "2.1.2"
+      "version": "2.1.3"
     },
     {
       "author": "whyrusleeping",
@@ -223,15 +223,15 @@
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmZTcPxK6VqrwY94JpKZPvEqAZ6tEr1rLrpcqJbbRZbg2V",
+      "hash": "QmR84wjmVyNUXQuL2s9rKr5QcL7CLUXjhQTFgosUh22UEZ",
       "name": "go-libp2p-netutil",
-      "version": "0.3.6"
+      "version": "0.3.7"
     },
     {
       "author": "whyrusleeping",
-      "hash": "QmYmhgAcvmDGXct1qBvc1kz9BxQSit1XBrTeiGZp2FvRyn",
+      "hash": "QmP4BoRH7qHbyVAjpXqZqXm3X2sMWokgACF9m5RXBWLDkq",
       "name": "go-libp2p-blankhost",
-      "version": "0.2.3"
+      "version": "0.2.4"
     },
     {
       "author": "whyrusleeping",
@@ -265,9 +265,9 @@
     },
     {
       "author": "vyzo",
-      "hash": "QmVqNgx6RByRcnLVsr9spbo5ScomJyDZrb9Gz4XMWkYB7Z",
+      "hash": "QmPLBz772MAef586ooAEVqGjYsUiGQPUSJHcvWtD9BKhaF",
       "name": "go-libp2p-circuit",
-      "version": "2.0.7"
+      "version": "2.0.8"
     },
     {
       "author": "lgierth",
@@ -277,9 +277,9 @@
     },
     {
       "author": "why",
-      "hash": "QmSAJm4QdTJ3EGF2cvgNcQyXTEbxqWSW1x4kCVV1aJQUQr",
+      "hash": "QmayGe6p6EJT8sbdmsh5eyVjp9u8KvFwkMacKwx2MDWzN8",
       "name": "go-libp2p-interface-connmgr",
-      "version": "0.0.4"
+      "version": "0.0.5"
     }
   ],
   "gxVersion": "0.4.0",

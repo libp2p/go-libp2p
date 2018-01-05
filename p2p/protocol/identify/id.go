@@ -50,6 +50,8 @@ type IDService struct {
 	currid map[inet.Conn]chan struct{}
 	currmu sync.RWMutex
 
+	addrMu sync.Mutex
+
 	// our own observed addresses.
 	// TODO: instead of expiring, remove these when we disconnect
 	observedAddrs ObservedAddrSet
@@ -220,9 +222,17 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
 		lmaddrs = append(lmaddrs, c.RemoteMultiaddr())
 	}
 
-	// update our peerstore with the addresses. here, we SET the addresses, clearing old ones.
-	// We are receiving from the peer itself. this is current address ground truth.
-	ids.Host.Peerstore().SetAddrs(p, lmaddrs, pstore.ConnectedAddrTTL)
+	// Extend the TTLs on the known (probably) good addresses.
+	// Taking the lock ensures that we don't concurrently process a disconnect.
+	ids.addrMu.Lock()
+	switch ids.Host.Network().Connectedness(p) {
+	case inet.Connected:
+		ids.Host.Peerstore().AddAddrs(p, lmaddrs, pstore.ConnectedAddrTTL)
+	default:
+		ids.Host.Peerstore().AddAddrs(p, lmaddrs, pstore.RecentlyConnectedAddrTTL)
+	}
+	ids.addrMu.Unlock()
+
 	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
 
 	// get protocol versions
@@ -449,9 +459,14 @@ func (nn *netNotifiee) Connected(n inet.Network, v inet.Conn) {
 func (nn *netNotifiee) Disconnected(n inet.Network, v inet.Conn) {
 	// undo the setting of addresses to peer.ConnectedAddrTTL we did
 	ids := nn.IDService()
-	ps := ids.Host.Peerstore()
-	addrs := ps.Addrs(v.RemotePeer())
-	ps.SetAddrs(v.RemotePeer(), addrs, pstore.RecentlyConnectedAddrTTL)
+	ids.addrMu.Lock()
+	defer ids.addrMu.Unlock()
+
+	if ids.Host.Network().Connectedness(v.RemotePeer()) != inet.Connected {
+		// Last disconnect.
+		ps := ids.Host.Peerstore()
+		ps.UpdateAddrs(v.RemotePeer(), pstore.ConnectedAddrTTL, pstore.RecentlyConnectedAddrTTL)
+	}
 }
 
 func (nn *netNotifiee) OpenedStream(n inet.Network, v inet.Stream) {}
