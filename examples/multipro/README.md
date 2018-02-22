@@ -6,23 +6,33 @@ This example expects that you area already familiar with the [echo example](http
 
 ## Build
 
-Compile the .proto files using the protobufs go compiler:
+Install gx:
+```sh
+> go get -u github.com/whyrusleeping/gx
 
 ```
-protoc --go_out=. ./p2p.proto
+
+Run GX from the root libp2p source dir: 
+```sh
+>gx install
 ```
 
-
-From `multipro` base source folder:
-
+Build libp2p:
+```sh
+> make deps
+> make
 ```
+
+Run from `multipro` directory
+
+```sh
 > go build
 ```
 
 
 ## Usage
 
-```
+```sh
 > ./multipro
 
 ```

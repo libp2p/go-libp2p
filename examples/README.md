@@ -11,3 +11,4 @@ Let us know if you find any issue or if you want to contribute and add a new tut
 - [Building an http proxy with libp2p](./http-proxy)
 - [Protocol Multiplexing with multicodecs](./protocol-multiplexing-with-multicodecs)
 - [An echo host](./echo)
+- [Multicodecs with protobufs](./multipro)
