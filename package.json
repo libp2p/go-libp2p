@@ -281,6 +281,18 @@
       "hash": "Qmc14vuKyGqX27RvBhekYytxSFJpaEgQVuVJgKSm69MEix",
       "name": "go-smux-multiplex",
       "version": "3.0.5"
+    },
+    {
+      "author": "multiformats",
+      "hash": "QmRDePEiL4Yupq5EkcK3L3ko3iMgYaqUdLu7xc1kqs7dnV",
+      "name": "go-multicodec",
+      "version": "0.1.5"
+    },
+    {
+      "author": "satori",
+      "hash": "QmcBWojPoNh4qm7zvv4qiepvCnnc7ALS9qcp7TNwwxT1gT",
+      "name": "go.uuid",
+      "version": "1.1.0"
     }
   ],
   "gxVersion": "0.4.0",
