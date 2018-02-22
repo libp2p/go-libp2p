@@ -31,7 +31,7 @@ From `multipro` base source folder:
 
 The example creates two LibP2P Hosts supporting 2 protocols: ping and echo.
 
-Each protocol consists RPC-style requests and respones and each request and response is a typed protobufs message (and a go data object). 
+Each protocol consists RPC-style requests and responses and each request and response is a typed protobufs message (and a go data object).
 
 This is a different pattern then defining a whole p2p protocol as one protobuf message with lots of optional fields (as can be observed in various p2p-lib protocols using protobufs such as dht).
 

@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"log"
 
-	inet "gx/ipfs/QmbD5yKbXahNvoMqzeuNyKQA9vAs9fUvJg2GXeWU1fVqY5/go-libp2p-net"
+	inet "github.com/libp2p/go-libp2p-net"
 
-	p2p "github.com/avive/go-libp2p/examples/multipro/pb"
-	uuid "github.com/google/uuid"
-	assert "github.com/ipfs/go-ipfs/thirdparty/assert"
+	"github.com/libp2p/go-libp2p-host"
+	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
 	protobufCodec "github.com/multiformats/go-multicodec/protobuf"
-	"gx/ipfs/QmRS46AyqtpJBsf1zmQdeizSDEzo1qkWR7rdEuPFAv8237/go-libp2p-host"
+	uuid "github.com/satori/go.uuid"
 )
 
 // pattern: /protocol-name/request-or-response-message/version
@@ -114,7 +113,9 @@ func (e *EchoProtocol) onEchoResponse(s inet.Stream) {
 		return
 	}
 
-	assert.True(req.Message == data.Message, nil, "Expected echo to respond with request message")
+	if req.Message != data.Message {
+		log.Fatalln("Expected echo to respond with request message")
+	}
 
 	log.Printf("%s: Received echo response from %s. Message id:%s. Message: %s.", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id, data.Message)
 	e.done <- true
@@ -125,7 +126,7 @@ func (e *EchoProtocol) Echo(host host.Host) bool {
 
 	// create message data
 	req := &p2p.EchoRequest{
-		MessageData: e.node.NewMessageData(uuid.New().String(), false),
+		MessageData: e.node.NewMessageData(uuid.Must(uuid.NewV4()).String(), false),
 		Message:     fmt.Sprintf("Echo from %s", e.node.ID())}
 
 	signature, err := e.node.signProtoMessage(req)
