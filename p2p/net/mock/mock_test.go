@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
+	detectrace "github.com/ipfs/go-detect-race"
 	inet "github.com/libp2p/go-libp2p-net"
-
-	detectrace "github.com/jbenet/go-detect-race"
 	peer "github.com/libp2p/go-libp2p-peer"
 	protocol "github.com/libp2p/go-libp2p-protocol"
 	testutil "github.com/libp2p/go-testutil"

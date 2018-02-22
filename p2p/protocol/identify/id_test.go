@@ -8,6 +8,7 @@ import (
 	ic "github.com/libp2p/go-libp2p-crypto"
 	testutil "github.com/libp2p/go-libp2p-netutil"
 	peer "github.com/libp2p/go-libp2p-peer"
+	pstore "github.com/libp2p/go-libp2p-peerstore"
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	blhost "github.com/libp2p/go-libp2p-blankhost"
@@ -15,9 +16,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func subtestIDService(t *testing.T, postDialWait time.Duration) {
+func subtestIDService(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	ctx := context.Background()
 	h1 := blhost.NewBlankHost(testutil.GenSwarmNetwork(t, ctx))
 	h2 := blhost.NewBlankHost(testutil.GenSwarmNetwork(t, ctx))
 
@@ -29,6 +31,11 @@ func subtestIDService(t *testing.T, postDialWait time.Duration) {
 
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{}) // nothing
+
+	forgetMe, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
+
+	h2.Peerstore().AddAddr(h1p, forgetMe, pstore.RecentlyConnectedAddrTTL)
+	time.Sleep(500 * time.Millisecond)
 
 	h2pi := h2.Peerstore().PeerInfo(h2p)
 	if err := h1.Connect(ctx, h2pi); err != nil {
@@ -58,16 +65,39 @@ func subtestIDService(t *testing.T, postDialWait time.Duration) {
 	ids2.IdentifyConn(c[0])
 
 	addrs := h1.Peerstore().Addrs(h1p)
-	addrs = append(addrs, c[0].RemoteMultiaddr())
+	addrs = append(addrs, c[0].RemoteMultiaddr(), forgetMe)
 
 	// and the protocol versions.
 	t.Log("test peer2 has peer1 addrs correctly")
 	testKnowsAddrs(t, h2, h1p, addrs) // has them
 	testHasProtocolVersions(t, h2, h1p)
 	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p)) // h1 should have h2's public key
+
+	// Need both sides to actually notice that the connection has been closed.
+	h1.Network().ClosePeer(h2p)
+	h2.Network().ClosePeer(h1p)
+	if len(h2.Network().ConnsToPeer(h1.ID())) != 0 || len(h1.Network().ConnsToPeer(h2.ID())) != 0 {
+		t.Fatal("should have no connections")
+	}
+
+	testKnowsAddrs(t, h2, h1p, addrs)
+	testKnowsAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Forget the first one.
+	testKnowsAddrs(t, h2, h1p, addrs[:len(addrs)-1])
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Forget the rest.
+	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{})
+	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{})
 }
 
 func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
+	t.Helper()
+
 	actual := h.Peerstore().Addrs(p)
 
 	if len(actual) != len(expected) {
@@ -122,20 +152,19 @@ func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) 
 	}
 }
 
-// TestIDServiceWait gives the ID service 100ms to finish after dialing
+// TestIDServiceWait gives the ID service 1s to finish after dialing
 // this is becasue it used to be concurrent. Now, Dial wait till the
 // id service is done.
-func TestIDServiceWait(t *testing.T) {
-	N := 3
-	for i := 0; i < N; i++ {
-		subtestIDService(t, 100*time.Millisecond)
-	}
-}
+func TestIDService(t *testing.T) {
+	oldTTL := pstore.RecentlyConnectedAddrTTL
+	pstore.RecentlyConnectedAddrTTL = time.Second
+	defer func() {
+		pstore.RecentlyConnectedAddrTTL = oldTTL
+	}()
 
-func TestIDServiceNoWait(t *testing.T) {
 	N := 3
 	for i := 0; i < N; i++ {
-		subtestIDService(t, 0)
+		subtestIDService(t)
 	}
 }
 

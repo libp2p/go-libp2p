@@ -118,29 +118,32 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 
 	ticker := time.NewTicker(m.interval)
 	for {
+		//execute mdns query right away at method call and then with every tick
+		entriesCh := make(chan *mdns.ServiceEntry, 16)
+		go func() {
+			for entry := range entriesCh {
+				m.handleEntry(entry)
+			}
+		}()
+
+		log.Debug("starting mdns query")
+		qp := &mdns.QueryParam{
+			Domain:  "local",
+			Entries: entriesCh,
+			Service: m.tag,
+			Timeout: time.Second * 5,
+		}
+
+		err := mdns.Query(qp)
+		if err != nil {
+			log.Error("mdns lookup error: ", err)
+		}
+		close(entriesCh)
+		log.Debug("mdns query complete")
+
 		select {
 		case <-ticker.C:
-			entriesCh := make(chan *mdns.ServiceEntry, 16)
-			go func() {
-				for entry := range entriesCh {
-					m.handleEntry(entry)
-				}
-			}()
-
-			log.Debug("starting mdns query")
-			qp := &mdns.QueryParam{
-				Domain:  "local",
-				Entries: entriesCh,
-				Service: m.tag,
-				Timeout: time.Second * 5,
-			}
-
-			err := mdns.Query(qp)
-			if err != nil {
-				log.Error("mdns lookup error: ", err)
-			}
-			close(entriesCh)
-			log.Debug("mdns query complete")
+			continue
 		case <-ctx.Done():
 			log.Debug("mdns service halting")
 			return

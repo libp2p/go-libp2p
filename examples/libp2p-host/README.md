@@ -59,7 +59,7 @@ import (
 ctx := context.Background()
 
 // Put all this together
-netw, err := swarm.NewNetwork(ctx, []ma.Multiaddr{maddr}, ident.ID(), ps, nil)
+netw, err := swarm.NewNetwork(ctx, []ma.Multiaddr{maddr}, pid, ps, nil)
 if err != nil {
 	panic(err)
 }
@@ -77,4 +77,4 @@ And thats it, you have a libp2p host and you're ready to start doing some awesom
 
 In future guides we will go over ways to use hosts, configure them differently (hint: there are a huge number of ways to set these up), and interesting ways to apply this technology to various applications you might want to build.
 
-To see this code all put together, take a look at the `host.go` file in this directory.
+To see this code all put together, take a look at [host.go](host.go).

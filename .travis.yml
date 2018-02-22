@@ -2,20 +2,18 @@ os:
   - linux
   - osx
 
+sudo: false
+
 language: go
 
 go:
-    - 1.8
+    - 1.9.x
 
-install: true
+install:
+  - make deps-protocol-muxing
 
-before_install:
-  - make deps
-  - go get -u github.com/multiformats/go-multicodec
-  - go get -u github.com/libp2p/go-msgio
-#- go vet ./...
 script:
-  - go test ./... -v
+  - bash <(curl -s https://raw.githubusercontent.com/ipfs/ci-helpers/master/travis-ci/run-standard-tests.sh)
 
 cache:
     directories:
