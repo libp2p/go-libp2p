@@ -34,9 +34,10 @@ type Notifee interface {
 }
 
 type mdnsService struct {
-	server *mdns.Server
-	host   host.Host
-	tag    string
+	server  *mdns.Server
+	service *mdns.Resolver
+	host    host.Host
+	tag     string
 
 	lk       sync.Mutex
 	notifees []Notifee
@@ -48,12 +49,17 @@ func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Durat
 	// TODO: dont let mdns use logging...
 	golog.SetOutput(ioutil.Discard)
 
-	port := 4001
+	port := 42424
 	myid := peerhost.ID().Pretty()
 
 	info := []string{myid}
 	if serviceTag == "" {
 		serviceTag = ServiceTag
+	}
+
+	resolver, err := mdns.NewResolver(nil)
+	if err != nil {
+		log.Error("Failed to initialize resolver:", err)
 	}
 
 	// Create the mDNS server, defer shutdown
@@ -64,6 +70,7 @@ func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Durat
 
 	s := &mdnsService{
 		server:   server,
+		service:  resolver,
 		host:     peerhost,
 		interval: interval,
 		tag:      serviceTag,
@@ -81,14 +88,8 @@ func (m *mdnsService) Close() error {
 }
 
 func (m *mdnsService) pollForEntries(ctx context.Context) {
-
 	ticker := time.NewTicker(m.interval)
 	for {
-		resolver, err := mdns.NewResolver(nil)
-		if err != nil {
-			log.Error("Failed to initialize resolver:", err)
-		}
-
 		//execute mdns query right away at method call and then with every tick
 		entriesCh := make(chan *mdns.ServiceEntry, 16)
 		go func(results <-chan *mdns.ServiceEntry) {
@@ -102,7 +103,7 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 
-		if err := resolver.Browse(ctx, m.tag, "local", entriesCh); err != nil {
+		if err := m.service.Browse(ctx, m.tag, "local", entriesCh); err != nil {
 			log.Error("mdns lookup error: ", err)
 		}
 		close(entriesCh)
@@ -123,9 +124,6 @@ func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
 	// pull out the txt
 	info := strings.Join(e.Text, "|")
 
-	// addripv4 potential issue
-	log.Debugf("Handling MDNS entry: %s:%d %s", e.AddrIPv4[0], e.Port, info)
-
 	mpeer, err := peer.IDB58Decode(info)
 	if err != nil {
 		log.Warning("Error parsing peer ID from mdns entry: ", err)
@@ -137,25 +135,29 @@ func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
 		return
 	}
 
-	maddr, err := manet.FromNetAddr(&net.TCPAddr{
-		IP:   e.AddrIPv4[0],
-		Port: e.Port,
-	})
-	if err != nil {
-		log.Warning("Error parsing multiaddr from mdns entry: ", err)
-		return
-	}
+	for _, ipv4 := range e.AddrIPv4 {
+		log.Debugf("Handling MDNS entry: %s:%d %s", ipv4, e.Port, info)
 
-	pi := pstore.PeerInfo{
-		ID:    mpeer,
-		Addrs: []ma.Multiaddr{maddr},
-	}
+		maddr, err := manet.FromNetAddr(&net.TCPAddr{
+			IP:   ipv4,
+			Port: e.Port,
+		})
+		if err != nil {
+			log.Warning("Error parsing multiaddr from mdns entry: ", err)
+			return
+		}
 
-	m.lk.Lock()
-	for _, n := range m.notifees {
-		go n.HandlePeerFound(pi)
+		pi := pstore.PeerInfo{
+			ID:    mpeer,
+			Addrs: []ma.Multiaddr{maddr},
+		}
+
+		m.lk.Lock()
+		for _, n := range m.notifees {
+			go n.HandlePeerFound(pi)
+		}
+		m.lk.Unlock()
 	}
-	m.lk.Unlock()
 }
 
 func (m *mdnsService) RegisterNotifee(n Notifee) {
