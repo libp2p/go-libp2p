@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/libp2p/go-libp2p"
-	"gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
-	"gx/ipfs/QmQViVWBHbU6HmYjXcdNq7tVASCNgdg64ZGcauuDkLCivW/go-ipfs-addr"
+	"github.com/libp2p/go-libp2p-peerstore"
+	"github.com/ipfs/go-ipfs-addr"
 )
 
 var bootstrapPeers = []string{
