@@ -35,30 +35,39 @@ func main() {
 		panic(err)
 	}
 
+	c := make(chan struct{})
+
 	//Loop through the bootstrapping peer list and connect to them
 	for _, addr := range bootstrapPeers {
-		
-		//Parse the string to and address
+
+		//Parse the string to an address
 		iAddr, err := ipfsaddr.ParseString(addr)
 		if err != nil {
 			panic(err)
 		}
-		
+
 		//Get peer info from multiaddress
 		pInfo, err := peerstore.InfoFromP2pAddr(iAddr.Multiaddr())
 		if err != nil {
 			panic(err)
 		}
-		
-		//Connect to the peer by it's peer info
-		if err := host.Connect(ctx, *pInfo); err != nil {
-			fmt.Println("failed to connect to peer: ", err)
-		}
 
-		fmt.Println("connected to peer: ", pInfo.ID.String())
+		go func() {
+			//Connect to the peer by it's peer info
+			if err := host.Connect(ctx, *pInfo); err != nil {
+				fmt.Println("failed to connect to peer: ", err)
+				return
+			}
+
+			fmt.Println("connected to peer: ", pInfo.ID.String())
+
+			c <- struct{}{}
+		}()
 
 	}
 
-	//You are now connected to all bootstrapping peer's
-	fmt.Println("Congratulation's, you are connected to all bootstrapping nodes")
+	for i := 0; i < 3; i++ {
+		<-c
+	}
+
 }
