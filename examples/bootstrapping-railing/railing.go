@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-peerstore"
-	"github.com/ipfs/go-ipfs-addr"
+	
+	libp2p "github.com/libp2p/go-libp2p"
+	peerstore "github.com/libp2p/go-libp2p-peerstore"
+	ipfsaddr "github.com/ipfs/go-ipfs-addr"
 )
 
 var bootstrapPeers = []string{
