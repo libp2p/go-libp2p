@@ -3,15 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	
+
 	libp2p "github.com/libp2p/go-libp2p"
-	peerstore "github.com/libp2p/go-libp2p-peerstore"
 	ipfsaddr "github.com/ipfs/go-ipfs-addr"
+	peerstore "github.com/libp2p/go-libp2p-peerstore"
 )
 
-//The bootstrapping nodes are just long running nodes with a static IP address.
-//That means you can easily have your own bootstrapping nodes. Everything you need is
-//a server with a static IP address.
+// The bootstrapping nodes are just long running nodes with a static IP address.
+// That means you can easily have your own bootstrapping nodes. Everything you need is
+// a server with a static IP address.
 var bootstrapPeers = []string{
 	"/ip4/104.131.131.82/tcp/4001/ipfs/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
 	"/ip4/104.236.76.40/tcp/4001/ipfs/QmSoLV4Bbm51jM9C4gDYZQ9Cy3U6aXMJDAbzgu2fzaDs64",
@@ -24,12 +24,12 @@ var bootstrapPeers = []string{
 	"/ip4/104.236.151.122/tcp/4001/ipfs/QmSoLju6m7xTh3DuokvT3886QRYqxAzb1kShaanJgW36yx",
 }
 
-//This example show's you how you can connect to a list of bootstrapping nodes.
+// This example show's you how you can connect to a list of bootstrapping nodes.
 func main() {
 
 	ctx := context.Background()
 
-	//Create the host
+	// Create the host
 	host, err := libp2p.New(ctx, libp2p.Defaults)
 	if err != nil {
 		panic(err)
@@ -37,23 +37,23 @@ func main() {
 
 	c := make(chan struct{})
 
-	//Loop through the bootstrapping peer list and connect to them
+	// Loop through the bootstrapping peer list and connect to them
 	for _, addr := range bootstrapPeers {
 
-		//Parse the string to an address
+		// Parse the string to an address
 		iAddr, err := ipfsaddr.ParseString(addr)
 		if err != nil {
 			panic(err)
 		}
 
-		//Get peer info from multiaddress
+		// Get peer info from multiaddress
 		pInfo, err := peerstore.InfoFromP2pAddr(iAddr.Multiaddr())
 		if err != nil {
 			panic(err)
 		}
 
 		go func() {
-			//Connect to the peer by it's peer info
+			// Connect to the peer by it's peer info
 			if err := host.Connect(ctx, *pInfo); err != nil {
 				fmt.Println("failed to connect to peer: ", err)
 				return
