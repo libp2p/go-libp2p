@@ -9,6 +9,9 @@ import (
 	ipfsaddr "github.com/ipfs/go-ipfs-addr"
 )
 
+//The bootstrapping nodes are just long running nodes with a static IP address.
+//That means you can easily have your own bootstrapping nodes. Everything you need is
+//a server with a static IP address.
 var bootstrapPeers = []string{
 	"/ip4/104.131.131.82/tcp/4001/ipfs/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
 	"/ip4/104.236.76.40/tcp/4001/ipfs/QmSoLV4Bbm51jM9C4gDYZQ9Cy3U6aXMJDAbzgu2fzaDs64",
@@ -20,7 +23,6 @@ var bootstrapPeers = []string{
 	"/ip4/178.62.61.185/tcp/4001/ipfs/QmSoLMeWqB7YGVLJN3pNLQpmmEk35v6wYtsMGLzSr5QBU3",
 	"/ip4/104.236.151.122/tcp/4001/ipfs/QmSoLju6m7xTh3DuokvT3886QRYqxAzb1kShaanJgW36yx",
 }
-
 
 //This example show's you how you can connect to a list of bootstrapping nodes.
 func main() {
