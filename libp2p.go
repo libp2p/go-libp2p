@@ -200,12 +200,17 @@ func newWithCfg(ctx context.Context, cfg *Config) (host.Host, error) {
 		ps.AddPubKey(pid, cfg.PeerKey.GetPublic())
 	}
 
-	swrm, err := swarm.NewSwarmWithProtector(ctx, cfg.ListenAddrs, pid, ps, cfg.Protector, muxer, cfg.Reporter)
+	swrm, err := swarm.NewSwarmWithProtector(ctx, nil, pid, ps, cfg.Protector, muxer, cfg.Reporter)
+
 	if err != nil {
 		return nil, err
 	}
 
 	netw := (*swarm.Network)(swrm)
+	for _, tpt := range cfg.Transports {
+		swrm.AddTransport(tpt)
+	}
+	swrm.Listen(cfg.ListenAddrs...)
 
 	hostOpts := &bhost.HostOpts{}
 
