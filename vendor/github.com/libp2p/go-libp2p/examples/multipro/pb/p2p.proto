@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package protocols.p2p;
+
+// designed to be shared between all app protocols
+message MessageData {
+    // shared between all requests
+    string clientVersion = 1; // client version
+    int64 timestamp = 2;     // unix time
+    string id = 3;           // allows requesters to use request data when processing a response
+    bool gossip = 4;         // true to have receiver peer gossip the message to neighbors
+    string nodeId = 5;       // id of node that created the message (not the peer that may have sent it). =base58(mh(sha256(nodePubKey)))
+    bytes nodePubKey = 6;    // Authoring node Secp256k1 public key (32bytes) - protobufs serielized
+    string sign = 7;         // signature of message data + method specific data by message authoring node. format: string([]bytes)
+}
+
+//// ping protocol
+
+// a protocol define a set of reuqest and responses
+message PingRequest {
+    MessageData messageData = 1;
+
+    // method specific data
+    string message = 2;
+    // add any data here....
+}
+
+message PingResponse {
+    MessageData messageData = 1;
+
+    // response specific data
+    string message = 2;
+
+    // ... add any additional message data here
+}
+
+//// echo protocol
+
+// a protocol define a set of reuqest and responses
+message EchoRequest {
+    MessageData messageData = 1;
+
+    // method specific data
+    string message = 2;
+
+    // add any additional message data here....
+}
+
+message EchoResponse {
+    MessageData messageData = 1;
+
+    // response specific data
+    string message = 2;
+
+    // ... add any additional message data here....
+}

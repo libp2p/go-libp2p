@@ -1,0 +1,202 @@
+# Gopkg.toml example
+#
+# Refer to https://github.com/golang/dep/blob/master/docs/Gopkg.toml.md
+# for detailed Gopkg.toml documentation.
+#
+ required = ["github.com/whyrusleeping/mafmt", "github.com/multiformats/go-multihash"]
+# ignored = ["github.com/user/project/pkgX", "bitbucket.org/user/project/pkgA/pkgY"]
+#
+# [[constraint]]
+#   name = "github.com/user/project"
+#   version = "1.0.0"
+#
+# [[constraint]]
+#   name = "github.com/user/project2"
+#   branch = "dev"
+#   source = "github.com/myfork/project2"
+#
+# [[override]]
+#   name = "github.com/x/y"
+#   version = "2.4.0"
+#
+# [prune]
+#   non-go = false
+#   go-tests = true
+#   unused-packages = true
+
+# add this to avoid undefined: multihash.ID error
+[[constraint]]
+  branch = "master"
+  name = "github.com/multiformats/go-multihash"
+
+[[constraint]]
+  name = "github.com/coreos/go-semver"
+  version = "0.2.0"
+
+[[constraint]]
+  name = "github.com/gogo/protobuf"
+  version = "1.0.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/ipfs/go-detect-race"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/ipfs/go-ipfs-util"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/ipfs/go-log"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/jbenet/goprocess"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-conn-security"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-conn-security-multistream"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-blankhost"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-circuit"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-crypto"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-host"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-interface-connmgr"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-interface-pnet"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-loggables"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-metrics"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-nat"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-net"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-netutil"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-peer"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-peerstore"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-protocol"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-secio"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-swarm"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-transport"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-libp2p-transport-upgrader"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-maddr-filter"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-stream-muxer"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-tcp-transport"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-testutil"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/libp2p/go-ws-transport"
+
+[[constraint]]
+  name = "github.com/multiformats/go-multiaddr"
+  version = "1.2.7"
+
+[[constraint]]
+  name = "github.com/multiformats/go-multiaddr-dns"
+  version = "0.2.3"
+
+[[constraint]]
+  name = "github.com/multiformats/go-multiaddr-net"
+  version = "1.6.1"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/multiformats/go-multicodec"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/multiformats/go-multistream"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/satori/go.uuid"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/whyrusleeping/go-logging"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/whyrusleeping/go-smux-multiplex"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/whyrusleeping/go-smux-multistream"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/whyrusleeping/go-smux-yamux"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/whyrusleeping/mdns"
+
+[prune]
+  go-tests = true
+  unused-packages = true

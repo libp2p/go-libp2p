@@ -1,0 +1,16 @@
+{
+  "author": "jbenet",
+  "bugs": {
+    "url": "https://github.com/ipfs/go-detect-race"
+  },
+  "gx": {
+    "dvcsimport": "github.com/ipfs/go-detect-race"
+  },
+  "gxVersion": "0.10.0",
+  "language": "go",
+  "license": "MIT",
+  "name": "go-detect-race",
+  "releaseCmd": "git commit -a -m \"gx publish $VERSION\"",
+  "version": "1.0.1"
+}
+
