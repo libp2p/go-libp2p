@@ -1,0 +1,47 @@
+{
+  "author": "whyrusleeping",
+  "bugs": {
+    "url": "https://github.com/libp2p/go-libp2p-transport"
+  },
+  "gx": {
+    "dvcsimport": "github.com/libp2p/go-libp2p-transport"
+  },
+  "gxDependencies": [
+    {
+      "hash": "Qmbi1CTJsbnBZjCEgc2otwu8cUFPsGpzWXG7edVCLZ7Gvk",
+      "name": "go-log",
+      "version": "1.5.2"
+    },
+    {
+      "author": "multiformats",
+      "hash": "QmUxSEGbv2nmYNnfXi7839wwQqTN3kwQeUxe8dTjZWZs7J",
+      "name": "go-multiaddr",
+      "version": "1.2.7"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmXdgNhVEgjLxjUoMs5ViQL7pboAt3Y7V7eGHRiE4qrmTE",
+      "name": "go-libp2p-net",
+      "version": "3.0.2"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmY9JXR3FupnYAYJWK9aMr9bCpqWKcToQ1tz8DVGTrHpHw",
+      "name": "go-stream-muxer",
+      "version": "3.0.0"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmVf8hTAsLLFtn4WPCRNdnaF2Eag2qTBS6uR8AiHPZARXy",
+      "name": "go-libp2p-peer",
+      "version": "2.3.4"
+    }
+  ],
+  "gxVersion": "0.4.0",
+  "language": "go",
+  "license": "MIT",
+  "name": "go-libp2p-transport",
+  "releaseCmd": "git commit -a -m \"gx publish $VERSION\"",
+  "version": "3.0.2"
+}
+

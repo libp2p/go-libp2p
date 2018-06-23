@@ -1,0 +1,53 @@
+{
+  "author": "whyrusleeping",
+  "bugs": {
+    "url": "https://github.com/libp2p/go-libp2p-netutil"
+  },
+  "gx": {
+    "dvcsimport": "github.com/libp2p/go-libp2p-netutil"
+  },
+  "gxDependencies": [
+    {
+      "author": "whyrusleeping",
+      "hash": "Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5",
+      "name": "go-libp2p-crypto",
+      "version": "1.6.2"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmZhsmorLpD9kmQ4ynbAu4vbKv2goMUnXazwGA4gnWHDjB",
+      "name": "go-libp2p-peerstore",
+      "version": "1.4.20"
+    },
+    {
+      "hash": "Qmbi1CTJsbnBZjCEgc2otwu8cUFPsGpzWXG7edVCLZ7Gvk",
+      "name": "go-log",
+      "version": "1.5.2"
+    },
+    {
+      "author": "multiformats",
+      "hash": "QmUxSEGbv2nmYNnfXi7839wwQqTN3kwQeUxe8dTjZWZs7J",
+      "name": "go-multiaddr",
+      "version": "1.2.7"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmVf8hTAsLLFtn4WPCRNdnaF2Eag2qTBS6uR8AiHPZARXy",
+      "name": "go-libp2p-peer",
+      "version": "2.3.4"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmPdxCaVp4jZ9RbxqZADvKH6kiCR5jHvdR5f2ycjAY6T2a",
+      "name": "go-testutil",
+      "version": "1.2.3"
+    }
+  ],
+  "gxVersion": "0.10.0",
+  "language": "go",
+  "license": "",
+  "name": "go-libp2p-netutil",
+  "releaseCmd": "git commit -a -m \"gx publish $VERSION\"",
+  "version": "0.4.2"
+}
+
