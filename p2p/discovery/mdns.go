@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"errors"
 	"io"
 	"io/ioutil"
 	golog "log"
@@ -44,12 +45,55 @@ type mdnsService struct {
 	interval time.Duration
 }
 
+// Tries to pick the best port.
+func getBestPort(addrs []ma.Multiaddr) (int, error) {
+	var best *net.TCPAddr
+	for _, addr := range addrs {
+		na, err := manet.ToNetAddr(addr)
+		if err != nil {
+			continue
+		}
+		tcp, ok := na.(*net.TCPAddr)
+		if !ok {
+			continue
+		}
+		// Don't bother with multicast and
+		if tcp.IP.IsMulticast() {
+			continue
+		}
+		// We don't yet support link-local
+		if tcp.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		// Unspecified listeners are *always* the best choice.
+		if tcp.IP.IsUnspecified() {
+			return tcp.Port, nil
+		}
+		// If we don't have a best choice, use this addr.
+		if best == nil {
+			best = tcp
+			continue
+		}
+		// If the best choice is a loopback address, replace it.
+		if best.IP.IsLoopback() {
+			best = tcp
+		}
+	}
+	if best == nil {
+		return 0, errors.New("failed to find good external addr from peerhost")
+	}
+	return best.Port, nil
+}
+
 func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Duration, serviceTag string) (Service, error) {
 
 	// TODO: dont let mdns use logging...
 	golog.SetOutput(ioutil.Discard)
 
-	port := 42424
+	port, err := getBestPort(peerhost.Network().ListenAddresses())
+	if err != nil {
+		return nil, err
+	}
 	myid := peerhost.ID().Pretty()
 
 	info := []string{myid}
