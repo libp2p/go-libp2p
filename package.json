@@ -14,11 +14,6 @@
       "version": "0.0.0"
     },
     {
-      "hash": "QmNeRzgrSpwbMU7VKLRyfvbqf1nRrAiQ7fEXaBxWGT5Ygr",
-      "name": "mdns",
-      "version": "0.1.3"
-    },
-    {
       "hash": "QmPdKqUcHGFdeSpvjVoaTRPPstGif9GBZb5Q56RVw9o69A",
       "name": "go-ipfs-util",
       "version": "1.2.8"
@@ -249,6 +244,12 @@
       "hash": "QmSSeQqc5QeuefkaM6JFV5tSF9knLUkXKVhW1eYRiqe72W",
       "name": "uuid",
       "version": "0.1.0"
+    },
+    {
+      "author": "grandcat",
+      "hash": "QmUTmYpDk9jVk7PeBgmr3n1oGmLJ6yEuSVqyZaWUpF13f3",
+      "name": "zeroconf",
+      "version": "0.2.0"
     }
   ],
   "gxVersion": "0.4.0",
