@@ -247,9 +247,9 @@
     },
     {
       "author": "grandcat",
-      "hash": "QmUTmYpDk9jVk7PeBgmr3n1oGmLJ6yEuSVqyZaWUpF13f3",
+      "hash": "QmWrJTtJCQ6kCCTtLBM82Cx9h52QMQ5hcbrsePFuRSHuWC",
       "name": "zeroconf",
-      "version": "0.2.0"
+      "version": "0.2.1"
     }
   ],
   "gxVersion": "0.4.0",
