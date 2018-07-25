@@ -180,6 +180,7 @@ func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
 		return
 	}
 
+	var pi pstore.PeerInfo
 	for _, ipv4 := range e.AddrIPv4 {
 		log.Debugf("Handling MDNS entry: %s:%d %s", ipv4, e.Port, e.Text[0])
 
@@ -188,21 +189,17 @@ func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
 			Port: e.Port,
 		})
 		if err != nil {
-			log.Warning("Error parsing multiaddr from mdns entry: ", err)
+			log.Errorf("error creating multiaddr from mdns entry (%s:%d): %s", ipv4, e.Port, err)
 			return
 		}
-
-		pi := pstore.PeerInfo{
-			ID:    mpeer,
-			Addrs: []ma.Multiaddr{maddr},
-		}
-
-		m.lk.Lock()
-		for _, n := range m.notifees {
-			go n.HandlePeerFound(pi)
-		}
-		m.lk.Unlock()
+		pi.Addrs = append(pi.Addrs, maddr)
 	}
+
+	m.lk.Lock()
+	for _, n := range m.notifees {
+		go n.HandlePeerFound(pi)
+	}
+	m.lk.Unlock()
 }
 
 func (m *mdnsService) RegisterNotifee(n Notifee) {
