@@ -180,16 +180,20 @@ func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
 		return
 	}
 
+	addrs := make([]net.IP, len(e.AddrIPv4)+len(e.AddrIPv6))
+	copy(addrs, e.AddrIPv4)
+	copy(addrs[len(e.AddrIPv4):], e.AddrIPv6)
+
 	var pi pstore.PeerInfo
-	for _, ipv4 := range e.AddrIPv4 {
-		log.Debugf("Handling MDNS entry: %s:%d %s", ipv4, e.Port, e.Text[0])
+	for _, ip := range addrs {
+		log.Debugf("Handling MDNS entry: %s:%d %s", ip, e.Port, e.Text[0])
 
 		maddr, err := manet.FromNetAddr(&net.TCPAddr{
-			IP:   ipv4,
+			IP:   ip,
 			Port: e.Port,
 		})
 		if err != nil {
-			log.Errorf("error creating multiaddr from mdns entry (%s:%d): %s", ipv4, e.Port, err)
+			log.Errorf("error creating multiaddr from mdns entry (%s:%d): %s", ip, e.Port, err)
 			return
 		}
 		pi.Addrs = append(pi.Addrs, maddr)
