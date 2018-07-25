@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	golog "log"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -165,10 +164,12 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 }
 
 func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
+	if len(e.Text) != 1 {
+		log.Warningf("Expected exactly one TXT record, got: %v", e.Text)
+		return
+	}
 	// pull out the txt
-	info := strings.Join(e.Text, "|")
-
-	mpeer, err := peer.IDB58Decode(info)
+	mpeer, err := peer.IDB58Decode(e.Text[0])
 	if err != nil {
 		log.Warning("Error parsing peer ID from mdns entry: ", err)
 		return
@@ -180,7 +181,7 @@ func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
 	}
 
 	for _, ipv4 := range e.AddrIPv4 {
-		log.Debugf("Handling MDNS entry: %s:%d %s", ipv4, e.Port, info)
+		log.Debugf("Handling MDNS entry: %s:%d %s", ipv4, e.Port, e.Text[0])
 
 		maddr, err := manet.FromNetAddr(&net.TCPAddr{
 			IP:   ipv4,
