@@ -27,7 +27,8 @@ import (
 func provide(dht *libp2pdht.IpfsDHT, topic *cid.Cid) {
 	fmt.Println("Announcing ourselves...")
 	for {
-		ctx, _ := context.WithTimeout(dht.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(dht.Context(), 10*time.Second)
+		defer cancel()
 		if err := dht.Provide(ctx, topic, true); err == nil {
 			fmt.Println("Successfully announced!")
 			break
@@ -130,12 +131,17 @@ func main() {
 	// node(s) we bootstrap off of. If one of the nodes we bootstrap off of goes
 	// offline, we can still continue to chat!
 	fmt.Println("Searching DHT for peers...")
-	tctx, _ := context.WithTimeout(ctx, time.Second*10)
-	peers, err := dht.FindProviders(tctx, c)
-	if err != nil {
-		panic(err)
+	var peers []peerstore.PeerInfo
+	{
+		tctx, tcancel := context.WithTimeout(ctx, time.Second*10)
+		defer tcancel()
+		peers, err = dht.FindProviders(tctx, c)
+		if err != nil {
+			tcancel()
+			panic(err)
+		}
+		fmt.Printf("Found %d peers!\n", len(peers))
 	}
-	fmt.Printf("Found %d peers!\n", len(peers))
 
 	// Connect to the peers we've just discovered.
 	for _, p := range peers {
@@ -144,9 +150,12 @@ func main() {
 			continue
 		}
 
-		tctx, _ := context.WithTimeout(ctx, time.Second*5)
-		if err := host.Connect(tctx, p); err != nil {
-			fmt.Println("Failed to connect to peer: ", err)
+		{
+			tctx, tcancel := context.WithTimeout(ctx, time.Second*5)
+			defer tcancel()
+			if err = host.Connect(tctx, p); err != nil {
+				fmt.Println("Failed to connect to peer: ", err)
+			}
 		}
 	}
 
