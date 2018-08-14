@@ -307,6 +307,11 @@ func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
 // to create one. If ProtocolID is "", writes no header.
 // (Threadsafe)
 func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (inet.Stream, error) {
+	err := p.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	pref, err := h.preferredProtocol(p, pids)
 	if err != nil {
 		return nil, err
