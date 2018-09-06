@@ -205,7 +205,7 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
 		lmaddrs = append(lmaddrs, maddr)
 	}
 
-	// if the address reported by the connection roughly matches their annoucned
+	// if the address reported by the connection roughly matches their announced
 	// listener addresses, its likely to be an external NAT address
 	if HasConsistentTransport(c.RemoteMultiaddr(), lmaddrs) {
 		lmaddrs = append(lmaddrs, c.RemoteMultiaddr())

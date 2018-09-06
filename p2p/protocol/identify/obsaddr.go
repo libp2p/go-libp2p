@@ -14,7 +14,7 @@ const ActivationThresh = 4
 // We only use addresses that:
 // - have been observed at least 4 times in last 1h. (counter symmetric nats)
 // - have been observed at least once recently (1h), because our position in the
-//   network, or network port mapppings, may have changed.
+//   network, or network port mappings, may have changed.
 type ObservedAddr struct {
 	Addr      ma.Multiaddr
 	SeenBy    map[string]time.Time

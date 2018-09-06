@@ -18,6 +18,7 @@ import (
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	filter "github.com/libp2p/go-maddr-filter"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -29,7 +30,7 @@ var log = logging.Logger("p2p-config")
 type AddrsFactory = bhost.AddrsFactory
 
 // NATManagerC is a NATManager constructor.
-type NATManagerC func(inet.Network) bhost.NATManager
+type NATManagerC func(inet.Network, *identify.IDService) bhost.NATManager
 
 // Config describes a set of settings for a libp2p node
 //
