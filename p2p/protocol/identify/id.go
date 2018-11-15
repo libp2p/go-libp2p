@@ -412,6 +412,18 @@ func (ids *IDService) consumeObservedAddress(observed []byte, c inet.Conn) {
 }
 
 func addrInAddrs(a ma.Multiaddr, as []ma.Multiaddr) bool {
+	// allow wildcard addresses
+	if ip, err := a.ValueForProtocol(ma.P_IP4); err == nil {
+		if parsed := net.ParseIP(ip); parsed != nil && parsed.IsUnspecified() {
+			return true
+		}
+	}
+	if ip, err := a.ValueForProtocol(ma.P_IP6); err == nil {
+		if parsed := net.ParseIP(ip); parsed != nil && parsed.IsUnspecified() {
+			return true
+		}
+	}
+
 	for _, b := range as {
 		if a.Equal(b) {
 			return true
