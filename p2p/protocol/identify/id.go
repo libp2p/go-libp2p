@@ -2,19 +2,20 @@ package identify
 
 import (
 	"context"
+	"net"
 	"sync"
 	"time"
 
-	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
-
 	ggio "github.com/gogo/protobuf/io"
 	logging "github.com/ipfs/go-log"
+	autonat "github.com/libp2p/go-libp2p-autonat"
 	ic "github.com/libp2p/go-libp2p-crypto"
 	host "github.com/libp2p/go-libp2p-host"
 	lgbl "github.com/libp2p/go-libp2p-loggables"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
+	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	msmux "github.com/multiformats/go-multistream"
 )
@@ -54,6 +55,9 @@ type IDService struct {
 	// our own observed addresses.
 	// TODO: instead of expiring, remove these when we disconnect
 	observedAddrs ObservedAddrSet
+
+	// NAT status
+	natStatus pb.Identify_NATStatus
 }
 
 // NewIDService constructs a new *IDService and activates it by
@@ -163,6 +167,21 @@ func (ids *IDService) Push() {
 	}
 }
 
+func (ids *IDService) SetNatStatus(status autonat.NATStatus) {
+	switch status {
+	case autonat.NATStatusPrivate:
+		ids.natStatus = pb.Identify_NATStatusPrivate
+	case autonat.NATStatusPublic:
+		ids.natStatus = pb.Identify_NATStatusPublic
+	default:
+		ids.natStatus = pb.Identify_NATStatusUnknown
+	}
+}
+
+func (ids *IDService) GetNatStatus() pb.Identify_NATStatus {
+	return ids.natStatus
+}
+
 func (ids *IDService) populateMessage(mes *pb.Identify, c inet.Conn) {
 
 	// set protocols this node is currently handling
@@ -201,6 +220,9 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c inet.Conn) {
 	av := ClientVersion
 	mes.ProtocolVersion = &pv
 	mes.AgentVersion = &av
+
+	// set if behind NAT when possible
+	mes.NatStatus = &ids.natStatus
 }
 
 func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
@@ -208,6 +230,8 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
 
 	// mes.Protocols
 	ids.Host.Peerstore().SetProtocols(p, mes.Protocols...)
+
+	ids.Host.Peerstore().Put(p, "natStatus", mes.GetNatStatus())
 
 	// mes.ObservedAddr
 	ids.consumeObservedAddress(mes.GetObservedAddr(), c)
