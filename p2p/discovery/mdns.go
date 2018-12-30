@@ -152,6 +152,8 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 }
 
 func (m *mdnsService) handleEntry(e *mdns.ServiceEntry) {
+	e.ReadLock.Lock()
+	defer e.ReadLock.Unlock()
 	log.Debugf("Handling MDNS entry: %s:%d %s", e.AddrV4, e.Port, e.Info)
 	mpeer, err := peer.IDB58Decode(e.Info)
 	if err != nil {
