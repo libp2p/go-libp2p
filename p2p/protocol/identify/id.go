@@ -16,7 +16,6 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	ma "github.com/multiformats/go-multiaddr"
-	msmux "github.com/multiformats/go-multistream"
 )
 
 var log = logging.Logger("net/identify")
@@ -28,7 +27,6 @@ const ID = "/ipfs/id/1.0.0"
 const IDPush = "/ipfs/id/push/1.0.0"
 
 // LibP2PVersion holds the current protocol version for a client running this code
-// TODO(jbenet): fix the versioning mess.
 const LibP2PVersion = "ipfs/0.1.0"
 
 var ClientVersion = "go-libp2p/3.3.4"
@@ -44,8 +42,7 @@ var ClientVersion = "go-libp2p/3.3.4"
 type IDService struct {
 	Host host.Host
 
-	// connections undergoing identification
-	// for wait purposes
+	// connections undergoing identification; for dedup purposes
 	currid map[inet.Conn]chan struct{}
 	currmu sync.RWMutex
 
@@ -93,20 +90,19 @@ func (ids *IDService) IdentifyConn(c inet.Conn) {
 		ids.currmu.Unlock()
 	}()
 
-	s, err := c.NewStream()
+	// this is racy but there's no other way to open a stream if and only if we are connected.
+	if ids.Host.Network().Connectedness(c.RemotePeer()) != inet.Connected {
+		return
+	}
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelFn()
+
+	s, err := ids.Host.NewStream(ctx, c.RemotePeer(), ID)
 	if err != nil {
 		log.Debugf("error opening initial stream for %s: %s", ID, err)
 		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer())
 		c.Close()
-		return
-	}
-
-	s.SetProtocol(ID)
-
-	// ok give the response to our handler.
-	if err := msmux.SelectProtoOrFail(ID, s); err != nil {
-		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer(), logging.Metadata{"error": err})
-		s.Reset()
 		return
 	}
 
@@ -122,8 +118,7 @@ func (ids *IDService) requestHandler(s inet.Stream) {
 	ids.populateMessage(&mes, s.Conn())
 	w.WriteMsg(&mes)
 
-	log.Debugf("%s sent message to %s %s", ID,
-		c.RemotePeer(), c.RemoteMultiaddr())
+	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
 }
 
 func (ids *IDService) responseHandler(s inet.Stream) {
@@ -137,8 +132,7 @@ func (ids *IDService) responseHandler(s inet.Stream) {
 		return
 	}
 	ids.consumeMessage(&mes, c)
-	log.Debugf("%s received message from %s %s", ID,
-		c.RemotePeer(), c.RemoteMultiaddr())
+	log.Debugf("%s received message from %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
 
 	go inet.FullClose(s)
 }
@@ -164,7 +158,6 @@ func (ids *IDService) Push() {
 }
 
 func (ids *IDService) populateMessage(mes *pb.Identify, c inet.Conn) {
-
 	// set protocols this node is currently handling
 	protos := ids.Host.Mux().Protocols()
 	mes.Protocols = make([]string, len(protos))
