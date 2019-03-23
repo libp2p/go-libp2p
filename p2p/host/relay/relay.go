@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	AdvertiseBootDelay = 5 * time.Second
+	AdvertiseBootDelay = 30 * time.Second
 )
 
 // RelayHost is a Host that provides Relay services.

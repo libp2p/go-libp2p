@@ -121,11 +121,7 @@ func (c *conn) NewStream() (inet.Stream, error) {
 }
 
 func (c *conn) GetStreams() []inet.Stream {
-	var out []inet.Stream
-	for e := c.streams.Front(); e != nil; e = e.Next() {
-		out = append(out, e.Value.(*stream))
-	}
-	return out
+	return c.allStreams()
 }
 
 // LocalMultiaddr is the Multiaddr on this side

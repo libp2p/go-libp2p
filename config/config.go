@@ -208,7 +208,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		if hop {
 			h = relay.NewRelayHost(swrm.Context(), h.(*bhost.BasicHost), discovery)
 		} else {
-			h = relay.NewAutoRelayHost(swrm.Context(), h.(*bhost.BasicHost), discovery)
+			h = relay.NewAutoRelayHost(swrm.Context(), h.(*bhost.BasicHost), discovery, router)
 		}
 	}
 

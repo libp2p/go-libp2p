@@ -1,11 +1,12 @@
 package basichost
 
 import (
-	"context"
+	"net"
+	"strconv"
 	"sync"
 
 	goprocess "github.com/jbenet/goprocess"
-	lgbl "github.com/libp2p/go-libp2p-loggables"
+	goprocessctx "github.com/jbenet/goprocess/context"
 	inat "github.com/libp2p/go-libp2p-nat"
 	inet "github.com/libp2p/go-libp2p-net"
 	ma "github.com/multiformats/go-multiaddr"
@@ -37,11 +38,14 @@ func NewNATManager(net inet.Network) NATManager {
 //  * closing the natManager closes the nat and its mappings.
 type natManager struct {
 	net   inet.Network
-	natmu sync.RWMutex // guards nat (ready could obviate this mutex, but safety first.)
+	natmu sync.RWMutex
 	nat   *inat.NAT
 
-	ready chan struct{}     // closed once the nat is ready to process port mappings
-	proc  goprocess.Process // natManager has a process + children. can be closed.
+	ready chan struct{} // closed once the nat is ready to process port mappings
+
+	syncMu sync.Mutex
+
+	proc goprocess.Process // natManager has a process + children. can be closed.
 }
 
 func newNatManager(net inet.Network) *natManager {
@@ -74,7 +78,6 @@ func (nmgr *natManager) Ready() <-chan struct{} {
 }
 
 func (nmgr *natManager) discoverNAT() {
-
 	nmgr.proc.Go(func(worker goprocess.Process) {
 		// inat.DiscoverNAT blocks until the nat is found or a timeout
 		// is reached. we unfortunately cannot specify timeouts-- the
@@ -87,49 +90,126 @@ func (nmgr *natManager) discoverNAT() {
 		// to avoid leaking resources in a non-obvious way. the only case
 		// this affects is when the daemon is being started up and _immediately_
 		// asked to close. other services are also starting up, so ok to wait.
-		discoverdone := make(chan struct{})
-		var nat *inat.NAT
-		go func() {
-			defer close(discoverdone)
-			nat = inat.DiscoverNAT()
-		}()
 
-		// by this point -- after finding the NAT -- we may have already
-		// be closing. if so, just exit.
-		select {
-		case <-worker.Closing():
+		natInstance, err := inat.DiscoverNAT(goprocessctx.OnClosingContext(worker))
+		if err != nil {
+			log.Error("DiscoverNAT error:", err)
+			close(nmgr.ready)
 			return
-		case <-discoverdone:
-			if nat == nil { // no nat, or failed to get it.
-				return
-			}
 		}
+
+		nmgr.natmu.Lock()
+		nmgr.nat = natInstance
+		nmgr.natmu.Unlock()
+		close(nmgr.ready)
 
 		// wire up the nat to close when nmgr closes.
 		// nmgr.proc is our parent, and waiting for us.
-		nmgr.proc.AddChild(nat.Process())
-
-		// set the nat.
-		nmgr.natmu.Lock()
-		nmgr.nat = nat
-		nmgr.natmu.Unlock()
-
-		// signal that we're ready to process nat mappings:
-		close(nmgr.ready)
+		nmgr.proc.AddChild(nmgr.nat.Process())
 
 		// sign natManager up for network notifications
 		// we need to sign up here to avoid missing some notifs
 		// before the NAT has been found.
 		nmgr.net.Notify((*nmgrNetNotifiee)(nmgr))
+		nmgr.sync()
+	})
+}
 
-		// if any interfaces were brought up while we were setting up
-		// the nat, now is the time to setup port mappings for them.
-		// we release ready, then grab them to avoid losing any. adding
-		// a port mapping is idempotent, so its ok to add the same twice.
-		addrs := nmgr.net.ListenAddresses()
-		for _, addr := range addrs {
-			// we do it async because it's slow and we may want to close beforehand
-			go addPortMapping(nmgr, addr)
+// syncs the current NAT mappings, removing any outdated mappings and adding any
+// new mappings.
+func (nmgr *natManager) sync() {
+	nat := nmgr.NAT()
+	if nat == nil {
+		// Nothing to do.
+		return
+	}
+
+	nmgr.proc.Go(func(_ goprocess.Process) {
+		nmgr.syncMu.Lock()
+		defer nmgr.syncMu.Unlock()
+
+		ports := map[string]map[int]bool{
+			"tcp": map[int]bool{},
+			"udp": map[int]bool{},
+		}
+		for _, maddr := range nmgr.net.ListenAddresses() {
+			// Strip the IP
+			maIP, rest := ma.SplitFirst(maddr)
+			if maIP == nil || rest == nil {
+				continue
+			}
+
+			switch maIP.Protocol().Code {
+			case ma.P_IP6, ma.P_IP4:
+			default:
+				continue
+			}
+
+			// Only bother if we're listening on a
+			// unicast/unspecified IP.
+			ip := net.IP(maIP.RawValue())
+			if !(ip.IsGlobalUnicast() || ip.IsUnspecified()) {
+				continue
+			}
+
+			// Extract the port/protocol
+			proto, _ := ma.SplitFirst(rest)
+			if proto == nil {
+				continue
+			}
+
+			var protocol string
+			switch proto.Protocol().Code {
+			case ma.P_TCP:
+				protocol = "tcp"
+			case ma.P_UDP:
+				protocol = "udp"
+			default:
+				continue
+			}
+
+			port, err := strconv.ParseUint(proto.Value(), 10, 16)
+			if err != nil {
+				// bug in multiaddr
+				panic(err)
+			}
+			ports[protocol][int(port)] = false
+		}
+
+		var wg sync.WaitGroup
+		defer wg.Wait()
+
+		// Close old mappings
+		for _, m := range nat.Mappings() {
+			mappedPort := m.InternalPort()
+			if _, ok := ports[m.Protocol()][mappedPort]; !ok {
+				// No longer need this mapping.
+				wg.Add(1)
+				go func(m inat.Mapping) {
+					defer wg.Done()
+					m.Close()
+				}(m)
+			} else {
+				// already mapped
+				ports[m.Protocol()][mappedPort] = true
+			}
+		}
+
+		// Create new mappings.
+		for proto, pports := range ports {
+			for port, mapped := range pports {
+				if mapped {
+					continue
+				}
+				wg.Add(1)
+				go func(proto string, port int) {
+					defer wg.Done()
+					_, err := nat.NewMapping(proto, port)
+					if err != nil {
+						log.Errorf("failed to port-map %s port %d: %s", proto, port, err)
+					}
+				}(proto, port)
+			}
 		}
 	})
 }
@@ -143,75 +223,6 @@ func (nmgr *natManager) NAT() *inat.NAT {
 	return nmgr.nat
 }
 
-func addPortMapping(nmgr *natManager, intaddr ma.Multiaddr) {
-	nat := nmgr.NAT()
-	if nat == nil {
-		panic("natManager addPortMapping called without a nat.")
-	}
-
-	// first, check if the port mapping already exists.
-	for _, mapping := range nat.Mappings() {
-		if mapping.InternalAddr().Equal(intaddr) {
-			return // it exists! return.
-		}
-	}
-
-	ctx := context.TODO()
-	lm := make(lgbl.DeferredMap)
-	lm["internalAddr"] = func() interface{} { return intaddr.String() }
-
-	defer log.EventBegin(ctx, "natMgrAddPortMappingWait", lm).Done()
-
-	select {
-	case <-nmgr.proc.Closing():
-		lm["outcome"] = "cancelled"
-		return // no use.
-	case <-nmgr.ready: // wait until it's ready.
-	}
-
-	// actually start the port map (sub-event because waiting may take a while)
-	defer log.EventBegin(ctx, "natMgrAddPortMapping", lm).Done()
-
-	// get the nat
-	m, err := nat.NewMapping(intaddr)
-	if err != nil {
-		lm["outcome"] = "failure"
-		lm["error"] = err
-		return
-	}
-
-	extaddr, err := m.ExternalAddr()
-	if err != nil {
-		lm["outcome"] = "failure"
-		lm["error"] = err
-		return
-	}
-
-	lm["outcome"] = "success"
-	lm["externalAddr"] = func() interface{} { return extaddr.String() }
-	log.Infof("established nat port mapping: %s <--> %s", intaddr, extaddr)
-}
-
-func rmPortMapping(nmgr *natManager, intaddr ma.Multiaddr) {
-	nat := nmgr.NAT()
-	if nat == nil {
-		panic("natManager rmPortMapping called without a nat.")
-	}
-
-	// list the port mappings (it may be gone on it's own, so we need to
-	// check this list, and not store it ourselves behind the scenes)
-
-	// close mappings for this internal address.
-	for _, mapping := range nat.Mappings() {
-		if mapping.InternalAddr().Equal(intaddr) {
-			mapping.Close()
-		}
-	}
-}
-
-// nmgrNetNotifiee implements the network notification listening part
-// of the natManager. this is merely listening to Listen() and ListenClose()
-// events.
 type nmgrNetNotifiee natManager
 
 func (nn *nmgrNetNotifiee) natManager() *natManager {
@@ -219,19 +230,11 @@ func (nn *nmgrNetNotifiee) natManager() *natManager {
 }
 
 func (nn *nmgrNetNotifiee) Listen(n inet.Network, addr ma.Multiaddr) {
-	if nn.natManager().NAT() == nil {
-		return // not ready or doesnt exist.
-	}
-
-	addPortMapping(nn.natManager(), addr)
+	nn.natManager().sync()
 }
 
 func (nn *nmgrNetNotifiee) ListenClose(n inet.Network, addr ma.Multiaddr) {
-	if nn.natManager().NAT() == nil {
-		return // not ready or doesnt exist.
-	}
-
-	rmPortMapping(nn.natManager(), addr)
+	nn.natManager().sync()
 }
 
 func (nn *nmgrNetNotifiee) Connected(inet.Network, inet.Conn)      {}

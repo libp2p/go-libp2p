@@ -3,12 +3,14 @@ package basichost
 import (
 	"context"
 	"io"
+	"net"
 	"time"
 
 	logging "github.com/ipfs/go-log"
 	goprocess "github.com/jbenet/goprocess"
 	goprocessctx "github.com/jbenet/goprocess/context"
 	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
+	inat "github.com/libp2p/go-libp2p-nat"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
@@ -17,6 +19,7 @@ import (
 	ping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	manet "github.com/multiformats/go-multiaddr-net"
 	msmux "github.com/multiformats/go-multistream"
 )
 
@@ -413,7 +416,7 @@ func (h *BasicHost) Connect(ctx context.Context, pi pstore.PeerInfo) error {
 }
 
 func (h *BasicHost) resolveAddrs(ctx context.Context, pi pstore.PeerInfo) ([]ma.Multiaddr, error) {
-	proto := ma.ProtocolWithCode(ma.P_IPFS).Name
+	proto := ma.ProtocolWithCode(ma.P_P2P).Name
 	p2paddr, err := ma.NewMultiaddr("/" + proto + "/" + pi.ID.Pretty())
 	if err != nil {
 		return nil, err
@@ -485,17 +488,15 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 }
 
 // mergeAddrs merges input address lists, leave only unique addresses
-func mergeAddrs(addrLists ...[]ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
+func dedupAddrs(addrs []ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
 	exists := make(map[string]bool)
-	for _, addrList := range addrLists {
-		for _, addr := range addrList {
-			k := string(addr.Bytes())
-			if exists[k] {
-				continue
-			}
-			exists[k] = true
-			uniqueAddrs = append(uniqueAddrs, addr)
+	for _, addr := range addrs {
+		k := string(addr.Bytes())
+		if exists[k] {
+			continue
 		}
+		exists[k] = true
+		uniqueAddrs = append(uniqueAddrs, addr)
 	}
 	return uniqueAddrs
 }
@@ -507,19 +508,140 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	if err != nil {
 		log.Debug("error retrieving network interface addrs")
 	}
-	var observedAddrs []ma.Multiaddr
-	if h.ids != nil {
-		// peer observed addresses
-		observedAddrs = h.ids.OwnObservedAddrs()
-	}
-	var natAddrs []ma.Multiaddr
+	var natMappings []inat.Mapping
+
 	// natmgr is nil if we do not use nat option;
 	// h.natmgr.NAT() is nil if not ready, or no nat is available.
 	if h.natmgr != nil && h.natmgr.NAT() != nil {
-		natAddrs = h.natmgr.NAT().ExternalAddrs()
+		natMappings = h.natmgr.NAT().Mappings()
 	}
 
-	return mergeAddrs(listenAddrs, observedAddrs, natAddrs)
+	finalAddrs := listenAddrs
+	if len(natMappings) > 0 {
+
+		// We have successfully mapped ports on our NAT. Use those
+		// instead of observed addresses (mostly).
+
+		// First, generate a mapping table.
+		// protocol -> internal port -> external addr
+		ports := make(map[string]map[int]net.Addr)
+		for _, m := range natMappings {
+			addr, err := m.ExternalAddr()
+			if err != nil {
+				// mapping not ready yet.
+				continue
+			}
+			protoPorts, ok := ports[m.Protocol()]
+			if !ok {
+				protoPorts = make(map[int]net.Addr)
+				ports[m.Protocol()] = protoPorts
+			}
+			protoPorts[m.InternalPort()] = addr
+		}
+
+		// Next, apply this mapping to our addresses.
+		for _, listen := range listenAddrs {
+			found := false
+			transport, rest := ma.SplitFunc(listen, func(c ma.Component) bool {
+				if found {
+					return true
+				}
+				switch c.Protocol().Code {
+				case ma.P_TCP, ma.P_UDP:
+					found = true
+				}
+				return false
+			})
+			if !manet.IsThinWaist(transport) {
+				continue
+			}
+
+			naddr, err := manet.ToNetAddr(transport)
+			if err != nil {
+				log.Error("error parsing net multiaddr %q: %s", transport, err)
+				continue
+			}
+
+			var (
+				ip       net.IP
+				iport    int
+				protocol string
+			)
+			switch naddr := naddr.(type) {
+			case *net.TCPAddr:
+				ip = naddr.IP
+				iport = naddr.Port
+				protocol = "tcp"
+			case *net.UDPAddr:
+				ip = naddr.IP
+				iport = naddr.Port
+				protocol = "udp"
+			default:
+				continue
+			}
+
+			if !ip.IsGlobalUnicast() {
+				// We only map global unicast ports.
+				continue
+			}
+
+			mappedAddr, ok := ports[protocol][iport]
+			if !ok {
+				// Not mapped.
+				continue
+			}
+
+			mappedMaddr, err := manet.FromNetAddr(mappedAddr)
+			if err != nil {
+				log.Errorf("mapped addr can't be turned into a multiaddr %q: %s", mappedAddr, err)
+				continue
+			}
+
+			// Did the router give us a routable public addr?
+			if manet.IsPublicAddr(mappedMaddr) {
+				// Yes, use it.
+				extMaddr := mappedMaddr
+				if rest != nil {
+					extMaddr = ma.Join(extMaddr, rest)
+				}
+
+				// Add in the mapped addr.
+				finalAddrs = append(finalAddrs, extMaddr)
+				continue
+			}
+
+			// No. Ok, let's try our observed addresses.
+
+			// Now, check if we have any observed addresses that
+			// differ from the one reported by the router. Routers
+			// don't always give the most accurate information.
+			observed := h.ids.ObservedAddrsFor(listen)
+
+			if len(observed) == 0 {
+				continue
+			}
+
+			// Drop the IP from the external maddr
+			_, extMaddrNoIP := ma.SplitFirst(mappedMaddr)
+
+			for _, obsMaddr := range observed {
+				// Extract a public observed addr.
+				ip, _ := ma.SplitFirst(obsMaddr)
+				if ip == nil || !manet.IsPublicAddr(ip) {
+					continue
+				}
+
+				finalAddrs = append(finalAddrs, ma.Join(ip, extMaddrNoIP))
+			}
+		}
+	} else {
+		var observedAddrs []ma.Multiaddr
+		if h.ids != nil {
+			observedAddrs = h.ids.OwnObservedAddrs()
+		}
+		finalAddrs = append(finalAddrs, observedAddrs...)
+	}
+	return dedupAddrs(finalAddrs)
 }
 
 // Close shuts down the Host's services (network, etc).

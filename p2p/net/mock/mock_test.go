@@ -489,36 +489,36 @@ func TestAdding(t *testing.T) {
 func TestRateLimiting(t *testing.T) {
 	rl := NewRateLimiter(10)
 
-	if !within(rl.Limit(10), time.Duration(float32(time.Second)), time.Millisecond/10) {
-		t.Fail()
+	if !within(rl.Limit(10), time.Duration(float32(time.Second)), time.Millisecond) {
+		t.Fatal()
 	}
 	if !within(rl.Limit(10), time.Duration(float32(time.Second*2)), time.Millisecond) {
-		t.Fail()
+		t.Fatal()
 	}
 	if !within(rl.Limit(10), time.Duration(float32(time.Second*3)), time.Millisecond) {
-		t.Fail()
+		t.Fatal()
 	}
 
 	if within(rl.Limit(10), time.Duration(float32(time.Second*3)), time.Millisecond) {
-		t.Fail()
+		t.Fatal()
 	}
 
 	rl.UpdateBandwidth(50)
-	if !within(rl.Limit(75), time.Duration(float32(time.Second)*1.5), time.Millisecond/10) {
-		t.Fail()
+	if !within(rl.Limit(75), time.Duration(float32(time.Second)*1.5), time.Millisecond) {
+		t.Fatal()
 	}
 
-	if within(rl.Limit(75), time.Duration(float32(time.Second)*1.5), time.Millisecond/10) {
-		t.Fail()
+	if within(rl.Limit(75), time.Duration(float32(time.Second)*1.5), time.Millisecond) {
+		t.Fatal()
 	}
 
 	rl.UpdateBandwidth(100)
-	if !within(rl.Limit(1), time.Duration(time.Millisecond*10), time.Millisecond/10) {
-		t.Fail()
+	if !within(rl.Limit(1), time.Duration(time.Millisecond*10), time.Millisecond) {
+		t.Fatal()
 	}
 
-	if within(rl.Limit(1), time.Duration(time.Millisecond*10), time.Millisecond/10) {
-		t.Fail()
+	if within(rl.Limit(1), time.Duration(time.Millisecond*10), time.Millisecond) {
+		t.Fatal()
 	}
 }
 
@@ -586,7 +586,11 @@ func TestLimitedStreams(t *testing.T) {
 	}
 }
 func TestFuzzManyPeers(t *testing.T) {
-	for i := 0; i < 50000; i++ {
+	peerCount := 50000
+	if detectrace.WithRace() {
+		peerCount = 1000
+	}
+	for i := 0; i < peerCount; i++ {
 		_, err := FullMeshConnected(context.Background(), 2)
 		if err != nil {
 			t.Fatal(err)

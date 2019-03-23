@@ -74,6 +74,10 @@ func (ids *IDService) OwnObservedAddrs() []ma.Multiaddr {
 	return ids.observedAddrs.Addrs()
 }
 
+func (ids *IDService) ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr {
+	return ids.observedAddrs.AddrsFor(local)
+}
+
 func (ids *IDService) IdentifyConn(c inet.Conn) {
 	ids.currmu.Lock()
 	if wait, found := ids.currid[c]; found {
@@ -409,7 +413,7 @@ func (ids *IDService) consumeObservedAddress(observed []byte, c inet.Conn) {
 	}
 
 	log.Debugf("identify identifying observed multiaddr: %s %s", c.LocalMultiaddr(), ifaceaddrs)
-	if !addrInAddrs(c.LocalMultiaddr(), ifaceaddrs) {
+	if !addrInAddrs(c.LocalMultiaddr(), ifaceaddrs) && !addrInAddrs(c.LocalMultiaddr(), ids.Host.Network().ListenAddresses()) {
 		// not in our list
 		return
 	}

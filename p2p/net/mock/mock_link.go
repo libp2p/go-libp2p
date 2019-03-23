@@ -76,15 +76,21 @@ func (l *link) Peers() []peer.ID {
 }
 
 func (l *link) SetOptions(o LinkOptions) {
+	l.Lock()
+	defer l.Unlock()
 	l.opts = o
 	l.ratelimiter.UpdateBandwidth(l.opts.Bandwidth)
 }
 
 func (l *link) Options() LinkOptions {
+	l.RLock()
+	defer l.RUnlock()
 	return l.opts
 }
 
 func (l *link) GetLatency() time.Duration {
+	l.RLock()
+	defer l.RUnlock()
 	return l.opts.Latency
 }
 

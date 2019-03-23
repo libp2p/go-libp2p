@@ -289,16 +289,16 @@ new security framework is now as simple as:
 [go-libp2p-conn]: https://github.com/libp2p/go-libp2p-conn
 [go-libp2p-interface-conn]: https://github.com/libp2p/go-libp2p-interface-conn
 [go-libp2p-net]: https://github.com/libp2p/go-libp2p-net
-[go-libp2p-netutil]: https://github.com/libp2p/go-libp2p/go-libp2p-netutil
-[go-libp2p-swarm]: https://github.com/libp2p/go-libp2p/go-libp2p-swarm
-[go-libp2p-swarm/testing]: https://github.com/libp2p/go-libp2p/go-libp2p-swarm/testing
+[go-libp2p-netutil]: https://github.com/libp2p/go-libp2p-netutil
+[go-libp2p-swarm]: https://github.com/libp2p/go-libp2p-swarm
+[go-libp2p-swarm/testing]: https://github.com/libp2p/go-libp2p-swarm/tree/master/testing
 [go-libp2p-transport]: https://github.com/libp2p/go-libp2p-transport
-[go-libp2p-transport/test]: https://github.com/libp2p/go-libp2p-transport/test
+[go-libp2p-transport/test]: https://github.com/libp2p/go-libp2p-transport/tree/master/test
 [go-libp2p-transport-upgrader]: https://github.com/libp2p/go-libp2p-transport-upgrader
 [go-peerstream]: https://github.com/libp2p/go-peerstream
 [go-tcp-transport]: https://github.com/libp2p/go-tcp-transport
 [go-ws-transport]: https://github.com/libp2p/go-ws-transport
 
-[example:echo]: https://github.com/libp2p/go-libp2p/tree/master/examples/echo
+[example:echo]: https://github.com/libp2p/go-libp2p-examples/tree/master/echo
 
 [doc:go-libp2p-transport]: https://godoc.org/github.com/libp2p/go-libp2p-transport

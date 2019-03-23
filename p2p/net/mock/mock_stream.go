@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync/atomic"
 	"time"
 
 	inet "github.com/libp2p/go-libp2p-net"
@@ -24,7 +25,7 @@ type stream struct {
 
 	writeErr error
 
-	protocol protocol.ID
+	protocol atomic.Value
 	stat     inet.Stat
 }
 
@@ -70,7 +71,9 @@ func (s *stream) Write(p []byte) (n int, err error) {
 }
 
 func (s *stream) Protocol() protocol.ID {
-	return s.protocol
+	// Ignore type error. It means that the protocol is unset.
+	p, _ := s.protocol.Load().(protocol.ID)
+	return p
 }
 
 func (s *stream) Stat() inet.Stat {
@@ -78,7 +81,7 @@ func (s *stream) Stat() inet.Stat {
 }
 
 func (s *stream) SetProtocol(proto protocol.ID) {
-	s.protocol = proto
+	s.protocol.Store(proto)
 }
 
 func (s *stream) Close() error {

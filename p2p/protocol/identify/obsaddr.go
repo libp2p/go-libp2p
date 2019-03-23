@@ -30,6 +30,7 @@ type ObservedAddr struct {
 func (oa *ObservedAddr) activated(ttl time.Duration) bool {
 	// cleanup SeenBy set
 	now := time.Now()
+
 	for k, ob := range oa.SeenBy {
 		if now.Sub(ob.seenTime) > ttl*ActivationThresh {
 			delete(oa.SeenBy, k)
@@ -49,6 +50,43 @@ type ObservedAddrSet struct {
 	// local(internal) address -> list of observed(external) addresses
 	addrs map[string][]*ObservedAddr
 	ttl   time.Duration
+}
+
+// AddrsFor return all activated observed addresses associated with the given
+// (resolved) listen address.
+func (oas *ObservedAddrSet) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr) {
+	oas.Lock()
+	defer oas.Unlock()
+
+	// for zero-value.
+	if len(oas.addrs) == 0 {
+		return nil
+	}
+
+	key := string(addr.Bytes())
+	observedAddrs, ok := oas.addrs[key]
+	if !ok {
+		return
+	}
+
+	now := time.Now()
+	filteredAddrs := make([]*ObservedAddr, 0, len(observedAddrs))
+	for _, a := range observedAddrs {
+		// leave only alive observed addresses
+		if now.Sub(a.LastSeen) <= oas.ttl {
+			filteredAddrs = append(filteredAddrs, a)
+			if a.activated(oas.ttl) {
+				addrs = append(addrs, a.Addr)
+			}
+		}
+	}
+	if len(filteredAddrs) > 0 {
+		oas.addrs[key] = filteredAddrs
+	} else {
+		delete(oas.addrs, key)
+	}
+
+	return addrs
 }
 
 // Addrs return all activated observed addresses
@@ -92,7 +130,7 @@ func (oas *ObservedAddrSet) Add(observed, local, observer ma.Multiaddr,
 
 	now := time.Now()
 	observerString := observerGroup(observer)
-	localString := local.String()
+	localString := string(local.Bytes())
 	ob := observation{
 		seenTime:      now,
 		connDirection: direction,

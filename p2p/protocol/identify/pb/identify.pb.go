@@ -3,11 +3,12 @@
 
 package identify_pb
 
-import proto "github.com/gogo/protobuf/proto"
-import fmt "fmt"
-import math "math"
-
-import io "io"
+import (
+	fmt "fmt"
+	proto "github.com/gogo/protobuf/proto"
+	io "io"
+	math "math"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -47,7 +48,7 @@ func (m *Identify) Reset()         { *m = Identify{} }
 func (m *Identify) String() string { return proto.CompactTextString(m) }
 func (*Identify) ProtoMessage()    {}
 func (*Identify) Descriptor() ([]byte, []int) {
-	return fileDescriptor_identify_daaec8baf46eae80, []int{0}
+	return fileDescriptor_83f1e7e6b485409f, []int{0}
 }
 func (m *Identify) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -64,8 +65,8 @@ func (m *Identify) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (dst *Identify) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Identify.Merge(dst, src)
+func (m *Identify) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Identify.Merge(m, src)
 }
 func (m *Identify) XXX_Size() int {
 	return m.Size()
@@ -121,6 +122,25 @@ func (m *Identify) GetProtocols() []string {
 func init() {
 	proto.RegisterType((*Identify)(nil), "identify.pb.Identify")
 }
+
+func init() { proto.RegisterFile("identify.proto", fileDescriptor_83f1e7e6b485409f) }
+
+var fileDescriptor_83f1e7e6b485409f = []byte{
+	// 187 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcb, 0x4c, 0x49, 0xcd,
+	0x2b, 0xc9, 0x4c, 0xab, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0x46, 0xf0, 0x93, 0x94,
+	0x6e, 0x31, 0x72, 0x71, 0x78, 0x42, 0xf9, 0x42, 0x1a, 0x5c, 0xfc, 0x60, 0x25, 0xc9, 0xf9, 0x39,
+	0x61, 0xa9, 0x45, 0xc5, 0x99, 0xf9, 0x79, 0x12, 0xac, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0xe8, 0xc2,
+	0x42, 0x4a, 0x5c, 0x3c, 0x89, 0xe9, 0xa9, 0x79, 0x25, 0x30, 0x65, 0x6c, 0x60, 0x65, 0x28, 0x62,
+	0x42, 0x32, 0x5c, 0x9c, 0x05, 0xa5, 0x49, 0x39, 0x99, 0xc9, 0xde, 0xa9, 0x95, 0x12, 0x8c, 0x0a,
+	0x8c, 0x1a, 0x3c, 0x41, 0x08, 0x01, 0x21, 0x05, 0x2e, 0xee, 0x9c, 0xcc, 0xe2, 0x92, 0xd4, 0x3c,
+	0xc7, 0x94, 0x94, 0xa2, 0x62, 0x09, 0x26, 0x05, 0x66, 0x0d, 0x9e, 0x20, 0x64, 0x21, 0x90, 0x1d,
+	0xf9, 0x49, 0xc5, 0xa9, 0x45, 0x65, 0xa9, 0x29, 0x20, 0x01, 0x09, 0x16, 0xb0, 0x11, 0x28, 0x62,
+	0x60, 0x3b, 0xa0, 0x4e, 0x2b, 0x96, 0x60, 0x56, 0x60, 0xd6, 0xe0, 0x0c, 0x42, 0x08, 0x38, 0xf1,
+	0x9c, 0x78, 0x24, 0xc7, 0x78, 0xe1, 0x91, 0x1c, 0xe3, 0x83, 0x47, 0x72, 0x8c, 0x80, 0x00, 0x00,
+	0x00, 0xff, 0xff, 0xc2, 0x2c, 0x19, 0x46, 0x08, 0x01, 0x00, 0x00,
+}
+
 func (m *Identify) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -199,6 +219,9 @@ func encodeVarintIdentify(dAtA []byte, offset int, v uint64) int {
 	return offset + 1
 }
 func (m *Identify) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	if m.PublicKey != nil {
@@ -263,7 +286,7 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
+			wire |= uint64(b&0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -291,7 +314,7 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -300,6 +323,9 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIdentify
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIdentify
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -322,7 +348,7 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -331,6 +357,9 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIdentify
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIdentify
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -351,7 +380,7 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -361,6 +390,9 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIdentify
 			}
 			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIdentify
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -380,7 +412,7 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -389,6 +421,9 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIdentify
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIdentify
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -411,7 +446,7 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -421,6 +456,9 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIdentify
 			}
 			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIdentify
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -441,7 +479,7 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -451,6 +489,9 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIdentify
 			}
 			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIdentify
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -464,6 +505,9 @@ func (m *Identify) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
+				return ErrInvalidLengthIdentify
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthIdentify
 			}
 			if (iNdEx + skippy) > l {
@@ -533,8 +577,11 @@ func skipIdentify(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			iNdEx += length
 			if length < 0 {
+				return 0, ErrInvalidLengthIdentify
+			}
+			iNdEx += length
+			if iNdEx < 0 {
 				return 0, ErrInvalidLengthIdentify
 			}
 			return iNdEx, nil
@@ -565,6 +612,9 @@ func skipIdentify(dAtA []byte) (n int, err error) {
 					return 0, err
 				}
 				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthIdentify
+				}
 			}
 			return iNdEx, nil
 		case 4:
@@ -583,21 +633,3 @@ var (
 	ErrInvalidLengthIdentify = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowIdentify   = fmt.Errorf("proto: integer overflow")
 )
-
-func init() { proto.RegisterFile("identify.proto", fileDescriptor_identify_daaec8baf46eae80) }
-
-var fileDescriptor_identify_daaec8baf46eae80 = []byte{
-	// 187 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcb, 0x4c, 0x49, 0xcd,
-	0x2b, 0xc9, 0x4c, 0xab, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0x46, 0xf0, 0x93, 0x94,
-	0x6e, 0x31, 0x72, 0x71, 0x78, 0x42, 0xf9, 0x42, 0x32, 0x5c, 0x9c, 0x05, 0xa5, 0x49, 0x39, 0x99,
-	0xc9, 0xde, 0xa9, 0x95, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0x3c, 0x41, 0x08, 0x01, 0x21, 0x05, 0x2e,
-	0xee, 0x9c, 0xcc, 0xe2, 0x92, 0xd4, 0x3c, 0xc7, 0x94, 0x94, 0xa2, 0x62, 0x09, 0x26, 0x05, 0x66,
-	0x0d, 0x9e, 0x20, 0x64, 0x21, 0xb0, 0x7e, 0x90, 0x15, 0xc9, 0xf9, 0x39, 0xc5, 0x12, 0xcc, 0x0a,
-	0xcc, 0x1a, 0x9c, 0x41, 0x08, 0x01, 0x21, 0x25, 0x2e, 0x9e, 0xfc, 0xa4, 0xe2, 0xd4, 0xa2, 0xb2,
-	0xd4, 0x14, 0x90, 0x72, 0x09, 0x16, 0xb0, 0x05, 0x28, 0x62, 0x42, 0x1a, 0x5c, 0xfc, 0x30, 0x0d,
-	0x61, 0xa9, 0x45, 0xc5, 0x99, 0xf9, 0x79, 0x12, 0xac, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0xe8, 0xc2,
-	0x20, 0xd3, 0x12, 0xd3, 0x53, 0xf3, 0x4a, 0x60, 0xca, 0xd8, 0xc0, 0xca, 0x50, 0xc4, 0x9c, 0x78,
-	0x4e, 0x3c, 0x92, 0x63, 0xbc, 0xf0, 0x48, 0x8e, 0xf1, 0xc1, 0x23, 0x39, 0x46, 0x40, 0x00, 0x00,
-	0x00, 0xff, 0xff, 0x4b, 0x9c, 0x90, 0x7a, 0x08, 0x01, 0x00, 0x00,
-}
