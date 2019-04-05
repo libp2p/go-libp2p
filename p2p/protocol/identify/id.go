@@ -238,11 +238,8 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
 		lmaddrs = append(lmaddrs, maddr)
 	}
 
-	// if the address reported by the connection roughly matches their annoucned
-	// listener addresses, its likely to be an external NAT address
-	if HasConsistentTransport(c.RemoteMultiaddr(), lmaddrs) {
-		lmaddrs = append(lmaddrs, c.RemoteMultiaddr())
-	}
+	// NOTE: Do not add `c.RemoteMultiaddr()` to the peerstore if the remote
+	// peer doesn't tell us to do so. Otherwise, we'll advertise it.
 
 	// Extend the TTLs on the known (probably) good addresses.
 	// Taking the lock ensures that we don't concurrently process a disconnect.
