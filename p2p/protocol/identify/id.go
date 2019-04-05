@@ -409,6 +409,11 @@ func (ids *IDService) consumeObservedAddress(observed []byte, c inet.Conn) {
 		return
 	}
 
+	if !HasConsistentTransport(c.RemoteMultiaddr(), ids.Host.Addrs()) {
+		log.Debugf("ignoring observed multiaddr that doesn't match the transports of any addresses we're announcing", c.RemoteMultiaddr())
+		return
+	}
+
 	log.Debugf("identify identifying observed multiaddr: %s %s", c.LocalMultiaddr(), ifaceaddrs)
 	if !addrInAddrs(c.LocalMultiaddr(), ifaceaddrs) && !addrInAddrs(c.LocalMultiaddr(), ids.Host.Network().ListenAddresses()) {
 		// not in our list
