@@ -1,4 +1,4 @@
-module github.com/libp2p/go-libp2p
+module github.com/laipogo/go-libp2p
 
 require (
 	github.com/gogo/protobuf v1.2.1
