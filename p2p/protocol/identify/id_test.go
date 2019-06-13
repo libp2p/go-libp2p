@@ -204,7 +204,8 @@ func TestPrivateAddrFiltering(t *testing.T) {
 	ps2 := pstoremem.NewPeerstore()
 	p2addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.5/tcp/1234")
 	p2addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/3456")
-	ps2.AddAddrs(id2, []ma.Multiaddr{p2addr1, p2addr2}, peerstore.PermanentAddrTTL)
+	p2addrs := []ma.Multiaddr{p2addr1, p2addr2}
+	ps2.AddAddrs(id2, p2addrs, peerstore.PermanentAddrTTL)
 	p2, err := mn.AddPeerWithPeerstore(id2, ps2)
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +224,14 @@ func TestPrivateAddrFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mn.ConnectPeers(id1, id2)
+	p1.Connect(ctx, peer.AddrInfo{
+		ID:    id2,
+		Addrs: p2addrs[0:1],
+	})
+	p3.Connect(ctx, peer.AddrInfo{
+		ID:    id2,
+		Addrs: p2addrs[1:],
+	})
 
 	_ = identify.NewIDService(ctx, p1)
 	ids2 := identify.NewIDService(ctx, p2)
@@ -234,21 +242,12 @@ func TestPrivateAddrFiltering(t *testing.T) {
 		t.Fatal("no conns")
 	}
 	conn := conns[0]
-	addrs := p2.Peerstore().Addrs(id1)
-	if len(addrs) > 0 {
-		t.Fatalf("had addrs for %s", id1)
-	}
 	ids2.IdentifyConn(conn)
-	addrs = p2.Peerstore().Addrs(id1)
+	addrs := p2.Peerstore().Addrs(id1)
 	if len(addrs) != 1 {
 		t.Fatalf("expected one addr, found %s", addrs)
 	}
 
-	mn.ConnectPeers(id2, id3)
-	addrs = p3.Peerstore().Addrs(id2)
-	if len(addrs) > 0 {
-		t.Fatalf("had addrs for %s", id2)
-	}
 	conns = p3.Network().ConnsToPeer(id2)
 	if len(conns) == 0 {
 		t.Fatal("no conns")
@@ -257,6 +256,6 @@ func TestPrivateAddrFiltering(t *testing.T) {
 	ids3.IdentifyConn(conn)
 	addrs = p3.Peerstore().Addrs(id2)
 	if len(addrs) != 2 {
-		t.Fatalf("expected 2 addrs for %s, found %d", id2, len(addrs))
+		t.Fatalf("expected 2 addrs for %s, found %d: %s", id2, len(addrs), addrs)
 	}
 }

@@ -217,10 +217,10 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c network.Conn) {
 
 	// set listen addrs, get our latest addrs from Host.
 	laddrs := ids.Host.Addrs()
-	viaPublicAddr := manet.IsPublicAddr(c.LocalMultiaddr())
+	viaLoopback := manet.IsIPLoopback(c.LocalMultiaddr())
 	mes.ListenAddrs = make([][]byte, 0, len(laddrs))
 	for _, addr := range laddrs {
-		if viaPublicAddr && manet.IsPrivateAddr(addr) {
+		if !viaLoopback && manet.IsIPLoopback(addr) {
 			continue
 		}
 		mes.ListenAddrs = append(mes.ListenAddrs, addr.Bytes())
