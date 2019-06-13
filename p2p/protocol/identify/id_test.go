@@ -9,11 +9,14 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
+	coretest "github.com/libp2p/go-libp2p-core/test"
 
 	blhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
+	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -180,5 +183,80 @@ func TestProtoMatching(t *testing.T) {
 
 	if identify.HasConsistentTransport(utp, []ma.Multiaddr{tcp2, tcp3}) {
 		t.Fatal("expected mismatch")
+	}
+}
+
+func TestPrivateAddrFiltering(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mn := mocknet.New(ctx)
+	id1 := coretest.RandPeerIDFatal(t)
+	ps1 := pstoremem.NewPeerstore()
+	p1addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
+	p1addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/2345")
+	ps1.AddAddrs(id1, []ma.Multiaddr{p1addr1, p1addr2}, peerstore.PermanentAddrTTL)
+	p1, err := mn.AddPeerWithPeerstore(id1, ps1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id2 := coretest.RandPeerIDFatal(t)
+	ps2 := pstoremem.NewPeerstore()
+	p2addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.5/tcp/1234")
+	p2addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/3456")
+	ps2.AddAddrs(id2, []ma.Multiaddr{p2addr1, p2addr2}, peerstore.PermanentAddrTTL)
+	p2, err := mn.AddPeerWithPeerstore(id2, ps2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id3 := coretest.RandPeerIDFatal(t)
+	ps3 := pstoremem.NewPeerstore()
+	p3addr1, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/4567")
+	ps3.AddAddrs(id3, []ma.Multiaddr{p3addr1}, peerstore.PermanentAddrTTL)
+	p3, err := mn.AddPeerWithPeerstore(id3, ps3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mn.ConnectPeers(id1, id2)
+
+	_ = identify.NewIDService(ctx, p1)
+	ids2 := identify.NewIDService(ctx, p2)
+	ids3 := identify.NewIDService(ctx, p3)
+
+	conns := p2.Network().ConnsToPeer(id1)
+	if len(conns) == 0 {
+		t.Fatal("no conns")
+	}
+	conn := conns[0]
+	addrs := p2.Peerstore().Addrs(id1)
+	if len(addrs) > 0 {
+		t.Fatalf("had addrs for %s", id1)
+	}
+	ids2.IdentifyConn(conn)
+	addrs = p2.Peerstore().Addrs(id1)
+	if len(addrs) != 1 {
+		t.Fatalf("expected one addr, found %s", addrs)
+	}
+
+	mn.ConnectPeers(id2, id3)
+	addrs = p3.Peerstore().Addrs(id2)
+	if len(addrs) > 0 {
+		t.Fatalf("had addrs for %s", id2)
+	}
+	conns = p3.Network().ConnsToPeer(id2)
+	if len(conns) == 0 {
+		t.Fatal("no conns")
+	}
+	conn = conns[0]
+	ids3.IdentifyConn(conn)
+	addrs = p3.Peerstore().Addrs(id2)
+	if len(addrs) != 2 {
+		t.Fatalf("expected 2 addrs for %s, found %d", id2, len(addrs))
 	}
 }
