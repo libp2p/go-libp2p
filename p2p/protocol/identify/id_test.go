@@ -2,17 +2,22 @@ package identify_test
 
 import (
 	"context"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
 	ic "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
+	"github.com/libp2p/go-libp2p-core/protocol"
 
 	blhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -180,5 +185,120 @@ func TestProtoMatching(t *testing.T) {
 
 	if identify.HasConsistentTransport(utp, []ma.Multiaddr{tcp2, tcp3}) {
 		t.Fatal("expected mismatch")
+	}
+}
+
+func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	defer h2.Close()
+	defer h1.Close()
+
+	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
+
+	ids1 := identify.NewIDService(ctx, h1)
+	_ = identify.NewIDService(ctx, h2)
+
+	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
+		t.Fatal(err)
+	}
+
+	conn := h1.Network().ConnsToPeer(h2.ID())[0]
+	ids1.IdentifyConn(conn)
+	select {
+	case <-ids1.IdentifyWait(conn):
+	case <-time.After(5 * time.Second):
+		t.Fatal("took over 5 seconds to identify")
+	}
+
+	protos, err := h1.Peerstore().GetProtocols(h2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(protos)
+	if sort.SearchStrings(protos, string(protocol.TestingID)) == len(protos) {
+		t.Fatalf("expected peer 1 to know that peer 2 speaks the Test protocol amongst others")
+	}
+
+	// set up a subscriber to listen to peer protocol updated events in h1. We expect to receive events from h2
+	// as protocols are added and removed.
+	ch := make(chan event.EvtPeerProtocolsUpdated, 16)
+	subCancel, err := h1.EventBus().Subscribe(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subCancel()
+
+	// add two new protocols in h2 and wait for identify to send deltas.
+	h2.SetStreamHandler(protocol.ID("foo"), func(_ network.Stream) {})
+	h2.SetStreamHandler(protocol.ID("bar"), func(_ network.Stream) {})
+	<-time.After(500 * time.Millisecond)
+
+	// check that h1 now knows about h2's new protocols.
+	protos, err = h1.Peerstore().GetProtocols(h2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := make(map[string]struct{}, len(protos))
+	for _, p := range protos {
+		have[p] = struct{}{}
+	}
+
+	if _, ok := have["foo"]; !ok {
+		t.Fatalf("expected peer 1 to know that peer 2 now speaks protocol 'foo', known: %v", protos)
+	}
+	if _, ok := have["bar"]; !ok {
+		t.Fatalf("expected peer 1 to know that peer 2 now speaks protocol 'bar', known: %v", protos)
+	}
+
+	// remove one of the newly added protocols from h2, and wait for identify to send the delta.
+	h2.RemoveStreamHandler(protocol.ID("bar"))
+	<-time.After(500 * time.Millisecond)
+
+	// check that h1 now has forgotten about h2's bar protocol.
+	protos, err = h1.Peerstore().GetProtocols(h2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	have = make(map[string]struct{}, len(protos))
+	for _, p := range protos {
+		have[p] = struct{}{}
+	}
+	if _, ok := have["foo"]; !ok {
+		t.Fatalf("expected peer 1 to know that peer 2 now speaks protocol 'foo', known: %v", protos)
+	}
+	if _, ok := have["bar"]; ok {
+		t.Fatalf("expected peer 1 to have forgotten that peer 2 spoke protocol 'bar', known: %v", protos)
+	}
+
+	// make sure that h1 emitted events in the eventbus for h2's protocol updates.
+	evts := make([]event.EvtPeerProtocolsUpdated, 3)
+	done := make(chan struct{})
+	go func() {
+		evts[0] = <-ch
+		evts[1] = <-ch
+		evts[2] = <-ch
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timed out while consuming events from subscription")
+	}
+
+	added := protocol.ConvertToStrings(append(evts[0].Added, append(evts[1].Added, evts[2].Added...)...))
+	removed := protocol.ConvertToStrings(append(evts[0].Removed, append(evts[1].Removed, evts[2].Removed...)...))
+	sort.Strings(added)
+	sort.Strings(removed)
+
+	if !reflect.DeepEqual(added, []string{"bar", "foo"}) {
+		t.Fatalf("expected to have received updates for added protos")
+	}
+	if !reflect.DeepEqual(removed, []string{"bar"}) {
+		t.Fatalf("expected to have received updates for removed protos")
 	}
 }

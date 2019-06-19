@@ -9,17 +9,17 @@ require (
 	github.com/jbenet/go-cienv v0.1.0
 	github.com/jbenet/goprocess v0.1.3
 	github.com/libp2p/go-conn-security-multistream v0.1.0
-	github.com/libp2p/go-eventbus v0.0.0-20190619153227-131418619d4f
+	github.com/libp2p/go-eventbus v0.0.0-20190619155525-fe6d9d1489af
 	github.com/libp2p/go-libp2p-autonat v0.1.0
-	github.com/libp2p/go-libp2p-blankhost v0.1.1
+	github.com/libp2p/go-libp2p-blankhost v0.1.2-0.20190619172108-c0603e8e45c6
 	github.com/libp2p/go-libp2p-circuit v0.1.0
-	github.com/libp2p/go-libp2p-core v0.0.4-0.20190619210214-9b1709968af9
+	github.com/libp2p/go-libp2p-core v0.0.4-0.20190619224540-208efcb902d4
 	github.com/libp2p/go-libp2p-discovery v0.1.0
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.1
 	github.com/libp2p/go-libp2p-nat v0.0.4
 	github.com/libp2p/go-libp2p-netutil v0.1.0
-	github.com/libp2p/go-libp2p-peerstore v0.1.0
+	github.com/libp2p/go-libp2p-peerstore v0.1.1-0.20190619205312-91a770472cb8
 	github.com/libp2p/go-libp2p-secio v0.1.0
 	github.com/libp2p/go-libp2p-swarm v0.1.0
 	github.com/libp2p/go-libp2p-testing v0.0.4

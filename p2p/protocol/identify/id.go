@@ -83,7 +83,7 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 
 	// handle local protocol handler updates, and push deltas to peers.
 	s.subscriptions.evtLocalProtocolsUpdated = make(chan event.EvtLocalProtocolsUpdated, 128)
-	cancelFunc, err := h.EventBus().Subscribe(s)
+	cancelFunc, err := h.EventBus().Subscribe(s.subscriptions.evtLocalProtocolsUpdated)
 	if err != nil {
 		log.Warningf("identify service not subscribed to local protocol handlers updates; err: %s", err)
 	} else {
@@ -92,7 +92,7 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 			for {
 				select {
 				case evt = <-s.subscriptions.evtLocalProtocolsUpdated:
-					s.fireDeltaUpdate(evt)
+					s.fireDelta(evt)
 				case <-ctx.Done():
 					cancelFunc()
 				}
@@ -168,8 +168,7 @@ func (ids *IDService) requestHandler(s network.Stream) {
 	ids.populateMessage(&mes, s.Conn())
 	w.WriteMsg(&mes)
 
-	log.Debugf("%s sent message to %s %s", ID,
-		c.RemotePeer(), c.RemoteMultiaddr())
+	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
 }
 
 func (ids *IDService) responseHandler(s network.Stream) {
@@ -188,11 +187,13 @@ func (ids *IDService) responseHandler(s network.Stream) {
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
 
 	if delta := mes.GetDelta(); delta != nil {
+		// this is a delta message, process it as such.
 		p := s.Conn().RemotePeer()
 		if err := ids.consumeDelta(p, delta); err != nil {
 			log.Warningf("delta update from peer %s failed: %s", p, err)
 		}
 	} else {
+		// this is a normal message.
 		ids.consumeMessage(&mes, c)
 	}
 }
@@ -201,7 +202,9 @@ func (ids *IDService) pushHandler(s network.Stream) {
 	ids.responseHandler(s)
 }
 
-func (ids *IDService) Push() {
+// Push pushes an update to all peers, using the optional payloadWriter to generate the payload.
+// If payloadWriter is nil, we'll write a full identify message.
+func (ids *IDService) Push(payloadWriter func(s network.Stream)) {
 	var wg sync.WaitGroup
 
 	ctx, cancel := context.WithTimeout(ids.ctx, 30*time.Second)
@@ -220,7 +223,11 @@ func (ids *IDService) Push() {
 
 			rch := make(chan struct{}, 1)
 			go func() {
-				ids.requestHandler(s)
+				if payloadWriter == nil {
+					ids.requestHandler(s)
+				} else {
+					payloadWriter(s)
+				}
 				rch <- struct{}{}
 			}()
 
@@ -507,8 +514,24 @@ func (ids *IDService) consumeObservedAddress(observed []byte, c network.Conn) {
 		c.Stat().Direction)
 }
 
-func (ids *IDService) fireDeltaUpdate(evt event.EvtLocalProtocolsUpdated) {
-
+func (ids *IDService) fireDelta(evt event.EvtLocalProtocolsUpdated) {
+	mes := pb.Identify{
+		Delta: &pb.Delta{
+			AddedProtocols: protocol.ConvertToStrings(evt.Added),
+			RmProtocols:    protocol.ConvertToStrings(evt.Removed),
+		},
+	}
+	deltaWriter := func(s network.Stream) {
+		defer helpers.FullClose(s)
+		c := s.Conn()
+		err := ggio.NewDelimitedWriter(s).WriteMsg(&mes)
+		if err != nil {
+			log.Warningf("%s error while sending delta update to %s: %s", IDPush, c.RemotePeer(), c.RemoteMultiaddr())
+			return
+		}
+		log.Debugf("%s sent delta update to %s: %s", IDPush, c.RemotePeer(), c.RemoteMultiaddr())
+	}
+	ids.Push(deltaWriter)
 }
 
 // consumeDelta processes an incoming delta from a peer, updating the peerstore
@@ -524,17 +547,10 @@ func (ids *IDService) consumeDelta(id peer.ID, delta *pb.Delta) error {
 		return err
 	}
 
-	stringsToProtoID := func(ids []string) (res []protocol.ID) {
-		res = make([]protocol.ID, 0, len(ids))
-		for _, id := range ids {
-			res = append(res, protocol.ID(id))
-		}
-		return res
-	}
 	evt := event.EvtPeerProtocolsUpdated{
 		Peer:    id,
-		Added:   stringsToProtoID(delta.GetAddedProtocols()),
-		Removed: stringsToProtoID(delta.GetRmProtocols()),
+		Added:   protocol.ConvertFromStrings(delta.GetAddedProtocols()),
+		Removed: protocol.ConvertFromStrings(delta.GetRmProtocols()),
 	}
 	ids.emitters.evtPeerProtocolsUpdated.Emit(evt)
 	return nil
