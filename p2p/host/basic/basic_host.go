@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -18,6 +19,7 @@ import (
 	goprocess "github.com/jbenet/goprocess"
 	goprocessctx "github.com/jbenet/goprocess/context"
 
+	eventbus "github.com/libp2p/go-eventbus"
 	inat "github.com/libp2p/go-libp2p-nat"
 
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -69,6 +71,7 @@ type BasicHost struct {
 	natmgr     NATManager
 	maResolver *madns.Resolver
 	cmgr       connmgr.ConnManager
+	eventbus   event.Bus
 
 	AddrsFactory AddrsFactory
 
@@ -125,6 +128,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		negtimeout:   DefaultNegotiationTimeout,
 		AddrsFactory: DefaultAddrsFactory,
 		maResolver:   madns.DefaultResolver,
+		eventbus:	  eventbus.NewBus(),
 	}
 
 	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
@@ -364,6 +368,10 @@ func (h *BasicHost) Mux() protocol.Switch {
 // IDService returns
 func (h *BasicHost) IDService() *identify.IDService {
 	return h.ids
+}
+
+func (h *BasicHost) EventBus() event.Bus {
+	return h.eventbus
 }
 
 // SetStreamHandler sets the protocol handler on the Host's Mux.

@@ -9,10 +9,11 @@ require (
 	github.com/jbenet/go-cienv v0.1.0
 	github.com/jbenet/goprocess v0.1.3
 	github.com/libp2p/go-conn-security-multistream v0.1.0
+	github.com/libp2p/go-eventbus v0.0.0-20190619153227-131418619d4f
 	github.com/libp2p/go-libp2p-autonat v0.1.0
 	github.com/libp2p/go-libp2p-blankhost v0.1.1
 	github.com/libp2p/go-libp2p-circuit v0.1.0
-	github.com/libp2p/go-libp2p-core v0.0.1
+	github.com/libp2p/go-libp2p-core v0.0.4-0.20190619153849-6957d130826a
 	github.com/libp2p/go-libp2p-discovery v0.1.0
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.1
