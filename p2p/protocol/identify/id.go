@@ -17,8 +17,6 @@ import (
 	ggio "github.com/gogo/protobuf/io"
 	logging "github.com/ipfs/go-log"
 
-	lgbl "github.com/libp2p/go-libp2p-loggables"
-
 	ma "github.com/multiformats/go-multiaddr"
 	msmux "github.com/multiformats/go-multistream"
 )
@@ -507,13 +505,3 @@ func (nn *netNotifiee) OpenedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)         {}
 func (nn *netNotifiee) ListenClose(n network.Network, a ma.Multiaddr)    {}
-
-func logProtocolMismatchDisconnect(c network.Conn, protocol, agent string) {
-	lm := make(lgbl.DeferredMap)
-	lm["remotePeer"] = func() interface{} { return c.RemotePeer().Pretty() }
-	lm["remoteAddr"] = func() interface{} { return c.RemoteMultiaddr().String() }
-	lm["protocolVersion"] = protocol
-	lm["agentVersion"] = agent
-	log.Event(context.TODO(), "IdentifyProtocolMismatch", lm)
-	log.Debugf("IdentifyProtocolMismatch %s %s %s (disconnected)", c.RemotePeer(), protocol, agent)
-}
