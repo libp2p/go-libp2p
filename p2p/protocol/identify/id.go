@@ -6,11 +6,13 @@ import (
 	"time"
 
 	ic "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
+	"github.com/libp2p/go-libp2p-core/protocol"
 
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
@@ -61,6 +63,12 @@ type IDService struct {
 	// our own observed addresses.
 	// TODO: instead of expiring, remove these when we disconnect
 	observedAddrs *ObservedAddrSet
+	subscriptions struct {
+		evtLocalProtocolsUpdated chan event.EvtLocalProtocolsUpdated
+	}
+	emitters struct {
+		evtPeerProtocolsUpdated event.Emitter
+	}
 }
 
 // NewIDService constructs a new *IDService and activates it by
@@ -72,6 +80,31 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 		currid:        make(map[network.Conn]chan struct{}),
 		observedAddrs: NewObservedAddrSet(ctx),
 	}
+
+	// handle local protocol handler updates, and push deltas to peers.
+	s.subscriptions.evtLocalProtocolsUpdated = make(chan event.EvtLocalProtocolsUpdated, 128)
+	cancelFunc, err := h.EventBus().Subscribe(s)
+	if err != nil {
+		log.Warningf("identify service not subscribed to local protocol handlers updates; err: %s", err)
+	} else {
+		go func() {
+			var evt event.EvtLocalProtocolsUpdated
+			for {
+				select {
+				case evt = <-s.subscriptions.evtLocalProtocolsUpdated:
+					s.fireDeltaUpdate(evt)
+				case <-ctx.Done():
+					cancelFunc()
+				}
+			}
+		}()
+	}
+
+	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
+	if err != nil {
+		log.Warningf("identify service not emitting to peer protocol handlers updates; err: %s", err)
+	}
+
 	h.SetStreamHandler(ID, s.requestHandler)
 	h.SetStreamHandler(IDPush, s.pushHandler)
 	h.Network().Notify((*netNotifiee)(s))
@@ -149,11 +182,19 @@ func (ids *IDService) responseHandler(s network.Stream) {
 		s.Reset()
 		return
 	}
-	ids.consumeMessage(&mes, c)
-	log.Debugf("%s received message from %s %s", ID,
-		c.RemotePeer(), c.RemoteMultiaddr())
 
-	go helpers.FullClose(s)
+	defer func() { go helpers.FullClose(s) }()
+
+	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
+
+	if delta := mes.GetDelta(); delta != nil {
+		p := s.Conn().RemotePeer()
+		if err := ids.consumeDelta(p, delta); err != nil {
+			log.Warningf("delta update from peer %s failed: %s", p, err)
+		}
+	} else {
+		ids.consumeMessage(&mes, c)
+	}
 }
 
 func (ids *IDService) pushHandler(s network.Stream) {
@@ -200,7 +241,6 @@ func (ids *IDService) Push() {
 }
 
 func (ids *IDService) populateMessage(mes *pb.Identify, c network.Conn) {
-
 	// set protocols this node is currently handling
 	protos := ids.Host.Mux().Protocols()
 	mes.Protocols = make([]string, len(protos))
@@ -465,6 +505,39 @@ func (ids *IDService) consumeObservedAddress(observed []byte, c network.Conn) {
 	log.Debugf("added own observed listen addr: %s --> %s", c.LocalMultiaddr(), maddr)
 	ids.observedAddrs.Add(maddr, c.LocalMultiaddr(), c.RemoteMultiaddr(),
 		c.Stat().Direction)
+}
+
+func (ids *IDService) fireDeltaUpdate(evt event.EvtLocalProtocolsUpdated) {
+
+}
+
+// consumeDelta processes an incoming delta from a peer, updating the peerstore
+// and emitting the appropriate events.
+func (ids *IDService) consumeDelta(id peer.ID, delta *pb.Delta) error {
+	err := ids.Host.Peerstore().AddProtocols(id, delta.GetAddedProtocols()...)
+	if err != nil {
+		return err
+	}
+
+	err = ids.Host.Peerstore().RemoveProtocols(id, delta.GetRmProtocols()...)
+	if err != nil {
+		return err
+	}
+
+	stringsToProtoID := func(ids []string) (res []protocol.ID) {
+		res = make([]protocol.ID, 0, len(ids))
+		for _, id := range ids {
+			res = append(res, protocol.ID(id))
+		}
+		return res
+	}
+	evt := event.EvtPeerProtocolsUpdated{
+		Peer:    id,
+		Added:   stringsToProtoID(delta.GetAddedProtocols()),
+		Removed: stringsToProtoID(delta.GetRmProtocols()),
+	}
+	ids.emitters.evtPeerProtocolsUpdated.Emit(evt)
+	return nil
 }
 
 func addrInAddrs(a ma.Multiaddr, as []ma.Multiaddr) bool {
