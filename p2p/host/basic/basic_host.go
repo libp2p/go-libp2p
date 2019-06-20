@@ -304,7 +304,7 @@ func (h *BasicHost) PushIdentify() {
 	h.mx.Unlock()
 
 	if push {
-		h.ids.Push(nil)
+		h.ids.Push()
 	}
 }
 

@@ -28,9 +28,6 @@ var log = logging.Logger("net/identify")
 // ID is the protocol.ID of the Identify Service.
 const ID = "/ipfs/id/1.0.0"
 
-// IDPush is the protocol.ID of the Identify push protocol
-const IDPush = "/ipfs/id/push/1.0.0"
-
 // LibP2PVersion holds the current protocol version for a client running this code
 // TODO(jbenet): fix the versioning mess.
 const LibP2PVersion = "ipfs/0.1.0"
@@ -92,7 +89,7 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 			for {
 				select {
 				case evt = <-s.subscriptions.evtLocalProtocolsUpdated:
-					s.fireDelta(evt)
+					s.fireProtocolDelta(evt)
 				case <-ctx.Done():
 					cancelFunc()
 				}
@@ -107,6 +104,7 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 
 	h.SetStreamHandler(ID, s.requestHandler)
 	h.SetStreamHandler(IDPush, s.pushHandler)
+	h.SetStreamHandler(IDDelta, s.deltaHandler)
 	h.Network().Notify((*netNotifiee)(s))
 	return s
 }
@@ -185,37 +183,47 @@ func (ids *IDService) responseHandler(s network.Stream) {
 	defer func() { go helpers.FullClose(s) }()
 
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
-
-	if delta := mes.GetDelta(); delta != nil {
-		// this is a delta message, process it as such.
-		p := s.Conn().RemotePeer()
-		if err := ids.consumeDelta(p, delta); err != nil {
-			log.Warningf("delta update from peer %s failed: %s", p, err)
-		}
-	} else {
-		// this is a normal message.
-		ids.consumeMessage(&mes, c)
-	}
+	ids.consumeMessage(&mes, c)
 }
 
-func (ids *IDService) pushHandler(s network.Stream) {
-	ids.responseHandler(s)
-}
-
-// Push pushes an update to all peers, using the optional payloadWriter to generate the payload.
-// If payloadWriter is nil, we'll write a full identify message.
-func (ids *IDService) Push(payloadWriter func(s network.Stream)) {
+func (ids *IDService) broadcast(proto protocol.ID, payloadWriter func(s network.Stream)) {
 	var wg sync.WaitGroup
 
 	ctx, cancel := context.WithTimeout(ids.ctx, 30*time.Second)
-	ctx = network.WithNoDial(ctx, "identify push")
+	ctx = network.WithNoDial(ctx, string(proto))
 
+	pstore := ids.Host.Peerstore()
 	for _, p := range ids.Host.Network().Peers() {
 		wg.Add(1)
-		go func(p peer.ID) {
+
+		go func(p peer.ID, conns []network.Conn) {
 			defer wg.Done()
 
-			s, err := ids.Host.NewStream(ctx, p, IDPush)
+			// if we're in the process of identifying the connection, let's wait.
+			// we don't use ids.IdentifyWait() to avoid unnecessary channel creation.
+		Loop:
+			for _, c := range conns {
+				ids.currmu.RLock()
+				if wait, ok := ids.currid[c]; ok {
+					ids.currmu.RUnlock()
+					select {
+					case <-wait:
+						break Loop
+					case <-ctx.Done():
+						return
+					}
+				}
+				ids.currmu.RUnlock()
+			}
+
+			// avoid the unnecessary stream if the peer does not support the protocol.
+			if sup, err := pstore.SupportsProtocols(p, string(proto)); err != nil && len(sup) == 0 {
+				// the peer does not support the required protocol.
+				return
+			}
+			// if the peerstore query errors, we go ahead anyway.
+
+			s, err := ids.Host.NewStream(ctx, p, proto)
 			if err != nil {
 				log.Debugf("error opening push stream to %s: %s", p, err.Error())
 				return
@@ -223,11 +231,7 @@ func (ids *IDService) Push(payloadWriter func(s network.Stream)) {
 
 			rch := make(chan struct{}, 1)
 			go func() {
-				if payloadWriter == nil {
-					ids.requestHandler(s)
-				} else {
-					payloadWriter(s)
-				}
+				payloadWriter(s)
 				rch <- struct{}{}
 			}()
 
@@ -237,7 +241,7 @@ func (ids *IDService) Push(payloadWriter func(s network.Stream)) {
 				// this is taking too long, abort!
 				s.Reset()
 			}
-		}(p)
+		}(p, ids.Host.Network().ConnsToPeer(p))
 	}
 
 	// this supervisory goroutine is necessary to cancel the context
@@ -512,48 +516,6 @@ func (ids *IDService) consumeObservedAddress(observed []byte, c network.Conn) {
 	log.Debugf("added own observed listen addr: %s --> %s", c.LocalMultiaddr(), maddr)
 	ids.observedAddrs.Add(maddr, c.LocalMultiaddr(), c.RemoteMultiaddr(),
 		c.Stat().Direction)
-}
-
-func (ids *IDService) fireDelta(evt event.EvtLocalProtocolsUpdated) {
-	mes := pb.Identify{
-		Delta: &pb.Delta{
-			AddedProtocols: protocol.ConvertToStrings(evt.Added),
-			RmProtocols:    protocol.ConvertToStrings(evt.Removed),
-		},
-	}
-	deltaWriter := func(s network.Stream) {
-		defer helpers.FullClose(s)
-		c := s.Conn()
-		err := ggio.NewDelimitedWriter(s).WriteMsg(&mes)
-		if err != nil {
-			log.Warningf("%s error while sending delta update to %s: %s", IDPush, c.RemotePeer(), c.RemoteMultiaddr())
-			return
-		}
-		log.Debugf("%s sent delta update to %s: %s", IDPush, c.RemotePeer(), c.RemoteMultiaddr())
-	}
-	ids.Push(deltaWriter)
-}
-
-// consumeDelta processes an incoming delta from a peer, updating the peerstore
-// and emitting the appropriate events.
-func (ids *IDService) consumeDelta(id peer.ID, delta *pb.Delta) error {
-	err := ids.Host.Peerstore().AddProtocols(id, delta.GetAddedProtocols()...)
-	if err != nil {
-		return err
-	}
-
-	err = ids.Host.Peerstore().RemoveProtocols(id, delta.GetRmProtocols()...)
-	if err != nil {
-		return err
-	}
-
-	evt := event.EvtPeerProtocolsUpdated{
-		Peer:    id,
-		Added:   protocol.ConvertFromStrings(delta.GetAddedProtocols()),
-		Removed: protocol.ConvertFromStrings(delta.GetRmProtocols()),
-	}
-	ids.emitters.evtPeerProtocolsUpdated.Emit(evt)
-	return nil
 }
 
 func addrInAddrs(a ma.Multiaddr, as []ma.Multiaddr) bool {

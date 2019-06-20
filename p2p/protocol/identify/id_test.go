@@ -9,6 +9,7 @@ import (
 
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
+	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -300,5 +301,69 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	}
 	if !reflect.DeepEqual(removed, []string{"bar"}) {
 		t.Fatalf("expected to have received updates for removed protos")
+	}
+}
+
+// TestIdentifyDeltaWhileIdentifyingConn tests that the host waits to push delta updates if an identify is ongoing.
+func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	defer h2.Close()
+	defer h1.Close()
+
+	_ = identify.NewIDService(ctx, h1)
+	ids2 := identify.NewIDService(ctx, h2)
+
+	// replace the original identify handler by one that blocks until we close the block channel.
+	// this allows us to control how long identify runs.
+	block := make(chan struct{})
+	h1.RemoveStreamHandler(identify.ID)
+	h1.SetStreamHandler(identify.ID, func(s network.Stream) {
+		<-block
+		go helpers.FullClose(s)
+	})
+
+	// from h2 connect to h1.
+	if err := h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// from h2, identify h1.
+	conn := h2.Network().ConnsToPeer(h1.ID())[0]
+	go func() {
+		ids2.IdentifyConn(conn)
+		<-ids2.IdentifyWait(conn)
+	}()
+
+	<-time.After(500 * time.Millisecond)
+
+	// subscribe to events in h1; after identify h1 should receive the delta from h2 and publish an event in the bus.
+	ch := make(chan event.EvtPeerProtocolsUpdated, 16)
+	subCancel, err := h1.EventBus().Subscribe(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subCancel()
+
+	// add a handler in h2; the delta to h1 will queue until we're done identifying h1.
+	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
+	<-time.After(500 * time.Millisecond)
+
+	// make sure we haven't received any events yet.
+	if q := len(ch); q > 0 {
+		t.Fatalf("expected no events yet; queued: %d", q)
+	}
+
+	close(block)
+	select {
+	case evt := <-ch:
+		if evt.Peer != h2.ID() || len(evt.Added) != 1 || evt.Added[0] != protocol.TestingID {
+			t.Fatalf("expected an event for protocol changes in h2, with the testing protocol added; instead got: %v", evt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out while waiting for an event for the protocol changes in h2")
 	}
 }
