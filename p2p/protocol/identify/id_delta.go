@@ -52,10 +52,10 @@ func (ids *IDService) fireProtocolDelta(evt event.EvtLocalProtocolsUpdated) {
 		c := s.Conn()
 		err := ggio.NewDelimitedWriter(s).WriteMsg(&mes)
 		if err != nil {
-			log.Warningf("%s error while sending delta update to %s: %s", IDPush, c.RemotePeer(), c.RemoteMultiaddr())
+			log.Warningf("%s error while sending delta update to %s: %s", IDDelta, c.RemotePeer(), c.RemoteMultiaddr())
 			return
 		}
-		log.Debugf("%s sent delta update to %s: %s", IDPush, c.RemotePeer(), c.RemoteMultiaddr())
+		log.Debugf("%s sent delta update to %s: %s", IDDelta, c.RemotePeer(), c.RemoteMultiaddr())
 	}
 	ids.broadcast(IDDelta, deltaWriter)
 }
