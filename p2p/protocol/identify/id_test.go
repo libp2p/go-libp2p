@@ -226,12 +226,11 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 
 	// set up a subscriber to listen to peer protocol updated events in h1. We expect to receive events from h2
 	// as protocols are added and removed.
-	ch := make(chan event.EvtPeerProtocolsUpdated, 16)
-	subCancel, err := h1.EventBus().Subscribe(ch)
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer subCancel()
+	defer sub.Close()
 
 	// add two new protocols in h2 and wait for identify to send deltas.
 	h2.SetStreamHandler(protocol.ID("foo"), func(_ network.Stream) {})
@@ -279,9 +278,9 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	evts := make([]event.EvtPeerProtocolsUpdated, 3)
 	done := make(chan struct{})
 	go func() {
-		evts[0] = <-ch
-		evts[1] = <-ch
-		evts[2] = <-ch
+		evts[0] = (<-sub.Out()).(event.EvtPeerProtocolsUpdated)
+		evts[1] = (<-sub.Out()).(event.EvtPeerProtocolsUpdated)
+		evts[2] = (<-sub.Out()).(event.EvtPeerProtocolsUpdated)
 		close(done)
 	}()
 
@@ -341,26 +340,26 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	<-time.After(500 * time.Millisecond)
 
 	// subscribe to events in h1; after identify h1 should receive the delta from h2 and publish an event in the bus.
-	ch := make(chan event.EvtPeerProtocolsUpdated, 16)
-	subCancel, err := h1.EventBus().Subscribe(ch)
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer subCancel()
+	defer sub.Close()
 
 	// add a handler in h2; the delta to h1 will queue until we're done identifying h1.
 	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
 	<-time.After(500 * time.Millisecond)
 
 	// make sure we haven't received any events yet.
-	if q := len(ch); q > 0 {
+	if q := len(sub.Out()); q > 0 {
 		t.Fatalf("expected no events yet; queued: %d", q)
 	}
 
 	close(block)
 	select {
-	case evt := <-ch:
-		if evt.Peer != h2.ID() || len(evt.Added) != 1 || evt.Added[0] != protocol.TestingID {
+	case evt := <-sub.Out():
+		e := evt.(event.EvtPeerProtocolsUpdated)
+		if e.Peer != h2.ID() || len(e.Added) != 1 || e.Added[0] != protocol.TestingID {
 			t.Fatalf("expected an event for protocol changes in h2, with the testing protocol added; instead got: %v", evt)
 		}
 	case <-time.After(2 * time.Second):

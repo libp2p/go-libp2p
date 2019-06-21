@@ -60,10 +60,9 @@ type IDService struct {
 	// our own observed addresses.
 	// TODO: instead of expiring, remove these when we disconnect
 	observedAddrs *ObservedAddrSet
-	subscriptions struct {
-		evtLocalProtocolsUpdated chan event.EvtLocalProtocolsUpdated
-	}
-	emitters struct {
+
+	subscription event.Subscription
+	emitters     struct {
 		evtPeerProtocolsUpdated event.Emitter
 	}
 }
@@ -79,22 +78,12 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 	}
 
 	// handle local protocol handler updates, and push deltas to peers.
-	s.subscriptions.evtLocalProtocolsUpdated = make(chan event.EvtLocalProtocolsUpdated, 128)
-	cancelFunc, err := h.EventBus().Subscribe(s.subscriptions.evtLocalProtocolsUpdated)
+	var err error
+	s.subscription, err = h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{})
 	if err != nil {
 		log.Warningf("identify service not subscribed to local protocol handlers updates; err: %s", err)
 	} else {
-		go func() {
-			var evt event.EvtLocalProtocolsUpdated
-			for {
-				select {
-				case evt = <-s.subscriptions.evtLocalProtocolsUpdated:
-					s.fireProtocolDelta(evt)
-				case <-ctx.Done():
-					cancelFunc()
-				}
-			}
-		}()
+		go s.handleEvents()
 	}
 
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
@@ -107,6 +96,22 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 	h.SetStreamHandler(IDDelta, s.deltaHandler)
 	h.Network().Notify((*netNotifiee)(s))
 	return s
+}
+
+func (ids *IDService) handleEvents() {
+	sub := ids.subscription
+	for {
+		select {
+		case evt := <-sub.Out():
+			ids.fireProtocolDelta(evt.(event.EvtLocalProtocolsUpdated))
+		case <-ids.ctx.Done():
+			_ = sub.Close()
+			// drain the channel.
+			for range sub.Out() {
+			}
+			return
+		}
+	}
 }
 
 // OwnObservedAddrs returns the addresses peers have reported we've dialed from
