@@ -88,7 +88,7 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
-		log.Warningf("identify service not emitting to peer protocol handlers updates; err: %s", err)
+		log.Warningf("identify service not emitting peer protocol updates; err: %s", err)
 	}
 
 	h.SetStreamHandler(ID, s.requestHandler)
