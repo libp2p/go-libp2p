@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-eventbus"
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
@@ -79,7 +80,7 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 
 	// handle local protocol handler updates, and push deltas to peers.
 	var err error
-	s.subscription, err = h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{})
+	s.subscription, err = h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{}, eventbus.BufSize(128))
 	if err != nil {
 		log.Warningf("identify service not subscribed to local protocol handlers updates; err: %s", err)
 	} else {

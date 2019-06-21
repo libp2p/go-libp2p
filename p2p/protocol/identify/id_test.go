@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-eventbus"
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
@@ -226,7 +227,7 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 
 	// set up a subscriber to listen to peer protocol updated events in h1. We expect to receive events from h2
 	// as protocols are added and removed.
-	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +341,7 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	<-time.After(500 * time.Millisecond)
 
 	// subscribe to events in h1; after identify h1 should receive the delta from h2 and publish an event in the bus.
-	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-eventbus"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -76,7 +77,7 @@ func TestProtocolHandlerEvents(t *testing.T) {
 	h := New(swarmt.GenSwarm(t, ctx))
 	defer h.Close()
 
-	sub, err := h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{})
+	sub, err := h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{}, eventbus.BufSize(16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +86,8 @@ func TestProtocolHandlerEvents(t *testing.T) {
 	assert := func(added, removed []protocol.ID) {
 		var next event.EvtLocalProtocolsUpdated
 		select {
-		case next = <-sub.Out():
+		case evt := <-sub.Out():
+			next = evt.(event.EvtLocalProtocolsUpdated)
 			break
 		case <-time.After(5 * time.Second):
 			t.Fatal("event not received in 5 seconds")
