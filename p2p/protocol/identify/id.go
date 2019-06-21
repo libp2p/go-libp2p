@@ -100,15 +100,21 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 
 func (ids *IDService) handleEvents() {
 	sub := ids.subscription
+	defer func() {
+		_ = sub.Close()
+		// drain the channel.
+		for range sub.Out() {
+		}
+	}()
+
 	for {
 		select {
-		case evt := <-sub.Out():
+		case evt, more := <-sub.Out():
+			if !more {
+				return
+			}
 			ids.fireProtocolDelta(evt.(event.EvtLocalProtocolsUpdated))
 		case <-ids.ctx.Done():
-			_ = sub.Close()
-			// drain the channel.
-			for range sub.Out() {
-			}
 			return
 		}
 	}

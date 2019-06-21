@@ -76,17 +76,16 @@ func TestProtocolHandlerEvents(t *testing.T) {
 	h := New(swarmt.GenSwarm(t, ctx))
 	defer h.Close()
 
-	ch := make(chan event.EvtLocalProtocolsUpdated, 100)
-	cancelFunc, err := h.EventBus().Subscribe(ch)
+	sub, err := h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cancelFunc()
+	defer sub.Close()
 
 	assert := func(added, removed []protocol.ID) {
 		var next event.EvtLocalProtocolsUpdated
 		select {
-		case next = <-ch:
+		case next = <-sub.Out():
 			break
 		case <-time.After(5 * time.Second):
 			t.Fatal("event not received in 5 seconds")
