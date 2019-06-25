@@ -2,18 +2,25 @@ package identify_test
 
 import (
 	"context"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-eventbus"
 	ic "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/event"
+	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	coretest "github.com/libp2p/go-libp2p-core/test"
 
 	blhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -186,7 +193,7 @@ func TestProtoMatching(t *testing.T) {
 	}
 }
 
-func TestPrivateAddrFiltering(t *testing.T) {
+func TestLocalhostAddrFiltering(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	mn := mocknet.New(ctx)
@@ -257,5 +264,183 @@ func TestPrivateAddrFiltering(t *testing.T) {
 	addrs = p3.Peerstore().Addrs(id2)
 	if len(addrs) != 2 {
 		t.Fatalf("expected 2 addrs for %s, found %d: %s", id2, len(addrs), addrs)
+	}
+}
+
+func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	defer h2.Close()
+	defer h1.Close()
+
+	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
+
+	ids1 := identify.NewIDService(ctx, h1)
+	_ = identify.NewIDService(ctx, h2)
+
+	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
+		t.Fatal(err)
+	}
+
+	conn := h1.Network().ConnsToPeer(h2.ID())[0]
+	ids1.IdentifyConn(conn)
+	select {
+	case <-ids1.IdentifyWait(conn):
+	case <-time.After(5 * time.Second):
+		t.Fatal("took over 5 seconds to identify")
+	}
+
+	protos, err := h1.Peerstore().GetProtocols(h2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(protos)
+	if sort.SearchStrings(protos, string(protocol.TestingID)) == len(protos) {
+		t.Fatalf("expected peer 1 to know that peer 2 speaks the Test protocol amongst others")
+	}
+
+	// set up a subscriber to listen to peer protocol updated events in h1. We expect to receive events from h2
+	// as protocols are added and removed.
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
+
+	// add two new protocols in h2 and wait for identify to send deltas.
+	h2.SetStreamHandler(protocol.ID("foo"), func(_ network.Stream) {})
+	h2.SetStreamHandler(protocol.ID("bar"), func(_ network.Stream) {})
+	<-time.After(500 * time.Millisecond)
+
+	// check that h1 now knows about h2's new protocols.
+	protos, err = h1.Peerstore().GetProtocols(h2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := make(map[string]struct{}, len(protos))
+	for _, p := range protos {
+		have[p] = struct{}{}
+	}
+
+	if _, ok := have["foo"]; !ok {
+		t.Fatalf("expected peer 1 to know that peer 2 now speaks protocol 'foo', known: %v", protos)
+	}
+	if _, ok := have["bar"]; !ok {
+		t.Fatalf("expected peer 1 to know that peer 2 now speaks protocol 'bar', known: %v", protos)
+	}
+
+	// remove one of the newly added protocols from h2, and wait for identify to send the delta.
+	h2.RemoveStreamHandler(protocol.ID("bar"))
+	<-time.After(500 * time.Millisecond)
+
+	// check that h1 now has forgotten about h2's bar protocol.
+	protos, err = h1.Peerstore().GetProtocols(h2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	have = make(map[string]struct{}, len(protos))
+	for _, p := range protos {
+		have[p] = struct{}{}
+	}
+	if _, ok := have["foo"]; !ok {
+		t.Fatalf("expected peer 1 to know that peer 2 now speaks protocol 'foo', known: %v", protos)
+	}
+	if _, ok := have["bar"]; ok {
+		t.Fatalf("expected peer 1 to have forgotten that peer 2 spoke protocol 'bar', known: %v", protos)
+	}
+
+	// make sure that h1 emitted events in the eventbus for h2's protocol updates.
+	evts := make([]event.EvtPeerProtocolsUpdated, 3)
+	done := make(chan struct{})
+	go func() {
+		evts[0] = (<-sub.Out()).(event.EvtPeerProtocolsUpdated)
+		evts[1] = (<-sub.Out()).(event.EvtPeerProtocolsUpdated)
+		evts[2] = (<-sub.Out()).(event.EvtPeerProtocolsUpdated)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timed out while consuming events from subscription")
+	}
+
+	added := protocol.ConvertToStrings(append(evts[0].Added, append(evts[1].Added, evts[2].Added...)...))
+	removed := protocol.ConvertToStrings(append(evts[0].Removed, append(evts[1].Removed, evts[2].Removed...)...))
+	sort.Strings(added)
+	sort.Strings(removed)
+
+	if !reflect.DeepEqual(added, []string{"bar", "foo"}) {
+		t.Fatalf("expected to have received updates for added protos")
+	}
+	if !reflect.DeepEqual(removed, []string{"bar"}) {
+		t.Fatalf("expected to have received updates for removed protos")
+	}
+}
+
+// TestIdentifyDeltaWhileIdentifyingConn tests that the host waits to push delta updates if an identify is ongoing.
+func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	defer h2.Close()
+	defer h1.Close()
+
+	_ = identify.NewIDService(ctx, h1)
+	ids2 := identify.NewIDService(ctx, h2)
+
+	// replace the original identify handler by one that blocks until we close the block channel.
+	// this allows us to control how long identify runs.
+	block := make(chan struct{})
+	h1.RemoveStreamHandler(identify.ID)
+	h1.SetStreamHandler(identify.ID, func(s network.Stream) {
+		<-block
+		go helpers.FullClose(s)
+	})
+
+	// from h2 connect to h1.
+	if err := h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// from h2, identify h1.
+	conn := h2.Network().ConnsToPeer(h1.ID())[0]
+	go func() {
+		ids2.IdentifyConn(conn)
+		<-ids2.IdentifyWait(conn)
+	}()
+
+	<-time.After(500 * time.Millisecond)
+
+	// subscribe to events in h1; after identify h1 should receive the delta from h2 and publish an event in the bus.
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
+
+	// add a handler in h2; the delta to h1 will queue until we're done identifying h1.
+	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
+	<-time.After(500 * time.Millisecond)
+
+	// make sure we haven't received any events yet.
+	if q := len(sub.Out()); q > 0 {
+		t.Fatalf("expected no events yet; queued: %d", q)
+	}
+
+	close(block)
+	select {
+	case evt := <-sub.Out():
+		e := evt.(event.EvtPeerProtocolsUpdated)
+		if e.Peer != h2.ID() || len(e.Added) != 1 || e.Added[0] != protocol.TestingID {
+			t.Fatalf("expected an event for protocol changes in h2, with the testing protocol added; instead got: %v", evt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out while waiting for an event for the protocol changes in h2")
 	}
 }

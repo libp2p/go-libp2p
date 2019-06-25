@@ -2,6 +2,13 @@ syntax = "proto2";
 
 package identify.pb;
 
+message Delta {
+  // new protocols now serviced by the peer.
+  repeated string added_protocols = 1;
+  // protocols dropped by the peer.
+  repeated string rm_protocols = 2;
+}
+
 message Identify {
 
   // protocolVersion determines compatibility between peers
@@ -26,4 +33,7 @@ message Identify {
 
   // protocols are the services this node is running
   repeated string protocols = 3;
+
+  // a delta update is incompatible with everything else. If this field is included, none of the others can appear.
+  optional Delta delta = 7;
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -151,6 +152,10 @@ func (rh *RoutedHost) Network() network.Network {
 
 func (rh *RoutedHost) Mux() protocol.Switch {
 	return rh.host.Mux()
+}
+
+func (rh *RoutedHost) EventBus() event.Bus {
+	return rh.host.EventBus()
 }
 
 func (rh *RoutedHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
