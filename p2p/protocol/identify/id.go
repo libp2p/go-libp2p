@@ -66,9 +66,9 @@ type IDService struct {
 
 	subscription event.Subscription
 	emitters     struct {
-		evtPeerProtocolsUpdated               event.Emitter
-		evtPeerInitialIdentificationCompleted event.Emitter
-		evtPeerInitialIdentificationFailed    event.Emitter
+		evtPeerProtocolsUpdated        event.Emitter
+		evtPeerIdentificationCompleted event.Emitter
+		evtPeerIdentificationFailed    event.Emitter
 	}
 }
 
@@ -95,11 +95,11 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 	if err != nil {
 		log.Warningf("identify service not emitting peer protocol updates; err: %s", err)
 	}
-	s.emitters.evtPeerInitialIdentificationCompleted, err = h.EventBus().Emitter(&event.EvtPeerIdentificationCompleted{})
+	s.emitters.evtPeerIdentificationCompleted, err = h.EventBus().Emitter(&event.EvtPeerIdentificationCompleted{})
 	if err != nil {
 		log.Warningf("identify service not emitting identification completed events; err: %s", err)
 	}
-	s.emitters.evtPeerInitialIdentificationFailed, err = h.EventBus().Emitter(&event.EvtPeerIdentificationFailed{})
+	s.emitters.evtPeerIdentificationFailed, err = h.EventBus().Emitter(&event.EvtPeerIdentificationFailed{})
 	if err != nil {
 		log.Warningf("identify service not emitting identification failed events; err: %s", err)
 	}
@@ -168,9 +168,9 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 
 		// emit the appropriate event.
 		if p := c.RemotePeer(); err == nil {
-			ids.emitters.evtPeerInitialIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: p})
+			ids.emitters.evtPeerIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: p})
 		} else {
-			ids.emitters.evtPeerInitialIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: p, Reason: err})
+			ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: p, Reason: err})
 		}
 		fmt.Println("done identifying connection: ", c)
 	}()
