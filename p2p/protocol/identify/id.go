@@ -2,6 +2,7 @@ package identify
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -65,7 +66,9 @@ type IDService struct {
 
 	subscription event.Subscription
 	emitters     struct {
-		evtPeerProtocolsUpdated event.Emitter
+		evtPeerProtocolsUpdated               event.Emitter
+		evtPeerInitialIdentificationCompleted event.Emitter
+		evtPeerInitialIdentificationFailed    event.Emitter
 	}
 }
 
@@ -91,6 +94,14 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
 		log.Warningf("identify service not emitting peer protocol updates; err: %s", err)
+	}
+	s.emitters.evtPeerInitialIdentificationCompleted, err = h.EventBus().Emitter(&event.EvtPeerIdentificationCompleted{})
+	if err != nil {
+		log.Warningf("identify service not emitting identification completed events; err: %s", err)
+	}
+	s.emitters.evtPeerInitialIdentificationFailed, err = h.EventBus().Emitter(&event.EvtPeerIdentificationFailed{})
+	if err != nil {
+		log.Warningf("identify service not emitting identification failed events; err: %s", err)
 	}
 
 	h.SetStreamHandler(ID, s.requestHandler)
@@ -132,6 +143,12 @@ func (ids *IDService) ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr {
 }
 
 func (ids *IDService) IdentifyConn(c network.Conn) {
+	var (
+		s   network.Stream
+		err error
+	)
+
+	fmt.Println("identifying connection: ", c)
 	ids.currmu.Lock()
 	if wait, found := ids.currid[c]; found {
 		ids.currmu.Unlock()
@@ -148,9 +165,17 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 		ids.currmu.Lock()
 		delete(ids.currid, c)
 		ids.currmu.Unlock()
+
+		// emit the appropriate event.
+		if p := c.RemotePeer(); err == nil {
+			ids.emitters.evtPeerInitialIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: p})
+		} else {
+			ids.emitters.evtPeerInitialIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: p, Reason: err})
+		}
+		fmt.Println("done identifying connection: ", c)
 	}()
 
-	s, err := c.NewStream()
+	s, err = c.NewStream()
 	if err != nil {
 		log.Debugf("error opening initial stream for %s: %s", ID, err)
 		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer())
@@ -161,7 +186,7 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 	s.SetProtocol(ID)
 
 	// ok give the response to our handler.
-	if err := msmux.SelectProtoOrFail(ID, s); err != nil {
+	if err = msmux.SelectProtoOrFail(ID, s); err != nil {
 		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer(), logging.Metadata{"error": err})
 		s.Reset()
 		return

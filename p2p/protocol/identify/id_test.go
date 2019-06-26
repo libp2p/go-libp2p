@@ -58,6 +58,11 @@ func subtestIDService(t *testing.T) {
 		t.Fatal("should have a conn here")
 	}
 
+	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.BufSize(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ids1.IdentifyConn(h1t2c[0])
 
 	// the IDService should be opened automatically, by the network.
@@ -104,6 +109,13 @@ func subtestIDService(t *testing.T) {
 	// Forget the rest.
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{})
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{})
+
+	// test that we received the "identify completed" event.
+	select {
+	case <-sub.Out():
+	case <-time.After(5 * time.Second):
+		t.Fatalf("expected EvtPeerIdentificationCompleted event within 5 seconds; none received")
+	}
 }
 
 func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
