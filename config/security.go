@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/sec/insecure"
 
 	csms "github.com/libp2p/go-conn-security-multistream"
+	ci "github.com/libp2p/go-libp2p-core/crypto"
 )
 
 // SecC is a security transport constructor
@@ -49,9 +50,9 @@ func SecurityConstructor(security interface{}) (SecC, error) {
 	}, nil
 }
 
-func makeInsecureTransport(id peer.ID) sec.SecureTransport {
+func makeInsecureTransport(id peer.ID, key ci.PrivKey) sec.SecureTransport {
 	secMuxer := new(csms.SSMuxer)
-	secMuxer.AddTransport(insecure.ID, insecure.New(id))
+	secMuxer.AddTransport(insecure.ID, insecure.New(id, key))
 	return secMuxer
 }
 

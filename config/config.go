@@ -142,7 +142,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 	upgrader.Protector = cfg.Protector
 	upgrader.Filters = swrm.Filters
 	if cfg.Insecure {
-		upgrader.Secure = makeInsecureTransport(pid)
+		upgrader.Secure = makeInsecureTransport(pid, cfg.PeerKey)
 	} else {
 		upgrader.Secure, err = makeSecurityTransport(h, cfg.SecurityTransports)
 		if err != nil {
