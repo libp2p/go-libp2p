@@ -169,6 +169,9 @@ func TestAutoRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	h4, err := libp2p.New(ctx, libp2p.EnableRelay())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// verify that we don't advertise relay addrs initially
 	for _, addr := range h3.Addrs() {
