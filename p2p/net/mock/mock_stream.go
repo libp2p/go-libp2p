@@ -191,7 +191,7 @@ func (s *stream) transport() {
 			default:
 			}
 		}
-		delay := o.arrivalTime.Sub(time.Now())
+		delay := time.Until(o.arrivalTime)
 		if delay >= 0 {
 			timer.Reset(delay)
 		} else {

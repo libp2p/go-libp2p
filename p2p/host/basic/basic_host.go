@@ -258,7 +258,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 	}
 
 	lzc, protoID, handle, err := h.Mux().NegotiateLazy(s)
-	took := time.Now().Sub(before)
+	took := time.Since(before)
 	if err != nil {
 		if err == io.EOF {
 			logf := log.Debugf
