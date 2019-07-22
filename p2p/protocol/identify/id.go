@@ -268,7 +268,7 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c network.Conn) {
 	protos := ids.Host.Mux().Protocols()
 	mes.Protocols = make([]string, len(protos))
 	for i, p := range protos {
-		mes.Protocols[i] = string(p)
+		mes.Protocols[i] = p
 	}
 
 	// observed address so other side is informed of their

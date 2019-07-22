@@ -213,7 +213,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 				hostopts.NATManager = NewNATManager
 			}
 		case AddrsFactory:
-			hostopts.AddrsFactory = AddrsFactory(o)
+			hostopts.AddrsFactory = o
 		case connmgr.ConnManager:
 			hostopts.ConnManager = o
 		case *madns.Resolver:
