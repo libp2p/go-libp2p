@@ -475,7 +475,7 @@ func HasConsistentTransport(a ma.Multiaddr, green []ma.Multiaddr) bool {
 // IdentifyWait returns a channel which will be closed once
 // "ProtocolIdentify" (handshake3) finishes on given conn.
 // This happens async so the connection can start to be used
-// even if handshake3 knowledge is not necesary.
+// even if handshake3 knowledge is not necessary.
 // Users **MUST** call IdentifyWait _after_ IdentifyConn
 func (ids *IDService) IdentifyWait(c network.Conn) <-chan struct{} {
 	ids.currmu.Lock()

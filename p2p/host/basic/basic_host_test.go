@@ -363,7 +363,7 @@ func TestProtoDowngrade(t *testing.T) {
 
 	h1.Network().ConnsToPeer(h2.ID())[0].Close()
 
-	time.Sleep(time.Millisecond * 50) // allow notifications to propogate
+	time.Sleep(time.Millisecond * 50) // allow notifications to propagate
 	h1.RemoveStreamHandler("/testing/1.0.0")
 	h1.SetStreamHandler("/testing", func(s network.Stream) {
 		connectedOn <- s.Protocol()

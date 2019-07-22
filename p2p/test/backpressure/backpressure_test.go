@@ -330,7 +330,7 @@ func TestStBackpressureStreamWrite(t *testing.T) {
 	}
 	roundsTime := time.Since(roundsStart)
 
-	// now read continously, while we measure stats.
+	// now read continuously, while we measure stats.
 	stop := make(chan struct{})
 	contStart := time.Now()
 

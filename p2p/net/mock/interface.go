@@ -51,7 +51,7 @@ type Mocknet interface {
 	UnlinkNets(network.Network, network.Network) error
 
 	// LinkDefaults are the default options that govern links
-	// if they do not have thier own option set.
+	// if they do not have their own option set.
 	SetLinkDefaults(LinkOptions)
 	LinkDefaults() LinkOptions
 

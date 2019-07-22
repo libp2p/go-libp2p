@@ -160,7 +160,7 @@ func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) 
 }
 
 // TestIDServiceWait gives the ID service 1s to finish after dialing
-// this is becasue it used to be concurrent. Now, Dial wait till the
+// this is because it used to be concurrent. Now, Dial wait till the
 // id service is done.
 func TestIDService(t *testing.T) {
 	oldTTL := peerstore.RecentlyConnectedAddrTTL

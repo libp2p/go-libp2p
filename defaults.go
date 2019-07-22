@@ -125,7 +125,7 @@ var Defaults Option = func(cfg *Config) error {
 }
 
 // FallbackDefaults applies default options to the libp2p node if and only if no
-// other relevent options have been applied. will be appended to the options
+// other relevant options have been applied. will be appended to the options
 // passed into New.
 var FallbackDefaults Option = func(cfg *Config) error {
 	for _, def := range defaults {

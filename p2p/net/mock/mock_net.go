@@ -286,7 +286,7 @@ func (mn *mocknet) UnlinkNets(n1, n2 network.Network) error {
 	return mn.UnlinkPeers(n1.LocalPeer(), n2.LocalPeer())
 }
 
-// get from the links map. and lazily contruct.
+// get from the links map. and lazily construct.
 func (mn *mocknet) linksMapGet(p1, p2 peer.ID) map[*link]struct{} {
 
 	l1, found := mn.links[p1]
