@@ -218,7 +218,7 @@ func TestStBackpressureStreamWrite(t *testing.T) {
 			select {
 			case n := <-senderWrote:
 				writes++
-				bytes = bytes + n
+				bytes += n
 			default:
 				log.Debugf("stats: sender wrote %d bytes, %d writes", bytes, writes)
 				return bytes, writes
@@ -326,7 +326,7 @@ func TestStBackpressureStreamWrite(t *testing.T) {
 
 		// drain it all, wait again
 		receive(s, b)
-		roundsTotal = roundsTotal + b
+		roundsTotal += b
 	}
 	roundsTime := time.Since(roundsStart)
 
