@@ -100,13 +100,11 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		return nil, fmt.Errorf("no peerstore specified")
 	}
 
-	if !cfg.Insecure {
-		if err := cfg.Peerstore.AddPrivKey(pid, cfg.PeerKey); err != nil {
-			return nil, err
-		}
-		if err := cfg.Peerstore.AddPubKey(pid, cfg.PeerKey.GetPublic()); err != nil {
-			return nil, err
-		}
+	if err := cfg.Peerstore.AddPrivKey(pid, cfg.PeerKey); err != nil {
+		return nil, err
+	}
+	if err := cfg.Peerstore.AddPubKey(pid, cfg.PeerKey.GetPublic()); err != nil {
+		return nil, err
 	}
 
 	// TODO: Make the swarm implementation configurable.
@@ -142,7 +140,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 	upgrader.Protector = cfg.Protector
 	upgrader.Filters = swrm.Filters
 	if cfg.Insecure {
-		upgrader.Secure = makeInsecureTransport(pid)
+		upgrader.Secure = makeInsecureTransport(pid, cfg.PeerKey)
 	} else {
 		upgrader.Secure, err = makeSecurityTransport(h, cfg.SecurityTransports)
 		if err != nil {
