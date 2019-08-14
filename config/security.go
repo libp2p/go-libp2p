@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/sec"
@@ -49,9 +50,9 @@ func SecurityConstructor(security interface{}) (SecC, error) {
 	}, nil
 }
 
-func makeInsecureTransport(id peer.ID) sec.SecureTransport {
+func makeInsecureTransport(id peer.ID, privKey crypto.PrivKey) sec.SecureTransport {
 	secMuxer := new(csms.SSMuxer)
-	secMuxer.AddTransport(insecure.ID, insecure.New(id))
+	secMuxer.AddTransport(insecure.ID, insecure.NewWithIdentity(id, privKey))
 	return secMuxer
 }
 
