@@ -246,7 +246,8 @@ func EnableAutoRelay() Option {
 }
 
 // FilterAddresses configures libp2p to never dial nor accept connections from
-// the given addresses.
+// the given addresses. FilterAddresses should be used for cases where the
+// addresses you want to deny are known ahead of time.
 func FilterAddresses(addrs ...*net.IPNet) Option {
 	return func(cfg *Config) error {
 		if cfg.Filters == nil {
@@ -255,6 +256,17 @@ func FilterAddresses(addrs ...*net.IPNet) Option {
 		for _, addr := range addrs {
 			cfg.Filters.AddDialFilter(addr)
 		}
+		return nil
+	}
+}
+
+// Filters configures libp2p to use the given filters for accepting/denying
+// certain addresses. Filters offers more control and should be use when the
+// addresses you want to accept/deny are not known ahead of time and can
+// dynamically change.
+func Filters(filters *filter.Filters) Option {
+	return func(cfg *Config) error {
+		cfg.Filters = filters
 		return nil
 	}
 }
