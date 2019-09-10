@@ -22,12 +22,6 @@
   <br>
 </p>
 
-# Project status
-
-[![Throughput Graph](https://graphs.waffle.io/libp2p/go-libp2p/throughput.svg)](https://waffle.io/libp2p/go-libp2p/metrics/throughput)
-
-[**`Weekly Core Dev Calls`**](https://github.com/ipfs/pm/issues/674)
-
 # Table of Contents
 
 - [Background](#background)
@@ -40,6 +34,7 @@
   - [Tests](#tests)
   - [Packages](#packages)
 - [Contribute](#contribute)
+- [Weekly Core Dev Calls](https://github.com/ipfs/pm/issues/674)
 
 ## Background
 
