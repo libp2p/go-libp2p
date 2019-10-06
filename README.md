@@ -63,7 +63,13 @@ You can start using go-libp2p in your Go application simply by adding imports fr
 import "github.com/libp2p/go-libp2p"
 ```
 
-The next time you run `go get` or `go build`, the Go build tools will look for [available releases](https://github.com/libp2p/go-libp2p/releases), and will pick the highest available one.
+Run `go get` or `go build`, excluding the libp2p repos from Go modules proxy usage. You only need to do this the first time you import go-libp2p to make sure you latch onto the correct version lineage (see [golang/go#34189](https://github.com/golang/go/issues/34189) for context):
+
+```sh
+$ GOPRIVATE='github.com/libp2p/*' go get ./...
+```
+
+The Go build tools will look for [available releases](https://github.com/libp2p/go-libp2p/releases), and will pick the highest available one.
 
 As new releases of go-libp2p are made available, you can upgrade your application by manually editing your `go.mod` file, or using the [Go tools](https://golang.org/cmd/go/#hdr-Maintaining_module_requirements) to maintain module requirements.
 
