@@ -398,6 +398,24 @@ func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHand
 	})
 }
 
+// Same as `SetStreamHandler` but return an error if there was already an
+// handler.
+func (h *BasicHost) SetStreamHandlerSafe(pid protocol.ID, handler network.StreamHandler) error {
+	err := h.Mux().AddHandlerSafe(string(pid), func(p string, rwc io.ReadWriteCloser) error {
+		is := rwc.(network.Stream)
+		is.SetProtocol(protocol.ID(p))
+		handler(is)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	h.emitters.evtLocalProtocolsUpdated.Emit(event.EvtLocalProtocolsUpdated{
+		Added: []protocol.ID{pid},
+	})
+	return nil
+}
+
 // SetStreamHandlerMatch sets the protocol handler on the Host's Mux
 // using a matching function to do protocol comparisons
 func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(string) bool, handler network.StreamHandler) {
@@ -410,6 +428,24 @@ func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(string) bool, 
 	h.emitters.evtLocalProtocolsUpdated.Emit(event.EvtLocalProtocolsUpdated{
 		Added: []protocol.ID{pid},
 	})
+}
+
+// Same as `SetStreamHandlerMatch` but return an error if there was already an
+// handler.
+func (h *BasicHost) SetStreamHandlerMatchSafe(pid protocol.ID, m func(string) bool, handler network.StreamHandler) error {
+	err := h.Mux().AddHandlerWithFuncSafe(string(pid), m, func(p string, rwc io.ReadWriteCloser) error {
+		is := rwc.(network.Stream)
+		is.SetProtocol(protocol.ID(p))
+		handler(is)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	h.emitters.evtLocalProtocolsUpdated.Emit(event.EvtLocalProtocolsUpdated{
+		Added: []protocol.ID{pid},
+	})
+	return nil
 }
 
 // RemoveStreamHandler returns ..

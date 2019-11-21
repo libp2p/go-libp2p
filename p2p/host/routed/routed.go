@@ -162,8 +162,16 @@ func (rh *RoutedHost) SetStreamHandler(pid protocol.ID, handler network.StreamHa
 	rh.host.SetStreamHandler(pid, handler)
 }
 
+func (rh *RoutedHost) SetStreamHandlerSafe(pid protocol.ID, handler network.StreamHandler) error {
+	return rh.host.SetStreamHandlerSafe(pid, handler)
+}
+
 func (rh *RoutedHost) SetStreamHandlerMatch(pid protocol.ID, m func(string) bool, handler network.StreamHandler) {
 	rh.host.SetStreamHandlerMatch(pid, m, handler)
+}
+
+func (rh *RoutedHost) SetStreamHandlerMatchSafe(pid protocol.ID, m func(string) bool, handler network.StreamHandler) error {
+	return rh.host.SetStreamHandlerMatchSafe(pid, m, handler)
 }
 
 func (rh *RoutedHost) RemoveStreamHandler(pid protocol.ID) {
