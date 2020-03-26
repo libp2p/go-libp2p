@@ -215,7 +215,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	if hostInitializedEmitter, err = h.eventbus.Emitter(&event.EvtLocalHostInitialized{}); err != nil {
 		return nil, fmt.Errorf("failed to create emitter for EvtLocalHostInitialized, err=%s", err)
 	}
-	if err := hostInitializedEmitter.Emit(new(event.EvtLocalHostInitialized)); err != nil {
+	if err := hostInitializedEmitter.Emit(event.EvtLocalHostInitialized{}); err != nil {
 		return nil, fmt.Errorf("failed to emit EvtLocalHostInitialized, err=%s", err)
 	}
 
@@ -250,7 +250,6 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 	}
 
 	h, err := NewHost(context.Background(), net, hostopts)
-	h.Start()
 	if err != nil {
 		// this cannot happen with legacy options
 		// plus we want to keep the (deprecated) legacy interface unchanged
@@ -386,9 +385,6 @@ func (h *BasicHost) background(p goprocess.Process) {
 		changeEvt := makeUpdatedAddrEvent(lastAddrs, addrs)
 		if changeEvt != nil {
 			lastAddrs = addrs
-		}
-
-		if changeEvt != nil {
 			err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
 			if err != nil {
 				log.Warnf("error emitting event for updated addrs: %s", err)
@@ -396,7 +392,6 @@ func (h *BasicHost) background(p goprocess.Process) {
 		}
 	}
 }
-
 
 // ID returns the (local) peer.ID associated with this Host
 func (h *BasicHost) ID() peer.ID {
