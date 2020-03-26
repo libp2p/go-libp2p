@@ -3,13 +3,15 @@ package basichost
 import (
 	"bytes"
 	"context"
-	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"io"
 	"reflect"
 	"sort"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/libp2p/go-libp2p-core/peerstore"
+	"github.com/libp2p/go-libp2p-core/record"
 
 	"github.com/libp2p/go-eventbus"
 	"github.com/libp2p/go-libp2p-core/event"
@@ -19,10 +21,12 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-core/test"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHostDoubleClose(t *testing.T) {
@@ -528,6 +532,47 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	}
 }
 
+func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
+	ctx := context.Background()
+	taddrs := []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1234")}
+
+	h := New(swarmt.GenSwarm(t, ctx), AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		return taddrs
+	}))
+	defer h.Close()
+
+	sub, err := h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
+	if err != nil {
+		t.Error(err)
+	}
+	defer sub.Close()
+	// wait for the host background thread to start
+	time.Sleep(1 * time.Second)
+
+	expected := event.EvtLocalAddressesUpdated{
+		Diffs: true,
+		Current: []event.UpdatedAddress{
+			{Action: event.Added, Address: ma.StringCast("/ip4/1.2.3.4/tcp/1234")},
+		},
+		Removed: []event.UpdatedAddress{}}
+
+	// assert we get expected event
+	evt := waitForAddrChangeEvent(ctx, sub, t)
+	if !updatedAddrEventsEqual(expected, evt) {
+		t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expected, evt)
+	}
+
+	// assert it's on the signed record
+	rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
+	require.Equal(t, taddrs, rc.Addrs)
+
+	// assert it's in the peerstore
+	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
+	require.NotNil(t, ev)
+	rc = peerRecordFromEnvelope(t, *ev)
+	require.Equal(t, taddrs, rc.Addrs)
+}
+
 func TestHostAddrChangeDetection(t *testing.T) {
 	// This test uses the address factory to provide several
 	// sets of listen addresses for the host. It advances through
@@ -603,9 +648,18 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		h.SignalAddressChange()
 		evt := waitForAddrChangeEvent(ctx, sub, t)
 		if !updatedAddrEventsEqual(expectedEvents[i-1], evt) {
-			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i], evt)
+			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i-1], evt)
 		}
 
+		// assert it's on the signed record
+		rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
+		require.Equal(t, addrSets[i], rc.Addrs)
+
+		// assert it's in the peerstore
+		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
+		require.NotNil(t, ev)
+		rc = peerRecordFromEnvelope(t, *ev)
+		require.Equal(t, addrSets[i], rc.Addrs)
 	}
 }
 
@@ -670,4 +724,19 @@ func updatedAddrEventsEqual(a, b event.EvtLocalAddressesUpdated) bool {
 	return a.Diffs == b.Diffs &&
 		updatedAddrsEqual(a.Current, b.Current) &&
 		updatedAddrsEqual(a.Removed, b.Removed)
+}
+
+func peerRecordFromEnvelope(t *testing.T, ev record.Envelope) *peer.PeerRecord {
+	t.Helper()
+	rec, err := ev.Record()
+	if err != nil {
+		t.Fatalf("error getting PeerRecord from event: %v", err)
+		return nil
+	}
+	peerRec, ok := rec.(*peer.PeerRecord)
+	if !ok {
+		t.Fatalf("wrong type for peer record")
+		return nil
+	}
+	return peerRec
 }

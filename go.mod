@@ -13,7 +13,7 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.2.1
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
 	github.com/libp2p/go-libp2p-circuit v0.1.4
-	github.com/libp2p/go-libp2p-core v0.5.1-0.20200326060257-dc01664f700f
+	github.com/libp2p/go-libp2p-core v0.5.1-0.20200326115709-8173af76d179
 	github.com/libp2p/go-libp2p-discovery v0.2.0
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.2
@@ -34,6 +34,7 @@ require (
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.3
 	github.com/multiformats/go-multistream v0.1.1
+	github.com/stretchr/testify v1.4.0
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 )
 

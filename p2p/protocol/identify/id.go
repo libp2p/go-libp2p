@@ -84,18 +84,16 @@ type IDService struct {
 
 	addrMu sync.Mutex
 
-	enableNewProtos sync.Once
-	peerrec         *record.Envelope
-	peerrecMu       sync.RWMutex
+	peerrec   *record.Envelope
+	peerrecMu sync.RWMutex
 
 	// our own observed addresses.
 	// TODO: instead of expiring, remove these when we disconnect
 	observedAddrs *ObservedAddrSet
 
 	subscriptions struct {
-		localProtocolsUpdated  event.Subscription
-		localAddrsUpdated      event.Subscription
-		localPeerRecordUpdated event.Subscription
+		localProtocolsUpdated event.Subscription
+		localAddrsUpdated     event.Subscription
 	}
 	emitters struct {
 		evtPeerProtocolsUpdated        event.Emitter
@@ -134,12 +132,7 @@ func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
 	} else {
 		go s.handleEvents(s.subscriptions.localProtocolsUpdated, s.handleProtosChanged)
 	}
-	s.subscriptions.localPeerRecordUpdated, err = h.EventBus().Subscribe(&event.EvtLocalPeerRecordUpdated{}, eventbus.BufSize(128))
-	if err != nil {
-		log.Warnf("identify service not subscribed to local peer record changes; err: %s", err)
-	} else {
-		go s.handleEvents(s.subscriptions.localPeerRecordUpdated, s.handlePeerRecordUpdated)
-	}
+
 	s.subscriptions.localAddrsUpdated, err = h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{}, eventbus.BufSize(128))
 	if err != nil {
 		log.Warnf("identify service not subscribed to address changes. err: %s", err)
@@ -160,12 +153,14 @@ func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
 		log.Warnf("identify service not emitting identification failed events; err: %s", err)
 	}
 
-	// register protocols that depend on peer records immediately.
-	// those that do will be registered when we receive the first
-	// peer record on the event bus
+	// register protocols that do not depend on peer records.
 	h.SetStreamHandler(IDDelta, s.deltaHandler)
 	h.SetStreamHandler(LegacyID, s.requestHandler)
 	h.SetStreamHandler(LegacyIDPush, s.pushHandler)
+
+	// register protocols that depend on peer records.
+	h.SetStreamHandler(ID, s.requestHandler)
+	h.SetStreamHandler(IDPush, s.pushHandler)
 
 	h.Network().Notify((*netNotifiee)(s))
 	return s
@@ -192,23 +187,10 @@ func (ids *IDService) handleProtosChanged(evt interface{}) {
 }
 
 func (ids *IDService) handleLocalAddrsUpdated(evt interface{}) {
-	log.Debug("triggering push based on updated local addresses")
-	ids.Push()
-}
-
-func (ids *IDService) handlePeerRecordUpdated(evt interface{}) {
 	ids.peerrecMu.Lock()
-	existed := ids.peerrec != nil
-	rec := (evt.(event.EvtLocalPeerRecordUpdated)).Record
+	rec := (evt.(event.EvtLocalAddressesUpdated)).SignedPeerRecord
 	ids.peerrec = &rec
 	ids.peerrecMu.Unlock()
-
-	if !existed {
-		ids.enableNewProtos.Do(func() {
-			ids.Host.SetStreamHandler(ID, ids.requestHandler)
-			ids.Host.SetStreamHandler(IDPush, ids.pushHandler)
-		})
-	}
 
 	log.Debug("triggering push based on updated local PeerRecord")
 	ids.Push()

@@ -2,29 +2,31 @@ package basichost
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net"
 	"time"
 
-	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-
 	"github.com/libp2p/go-libp2p-core/connmgr"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p-core/record"
 
 	"github.com/libp2p/go-eventbus"
 	inat "github.com/libp2p/go-libp2p-nat"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	logging "github.com/ipfs/go-log"
 	"github.com/jbenet/goprocess"
 	goprocessctx "github.com/jbenet/goprocess/context"
 
+	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr-net"
@@ -77,7 +79,6 @@ type BasicHost struct {
 	maResolver *madns.Resolver
 	cmgr       connmgr.ConnManager
 	eventbus   event.Bus
-	peerrecmgr *peerRecordManager
 
 	AddrsFactory AddrsFactory
 
@@ -91,6 +92,9 @@ type BasicHost struct {
 	}
 
 	addrChangeChan chan struct{}
+
+	signKey crypto.PrivKey
+	caBook  peerstore.CertifiedAddrBook
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -144,18 +148,19 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
 		return nil, err
 	}
-	if h.emitters.evtLocalAddrsUpdated, err = h.eventbus.Emitter(&event.EvtLocalAddressesUpdated{}); err != nil {
+	if h.emitters.evtLocalAddrsUpdated, err = h.eventbus.Emitter(&event.EvtLocalAddressesUpdated{}, eventbus.Stateful); err != nil {
 		return nil, err
 	}
 
-	hostKey := h.Peerstore().PrivKey(h.ID())
-	if hostKey == nil {
-		log.Warn("unable to access host key. peer record support disabled.")
-	} else {
-		h.peerrecmgr, err = NewPeerRecordManager(ctx, h.EventBus(), hostKey, h.Addrs())
-		if err != nil {
-			log.Errorf("error creating peer record manager. peer record support disabled. err: %s", err)
-		}
+	cab, ok := peerstore.GetCertifiedAddrBook(net.Peerstore())
+	if !ok {
+		return nil, errors.New("peerstore should also be a certified address book")
+	}
+	h.caBook = cab
+
+	h.signKey = h.Peerstore().PrivKey(h.ID())
+	if h.signKey == nil {
+		return nil, errors.New("unable to access host key")
 	}
 
 	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
@@ -210,14 +215,6 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
-
-	var hostInitializedEmitter event.Emitter
-	if hostInitializedEmitter, err = h.eventbus.Emitter(&event.EvtLocalHostInitialized{}); err != nil {
-		return nil, fmt.Errorf("failed to create emitter for EvtLocalHostInitialized, err=%s", err)
-	}
-	if err := hostInitializedEmitter.Emit(event.EvtLocalHostInitialized{}); err != nil {
-		return nil, fmt.Errorf("failed to emit EvtLocalHostInitialized, err=%s", err)
-	}
 
 	return h, nil
 }
@@ -363,14 +360,64 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 	return &evt
 }
 
+func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*record.Envelope, error) {
+	current := make([]multiaddr.Multiaddr, len(evt.Current))
+	for _, a := range evt.Current {
+		current = append(current, a.Address)
+	}
+
+	addrs := make([]multiaddr.Multiaddr, 0, len(current))
+	for _, a := range current {
+		if a == nil {
+			continue
+		}
+		addrs = append(addrs, a)
+	}
+
+	rec := peer.NewPeerRecord()
+	rec.PeerID = h.network.LocalPeer()
+	rec.Addrs = addrs
+	return record.Seal(rec, h.signKey)
+}
+
 func (h *BasicHost) background(p goprocess.Process) {
+	var lastAddrs []ma.Multiaddr
+
+	emitAddrChange := func(currentAddrs []ma.Multiaddr) {
+		changeEvt := makeUpdatedAddrEvent(lastAddrs, currentAddrs)
+		if changeEvt != nil {
+			// add signed peer record to the event
+			sr, err := h.makeSignedPeerRecord(changeEvt)
+			if err != nil {
+				log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
+				return
+			}
+			changeEvt.SignedPeerRecord = *sr
+
+			// persist the signed record to the peerstore
+			if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
+				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+				return
+			}
+
+			// emit addr change event on the bus
+			if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
+				log.Warnf("error emitting event for updated addrs: %s", err)
+			}
+		}
+	}
+
+	// immediately emit the first address change event if we have a listen address
+	if h.Addrs() != nil {
+		emitAddrChange(h.Addrs())
+	}
+	// init lastAddrs
+	lastAddrs = h.Addrs()
+
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-
-	// initialize lastAddrs
-	lastAddrs := h.Addrs()
 
 	for {
 		select {
@@ -380,16 +427,10 @@ func (h *BasicHost) background(p goprocess.Process) {
 			return
 		}
 
-		//  emit an EvtLocalAddressesUpdatedEvent & a Push Identify if our listen addresses have changed.
-		addrs := h.Addrs()
-		changeEvt := makeUpdatedAddrEvent(lastAddrs, addrs)
-		if changeEvt != nil {
-			lastAddrs = addrs
-			err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
-			if err != nil {
-				log.Warnf("error emitting event for updated addrs: %s", err)
-			}
-		}
+		//  emit an EvtLocalAddressesUpdatedEvent event if our listen addresses have changed.
+		emitAddrChange(h.Addrs())
+		// update last seen addrs
+		lastAddrs = h.Addrs()
 	}
 }
 
