@@ -78,28 +78,6 @@
 
     "Testing and examples",
     ["libp2p/go-libp2p-testing", "go-libp2p-testing", "a collection of testing utilities for libp2p"],
-    ["libp2p/go-libp2p-examples", "go-libp2p-examples", "go-libp2p examples and tutorials"],
-
-    "Deprecated",
-    ["libp2p/go-conn-security", "go-conn-security", "absorbed into go-libp2p-core"],
-    ["libp2p/go-peerstream", "go-peerstream", "early work that informed libp2p design"],
-    ["libp2p/go-stream-muxer", "go-stream-muxer", "absorbed into go-libp2p-core"],
-    ["libp2p/go-testutil", "go-testutil", "replaced by go-libp2p-testing"],
-    ["libp2p/go-libp2p-circuit-progs", "go-libp2p-circuit-progs", "testing programs for go-libp2p-circuit"],
-    ["libp2p/go-libp2p-crypto", "go-libp2p-crypto", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-conn", "go-libp2p-conn", "replaced by go-libp2p-swarm and go-libp2p-transport-upgrader"],
-    ["libp2p/go-libp2p-discovery", "go-libp2p-discovery", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-dummy-conn", "go-libp2p-dummy-conn", "implempentation of deprecated interface"],
-    ["libp2p/go-libp2p-host", "go-libp2p-host", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-identify", "go-libp2p-identify", "moved to go-libp2p"],
-    ["libp2p/go-libp2p-interface-conn", "go-libp2p-interface-conn", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-interface-connmgr", "go-libp2p-interface-connmgr", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-interface-pnet", "go-libp2p-interface-pnet", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-metrics", "go-libp2p-metrics", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-net", "go-libp2p-net", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-peer", "go-libp2p-peer", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-ping", "go-libp2p-ping", "moved to go-libp2p"],
-    ["libp2p/go-libp2p-protocol", "go-libp2p-protocol", "absorbed into go-libp2p-core"],
-    ["libp2p/go-libp2p-transport", "go-libp2p-transport", "absorbed into go-libp2p-core"]
+    ["libp2p/go-libp2p-examples", "go-libp2p-examples", "go-libp2p examples and tutorials"]
   ]
 }

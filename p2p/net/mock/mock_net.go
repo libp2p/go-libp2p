@@ -46,11 +46,14 @@ type mocknet struct {
 }
 
 func New(ctx context.Context) Mocknet {
+	proc := goprocessctx.WithContext(ctx)
+	ctx = goprocessctx.WithProcessClosing(ctx, proc)
+
 	return &mocknet{
 		nets:  map[peer.ID]*peernet{},
 		hosts: map[peer.ID]*bhost.BasicHost{},
 		links: map[peer.ID]map[peer.ID]map[*link]struct{}{},
-		proc:  goprocessctx.WithContext(ctx),
+		proc:  proc,
 		ctx:   ctx,
 	}
 }

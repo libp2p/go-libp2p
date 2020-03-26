@@ -77,6 +77,15 @@ func TestInsecure(t *testing.T) {
 	h.Close()
 }
 
+func TestAutoNATService(t *testing.T) {
+	ctx := context.Background()
+	h, err := New(ctx, EnableNATService())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Close()
+}
+
 func TestDefaultListenAddrs(t *testing.T) {
 	ctx := context.Background()
 

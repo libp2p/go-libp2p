@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/metrics"
+	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/pnet"
@@ -147,13 +148,13 @@ func Peerstore(ps peerstore.Peerstore) Option {
 }
 
 // PrivateNetwork configures libp2p to use the given private network protector.
-func PrivateNetwork(prot pnet.Protector) Option {
+func PrivateNetwork(psk pnet.PSK) Option {
 	return func(cfg *Config) error {
-		if cfg.Protector != nil {
+		if cfg.PSK != nil {
 			return fmt.Errorf("cannot specify multiple private network options")
 		}
 
-		cfg.Protector = prot
+		cfg.PSK = psk
 		return nil
 	}
 }
@@ -228,9 +229,11 @@ func DisableRelay() Option {
 	}
 }
 
-// EnableAutoRelay configures libp2p to enable the AutoRelay subsystem. It is an
-// error to enable AutoRelay without enabling relay (enabled by default) and
-// routing (not enabled by default).
+// EnableAutoRelay configures libp2p to enable the AutoRelay subsystem.
+//
+// Dependencies:
+//  * Relay (enabled by default)
+//  * Routing (to find relays), or StaticRelays/DefaultStaticRelays.
 //
 // This subsystem performs two functions:
 //
@@ -272,6 +275,29 @@ func DefaultStaticRelays() Option {
 			cfg.StaticRelays = append(cfg.StaticRelays, *pi)
 		}
 
+		return nil
+	}
+}
+
+// WithReachability overrides automatic reachability detection to force the local node
+// to believe it is either unreachable or reachable externally.
+func WithReachability(reachable bool) Option {
+	return func(cfg *Config) error {
+		if reachable {
+			cfg.Reachability = network.ReachabilityPublic
+		} else {
+			cfg.Reachability = network.ReachabilityPrivate
+		}
+		return nil
+	}
+}
+
+// EnableNATService configures libp2p to provide a service to peers for determining
+// their reachability status. When enabled, the host will attempt to dial back
+// to peers, and then tell them if it was successful in making such connections.
+func EnableNATService() Option {
+	return func(cfg *Config) error {
+		cfg.AutoNATService = true
 		return nil
 	}
 }

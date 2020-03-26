@@ -25,7 +25,8 @@ func (ids *IDService) deltaHandler(s network.Stream) {
 		return
 	}
 
-	defer func() { go helpers.FullClose(s) }()
+	defer helpers.FullClose(s)
+
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
 
 	delta := mes.GetDelta()

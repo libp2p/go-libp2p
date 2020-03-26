@@ -25,7 +25,6 @@ var (
 	transportType = reflect.TypeOf((*transport.Transport)(nil)).Elem()
 	muxType       = reflect.TypeOf((*mux.Multiplexer)(nil)).Elem()
 	securityType  = reflect.TypeOf((*sec.SecureTransport)(nil)).Elem()
-	protectorType = reflect.TypeOf((*pnet.Protector)(nil)).Elem()
 	privKeyType   = reflect.TypeOf((*crypto.PrivKey)(nil)).Elem()
 	pubKeyType    = reflect.TypeOf((*crypto.PubKey)(nil)).Elem()
 	pstoreType    = reflect.TypeOf((*peerstore.Peerstore)(nil)).Elem()
@@ -34,20 +33,21 @@ var (
 	peerIDType   = reflect.TypeOf((peer.ID)(""))
 	filtersType  = reflect.TypeOf((*filter.Filters)(nil))
 	upgraderType = reflect.TypeOf((*tptu.Upgrader)(nil))
+	pskType      = reflect.TypeOf((pnet.PSK)(nil))
 )
 
 var argTypes = map[reflect.Type]constructor{
-	upgraderType:  func(h host.Host, u *tptu.Upgrader) interface{} { return u },
-	hostType:      func(h host.Host, u *tptu.Upgrader) interface{} { return h },
-	networkType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.Network() },
-	muxType:       func(h host.Host, u *tptu.Upgrader) interface{} { return u.Muxer },
-	securityType:  func(h host.Host, u *tptu.Upgrader) interface{} { return u.Secure },
-	protectorType: func(h host.Host, u *tptu.Upgrader) interface{} { return u.Protector },
-	filtersType:   func(h host.Host, u *tptu.Upgrader) interface{} { return u.Filters },
-	peerIDType:    func(h host.Host, u *tptu.Upgrader) interface{} { return h.ID() },
-	privKeyType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PrivKey(h.ID()) },
-	pubKeyType:    func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PubKey(h.ID()) },
-	pstoreType:    func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore() },
+	upgraderType: func(h host.Host, u *tptu.Upgrader) interface{} { return u },
+	hostType:     func(h host.Host, u *tptu.Upgrader) interface{} { return h },
+	networkType:  func(h host.Host, u *tptu.Upgrader) interface{} { return h.Network() },
+	muxType:      func(h host.Host, u *tptu.Upgrader) interface{} { return u.Muxer },
+	securityType: func(h host.Host, u *tptu.Upgrader) interface{} { return u.Secure },
+	pskType:      func(h host.Host, u *tptu.Upgrader) interface{} { return u.PSK },
+	filtersType:  func(h host.Host, u *tptu.Upgrader) interface{} { return u.Filters },
+	peerIDType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.ID() },
+	privKeyType:  func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PrivKey(h.ID()) },
+	pubKeyType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PubKey(h.ID()) },
+	pstoreType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore() },
 }
 
 func newArgTypeSet(types ...reflect.Type) map[reflect.Type]constructor {

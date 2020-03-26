@@ -11,11 +11,9 @@ import (
 	libp2p "github.com/libp2p/go-libp2p"
 	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
 
-	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
-	autonat "github.com/libp2p/go-libp2p-autonat"
-	autonatpb "github.com/libp2p/go-libp2p-autonat/pb"
 	circuit "github.com/libp2p/go-libp2p-circuit"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -26,8 +24,6 @@ import (
 
 // test specific parameters
 func init() {
-	autonat.AutoNATIdentifyDelay = 1 * time.Second
-	autonat.AutoNATBootDelay = 2 * time.Second
 	relay.BootDelay = 1 * time.Second
 	relay.AdvertiseBootDelay = 100 * time.Millisecond
 }
@@ -106,33 +102,6 @@ func (m *mockRouting) FindProvidersAsync(ctx context.Context, cid cid.Cid, limit
 	return ch
 }
 
-// mock autonat
-func makeAutoNATServicePrivate(ctx context.Context, t *testing.T) host.Host {
-	h, err := libp2p.New(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.SetStreamHandler(autonat.AutoNATProto, sayAutoNATPrivate)
-	return h
-}
-
-func sayAutoNATPrivate(s network.Stream) {
-	defer s.Close()
-	w := ggio.NewDelimitedWriter(s)
-	res := autonatpb.Message{
-		Type:         autonatpb.Message_DIAL_RESPONSE.Enum(),
-		DialResponse: newDialResponseError(autonatpb.Message_E_DIAL_ERROR, "no dialable addresses"),
-	}
-	w.WriteMsg(&res)
-}
-
-func newDialResponseError(status autonatpb.Message_ResponseStatus, text string) *autonatpb.Message_DialResponse {
-	dr := new(autonatpb.Message_DialResponse)
-	dr.Status = status.Enum()
-	dr.StatusText = &text
-	return dr
-}
-
 // connector
 func connect(t *testing.T, a, b host.Host) {
 	pinfo := peer.AddrInfo{ID: a.ID(), Addrs: a.Addrs()}
@@ -159,8 +128,11 @@ func TestAutoRelay(t *testing.T) {
 		return mr, nil
 	}
 
-	h1 := makeAutoNATServicePrivate(ctx, t)
-	_, err := libp2p.New(ctx, libp2p.EnableRelay(circuit.OptHop), libp2p.EnableAutoRelay(), libp2p.Routing(makeRouting))
+	h1, err := libp2p.New(ctx, libp2p.EnableRelay())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = libp2p.New(ctx, libp2p.EnableRelay(circuit.OptHop), libp2p.EnableAutoRelay(), libp2p.Routing(makeRouting))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,9 +153,13 @@ func TestAutoRelay(t *testing.T) {
 		}
 	}
 
-	// connect to AutoNAT and let detection/discovery work its magic
+	// connect to AutoNAT, have it resolve to private.
 	connect(t, h1, h3)
-	time.Sleep(5 * time.Second)
+	time.Sleep(300 * time.Millisecond)
+	privEmitter, _ := h3.EventBus().Emitter(new(event.EvtLocalReachabilityChanged))
+	privEmitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	// Wait for detection to do its magic
+	time.Sleep(3000 * time.Millisecond)
 
 	// verify that we now advertise relay addrs (but not unspecific relay addrs)
 	unspecificRelay, err := ma.NewMultiaddr("/p2p-circuit")

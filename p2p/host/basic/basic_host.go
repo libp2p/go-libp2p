@@ -250,6 +250,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 	}
 
 	h, err := NewHost(context.Background(), net, hostopts)
+	h.Start()
 	if err != nil {
 		// this cannot happen with legacy options
 		// plus we want to keep the (deprecated) legacy interface unchanged
@@ -323,43 +324,11 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 
 // SignalAddressChange signals to the host that it needs to determine whether our listen addresses have recently
 // changed.
+// Warning: this interface is unstable and may disappear in the future.
 func (h *BasicHost) SignalAddressChange() {
 	select {
 	case h.addrChangeChan <- struct{}{}:
 	default:
-	}
-}
-
-func (h *BasicHost) background(p goprocess.Process) {
-	// periodically schedules an IdentifyPush to update our peers for changes
-	// in our address set (if needed)
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	// initialize lastAddrs
-	lastAddrs := h.Addrs()
-
-	for {
-		select {
-		case <-ticker.C:
-		case <-h.addrChangeChan:
-		case <-p.Closing():
-			return
-		}
-
-		//  emit an EvtLocalAddressesUpdatedEvent & a Push Identify if our listen addresses have changed.
-		addrs := h.Addrs()
-		changeEvt := makeUpdatedAddrEvent(lastAddrs, addrs)
-		if changeEvt != nil {
-			lastAddrs = addrs
-		}
-
-		if changeEvt != nil {
-			err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
-			if err != nil {
-				log.Warnf("error emitting event for updated addrs: %s", err)
-			}
-		}
 	}
 }
 
@@ -394,6 +363,40 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 
 	return &evt
 }
+
+func (h *BasicHost) background(p goprocess.Process) {
+	// periodically schedules an IdentifyPush to update our peers for changes
+	// in our address set (if needed)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	// initialize lastAddrs
+	lastAddrs := h.Addrs()
+
+	for {
+		select {
+		case <-ticker.C:
+		case <-h.addrChangeChan:
+		case <-p.Closing():
+			return
+		}
+
+		//  emit an EvtLocalAddressesUpdatedEvent & a Push Identify if our listen addresses have changed.
+		addrs := h.Addrs()
+		changeEvt := makeUpdatedAddrEvent(lastAddrs, addrs)
+		if changeEvt != nil {
+			lastAddrs = addrs
+		}
+
+		if changeEvt != nil {
+			err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
+			if err != nil {
+				log.Warnf("error emitting event for updated addrs: %s", err)
+			}
+		}
+	}
+}
+
 
 // ID returns the (local) peer.ID associated with this Host
 func (h *BasicHost) ID() peer.ID {

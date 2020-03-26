@@ -29,12 +29,11 @@
   - [API](#api)
   - [Examples](#examples)
 - [Development](#development)
-  - [Using the libp2p Workspace](#using-the-libp2p-workspace)
+  - [Using the go-libp2p Workspace](#using-the-go-libp2p-workspace)
   - [About gx](#about-gx)
   - [Tests](#tests)
   - [Packages](#packages)
 - [Contribute](#contribute)
-- [Weekly Core Dev Calls](https://github.com/ipfs/pm/issues/674)
 
 ## Background
 
@@ -83,11 +82,11 @@ Examples can be found in the [examples repo](https://github.com/libp2p/go-libp2p
 
 ## Development
 
-### Using the libp2p Workspace
+### Using the go-libp2p Workspace
 
 While developing, you may need to make changes to several modules at once, or you may want changes made locally in one module to be available for import by another.
 
-The [go-libp2p workspace](https://github.com/libp2p/workspace-go-libp2p) provides a developer-oriented view of the modules that comprise go-libp2p. 
+The [go-libp2p workspace](https://github.com/libp2p/workspace-go-libp2p) provides a developer-oriented view of the modules that comprise go-libp2p.
 
 Using the tooling in the workspace repository, you can checkout all of go-libp2p's module repos and enter "local mode", which adds [replace directives](https://github.com/golang/go/wiki/Modules#gomod) to the go.mod files in each local working copy. When you build locally, the libp2p depdendencies will be resolved from your local working copies.
 
@@ -109,7 +108,7 @@ If you experience any issues migrating from gx to gomod, please [join the discus
 
 ### Tests
 
-`go test ./...` will run all tests in the repo. 
+`go test ./...` will run all tests in the repo.
 
 ### Packages
 
@@ -178,28 +177,6 @@ List of packages currently in existence for libp2p:
 | **Testing and examples** |
 | [`go-libp2p-testing`](//github.com/libp2p/go-libp2p-testing) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-testing.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-testing) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-testing/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-testing) | a collection of testing utilities for libp2p |
 | [`go-libp2p-examples`](//github.com/libp2p/go-libp2p-examples) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-examples.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-examples) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-examples/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-examples) | go-libp2p examples and tutorials |
-| **Deprecated** |
-| [`go-conn-security`](//github.com/libp2p/go-conn-security) | [![Travis CI](https://travis-ci.com/libp2p/go-conn-security.svg?branch=master)](https://travis-ci.com/libp2p/go-conn-security) | [![codecov](https://codecov.io/gh/libp2p/go-conn-security/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-conn-security) | absorbed into go-libp2p-core |
-| [`go-peerstream`](//github.com/libp2p/go-peerstream) | [![Travis CI](https://travis-ci.com/libp2p/go-peerstream.svg?branch=master)](https://travis-ci.com/libp2p/go-peerstream) | [![codecov](https://codecov.io/gh/libp2p/go-peerstream/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-peerstream) | early work that informed libp2p design |
-| [`go-stream-muxer`](//github.com/libp2p/go-stream-muxer) | [![Travis CI](https://travis-ci.com/libp2p/go-stream-muxer.svg?branch=master)](https://travis-ci.com/libp2p/go-stream-muxer) | [![codecov](https://codecov.io/gh/libp2p/go-stream-muxer/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-stream-muxer) | absorbed into go-libp2p-core |
-| [`go-testutil`](//github.com/libp2p/go-testutil) | [![Travis CI](https://travis-ci.com/libp2p/go-testutil.svg?branch=master)](https://travis-ci.com/libp2p/go-testutil) | [![codecov](https://codecov.io/gh/libp2p/go-testutil/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-testutil) | replaced by go-libp2p-testing |
-| [`go-libp2p-circuit-progs`](//github.com/libp2p/go-libp2p-circuit-progs) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-circuit-progs.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-circuit-progs) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-circuit-progs/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-circuit-progs) | testing programs for go-libp2p-circuit |
-| [`go-libp2p-crypto`](//github.com/libp2p/go-libp2p-crypto) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-crypto.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-crypto) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-crypto/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-crypto) | absorbed into go-libp2p-core |
-| [`go-libp2p-conn`](//github.com/libp2p/go-libp2p-conn) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-conn.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-conn) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-conn/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-conn) | replaced by go-libp2p-swarm and go-libp2p-transport-upgrader |
-| [`go-libp2p-discovery`](//github.com/libp2p/go-libp2p-discovery) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-discovery.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-discovery) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-discovery/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-discovery) | absorbed into go-libp2p-core |
-| [`go-libp2p-dummy-conn`](//github.com/libp2p/go-libp2p-dummy-conn) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-dummy-conn.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-dummy-conn) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-dummy-conn/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-dummy-conn) | implempentation of deprecated interface |
-| [`go-libp2p-host`](//github.com/libp2p/go-libp2p-host) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-host.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-host) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-host/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-host) | absorbed into go-libp2p-core |
-| [`go-libp2p-identify`](//github.com/libp2p/go-libp2p-identify) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-identify.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-identify) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-identify/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-identify) | moved to go-libp2p |
-| [`go-libp2p-interface-conn`](//github.com/libp2p/go-libp2p-interface-conn) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-interface-conn.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-interface-conn) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-interface-conn/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-interface-conn) | absorbed into go-libp2p-core |
-| [`go-libp2p-interface-connmgr`](//github.com/libp2p/go-libp2p-interface-connmgr) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-interface-connmgr.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-interface-connmgr) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-interface-connmgr/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-interface-connmgr) | absorbed into go-libp2p-core |
-| [`go-libp2p-interface-pnet`](//github.com/libp2p/go-libp2p-interface-pnet) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-interface-pnet.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-interface-pnet) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-interface-pnet/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-interface-pnet) | absorbed into go-libp2p-core |
-| [`go-libp2p-metrics`](//github.com/libp2p/go-libp2p-metrics) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-metrics.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-metrics) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-metrics/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-metrics) | absorbed into go-libp2p-core |
-| [`go-libp2p-net`](//github.com/libp2p/go-libp2p-net) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-net.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-net) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-net/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-net) | absorbed into go-libp2p-core |
-| [`go-libp2p-peer`](//github.com/libp2p/go-libp2p-peer) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-peer.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-peer) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-peer/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-peer) | absorbed into go-libp2p-core |
-| [`go-libp2p-ping`](//github.com/libp2p/go-libp2p-ping) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-ping.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-ping) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-ping/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-ping) | moved to go-libp2p |
-| [`go-libp2p-protocol`](//github.com/libp2p/go-libp2p-protocol) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-protocol.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-protocol) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-protocol/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-protocol) | absorbed into go-libp2p-core |
-| [`go-libp2p-transport`](//github.com/libp2p/go-libp2p-transport) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-transport.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-transport) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-transport/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-transport) | absorbed into go-libp2p-core |
-
 
 # Contribute
 

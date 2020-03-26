@@ -598,7 +598,9 @@ func TestFuzzManyPeers(t *testing.T) {
 		peerCount = 100
 	}
 	for i := 0; i < peerCount; i++ {
-		_, err := FullMeshConnected(context.Background(), 2)
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err := FullMeshConnected(ctx, 2)
+		cancel()
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -64,7 +64,7 @@ func (pn *peernet) teardown() error {
 	for _, c := range pn.allConns() {
 		c.Close()
 	}
-	return nil
+	return pn.ps.Close()
 }
 
 // allConns returns all the connections between this peer and others
@@ -160,11 +160,8 @@ func (pn *peernet) connect(p peer.ID) (*conn, error) {
 func (pn *peernet) openConn(r peer.ID, l *link) *conn {
 	lc, rc := l.newConnPair(pn)
 	log.Debugf("%s opening connection to %s", pn.LocalPeer(), lc.RemotePeer())
+	go rc.net.remoteOpenedConn(rc)
 	pn.addConn(lc)
-	pn.notifyAll(func(n network.Notifiee) {
-		n.Connected(pn, lc)
-	})
-	rc.net.remoteOpenedConn(rc)
 	return lc
 }
 
@@ -172,16 +169,12 @@ func (pn *peernet) remoteOpenedConn(c *conn) {
 	log.Debugf("%s accepting connection from %s", pn.LocalPeer(), c.RemotePeer())
 	pn.addConn(c)
 	pn.handleNewConn(c)
-	pn.notifyAll(func(n network.Notifiee) {
-		n.Connected(pn, c)
-	})
 }
 
 // addConn constructs and adds a connection
 // to given remote peer over given link
 func (pn *peernet) addConn(c *conn) {
 	pn.Lock()
-	defer pn.Unlock()
 
 	_, found := pn.connsByPeer[c.RemotePeer()]
 	if !found {
@@ -194,6 +187,18 @@ func (pn *peernet) addConn(c *conn) {
 		pn.connsByLink[c.link] = map[*conn]struct{}{}
 	}
 	pn.connsByLink[c.link][c] = struct{}{}
+
+	c.notifLk.Lock()
+	defer c.notifLk.Unlock()
+	pn.Unlock()
+
+	// Call this after unlocking as it might cause us to immediately close
+	// the connection and remove it from the swarm.
+	c.setup()
+
+	pn.notifyAll(func(n network.Notifiee) {
+		n.Connected(pn, c)
+	})
 }
 
 // removeConn removes a given conn
@@ -380,6 +385,6 @@ func (pn *peernet) notifyAll(notification func(f network.Notifiee)) {
 			notification(n)
 		}(n)
 	}
-	wg.Wait()
 	pn.notifmu.Unlock()
+	wg.Wait()
 }

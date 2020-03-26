@@ -30,7 +30,7 @@ var transportArgTypes = argTypes
 // * An address filter.
 // * A security transport.
 // * A stream multiplexer transport.
-// * A private network protector.
+// * A private network protection key.
 //
 // And returns a type implementing transport.Transport and, optionally, an error
 // (as the second argument).
