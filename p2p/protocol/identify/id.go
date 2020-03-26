@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-eventbus"
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
@@ -18,11 +17,11 @@ import (
 	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-core/record"
 
+	"github.com/libp2p/go-eventbus"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	ggio "github.com/gogo/protobuf/io"
 	logging "github.com/ipfs/go-log"
-
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr-net"
 	msmux "github.com/multiformats/go-multistream"
