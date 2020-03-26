@@ -2,9 +2,9 @@ package basichost
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -85,12 +85,12 @@ type BasicHost struct {
 
 	proc goprocess.Process
 
-	mx        sync.Mutex
-	lastAddrs []ma.Multiaddr
-	emitters  struct {
+	emitters struct {
 		evtLocalProtocolsUpdated event.Emitter
 		evtLocalAddrsUpdated     event.Emitter
 	}
+
+	addrChangeChan chan struct{}
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -131,12 +131,13 @@ type HostOpts struct {
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
 func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHost, error) {
 	h := &BasicHost{
-		network:      net,
-		mux:          msmux.NewMultistreamMuxer(),
-		negtimeout:   DefaultNegotiationTimeout,
-		AddrsFactory: DefaultAddrsFactory,
-		maResolver:   madns.DefaultResolver,
-		eventbus:     eventbus.NewBus(),
+		network:        net,
+		mux:            msmux.NewMultistreamMuxer(),
+		negtimeout:     DefaultNegotiationTimeout,
+		AddrsFactory:   DefaultAddrsFactory,
+		maResolver:     madns.DefaultResolver,
+		eventbus:       eventbus.NewBus(),
+		addrChangeChan: make(chan struct{}, 1),
 	}
 
 	var err error
@@ -210,6 +211,14 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
+	var hostInitializedEmitter event.Emitter
+	if hostInitializedEmitter, err = h.eventbus.Emitter(&event.EvtLocalHostInitialized{}); err != nil {
+		return nil, fmt.Errorf("failed to create emitter for EvtLocalHostInitialized, err=%s", err)
+	}
+	if err := hostInitializedEmitter.Emit(new(event.EvtLocalHostInitialized)); err != nil {
+		return nil, fmt.Errorf("failed to emit EvtLocalHostInitialized, err=%s", err)
+	}
+
 	return h, nil
 }
 
@@ -246,6 +255,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 		// plus we want to keep the (deprecated) legacy interface unchanged
 		panic(err)
 	}
+	h.Start()
 
 	return h
 }
@@ -311,23 +321,12 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 	go handle(protoID, s)
 }
 
-// CheckForAddressChanges determines whether our listen addresses have recently
-// changed and emits an EvtLocalAddressesUpdatedEvent if so.
-// Warning: this interface is unstable and may disappear in the future.
-func (h *BasicHost) CheckForAddressChanges() {
-	h.mx.Lock()
-	addrs := h.Addrs()
-	changeEvt := makeUpdatedAddrEvent(h.lastAddrs, addrs)
-	if changeEvt != nil {
-		h.lastAddrs = addrs
-	}
-	h.mx.Unlock()
-
-	if changeEvt != nil {
-		err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
-		if err != nil {
-			log.Warnf("error emitting event for updated addrs: %s", err)
-		}
+// SignalAddressChange signals to the host that it needs to determine whether our listen addresses have recently
+// changed.
+func (h *BasicHost) SignalAddressChange() {
+	select {
+	case h.addrChangeChan <- struct{}{}:
+	default:
 	}
 }
 
@@ -338,19 +337,28 @@ func (h *BasicHost) background(p goprocess.Process) {
 	defer ticker.Stop()
 
 	// initialize lastAddrs
-	h.mx.Lock()
-	if h.lastAddrs == nil {
-		h.lastAddrs = h.Addrs()
-	}
-	h.mx.Unlock()
+	lastAddrs := h.Addrs()
 
 	for {
 		select {
 		case <-ticker.C:
-			h.CheckForAddressChanges()
-
+		case <-h.addrChangeChan:
 		case <-p.Closing():
 			return
+		}
+
+		//  emit an EvtLocalAddressesUpdatedEvent & a Push Identify if our listen addresses have changed.
+		addrs := h.Addrs()
+		changeEvt := makeUpdatedAddrEvent(lastAddrs, addrs)
+		if changeEvt != nil {
+			lastAddrs = addrs
+		}
+
+		if changeEvt != nil {
+			err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
+			if err != nil {
+				log.Warnf("error emitting event for updated addrs: %s", err)
+			}
 		}
 	}
 }

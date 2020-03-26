@@ -7,6 +7,7 @@ import (
 	"io"
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -538,7 +539,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		{ma.StringCast("/ip4/2.3.4.5/tcp/1234"), ma.StringCast("/ip4/3.4.5.6/tcp/4321")},
 	}
 
-	// The events we expect the host to emit when CheckForAddressChanges is called
+	// The events we expect the host to emit when SignalAddressChange is called
 	// and the changes between addr sets are detected
 	expectedEvents := []event.EvtLocalAddressesUpdated{
 		{
@@ -568,8 +569,11 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		},
 	}
 
+	var lk sync.Mutex
 	currentAddrSet := 0
 	addrsFactory := func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		lk.Lock()
+		defer lk.Unlock()
 		return addrSets[currentAddrSet]
 	}
 
@@ -583,46 +587,40 @@ func TestHostAddrChangeDetection(t *testing.T) {
 	}
 	defer sub.Close()
 
+	// wait for the host background thread to start
+	time.Sleep(1 * time.Second)
 	// host should start with no addrs (addrSet 0)
 	addrs := h.Addrs()
 	if len(addrs) != 0 {
 		t.Fatalf("expected 0 addrs, got %d", len(addrs))
 	}
 
-	// Advance between addrSets
+	// change addr, signal and assert event
 	for i := 1; i < len(addrSets); i++ {
+		lk.Lock()
 		currentAddrSet = i
-		h.CheckForAddressChanges() // forces the host to check for changes now, instead of waiting for background update
-	}
+		lk.Unlock()
+		h.SignalAddressChange()
+		evt := waitForAddrChangeEvent(ctx, sub, t)
+		if !updatedAddrEventsEqual(expectedEvents[i-1], evt) {
+			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i], evt)
+		}
 
-	// drain events from the subscription
-	var receivedEvents []event.EvtLocalAddressesUpdated
-readEvents:
+	}
+}
+
+func waitForAddrChangeEvent(ctx context.Context, sub event.Subscription, t *testing.T) event.EvtLocalAddressesUpdated {
 	for {
 		select {
 		case evt, more := <-sub.Out():
 			if !more {
-				break readEvents
+				t.Fatal("channel should not be closed")
 			}
-			receivedEvents = append(receivedEvents, evt.(event.EvtLocalAddressesUpdated))
-			if len(receivedEvents) == len(expectedEvents) {
-				break readEvents
-			}
+			return evt.(event.EvtLocalAddressesUpdated)
 		case <-ctx.Done():
-			break readEvents
-		case <-time.After(1 * time.Second):
-			break readEvents
-		}
-	}
-
-	// assert that we received the events we expected
-	if len(receivedEvents) != len(expectedEvents) {
-		t.Errorf("expected to receive %d addr change events, got %d", len(expectedEvents), len(receivedEvents))
-	}
-	for i, expected := range expectedEvents {
-		actual := receivedEvents[i]
-		if !updatedAddrEventsEqual(expected, actual) {
-			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expected, actual)
+			t.Fatal("context should not have cancelled")
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for address change event")
 		}
 	}
 }

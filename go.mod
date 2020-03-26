@@ -7,38 +7,34 @@ require (
 	github.com/ipfs/go-ipfs-util v0.0.1
 	github.com/ipfs/go-log v1.0.2
 	github.com/jbenet/go-cienv v0.1.0
-	github.com/jbenet/goprocess v0.1.3
+	github.com/jbenet/goprocess v0.1.4
 	github.com/libp2p/go-conn-security-multistream v0.1.0
-	github.com/libp2p/go-eventbus v0.1.0
-	github.com/libp2p/go-libp2p-autonat v0.1.1
+	github.com/libp2p/go-eventbus v0.1.1-0.20200326052355-c30c9409b9a4
+	github.com/libp2p/go-libp2p-autonat v0.2.0
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
 	github.com/libp2p/go-libp2p-circuit v0.1.4
-	github.com/libp2p/go-libp2p-core v0.4.0
+	github.com/libp2p/go-libp2p-core v0.5.1-0.20200326060257-dc01664f700f
 	github.com/libp2p/go-libp2p-discovery v0.2.0
 	github.com/libp2p/go-libp2p-loggables v0.1.0
-	github.com/libp2p/go-libp2p-mplex v0.2.1
+	github.com/libp2p/go-libp2p-mplex v0.2.2
 	github.com/libp2p/go-libp2p-nat v0.0.5
 	github.com/libp2p/go-libp2p-netutil v0.1.0
-	github.com/libp2p/go-libp2p-peerstore v0.2.0
+	github.com/libp2p/go-libp2p-peerstore v0.2.1
 	github.com/libp2p/go-libp2p-secio v0.2.1
 	github.com/libp2p/go-libp2p-swarm v0.2.2
 	github.com/libp2p/go-libp2p-testing v0.1.1
-	github.com/libp2p/go-libp2p-transport-upgrader v0.1.1
-	github.com/libp2p/go-libp2p-yamux v0.2.1
+	github.com/libp2p/go-libp2p-transport-upgrader v0.2.0
+	github.com/libp2p/go-libp2p-yamux v0.2.5
 	github.com/libp2p/go-maddr-filter v0.0.5
 	github.com/libp2p/go-stream-muxer-multistream v0.2.0
 	github.com/libp2p/go-tcp-transport v0.1.1
 	github.com/libp2p/go-ws-transport v0.2.0
-	github.com/mailru/easyjson v0.7.1 // indirect
-	github.com/miekg/dns v1.1.12 // indirect
+	github.com/miekg/dns v1.1.28 // indirect
 	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multiaddr-dns v0.2.0
-	github.com/multiformats/go-multiaddr-net v0.1.2
+	github.com/multiformats/go-multiaddr-net v0.1.3
 	github.com/multiformats/go-multistream v0.1.1
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
-	golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073 // indirect
-	golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527 // indirect
-	golang.org/x/tools v0.0.0-20200306143135-a0897bacddcb // indirect
 )
 
 go 1.12

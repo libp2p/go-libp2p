@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/routing"
 
-	autonat "github.com/libp2p/go-libp2p-autonat"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
@@ -42,7 +42,6 @@ type AutoRelay struct {
 	host     *basic.BasicHost
 	discover discovery.Discoverer
 	router   routing.PeerRouting
-	autonat  autonat.AutoNAT
 	addrsF   basic.AddrsFactory
 
 	static []peer.AddrInfo
@@ -51,7 +50,7 @@ type AutoRelay struct {
 
 	mx     sync.Mutex
 	relays map[peer.ID]struct{}
-	status autonat.NATStatus
+	status network.Reachability
 
 	cachedAddrs       []ma.Multiaddr
 	cachedAddrsExpiry time.Time
@@ -66,17 +65,12 @@ func NewAutoRelay(ctx context.Context, bhost *basic.BasicHost, discover discover
 		static:     static,
 		relays:     make(map[peer.ID]struct{}),
 		disconnect: make(chan struct{}, 1),
-		status:     autonat.NATStatusUnknown,
+		status:     network.ReachabilityUnknown,
 	}
-	ar.autonat = autonat.NewAutoNAT(ctx, bhost, ar.baseAddrs)
 	bhost.AddrsFactory = ar.hostAddrs
 	bhost.Network().Notify(ar)
 	go ar.background(ctx)
 	return ar
-}
-
-func (ar *AutoRelay) baseAddrs() []ma.Multiaddr {
-	return ar.addrsF(ar.host.AllAddrs())
 }
 
 func (ar *AutoRelay) hostAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
@@ -84,40 +78,40 @@ func (ar *AutoRelay) hostAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 }
 
 func (ar *AutoRelay) background(ctx context.Context) {
-	select {
-	case <-time.After(autonat.AutoNATBootDelay + BootDelay):
-	case <-ctx.Done():
-		return
-	}
+	subReachability, _ := ar.host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
+	defer subReachability.Close()
 
 	// when true, we need to identify push
 	push := false
 
 	for {
-		wait := autonat.AutoNATRefreshInterval
-		switch ar.autonat.Status() {
-		case autonat.NATStatusUnknown:
-			ar.mx.Lock()
-			ar.status = autonat.NATStatusUnknown
-			ar.mx.Unlock()
-			wait = autonat.AutoNATRetryInterval
+		select {
+		case ev, ok := <-subReachability.Out():
+			if !ok {
+				return
+			}
+			evt, ok := ev.(event.EvtLocalReachabilityChanged)
+			if !ok {
+				return
+			}
 
-		case autonat.NATStatusPublic:
+			var update bool
+			if evt.Reachability == network.ReachabilityPrivate {
+				// TODO: this is a long-lived (2.5min task) that should get spun up in a separate thread
+				// and canceled if the relay learns the nat is now public.
+				update = ar.findRelays(ctx)
+			}
+
 			ar.mx.Lock()
-			if ar.status != autonat.NATStatusPublic {
+			if update || (ar.status != evt.Reachability && evt.Reachability != network.ReachabilityUnknown) {
 				push = true
 			}
-			ar.status = autonat.NATStatusPublic
+			ar.status = evt.Reachability
 			ar.mx.Unlock()
-
-		case autonat.NATStatusPrivate:
-			update := ar.findRelays(ctx)
-			ar.mx.Lock()
-			if update || ar.status != autonat.NATStatusPrivate {
-				push = true
-			}
-			ar.status = autonat.NATStatusPrivate
-			ar.mx.Unlock()
+		case <-ar.disconnect:
+			push = true
+		case <-ctx.Done():
+			return
 		}
 
 		if push {
@@ -125,15 +119,7 @@ func (ar *AutoRelay) background(ctx context.Context) {
 			ar.cachedAddrs = nil
 			ar.mx.Unlock()
 			push = false
-			ar.host.CheckForAddressChanges()
-		}
-
-		select {
-		case <-ar.disconnect:
-			push = true
-		case <-time.After(wait):
-		case <-ctx.Done():
-			return
+			ar.host.SignalAddressChange()
 		}
 	}
 }
@@ -283,7 +269,7 @@ func (ar *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	ar.mx.Lock()
 	defer ar.mx.Unlock()
 
-	if ar.status != autonat.NATStatusPrivate {
+	if ar.status != network.ReachabilityPrivate {
 		return addrs
 	}
 
