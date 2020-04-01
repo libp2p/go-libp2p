@@ -38,8 +38,10 @@ func subtestIDService(t *testing.T) {
 	h1p := h1.ID()
 	h2p := h2.ID()
 
-	ids1 := identify.NewIDService(ctx, h1)
-	ids2 := identify.NewIDService(ctx, h2)
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer ids1.Close()
+	defer ids2.Close()
 
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{}) // nothing
@@ -253,9 +255,14 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 		Addrs: p2addrs[1:],
 	})
 
-	_ = identify.NewIDService(ctx, p1)
-	ids2 := identify.NewIDService(ctx, p2)
-	ids3 := identify.NewIDService(ctx, p3)
+	ids1 := identify.NewIDService(p1)
+	ids2 := identify.NewIDService(p2)
+	ids3 := identify.NewIDService(p3)
+	defer func() {
+		ids1.Close()
+		ids2.Close()
+		ids3.Close()
+	}()
 
 	conns := p2.Network().ConnsToPeer(id1)
 	if len(conns) == 0 {
@@ -291,8 +298,12 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 
 	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
 
-	ids1 := identify.NewIDService(ctx, h1)
-	_ = identify.NewIDService(ctx, h2)
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer func() {
+		ids1.Close()
+		ids2.Close()
+	}()
 
 	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
 		t.Fatal(err)
@@ -404,8 +415,10 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	defer h2.Close()
 	defer h1.Close()
 
-	_ = identify.NewIDService(ctx, h1)
-	ids2 := identify.NewIDService(ctx, h2)
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer ids1.Close()
+	defer ids2.Close()
 
 	// replace the original identify handler by one that blocks until we close the block channel.
 	// this allows us to control how long identify runs.

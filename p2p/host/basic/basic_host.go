@@ -21,8 +21,6 @@ import (
 	inat "github.com/libp2p/go-libp2p-nat"
 
 	logging "github.com/ipfs/go-log"
-	"github.com/jbenet/goprocess"
-	goprocessctx "github.com/jbenet/goprocess/context"
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -68,6 +66,9 @@ const NATPortMap Option = iota
 //  * uses an identity service to send + receive node information
 //  * uses a nat service to establish NAT port mappings
 type BasicHost struct {
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+
 	network    network.Network
 	mux        *msmux.MultistreamMuxer
 	ids        *identify.IDService
@@ -80,8 +81,6 @@ type BasicHost struct {
 	AddrsFactory AddrsFactory
 
 	negtimeout time.Duration
-
-	proc goprocess.Process
 
 	emitters struct {
 		evtLocalProtocolsUpdated event.Emitter
@@ -128,6 +127,8 @@ type HostOpts struct {
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
 func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHost, error) {
+	hostCtx, cancel := context.WithCancel(ctx)
+
 	h := &BasicHost{
 		network:        net,
 		mux:            msmux.NewMultistreamMuxer(),
@@ -136,6 +137,8 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		maResolver:     madns.DefaultResolver,
 		eventbus:       eventbus.NewBus(),
 		addrChangeChan: make(chan struct{}, 1),
+		ctx:            hostCtx,
+		ctxCancel:      cancel,
 	}
 
 	var err error
@@ -146,28 +149,12 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		return nil, err
 	}
 
-	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
-		if h.natmgr != nil {
-			h.natmgr.Close()
-		}
-		if h.cmgr != nil {
-			h.cmgr.Close()
-		}
-		_ = h.emitters.evtLocalProtocolsUpdated.Close()
-		_ = h.emitters.evtLocalAddrsUpdated.Close()
-		return h.Network().Close()
-	})
-
 	if opts.MultistreamMuxer != nil {
 		h.mux = opts.MultistreamMuxer
 	}
 
 	// we can't set this as a default above because it depends on the *BasicHost.
-	h.ids = identify.NewIDService(
-		goprocessctx.WithProcessClosing(ctx, h.proc),
-		h,
-		identify.UserAgent(opts.UserAgent),
-	)
+	h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
 
 	if uint64(opts.NegotiationTimeout) != 0 {
 		h.negtimeout = opts.NegotiationTimeout
@@ -199,7 +186,31 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
+	// setup the teardown func
+	go func() {
+		select {
+		case <-hostCtx.Done():
+			h.teardown()
+		}
+	}()
+
 	return h, nil
+}
+
+func (h *BasicHost) teardown() {
+	if h.natmgr != nil {
+		h.natmgr.Close()
+	}
+	if h.cmgr != nil {
+		h.cmgr.Close()
+	}
+	if h.ids != nil {
+		h.ids.Close()
+	}
+
+	_ = h.emitters.evtLocalProtocolsUpdated.Close()
+	_ = h.emitters.evtLocalAddrsUpdated.Close()
+	h.Network().Close()
 }
 
 // New constructs and sets up a new *BasicHost with given Network and options.
@@ -242,7 +253,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 
 // Start starts background tasks in the host
 func (h *BasicHost) Start() {
-	h.proc.Go(h.background)
+	go h.background()
 }
 
 // newConnHandler is the remote-opened conn handler for inet.Network
@@ -343,7 +354,7 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 	return &evt
 }
 
-func (h *BasicHost) background(p goprocess.Process) {
+func (h *BasicHost) background() {
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
 	ticker := time.NewTicker(10 * time.Second)
@@ -356,7 +367,7 @@ func (h *BasicHost) background(p goprocess.Process) {
 		select {
 		case <-ticker.C:
 		case <-h.addrChangeChan:
-		case <-p.Closing():
+		case <-h.ctx.Done():
 			return
 		}
 
@@ -812,7 +823,8 @@ func (h *BasicHost) Close() error {
 	// This:
 	// 1. May be called multiple times.
 	// 2. May _never_ be called if the host is stopped by the context.
-	return h.proc.Close()
+	h.ctxCancel()
+	return nil
 }
 
 type streamWrapper struct {
