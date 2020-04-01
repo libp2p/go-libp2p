@@ -5,25 +5,24 @@ import (
 	"context"
 	"io"
 	"reflect"
-	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/peerstore"
-	"github.com/libp2p/go-libp2p-core/record"
-
-	"github.com/libp2p/go-eventbus"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p-core/record"
 	"github.com/libp2p/go-libp2p-core/test"
+
+	"github.com/libp2p/go-eventbus"
+	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
-	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	"github.com/stretchr/testify/require"
@@ -456,11 +455,10 @@ func TestAddrResolution(t *testing.T) {
 	_ = h.Connect(tctx, *pi)
 
 	addrs := h.Peerstore().Addrs(pi.ID)
-	sort.Sort(sortedMultiaddrs(addrs))
 
-	if len(addrs) != 2 || !addrs[0].Equal(addr1) || !addrs[1].Equal(addr2) {
-		t.Fatalf("expected [%s %s], got %+v", addr1, addr2, addrs)
-	}
+	require.Len(t, addrs, 2)
+	require.Contains(t, addrs, addr1)
+	require.Contains(t, addrs, addr2)
 }
 
 func TestAddrResolutionRecursive(t *testing.T) {
@@ -511,11 +509,9 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	_ = h.Connect(tctx, *pi1)
 
 	addrs1 := h.Peerstore().Addrs(pi1.ID)
-	sort.Sort(sortedMultiaddrs(addrs1))
-
-	if len(addrs1) != 2 || !addrs1[0].Equal(addr1) || !addrs1[1].Equal(addr2) {
-		t.Fatalf("expected [%s %s], got %+v", addr1, addr2, addrs1)
-	}
+	require.Len(t, addrs1, 2)
+	require.Contains(t, addrs1, addr1)
+	require.Contains(t, addrs1, addr2)
 
 	pi2, err := peer.AddrInfoFromP2pAddr(p2paddr2)
 	if err != nil {
@@ -525,11 +521,8 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	_ = h.Connect(tctx, *pi2)
 
 	addrs2 := h.Peerstore().Addrs(pi2.ID)
-	sort.Sort(sortedMultiaddrs(addrs2))
-
-	if len(addrs2) != 1 || !addrs2[0].Equal(addr1) {
-		t.Fatalf("expected [%s], got %+v", addr1, addrs2)
-	}
+	require.Len(t, addrs2, 1)
+	require.Contains(t, addrs2, addr1)
 }
 
 func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
@@ -677,14 +670,6 @@ func waitForAddrChangeEvent(ctx context.Context, sub event.Subscription, t *test
 			t.Fatal("timed out waiting for address change event")
 		}
 	}
-}
-
-type sortedMultiaddrs []ma.Multiaddr
-
-func (sma sortedMultiaddrs) Len() int      { return len(sma) }
-func (sma sortedMultiaddrs) Swap(i, j int) { sma[i], sma[j] = sma[j], sma[i] }
-func (sma sortedMultiaddrs) Less(i, j int) bool {
-	return bytes.Compare(sma[i].Bytes(), sma[j].Bytes()) == 1
 }
 
 // updatedAddrsEqual is a helper to check whether two lists of

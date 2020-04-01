@@ -375,7 +375,7 @@ func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*
 	}
 
 	rec := peer.NewPeerRecord()
-	rec.PeerID = h.network.LocalPeer()
+	rec.PeerID = h.ID()
 	rec.Addrs = addrs
 	return record.Seal(rec, h.signKey)
 }
@@ -383,36 +383,37 @@ func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*
 func (h *BasicHost) background(p goprocess.Process) {
 	var lastAddrs []ma.Multiaddr
 
-	emitAddrChange := func(currentAddrs []ma.Multiaddr) {
+	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
+		// nothing to do if both are nil..defensive check
+		if currentAddrs == nil && lastAddrs == nil {
+			return
+		}
+
 		changeEvt := makeUpdatedAddrEvent(lastAddrs, currentAddrs)
-		if changeEvt != nil {
-			// add signed peer record to the event
-			sr, err := h.makeSignedPeerRecord(changeEvt)
-			if err != nil {
-				log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
-				return
-			}
-			changeEvt.SignedPeerRecord = *sr
 
-			// persist the signed record to the peerstore
-			if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
-				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
-				return
-			}
+		if changeEvt == nil {
+			return
+		}
 
-			// emit addr change event on the bus
-			if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
-				log.Warnf("error emitting event for updated addrs: %s", err)
-			}
+		// add signed peer record to the event
+		sr, err := h.makeSignedPeerRecord(changeEvt)
+		if err != nil {
+			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
+			return
+		}
+		changeEvt.SignedPeerRecord = *sr
+
+		// persist the signed record to the peerstore
+		if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
+			log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+			return
+		}
+
+		// emit addr change event on the bus
+		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
+			log.Warnf("error emitting event for updated addrs: %s", err)
 		}
 	}
-
-	// immediately emit the first address change event if we have a listen address
-	if h.Addrs() != nil {
-		emitAddrChange(h.Addrs())
-	}
-	// init lastAddrs
-	lastAddrs = h.Addrs()
 
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
@@ -420,17 +421,16 @@ func (h *BasicHost) background(p goprocess.Process) {
 	defer ticker.Stop()
 
 	for {
+		curr := h.Addrs()
+		emitAddrChange(curr, lastAddrs)
+		lastAddrs = curr
+
 		select {
 		case <-ticker.C:
 		case <-h.addrChangeChan:
 		case <-p.Closing():
 			return
 		}
-
-		//  emit an EvtLocalAddressesUpdatedEvent event if our listen addresses have changed.
-		emitAddrChange(h.Addrs())
-		// update last seen addrs
-		lastAddrs = h.Addrs()
 	}
 }
 
