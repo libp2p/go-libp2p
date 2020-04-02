@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -68,6 +69,10 @@ const NATPortMap Option = iota
 type BasicHost struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
+	// ensures we shutdown ONLY once
+	closeSync sync.Once
+	// keep track of resources we need to wait on before shutting down
+	refCount sync.WaitGroup
 
 	network    network.Network
 	mux        *msmux.MultistreamMuxer
@@ -186,31 +191,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
-	// setup the teardown func
-	go func() {
-		select {
-		case <-hostCtx.Done():
-			h.teardown()
-		}
-	}()
-
 	return h, nil
-}
-
-func (h *BasicHost) teardown() {
-	if h.natmgr != nil {
-		h.natmgr.Close()
-	}
-	if h.cmgr != nil {
-		h.cmgr.Close()
-	}
-	if h.ids != nil {
-		h.ids.Close()
-	}
-
-	_ = h.emitters.evtLocalProtocolsUpdated.Close()
-	_ = h.emitters.evtLocalAddrsUpdated.Close()
-	h.Network().Close()
 }
 
 // New constructs and sets up a new *BasicHost with given Network and options.
@@ -355,6 +336,11 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 }
 
 func (h *BasicHost) background() {
+	h.refCount.Add(1)
+	defer func() {
+		h.refCount.Done()
+	}()
+
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
 	ticker := time.NewTicker(10 * time.Second)
@@ -816,14 +802,25 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
-	// You're thinking of adding some teardown logic here, right? Well
-	// don't! Add any process teardown logic to the teardown function in the
-	// constructor.
-	//
-	// This:
-	// 1. May be called multiple times.
-	// 2. May _never_ be called if the host is stopped by the context.
-	h.ctxCancel()
+	h.closeSync.Do(func() {
+		h.ctxCancel()
+		if h.natmgr != nil {
+			h.natmgr.Close()
+		}
+		if h.cmgr != nil {
+			h.cmgr.Close()
+		}
+		if h.ids != nil {
+			h.ids.Close()
+		}
+
+		_ = h.emitters.evtLocalProtocolsUpdated.Close()
+		_ = h.emitters.evtLocalAddrsUpdated.Close()
+		h.Network().Close()
+
+		h.refCount.Wait()
+	})
+
 	return nil
 }
 

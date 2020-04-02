@@ -22,6 +22,7 @@ import (
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHostDoubleClose(t *testing.T) {
@@ -78,6 +79,16 @@ func TestHostSimple(t *testing.T) {
 	if !bytes.Equal(buf1, buf3) {
 		t.Fatalf("buf1 != buf3 -- %x != %x", buf1, buf3)
 	}
+}
+
+func TestMultipleClose(t *testing.T) {
+	ctx := context.Background()
+	h := New(swarmt.GenSwarm(t, ctx))
+
+	require.NoError(t, h.Close())
+	require.NoError(t, h.Close())
+	require.NoError(t, h.Close())
+
 }
 
 func TestProtocolHandlerEvents(t *testing.T) {

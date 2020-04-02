@@ -73,6 +73,10 @@ type IDService struct {
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
+	// ensure we shutdown ONLY once
+	closeSync sync.Once
+	// track resources that need to be shut down before we shut down
+	refCount sync.WaitGroup
 
 	// connections undergoing identification
 	// for wait purposes
@@ -148,17 +152,22 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 
 // Close shuts down the IDService
 func (ids *IDService) Close() error {
-	ids.ctxCancel()
+	ids.closeSync.Do(func() {
+		ids.ctxCancel()
+		ids.refCount.Wait()
+	})
 	return nil
 }
 
 func (ids *IDService) handleEvents() {
+	ids.refCount.Add(1)
 	sub := ids.subscription
 	defer func() {
 		_ = sub.Close()
 		// drain the channel.
 		for range sub.Out() {
 		}
+		ids.refCount.Done()
 	}()
 
 	for {
