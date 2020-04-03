@@ -127,6 +127,7 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 	if err != nil {
 		log.Warningf("identify service not subscribed to local protocol handlers updates; err: %s", err)
 	} else {
+		s.refCount.Add(1)
 		go s.handleEvents()
 	}
 
@@ -160,15 +161,9 @@ func (ids *IDService) Close() error {
 }
 
 func (ids *IDService) handleEvents() {
-	ids.refCount.Add(1)
 	sub := ids.subscription
-	defer func() {
-		_ = sub.Close()
-		// drain the channel.
-		for range sub.Out() {
-		}
-		ids.refCount.Done()
-	}()
+	defer ids.refCount.Done()
+	defer sub.Close()
 
 	for {
 		select {

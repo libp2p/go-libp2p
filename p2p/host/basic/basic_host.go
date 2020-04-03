@@ -234,6 +234,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 
 // Start starts background tasks in the host
 func (h *BasicHost) Start() {
+	h.refCount.Add(1)
 	go h.background()
 }
 
@@ -336,10 +337,7 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 }
 
 func (h *BasicHost) background() {
-	h.refCount.Add(1)
-	defer func() {
-		h.refCount.Done()
-	}()
+	defer h.refCount.Done()
 
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
