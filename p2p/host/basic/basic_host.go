@@ -361,22 +361,12 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 }
 
 func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*record.Envelope, error) {
-	current := make([]multiaddr.Multiaddr, len(evt.Current))
+	current := make([]multiaddr.Multiaddr, 0, len(evt.Current))
 	for _, a := range evt.Current {
 		current = append(current, a.Address)
 	}
 
-	addrs := make([]multiaddr.Multiaddr, 0, len(current))
-	for _, a := range current {
-		if a == nil {
-			continue
-		}
-		addrs = append(addrs, a)
-	}
-
-	rec := peer.NewPeerRecord()
-	rec.PeerID = h.ID()
-	rec.Addrs = addrs
+	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), current})
 	return record.Seal(rec, h.signKey)
 }
 
