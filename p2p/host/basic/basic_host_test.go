@@ -84,6 +84,16 @@ func TestHostSimple(t *testing.T) {
 	}
 }
 
+func TestMultipleClose(t *testing.T) {
+	ctx := context.Background()
+	h := New(swarmt.GenSwarm(t, ctx))
+
+	require.NoError(t, h.Close())
+	require.NoError(t, h.Close())
+	require.NoError(t, h.Close())
+
+}
+
 func TestProtocolHandlerEvents(t *testing.T) {
 	ctx := context.Background()
 	h := New(swarmt.GenSwarm(t, ctx))

@@ -279,15 +279,20 @@ func DefaultStaticRelays() Option {
 	}
 }
 
-// WithReachability overrides automatic reachability detection to force the local node
-// to believe it is either unreachable or reachable externally.
-func WithReachability(reachable bool) Option {
+// ForceReachabilityPublic overrides automatic reachability detection in the AutoNAT subsystem,
+// forcing the local node to believe it is reachable externally.
+func ForceReachabilityPublic() Option {
 	return func(cfg *Config) error {
-		if reachable {
-			cfg.Reachability = network.ReachabilityPublic
-		} else {
-			cfg.Reachability = network.ReachabilityPrivate
-		}
+		cfg.Reachability = network.ReachabilityPublic
+		return nil
+	}
+}
+
+// ForceReachabilityPrivate overrides automatic reachability detection in the AutoNAT subsystem,
+// forceing the local node to believe it is behind a NAT and not reachable externally.
+func ForceReachabilityPrivate() Option {
+	return func(cfg *Config) error {
+		cfg.Reachability = network.ReachabilityPrivate
 		return nil
 	}
 }

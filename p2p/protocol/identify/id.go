@@ -75,7 +75,12 @@ type IDService struct {
 	Host      host.Host
 	UserAgent string
 
-	ctx context.Context
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	// ensure we shutdown ONLY once
+	closeSync sync.Once
+	// track resources that need to be shut down before we shut down
+	refCount sync.WaitGroup
 
 	// connections undergoing identification
 	// for wait purposes
@@ -104,7 +109,7 @@ type IDService struct {
 
 // NewIDService constructs a new *IDService and activates it by
 // attaching its stream handler to the given host.Host.
-func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
+func NewIDService(h host.Host, opts ...Option) *IDService {
 	var cfg config
 	for _, opt := range opts {
 		opt(&cfg)
@@ -115,13 +120,15 @@ func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
 		userAgent = cfg.userAgent
 	}
 
+	hostCtx, cancel := context.WithCancel(context.Background())
 	s := &IDService{
 		Host:      h,
 		UserAgent: userAgent,
 
-		ctx:           ctx,
+		ctx:           hostCtx,
+		ctxCancel:     cancel,
 		currid:        make(map[network.Conn]chan struct{}),
-		observedAddrs: NewObservedAddrSet(ctx),
+		observedAddrs: NewObservedAddrSet(hostCtx),
 	}
 
 	// handle local protocol handler updates, and push deltas to peers.
@@ -130,6 +137,7 @@ func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
 	if err != nil {
 		log.Warnf("identify service not subscribed to local protocol handlers updates; err: %s", err)
 	} else {
+		s.refCount.Add(1)
 		go s.handleEvents(s.subscriptions.localProtocolsUpdated, s.handleProtosChanged)
 	}
 
@@ -137,6 +145,7 @@ func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
 	if err != nil {
 		log.Warnf("identify service not subscribed to address changes. err: %s", err)
 	} else {
+		s.refCount.Add(1)
 		go s.handleEvents(s.subscriptions.localAddrsUpdated, s.handleLocalAddrsUpdated)
 	}
 
@@ -166,7 +175,17 @@ func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
 	return s
 }
 
+// Close shuts down the IDService
+func (ids *IDService) Close() error {
+	ids.closeSync.Do(func() {
+		ids.ctxCancel()
+		ids.refCount.Wait()
+	})
+	return nil
+}
+
 func (ids *IDService) handleEvents(sub event.Subscription, handler func(interface{})) {
+	defer ids.refCount.Done()
 	defer sub.Close()
 
 	for {

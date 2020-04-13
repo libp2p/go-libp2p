@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
@@ -23,8 +24,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	logging "github.com/ipfs/go-log"
-	"github.com/jbenet/goprocess"
-	goprocessctx "github.com/jbenet/goprocess/context"
 
 	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
@@ -71,6 +70,13 @@ const NATPortMap Option = iota
 //  * uses an identity service to send + receive node information
 //  * uses a nat service to establish NAT port mappings
 type BasicHost struct {
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	// ensures we shutdown ONLY once
+	closeSync sync.Once
+	// keep track of resources we need to wait on before shutting down
+	refCount sync.WaitGroup
+
 	network    network.Network
 	mux        *msmux.MultistreamMuxer
 	ids        *identify.IDService
@@ -83,8 +89,6 @@ type BasicHost struct {
 	AddrsFactory AddrsFactory
 
 	negtimeout time.Duration
-
-	proc goprocess.Process
 
 	emitters struct {
 		evtLocalProtocolsUpdated event.Emitter
@@ -134,6 +138,8 @@ type HostOpts struct {
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
 func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHost, error) {
+	hostCtx, cancel := context.WithCancel(ctx)
+
 	h := &BasicHost{
 		network:        net,
 		mux:            msmux.NewMultistreamMuxer(),
@@ -142,6 +148,8 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		maResolver:     madns.DefaultResolver,
 		eventbus:       eventbus.NewBus(),
 		addrChangeChan: make(chan struct{}, 1),
+		ctx:            hostCtx,
+		ctxCancel:      cancel,
 	}
 
 	var err error
@@ -163,28 +171,12 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		return nil, errors.New("unable to access host key")
 	}
 
-	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
-		if h.natmgr != nil {
-			h.natmgr.Close()
-		}
-		if h.cmgr != nil {
-			h.cmgr.Close()
-		}
-		_ = h.emitters.evtLocalProtocolsUpdated.Close()
-		_ = h.emitters.evtLocalAddrsUpdated.Close()
-		return h.Network().Close()
-	})
-
 	if opts.MultistreamMuxer != nil {
 		h.mux = opts.MultistreamMuxer
 	}
 
 	// we can't set this as a default above because it depends on the *BasicHost.
-	h.ids = identify.NewIDService(
-		goprocessctx.WithProcessClosing(ctx, h.proc),
-		h,
-		identify.UserAgent(opts.UserAgent),
-	)
+	h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
 
 	if uint64(opts.NegotiationTimeout) != 0 {
 		h.negtimeout = opts.NegotiationTimeout
@@ -259,7 +251,8 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 
 // Start starts background tasks in the host
 func (h *BasicHost) Start() {
-	h.proc.Go(h.background)
+	h.refCount.Add(1)
+	go h.background()
 }
 
 // newConnHandler is the remote-opened conn handler for inet.Network
@@ -370,7 +363,8 @@ func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*
 	return record.Seal(rec, h.signKey)
 }
 
-func (h *BasicHost) background(p goprocess.Process) {
+func (h *BasicHost) background() {
+	defer h.refCount.Done()
 	var lastAddrs []ma.Multiaddr
 
 	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
@@ -418,7 +412,7 @@ func (h *BasicHost) background(p goprocess.Process) {
 		select {
 		case <-ticker.C:
 		case <-h.addrChangeChan:
-		case <-p.Closing():
+		case <-h.ctx.Done():
 			return
 		}
 	}
@@ -852,14 +846,26 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
-	// You're thinking of adding some teardown logic here, right? Well
-	// don't! Add any process teardown logic to the teardown function in the
-	// constructor.
-	//
-	// This:
-	// 1. May be called multiple times.
-	// 2. May _never_ be called if the host is stopped by the context.
-	return h.proc.Close()
+	h.closeSync.Do(func() {
+		h.ctxCancel()
+		if h.natmgr != nil {
+			h.natmgr.Close()
+		}
+		if h.cmgr != nil {
+			h.cmgr.Close()
+		}
+		if h.ids != nil {
+			h.ids.Close()
+		}
+
+		_ = h.emitters.evtLocalProtocolsUpdated.Close()
+		_ = h.emitters.evtLocalAddrsUpdated.Close()
+		h.Network().Close()
+
+		h.refCount.Wait()
+	})
+
+	return nil
 }
 
 type streamWrapper struct {
