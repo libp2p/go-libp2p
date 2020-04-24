@@ -96,10 +96,6 @@ type IDService struct {
 	// TODO: instead of expiring, remove these when we disconnect
 	observedAddrs *ObservedAddrSet
 
-	subscriptions struct {
-		localProtocolsUpdated event.Subscription
-		localAddrsUpdated     event.Subscription
-	}
 	emitters struct {
 		evtPeerProtocolsUpdated        event.Emitter
 		evtPeerIdentificationCompleted event.Emitter
@@ -133,21 +129,9 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 
 	// handle local protocol handler updates, and push deltas to peers.
 	var err error
-	s.subscriptions.localProtocolsUpdated, err = h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{}, eventbus.BufSize(128))
-	if err != nil {
-		log.Warnf("identify service not subscribed to local protocol handlers updates; err: %s", err)
-	} else {
-		s.refCount.Add(1)
-		go s.handleEvents(s.subscriptions.localProtocolsUpdated, s.handleProtosChanged)
-	}
 
-	s.subscriptions.localAddrsUpdated, err = h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{}, eventbus.BufSize(128))
-	if err != nil {
-		log.Warnf("identify service not subscribed to address changes. err: %s", err)
-	} else {
-		s.refCount.Add(1)
-		go s.handleEvents(s.subscriptions.localAddrsUpdated, s.handleLocalAddrsUpdated)
-	}
+	s.refCount.Add(1)
+	go s.handleEvents()
 
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
@@ -175,6 +159,37 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 	return s
 }
 
+func (ids *IDService) handleEvents() {
+	defer ids.refCount.Done()
+
+	sub, err := ids.Host.EventBus().Subscribe([]interface{}{&event.EvtLocalProtocolsUpdated{},
+		&event.EvtLocalAddressesUpdated{}}, eventbus.BufSize(256))
+	if err != nil {
+		log.Errorf("failed to subscribe to events on the bus, err=%s", err)
+		return
+	}
+
+	defer sub.Close()
+
+	for {
+		select {
+		case e, more := <-sub.Out():
+			if !more {
+				return
+			}
+			switch evt := e.(type) {
+			case event.EvtLocalAddressesUpdated:
+				ids.handleLocalAddrsUpdated(evt)
+			case event.EvtLocalProtocolsUpdated:
+				ids.handleProtosChanged(evt)
+			}
+
+		case <-ids.ctx.Done():
+			return
+		}
+	}
+}
+
 // Close shuts down the IDService
 func (ids *IDService) Close() error {
 	ids.closeSync.Do(func() {
@@ -184,30 +199,13 @@ func (ids *IDService) Close() error {
 	return nil
 }
 
-func (ids *IDService) handleEvents(sub event.Subscription, handler func(interface{})) {
-	defer ids.refCount.Done()
-	defer sub.Close()
-
-	for {
-		select {
-		case evt, more := <-sub.Out():
-			if !more {
-				return
-			}
-			handler(evt)
-		case <-ids.ctx.Done():
-			return
-		}
-	}
+func (ids *IDService) handleProtosChanged(evt event.EvtLocalProtocolsUpdated) {
+	ids.fireProtocolDelta(evt)
 }
 
-func (ids *IDService) handleProtosChanged(evt interface{}) {
-	ids.fireProtocolDelta(evt.(event.EvtLocalProtocolsUpdated))
-}
-
-func (ids *IDService) handleLocalAddrsUpdated(evt interface{}) {
+func (ids *IDService) handleLocalAddrsUpdated(evt event.EvtLocalAddressesUpdated) {
 	ids.peerrecMu.Lock()
-	rec := (evt.(event.EvtLocalAddressesUpdated)).SignedPeerRecord
+	rec := evt.SignedPeerRecord
 	ids.peerrec = &rec
 	ids.peerrecMu.Unlock()
 
@@ -263,15 +261,7 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 		return
 	}
 
-	ids.peerrecMu.RLock()
-	havePeerRec := ids.peerrec != nil
-	ids.peerrecMu.RUnlock()
-
 	protocolIDs := []string{ID, LegacyID}
-	if !havePeerRec {
-		protocolIDs = []string{LegacyID}
-	}
-
 	// ok give the response to our handler.
 	var selectedProto string
 	if selectedProto, err = msmux.SelectOneOf(protocolIDs, s); err != nil {
@@ -509,7 +499,7 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c network.Conn, usePeerRe
 	if ok && signedPeerRecord != nil {
 		_, addErr := cab.ConsumePeerRecord(signedPeerRecord, ttl)
 		if addErr != nil {
-			log.Errorf("error adding signed addrs to peerstore: %v", addErr)
+			log.Debugf("error adding signed addrs to peerstore: %v", addErr)
 		}
 	} else {
 		ids.Host.Peerstore().AddAddrs(p, lmaddrs, ttl)
