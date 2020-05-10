@@ -236,7 +236,8 @@ func generatePeerRecord(t *testing.T, h host.Host) {
 	if err != nil {
 		t.Fatalf("error generating peer record: %s", err)
 	}
-	evt := event.EvtLocalAddressesUpdated{SignedPeerRecord: *signed}
+
+	evt := event.EvtLocalAddressesUpdated{SignedPeerRecord: signed}
 	emitter, err := h.EventBus().Emitter(new(event.EvtLocalAddressesUpdated), eventbus.Stateful)
 	if err != nil {
 		t.Fatal(err)
@@ -625,6 +626,10 @@ func TestCompatibilityWithPeersThatDoNotSupportSignedAddrs(t *testing.T) {
 
 	// if we re-identify, h1 should now have certified addrs for h2
 	ids.IdentifyConn(h1t2c[0])
+
+	// Slight pause to allow peerstore to be updated
+	<-time.After(100 * time.Millisecond)
+
 	t.Log("test peer1 has peer2 certified addrs correctly")
 	testHasCertifiedAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
 }

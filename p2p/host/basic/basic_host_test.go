@@ -463,7 +463,7 @@ func TestAddrResolution(t *testing.T) {
 	p2paddr3 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p2.Pretty())
 
 	backend := &madns.MockBackend{
-		TXT: map[string][]string{"_dnsaddr.example.com": []string{
+		TXT: map[string][]string{"_dnsaddr.example.com": {
 			"dnsaddr=" + p2paddr2.String(), "dnsaddr=" + p2paddr3.String(),
 		}},
 	}
@@ -509,14 +509,14 @@ func TestAddrResolutionRecursive(t *testing.T) {
 
 	backend := &madns.MockBackend{
 		TXT: map[string][]string{
-			"_dnsaddr.example.com": []string{
+			"_dnsaddr.example.com": {
 				"dnsaddr=" + p2paddr1i.String(),
 				"dnsaddr=" + p2paddr2i.String(),
 			},
-			"_dnsaddr.foo.example.com": []string{
+			"_dnsaddr.foo.example.com": {
 				"dnsaddr=" + p2paddr1f.String(),
 			},
-			"_dnsaddr.bar.example.com": []string{
+			"_dnsaddr.bar.example.com": {
 				"dnsaddr=" + p2paddr2i.String(),
 			},
 		},
@@ -589,7 +589,7 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	// assert it's in the peerstore
 	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 	require.NotNil(t, ev)
-	rc = peerRecordFromEnvelope(t, *ev)
+	rc = peerRecordFromEnvelope(t, ev)
 	require.Equal(t, taddrs, rc.Addrs)
 }
 
@@ -678,7 +678,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		// assert it's in the peerstore
 		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 		require.NotNil(t, ev)
-		rc = peerRecordFromEnvelope(t, *ev)
+		rc = peerRecordFromEnvelope(t, ev)
 		require.Equal(t, addrSets[i], rc.Addrs)
 	}
 }
@@ -738,7 +738,7 @@ func updatedAddrEventsEqual(a, b event.EvtLocalAddressesUpdated) bool {
 		updatedAddrsEqual(a.Removed, b.Removed)
 }
 
-func peerRecordFromEnvelope(t *testing.T, ev record.Envelope) *peer.PeerRecord {
+func peerRecordFromEnvelope(t *testing.T, ev *record.Envelope) *peer.PeerRecord {
 	t.Helper()
 	rec, err := ev.Record()
 	if err != nil {
