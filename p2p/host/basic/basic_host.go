@@ -376,7 +376,7 @@ func (h *BasicHost) background() {
 			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
 			return
 		}
-		changeEvt.SignedPeerRecord = *sr
+		changeEvt.SignedPeerRecord = sr
 
 		// persist the signed record to the peerstore
 		if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {

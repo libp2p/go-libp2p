@@ -236,7 +236,7 @@ func generatePeerRecord(t *testing.T, h host.Host) {
 	if err != nil {
 		t.Fatalf("error generating peer record: %s", err)
 	}
-	evt := event.EvtLocalAddressesUpdated{SignedPeerRecord: *signed}
+	evt := event.EvtLocalAddressesUpdated{SignedPeerRecord: signed}
 	emitter, err := h.EventBus().Emitter(new(event.EvtLocalAddressesUpdated), eventbus.Stateful)
 	if err != nil {
 		t.Fatal(err)

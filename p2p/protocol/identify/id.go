@@ -204,7 +204,7 @@ func (ids *IDService) handleProtosChanged(evt event.EvtLocalProtocolsUpdated) {
 func (ids *IDService) handleLocalAddrsUpdated(evt event.EvtLocalAddressesUpdated) {
 	ids.peerrecMu.Lock()
 	rec := evt.SignedPeerRecord
-	ids.peerrec = &rec
+	ids.peerrec = rec
 	ids.peerrecMu.Unlock()
 
 	log.Debug("triggering push based on updated local PeerRecord")

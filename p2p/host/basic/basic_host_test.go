@@ -589,7 +589,7 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	// assert it's in the peerstore
 	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 	require.NotNil(t, ev)
-	rc = peerRecordFromEnvelope(t, *ev)
+	rc = peerRecordFromEnvelope(t, ev)
 	require.Equal(t, taddrs, rc.Addrs)
 }
 
@@ -678,7 +678,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		// assert it's in the peerstore
 		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 		require.NotNil(t, ev)
-		rc = peerRecordFromEnvelope(t, *ev)
+		rc = peerRecordFromEnvelope(t, ev)
 		require.Equal(t, addrSets[i], rc.Addrs)
 	}
 }
@@ -738,7 +738,7 @@ func updatedAddrEventsEqual(a, b event.EvtLocalAddressesUpdated) bool {
 		updatedAddrsEqual(a.Removed, b.Removed)
 }
 
-func peerRecordFromEnvelope(t *testing.T, ev record.Envelope) *peer.PeerRecord {
+func peerRecordFromEnvelope(t *testing.T, ev *record.Envelope) *peer.PeerRecord {
 	t.Helper()
 	rec, err := ev.Record()
 	if err != nil {
