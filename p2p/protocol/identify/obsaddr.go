@@ -2,6 +2,7 @@ package identify
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 
 	ma "github.com/multiformats/go-multiaddr"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr-net"
 )
 
@@ -30,6 +32,24 @@ var GCInterval = 10 * time.Minute
 // for adding to an ObservedAddrManager.
 var observedAddrManagerWorkerChannelSize = 16
 
+// maxObservedAddrsPerIPAndTransport is the maximum number of observed addresses
+// we will return for each (IPx/TCP or UDP) group.
+var maxObservedAddrsPerIPAndTransport = 2
+
+var (
+	ip4 = mafmt.Base(ma.P_IP4)
+	ip6 = mafmt.Base(ma.P_IP6)
+	udp = mafmt.Base(ma.P_UDP)
+	tcp = mafmt.Base(ma.P_TCP)
+
+	addrPatterns = []mafmt.Pattern{
+		mafmt.And(ip4, udp),
+		mafmt.And(ip4, tcp),
+		mafmt.And(ip6, udp),
+		mafmt.And(ip6, tcp),
+	}
+)
+
 type observation struct {
 	seenTime      time.Time
 	connDirection network.Direction
@@ -46,11 +66,34 @@ type ObservedAddr struct {
 	LastSeen time.Time
 }
 
-func (oa *ObservedAddr) activated(ttl time.Duration) bool {
+func (oa *ObservedAddr) activated() bool {
+
 	// We only activate if other peers observed the same address
 	// of ours at least 4 times. SeenBy peers are removed by GC if
 	// they say the address more than ttl*ActivationThresh
 	return len(oa.SeenBy) >= ActivationThresh
+}
+
+func (oa *ObservedAddr) nInbound() int {
+	count := 0
+	for obs := range oa.SeenBy {
+		if oa.SeenBy[obs].connDirection == network.DirInbound {
+			count++
+		}
+	}
+
+	return count
+}
+
+func (oa *ObservedAddr) GroupKey() string {
+	for i := range addrPatterns {
+		pat := addrPatterns[i]
+		if pat.Matches(oa.Addr) {
+			return pat.String()
+		}
+	}
+
+	return ""
 }
 
 type newObservation struct {
@@ -111,18 +154,11 @@ func (oas *ObservedAddrManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiadd
 		return
 	}
 
-	now := time.Now()
-	for _, a := range observedAddrs {
-		if now.Sub(a.LastSeen) <= oas.ttl && a.activated(oas.ttl) {
-			addrs = append(addrs, a.Addr)
-		}
-	}
-
-	return addrs
+	return oas.filter(observedAddrs)
 }
 
 // Addrs return all activated observed addresses
-func (oas *ObservedAddrManager) Addrs() (addrs []ma.Multiaddr) {
+func (oas *ObservedAddrManager) Addrs() []ma.Multiaddr {
 	oas.mu.RLock()
 	defer oas.mu.RUnlock()
 
@@ -130,14 +166,53 @@ func (oas *ObservedAddrManager) Addrs() (addrs []ma.Multiaddr) {
 		return nil
 	}
 
+	var allObserved []*ObservedAddr
+	for k := range oas.addrs {
+		allObserved = append(allObserved, oas.addrs[k]...)
+	}
+	return oas.filter(allObserved)
+}
+
+func (oas *ObservedAddrManager) filter(observedAddrs []*ObservedAddr) []ma.Multiaddr {
+	pmap := make(map[string][]*ObservedAddr, len(addrPatterns))
 	now := time.Now()
-	for _, observedAddrs := range oas.addrs {
-		for _, a := range observedAddrs {
-			if now.Sub(a.LastSeen) <= oas.ttl && a.activated(oas.ttl) {
-				addrs = append(addrs, a.Addr)
+
+	for i := range observedAddrs {
+		a := observedAddrs[i]
+		if now.Sub(a.LastSeen) <= oas.ttl && a.activated() {
+			// group addresses by their IPX/Transport Protocol(TCP or UDP) pattern.
+			pat := a.GroupKey()
+			if len(pat) != 0 {
+				pmap[pat] = append(pmap[pat], a)
+			} else {
+				log.Debugw("unable to group observed addr into IPx/(TCP or UDP) patterm", "address",
+					a.Addr.String())
 			}
 		}
 	}
+
+	addrs := make([]ma.Multiaddr, 0, len(observedAddrs))
+	for pat := range pmap {
+		s := pmap[pat]
+
+		// We prefer inbound connection observations over outbound.
+		// For ties, we prefer the ones with more votes.
+		sort.Slice(s, func(i int, j int) bool {
+			first := s[i]
+			second := s[j]
+
+			if first.nInbound() > second.nInbound() {
+				return true
+			}
+
+			return len(first.SeenBy) > len(second.SeenBy)
+		})
+
+		for i := 0; i < maxObservedAddrsPerIPAndTransport && i < len(s); i++ {
+			addrs = append(addrs, s[i].Addr)
+		}
+	}
+
 	return addrs
 }
 

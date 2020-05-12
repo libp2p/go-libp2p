@@ -12,9 +12,11 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	p2putil "github.com/libp2p/go-libp2p-netutil"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	ma "github.com/multiformats/go-multiaddr"
-
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
+
+	ma "github.com/multiformats/go-multiaddr"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
+	"github.com/stretchr/testify/require"
 )
 
 type harness struct {
@@ -244,4 +246,104 @@ func TestAddAddrsProfile(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestObservedAddrFiltering(t *testing.T) {
+	addrsMarch := func(a, b []ma.Multiaddr) bool {
+		if len(a) != len(b) {
+			return false
+		}
+
+		for _, aa := range a {
+			found := false
+			for _, bb := range b {
+				if aa.Equal(bb) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	harness := newHarness(ctx, t)
+	if !addrsMarch(harness.oas.Addrs(), nil) {
+		t.Error("addrs should be empty")
+	}
+	// Also listen on UDP so udp addresses are accepted
+	require.NoError(t, harness.host.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/5555")))
+
+	// IP4/TCP
+	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
+	it2 := ma.StringCast("/ip4/1.2.3.4/tcp/1232")
+	it3 := ma.StringCast("/ip4/1.2.3.4/tcp/1233")
+	it4 := ma.StringCast("/ip4/1.2.3.4/tcp/1234")
+	it5 := ma.StringCast("/ip4/1.2.3.4/tcp/1235")
+
+	// IP4/UDP
+	iu1 := ma.StringCast("/ip4/1.2.3.4/udp/1231")
+	iu2 := ma.StringCast("/ip4/1.2.3.4/udp/1232")
+	iu3 := ma.StringCast("/ip4/1.2.3.4/udp/1233")
+	iu4 := ma.StringCast("/ip4/1.2.3.4/udp/1234")
+	iu5 := ma.StringCast("/ip4/1.2.3.4/udp/1235")
+
+	// observers
+	b1 := ma.StringCast("/ip4/1.2.3.6/tcp/1236")
+	b2 := ma.StringCast("/ip4/1.2.3.7/tcp/1237")
+	b3 := ma.StringCast("/ip4/1.2.3.8/tcp/1237")
+	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
+	b5 := ma.StringCast("/ip4/1.2.3.10/tcp/1237")
+
+	// it1 will be inbound with one vote.
+	// it3 will have max votes.
+	// iu2 will be inbound with one vote.
+	// iu4 will have max votes
+	peers := []peer.ID{harness.add(b1), harness.add(b2), harness.add(b3), harness.add(b4), harness.add(b5)}
+	for i := 0; i < 4; i++ {
+		harness.observe(it1, peers[i])
+		harness.observe(it2, peers[i])
+		harness.observe(it3, peers[i])
+		harness.observe(it4, peers[i])
+		harness.observe(it5, peers[i])
+
+		harness.observe(iu1, peers[i])
+		harness.observe(iu2, peers[i])
+		harness.observe(iu3, peers[i])
+		harness.observe(iu4, peers[i])
+		harness.observe(iu5, peers[i])
+	}
+
+	harness.observe(it3, peers[4])
+	harness.observe(it4, peers[4])
+	harness.observe(iu2, peers[4])
+	harness.observe(iu5, peers[4])
+
+	addrs := harness.oas.Addrs()
+	require.Len(t, addrs, 4)
+	require.Contains(t, addrs, it3)
+	require.Contains(t, addrs, it4)
+	require.Contains(t, addrs, iu2)
+	require.Contains(t, addrs, iu5)
+}
+
+func TestObservedAddrGroupKey(t *testing.T) {
+	ip4 := mafmt.Base(ma.P_IP4)
+	udp := mafmt.Base(ma.P_UDP)
+	tcp := mafmt.Base(ma.P_TCP)
+
+	oa1 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/tcp/1231")}
+	require.Equal(t, mafmt.And(ip4, tcp).String(), oa1.GroupKey())
+
+	oa2 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.5/tcp/2222")}
+	require.Equal(t, mafmt.And(ip4, tcp).String(), oa2.GroupKey())
+
+	oa3 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/udp/1231")}
+	require.Equal(t, mafmt.And(ip4, udp).String(), oa3.GroupKey())
+	oa4 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.3.3.4/udp/1531")}
+	require.Equal(t, mafmt.And(ip4, udp).String(), oa4.GroupKey())
 }
