@@ -13,7 +13,7 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.2.2
 	github.com/libp2p/go-libp2p-blankhost v0.1.5-0.20200504035409-3dd0148936e2
 	github.com/libp2p/go-libp2p-circuit v0.2.2
-	github.com/libp2p/go-libp2p-core v0.5.3
+	github.com/libp2p/go-libp2p-core v0.5.5
 	github.com/libp2p/go-libp2p-discovery v0.4.0
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.3
