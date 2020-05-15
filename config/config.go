@@ -22,16 +22,14 @@ import (
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 
 	autonat "github.com/libp2p/go-libp2p-autonat"
+	blankhost "github.com/libp2p/go-libp2p-blankhost"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 
 	logging "github.com/ipfs/go-log"
-	filter "github.com/libp2p/go-maddr-filter"
 	ma "github.com/multiformats/go-multiaddr"
-
-	blankhost "github.com/libp2p/go-libp2p-blankhost"
 )
 
 var log = logging.Logger("p2p-config")
@@ -46,7 +44,7 @@ type NATManagerC func(network.Network) bhost.NATManager
 type RoutingC func(host.Host) (routing.PeerRouting, error)
 
 // AutoNATMode defines the AutoNAT behavior for the libp2p host.
-
+//
 // Config describes a set of settings for a libp2p node
 //
 // This is *not* a stable interface. Use the options defined in the root
@@ -72,7 +70,6 @@ type Config struct {
 
 	ListenAddrs     []ma.Multiaddr
 	AddrsFactory    bhost.AddrsFactory
-	Filters         *filter.Filters
 	ConnectionGater connmgr.ConnectionGater
 
 	ConnManager connmgr.ConnManager
@@ -123,10 +120,7 @@ func (cfg *Config) makeSwarm(ctx context.Context) (*swarm.Swarm, error) {
 	}
 
 	// TODO: Make the swarm implementation configurable.
-	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter)
-	if cfg.ConnectionGater != nil {
-		swrm.ConnGater = cfg.ConnectionGater
-	}
+	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter, cfg.ConnectionGater)
 	return swrm, nil
 }
 
@@ -179,10 +173,6 @@ func (cfg *Config) addTransports(ctx context.Context, h host.Host) (err error) {
 //
 // This function consumes the config. Do not reuse it (really!).
 func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
-	if cfg.Filters != nil {
-		cfg.ConnectionGater = cfg.Filters.ToConnectionGater()
-	}
-
 	swrm, err := cfg.makeSwarm(ctx)
 	if err != nil {
 		return nil, err

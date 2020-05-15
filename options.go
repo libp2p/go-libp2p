@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 
+	circuit "github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/metrics"
@@ -16,12 +17,10 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/pnet"
 
-	circuit "github.com/libp2p/go-libp2p-circuit"
 	config "github.com/libp2p/go-libp2p/config"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	autorelay "github.com/libp2p/go-libp2p/p2p/host/relay"
 
-	filter "github.com/libp2p/go-maddr-filter"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -317,7 +316,7 @@ func FilterAddresses(addrs ...*net.IPNet) Option {
 		}
 
 		if cfg.Filters == nil {
-			cfg.Filters = filter.NewFilters()
+			cfg.Filters = ma.NewFilters()
 		}
 		for _, addr := range addrs {
 			cfg.Filters.AddDialFilter(addr)
@@ -334,7 +333,7 @@ func FilterAddresses(addrs ...*net.IPNet) Option {
 // Please consider ONLY configuring a ConnectionGater that rejects connections which would
 // otherwise be rejected by the Filter.
 // Deprecated: Please use ConnectionGater() instead.
-func Filters(filters *filter.Filters) Option {
+func Filters(filters *ma.Filters) Option {
 	return func(cfg *Config) error {
 		if cfg.ConnectionGater != nil {
 			return errors.New("cannot configure both Filters and Connection Gater. " +
