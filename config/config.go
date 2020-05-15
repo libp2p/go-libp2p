@@ -26,8 +26,9 @@ import (
 	blankhost "github.com/libp2p/go-libp2p-blankhost"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	discovery "github.com/libp2p/go-libp2p-discovery"
-	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
+
+	swarm "github.com/libp2p/go-libp2p-swarm"
 
 	logging "github.com/ipfs/go-log"
 	ma "github.com/multiformats/go-multiaddr"
