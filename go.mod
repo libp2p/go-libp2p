@@ -30,7 +30,7 @@ require (
 	github.com/libp2p/go-stream-muxer-multistream v0.3.0
 	github.com/libp2p/go-tcp-transport v0.2.0
 	github.com/libp2p/go-ws-transport v0.3.1
-	github.com/multiformats/go-multiaddr v0.2.1
+	github.com/multiformats/go-multiaddr v0.2.2
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.4
 	github.com/multiformats/go-multistream v0.1.1
