@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
-	"github.com/libp2p/go-libp2p-core/connmgr"
 	"reflect"
 
+	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/mux"

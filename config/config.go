@@ -19,16 +19,15 @@ import (
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
-	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
+	"github.com/libp2p/go-libp2p/p2p/host/relay"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 
 	autonat "github.com/libp2p/go-libp2p-autonat"
 	blankhost "github.com/libp2p/go-libp2p-blankhost"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	discovery "github.com/libp2p/go-libp2p-discovery"
-	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
-
 	swarm "github.com/libp2p/go-libp2p-swarm"
+	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 
 	logging "github.com/ipfs/go-log"
 	ma "github.com/multiformats/go-multiaddr"

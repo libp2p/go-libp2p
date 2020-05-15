@@ -32,6 +32,7 @@ var transportArgTypes = argTypes
 // * A security transport.
 // * A stream multiplexer transport.
 // * A private network protection key.
+// * A connection gater.
 //
 // And returns a type implementing transport.Transport and, optionally, an error
 // (as the second argument).

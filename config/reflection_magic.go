@@ -2,11 +2,12 @@ package config
 
 import (
 	"fmt"
-	"github.com/libp2p/go-libp2p-core/connmgr"
 	"reflect"
 	"runtime"
 
+	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/host"
+
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 )
 
