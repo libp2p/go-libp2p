@@ -7,8 +7,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
-	ggio "github.com/gogo/protobuf/io"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
+
+	ggio "github.com/gogo/protobuf/io"
 )
 
 const IDDelta = "/p2p/id/delta/1.0.0"
@@ -38,27 +39,6 @@ func (ids *IDService) deltaHandler(s network.Stream) {
 	if err := ids.consumeDelta(p, delta); err != nil {
 		log.Warningf("delta update from peer %s failed: %s", p, err)
 	}
-}
-
-// fireProtocolDelta fires a delta message to all connected peers to signal a local protocol table update.
-func (ids *IDService) fireProtocolDelta(evt event.EvtLocalProtocolsUpdated) {
-	mes := pb.Identify{
-		Delta: &pb.Delta{
-			AddedProtocols: protocol.ConvertToStrings(evt.Added),
-			RmProtocols:    protocol.ConvertToStrings(evt.Removed),
-		},
-	}
-	deltaWriter := func(s network.Stream) {
-		defer helpers.FullClose(s)
-		c := s.Conn()
-		err := ggio.NewDelimitedWriter(s).WriteMsg(&mes)
-		if err != nil {
-			log.Warningf("%s error while sending delta update to %s: %s", IDDelta, c.RemotePeer(), c.RemoteMultiaddr())
-			return
-		}
-		log.Debugf("%s sent delta update to %s: %s", IDDelta, c.RemotePeer(), c.RemoteMultiaddr())
-	}
-	ids.broadcast(IDDelta, deltaWriter)
 }
 
 // consumeDelta processes an incoming delta from a peer, updating the peerstore

@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr-net"
 )
 
 // conn represents one side's perspective of a
@@ -44,7 +45,15 @@ func newConn(p process.Process, ln, rn *peernet, l *link, dir network.Direction)
 	c.stat = network.Stat{Direction: dir}
 
 	c.localAddr = ln.ps.Addrs(ln.peer)[0]
-	c.remoteAddr = rn.ps.Addrs(rn.peer)[0]
+	for _, a := range rn.ps.Addrs(rn.peer) {
+		if !manet.IsIPUnspecified(a) {
+			c.remoteAddr = a
+			break
+		}
+	}
+	if c.remoteAddr == nil {
+		c.remoteAddr = rn.ps.Addrs(rn.peer)[0]
+	}
 
 	c.localPrivKey = ln.ps.PrivKey(ln.peer)
 	c.remotePubKey = rn.ps.PubKey(rn.peer)

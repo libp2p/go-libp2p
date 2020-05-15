@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-core/connmgr"
@@ -279,15 +280,22 @@ func DefaultStaticRelays() Option {
 	}
 }
 
-// WithReachability overrides automatic reachability detection to force the local node
-// to believe it is either unreachable or reachable externally.
-func WithReachability(reachable bool) Option {
+// ForceReachabilityPublic overrides automatic reachability detection in the AutoNAT subsystem,
+// forcing the local node to believe it is reachable externally.
+func ForceReachabilityPublic() Option {
 	return func(cfg *Config) error {
-		if reachable {
-			cfg.Reachability = network.ReachabilityPublic
-		} else {
-			cfg.Reachability = network.ReachabilityPrivate
-		}
+		public := network.Reachability(network.ReachabilityPublic)
+		cfg.AutoNATConfig.ForceReachability = &public
+		return nil
+	}
+}
+
+// ForceReachabilityPrivate overrides automatic reachability detection in the AutoNAT subsystem,
+// forceing the local node to believe it is behind a NAT and not reachable externally.
+func ForceReachabilityPrivate() Option {
+	return func(cfg *Config) error {
+		private := network.Reachability(network.ReachabilityPrivate)
+		cfg.AutoNATConfig.ForceReachability = &private
 		return nil
 	}
 }
@@ -297,7 +305,20 @@ func WithReachability(reachable bool) Option {
 // to peers, and then tell them if it was successful in making such connections.
 func EnableNATService() Option {
 	return func(cfg *Config) error {
-		cfg.AutoNATService = true
+		cfg.AutoNATConfig.EnableService = true
+		return nil
+	}
+}
+
+// AutoNATServiceRateLimit changes the default rate limiting configured in helping
+// other peers determine their reachability status. When set, the host will limit
+// the number of requests it responds to in each 60 second period to the set
+// numbers. A value of '0' disables throttling.
+func AutoNATServiceRateLimit(global, perPeer int, interval time.Duration) Option {
+	return func(cfg *Config) error {
+		cfg.AutoNATConfig.ThrottleGlobalLimit = global
+		cfg.AutoNATConfig.ThrottlePeerLimit = perPeer
+		cfg.AutoNATConfig.ThrottleInterval = interval
 		return nil
 	}
 }

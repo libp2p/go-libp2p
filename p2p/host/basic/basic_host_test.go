@@ -5,21 +5,24 @@ import (
 	"context"
 	"io"
 	"reflect"
-	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-eventbus"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p-core/record"
 	"github.com/libp2p/go-libp2p-core/test"
 
+	"github.com/libp2p/go-eventbus"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	"github.com/stretchr/testify/require"
@@ -102,16 +105,35 @@ func TestProtocolHandlerEvents(t *testing.T) {
 	}
 	defer sub.Close()
 
-	assert := func(added, removed []protocol.ID) {
-		var next event.EvtLocalProtocolsUpdated
-		select {
-		case evt := <-sub.Out():
-			next = evt.(event.EvtLocalProtocolsUpdated)
-			break
-		case <-time.After(5 * time.Second):
-			t.Fatal("event not received in 5 seconds")
+	// the identify service adds new protocol handlers shortly after the host
+	// starts. this helps us filter those events out, since they're unrelated
+	// to the test.
+	isIdentify := func(evt event.EvtLocalProtocolsUpdated) bool {
+		for _, p := range evt.Added {
+			if p == identify.ID || p == identify.IDPush {
+				return true
+			}
 		}
+		return false
+	}
 
+	nextEvent := func() event.EvtLocalProtocolsUpdated {
+		for {
+			select {
+			case evt := <-sub.Out():
+				next := evt.(event.EvtLocalProtocolsUpdated)
+				if isIdentify(next) {
+					continue
+				}
+				return next
+			case <-time.After(5 * time.Second):
+				t.Fatal("event not received in 5 seconds")
+			}
+		}
+	}
+
+	assert := func(added, removed []protocol.ID) {
+		next := nextEvent()
 		if !reflect.DeepEqual(added, next.Added) {
 			t.Errorf("expected added: %v; received: %v", added, next.Added)
 		}
@@ -195,6 +217,12 @@ func TestHostProtoPreference(t *testing.T) {
 	h1.SetStreamHandler(protoOld, handler)
 
 	s, err := h2.NewStream(ctx, h1.ID(), protoMinor, protoNew, protoOld)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// force the lazy negotiation to complete
+	_, err = s.Write(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,6 +366,12 @@ func TestNewDialOld(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// force the lazy negotiation to complete
+	_, err = s.Write(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	assertWait(t, connectedOn, "/testing")
 
 	if s.Protocol() != "/testing" {
@@ -362,6 +396,11 @@ func TestProtoDowngrade(t *testing.T) {
 	})
 
 	s, err := h2.NewStream(ctx, h1.ID(), "/testing/1.0.0", "/testing")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.Write(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,11 +482,10 @@ func TestAddrResolution(t *testing.T) {
 	_ = h.Connect(tctx, *pi)
 
 	addrs := h.Peerstore().Addrs(pi.ID)
-	sort.Sort(sortedMultiaddrs(addrs))
 
-	if len(addrs) != 2 || !addrs[0].Equal(addr1) || !addrs[1].Equal(addr2) {
-		t.Fatalf("expected [%s %s], got %+v", addr1, addr2, addrs)
-	}
+	require.Len(t, addrs, 2)
+	require.Contains(t, addrs, addr1)
+	require.Contains(t, addrs, addr2)
 }
 
 func TestAddrResolutionRecursive(t *testing.T) {
@@ -498,11 +536,9 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	_ = h.Connect(tctx, *pi1)
 
 	addrs1 := h.Peerstore().Addrs(pi1.ID)
-	sort.Sort(sortedMultiaddrs(addrs1))
-
-	if len(addrs1) != 2 || !addrs1[0].Equal(addr1) || !addrs1[1].Equal(addr2) {
-		t.Fatalf("expected [%s %s], got %+v", addr1, addr2, addrs1)
-	}
+	require.Len(t, addrs1, 2)
+	require.Contains(t, addrs1, addr1)
+	require.Contains(t, addrs1, addr2)
 
 	pi2, err := peer.AddrInfoFromP2pAddr(p2paddr2)
 	if err != nil {
@@ -512,11 +548,49 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	_ = h.Connect(tctx, *pi2)
 
 	addrs2 := h.Peerstore().Addrs(pi2.ID)
-	sort.Sort(sortedMultiaddrs(addrs2))
+	require.Len(t, addrs2, 1)
+	require.Contains(t, addrs2, addr1)
+}
 
-	if len(addrs2) != 1 || !addrs2[0].Equal(addr1) {
-		t.Fatalf("expected [%s], got %+v", addr1, addrs2)
+func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
+	ctx := context.Background()
+	taddrs := []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1234")}
+
+	h := New(swarmt.GenSwarm(t, ctx), AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		return taddrs
+	}))
+	defer h.Close()
+
+	sub, err := h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
+	if err != nil {
+		t.Error(err)
 	}
+	defer sub.Close()
+	// wait for the host background thread to start
+	time.Sleep(1 * time.Second)
+
+	expected := event.EvtLocalAddressesUpdated{
+		Diffs: true,
+		Current: []event.UpdatedAddress{
+			{Action: event.Added, Address: ma.StringCast("/ip4/1.2.3.4/tcp/1234")},
+		},
+		Removed: []event.UpdatedAddress{}}
+
+	// assert we get expected event
+	evt := waitForAddrChangeEvent(ctx, sub, t)
+	if !updatedAddrEventsEqual(expected, evt) {
+		t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expected, evt)
+	}
+
+	// assert it's on the signed record
+	rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
+	require.Equal(t, taddrs, rc.Addrs)
+
+	// assert it's in the peerstore
+	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
+	require.NotNil(t, ev)
+	rc = peerRecordFromEnvelope(t, ev)
+	require.Equal(t, taddrs, rc.Addrs)
 }
 
 func TestHostAddrChangeDetection(t *testing.T) {
@@ -594,9 +668,18 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		h.SignalAddressChange()
 		evt := waitForAddrChangeEvent(ctx, sub, t)
 		if !updatedAddrEventsEqual(expectedEvents[i-1], evt) {
-			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i], evt)
+			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i-1], evt)
 		}
 
+		// assert it's on the signed record
+		rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
+		require.Equal(t, addrSets[i], rc.Addrs)
+
+		// assert it's in the peerstore
+		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
+		require.NotNil(t, ev)
+		rc = peerRecordFromEnvelope(t, ev)
+		require.Equal(t, addrSets[i], rc.Addrs)
 	}
 }
 
@@ -655,10 +738,17 @@ func updatedAddrEventsEqual(a, b event.EvtLocalAddressesUpdated) bool {
 		updatedAddrsEqual(a.Removed, b.Removed)
 }
 
-type sortedMultiaddrs []ma.Multiaddr
-
-func (sma sortedMultiaddrs) Len() int      { return len(sma) }
-func (sma sortedMultiaddrs) Swap(i, j int) { sma[i], sma[j] = sma[j], sma[i] }
-func (sma sortedMultiaddrs) Less(i, j int) bool {
-	return bytes.Compare(sma[i].Bytes(), sma[j].Bytes()) == 1
+func peerRecordFromEnvelope(t *testing.T, ev *record.Envelope) *peer.PeerRecord {
+	t.Helper()
+	rec, err := ev.Record()
+	if err != nil {
+		t.Fatalf("error getting PeerRecord from event: %v", err)
+		return nil
+	}
+	peerRec, ok := rec.(*peer.PeerRecord)
+	if !ok {
+		t.Fatalf("wrong type for peer record")
+		return nil
+	}
+	return peerRec
 }

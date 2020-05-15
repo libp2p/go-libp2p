@@ -14,14 +14,13 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p-core/record"
 
 	"github.com/libp2p/go-eventbus"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	ggio "github.com/gogo/protobuf/io"
 	logging "github.com/ipfs/go-log"
-
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr-net"
 	msmux "github.com/multiformats/go-multistream"
@@ -29,7 +28,8 @@ import (
 
 var log = logging.Logger("net/identify")
 
-// ID is the protocol.ID of the Identify Service.
+// ID is the protocol.ID of version 1.0.0 of the identify
+// service.
 const ID = "/ipfs/id/1.0.0"
 
 // LibP2PVersion holds the current protocol version for a client running this code
@@ -59,6 +59,15 @@ func init() {
 // transientTTL is a short ttl for invalidated previously connected addrs
 const transientTTL = 10 * time.Second
 
+type addPeerHandlerReq struct {
+	rp   peer.ID
+	resp chan *peerHandler
+}
+
+type rmPeerHandlerReq struct {
+	p peer.ID
+}
+
 // IDService is a structure that implements ProtocolIdentify.
 // It is a trivial service that gives the other peer some
 // useful information about the local peer. A sort of hello.
@@ -78,23 +87,23 @@ type IDService struct {
 	// track resources that need to be shut down before we shut down
 	refCount sync.WaitGroup
 
-	// connections undergoing identification
-	// for wait purposes
-	currid map[network.Conn]chan struct{}
-	currmu sync.RWMutex
+	// Identified connections (finished and in progress).
+	connsMu sync.RWMutex
+	conns   map[network.Conn]chan struct{}
 
 	addrMu sync.Mutex
 
 	// our own observed addresses.
-	// TODO: instead of expiring, remove these when we disconnect
-	observedAddrs *ObservedAddrSet
+	observedAddrs *ObservedAddrManager
 
-	subscription event.Subscription
-	emitters     struct {
+	emitters struct {
 		evtPeerProtocolsUpdated        event.Emitter
 		evtPeerIdentificationCompleted event.Emitter
 		evtPeerIdentificationFailed    event.Emitter
 	}
+
+	addPeerHandlerCh chan addPeerHandlerReq
+	rmPeerHandlerCh  chan rmPeerHandlerReq
 }
 
 // NewIDService constructs a new *IDService and activates it by
@@ -117,38 +126,144 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 
 		ctx:           hostCtx,
 		ctxCancel:     cancel,
-		currid:        make(map[network.Conn]chan struct{}),
-		observedAddrs: NewObservedAddrSet(hostCtx),
+		conns:         make(map[network.Conn]chan struct{}),
+		observedAddrs: NewObservedAddrManager(hostCtx, h),
+
+		addPeerHandlerCh: make(chan addPeerHandlerReq),
+		rmPeerHandlerCh:  make(chan rmPeerHandlerReq),
 	}
 
 	// handle local protocol handler updates, and push deltas to peers.
 	var err error
-	s.subscription, err = h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{}, eventbus.BufSize(128))
-	if err != nil {
-		log.Warningf("identify service not subscribed to local protocol handlers updates; err: %s", err)
-	} else {
-		s.refCount.Add(1)
-		go s.handleEvents()
-	}
+
+	s.refCount.Add(1)
+	go s.loop()
 
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
-		log.Warningf("identify service not emitting peer protocol updates; err: %s", err)
+		log.Warnf("identify service not emitting peer protocol updates; err: %s", err)
 	}
 	s.emitters.evtPeerIdentificationCompleted, err = h.EventBus().Emitter(&event.EvtPeerIdentificationCompleted{})
 	if err != nil {
-		log.Warningf("identify service not emitting identification completed events; err: %s", err)
+		log.Warnf("identify service not emitting identification completed events; err: %s", err)
 	}
 	s.emitters.evtPeerIdentificationFailed, err = h.EventBus().Emitter(&event.EvtPeerIdentificationFailed{})
 	if err != nil {
-		log.Warningf("identify service not emitting identification failed events; err: %s", err)
+		log.Warnf("identify service not emitting identification failed events; err: %s", err)
 	}
 
-	h.SetStreamHandler(ID, s.requestHandler)
-	h.SetStreamHandler(IDPush, s.pushHandler)
+	// register protocols that do not depend on peer records.
 	h.SetStreamHandler(IDDelta, s.deltaHandler)
+	h.SetStreamHandler(ID, s.sendIdentifyResp)
+	h.SetStreamHandler(IDPush, s.pushHandler)
+
 	h.Network().Notify((*netNotifiee)(s))
 	return s
+}
+
+func (ids *IDService) loop() {
+	defer ids.refCount.Done()
+
+	phs := make(map[peer.ID]*peerHandler)
+	sub, err := ids.Host.EventBus().Subscribe([]interface{}{&event.EvtLocalProtocolsUpdated{},
+		&event.EvtLocalAddressesUpdated{}}, eventbus.BufSize(256))
+	if err != nil {
+		log.Errorf("failed to subscribe to events on the bus, err=%s", err)
+		return
+	}
+
+	defer func() {
+		sub.Close()
+		for pid := range phs {
+			phs[pid].close()
+		}
+	}()
+
+	phClosedCh := make(chan peer.ID)
+
+	for {
+		select {
+		case addReq := <-ids.addPeerHandlerCh:
+			rp := addReq.rp
+			ph, ok := phs[rp]
+			if ok {
+				addReq.resp <- ph
+				continue
+			}
+
+			if ids.Host.Network().Connectedness(rp) == network.Connected {
+				ph = newPeerHandler(rp, ids)
+				ph.start()
+				phs[rp] = ph
+				addReq.resp <- ph
+			}
+
+		case rmReq := <-ids.rmPeerHandlerCh:
+			rp := rmReq.p
+			if ids.Host.Network().Connectedness(rp) != network.Connected {
+				// before we remove the peerhandler, we should ensure that it will not send any
+				// more messages. Otherwise, we might create a new handler and the Identify response
+				// synchronized with the new handler might be overwritten by a message sent by this "old" handler.
+				ph, ok := phs[rp]
+				if !ok {
+					// move on, move on, there's nothing to see here.
+					continue
+				}
+				ids.refCount.Add(1)
+				go func(req rmPeerHandlerReq, ph *peerHandler) {
+					defer ids.refCount.Done()
+					ph.close()
+					select {
+					case <-ids.ctx.Done():
+						return
+					case phClosedCh <- req.p:
+					}
+				}(rmReq, ph)
+			}
+
+		case rp := <-phClosedCh:
+			ph := phs[rp]
+
+			// If we are connected to the peer, it means that we got a connection from the peer
+			// before we could finish removing it's handler on the previous disconnection.
+			// If we delete the handler, we wont be able to push updates to it
+			// till we see a new connection. So, we should restart the handler.
+			// The fact that we got the handler on this channel means that it's context and handler
+			// have completed because we write the handler to this chanel only after it closed.
+			if ids.Host.Network().Connectedness(rp) == network.Connected {
+				ph.start()
+			} else {
+				delete(phs, rp)
+			}
+
+		case e, more := <-sub.Out():
+			if !more {
+				return
+			}
+			switch e.(type) {
+			case event.EvtLocalAddressesUpdated:
+				for pid := range phs {
+					select {
+					case phs[pid].pushCh <- struct{}{}:
+					default:
+						log.Debugf("dropping addr updated message for %s as buffer full", pid.Pretty())
+					}
+				}
+
+			case event.EvtLocalProtocolsUpdated:
+				for pid := range phs {
+					select {
+					case phs[pid].deltaCh <- struct{}{}:
+					default:
+						log.Debugf("dropping protocol updated message for %s as buffer full", pid.Pretty())
+					}
+				}
+			}
+
+		case <-ids.ctx.Done():
+			return
+		}
+	}
 }
 
 // Close shuts down the IDService
@@ -160,24 +275,6 @@ func (ids *IDService) Close() error {
 	return nil
 }
 
-func (ids *IDService) handleEvents() {
-	sub := ids.subscription
-	defer ids.refCount.Done()
-	defer sub.Close()
-
-	for {
-		select {
-		case evt, more := <-sub.Out():
-			if !more {
-				return
-			}
-			ids.fireProtocolDelta(evt.(event.EvtLocalProtocolsUpdated))
-		case <-ids.ctx.Done():
-			return
-		}
-	}
-}
-
 // OwnObservedAddrs returns the addresses peers have reported we've dialed from
 func (ids *IDService) OwnObservedAddrs() []ma.Multiaddr {
 	return ids.observedAddrs.Addrs()
@@ -187,28 +284,58 @@ func (ids *IDService) ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr {
 	return ids.observedAddrs.AddrsFor(local)
 }
 
+// IdentifyConn synchronously triggers an identify request on the connection and
+// waits for it to complete. If the connection is being identified by another
+// caller, this call will wait. If the connection has already been identified,
+// it will return immediately.
 func (ids *IDService) IdentifyConn(c network.Conn) {
+	<-ids.IdentifyWait(c)
+}
+
+// IdentifyWait triggers an identify (if the connection has not already been
+// identified) and returns a channel that is closed when the identify protocol
+// completes.
+func (ids *IDService) IdentifyWait(c network.Conn) <-chan struct{} {
+	ids.connsMu.RLock()
+	wait, found := ids.conns[c]
+	ids.connsMu.RUnlock()
+
+	if found {
+		return wait
+	}
+
+	ids.connsMu.Lock()
+	defer ids.connsMu.Unlock()
+
+	wait, found = ids.conns[c]
+
+	if !found {
+		wait = make(chan struct{})
+		ids.conns[c] = wait
+
+		// Spawn an identify. The connection may actually be closed
+		// already, but that doesn't really matter. We'll fail to open a
+		// stream then forget the connection.
+		go ids.identifyConn(c, wait)
+	}
+
+	return wait
+}
+
+func (ids *IDService) removeConn(c network.Conn) {
+	ids.connsMu.Lock()
+	delete(ids.conns, c)
+	ids.connsMu.Unlock()
+}
+
+func (ids *IDService) identifyConn(c network.Conn, signal chan struct{}) {
 	var (
 		s   network.Stream
 		err error
 	)
 
-	ids.currmu.Lock()
-	if wait, found := ids.currid[c]; found {
-		ids.currmu.Unlock()
-		log.Debugf("IdentifyConn called twice on: %s", c)
-		<-wait // already identifying it. wait for it.
-		return
-	}
-	ch := make(chan struct{})
-	ids.currid[c] = ch
-	ids.currmu.Unlock()
-
 	defer func() {
-		close(ch)
-		ids.currmu.Lock()
-		delete(ids.currid, c)
-		ids.currmu.Unlock()
+		close(signal)
 
 		// emit the appropriate event.
 		if p := c.RemotePeer(); err == nil {
@@ -220,12 +347,16 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 
 	s, err = c.NewStream()
 	if err != nil {
-		log.Debugf("error opening initial stream for %s: %s", ID, err)
-		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer())
+		log.Debugw("error opening identify stream", "error", err)
+		// the connection is probably already closed if we hit this.
+		// TODO: Remove this?
 		c.Close()
+
+		// We usually do this on disconnect, but we may have already
+		// processed the disconnect event.
+		ids.removeConn(c)
 		return
 	}
-
 	s.SetProtocol(ID)
 
 	// ok give the response to our handler.
@@ -234,23 +365,44 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 		s.Reset()
 		return
 	}
-
-	ids.responseHandler(s)
+	ids.handleIdentifyResponse(s)
 }
 
-func (ids *IDService) requestHandler(s network.Stream) {
-	defer helpers.FullClose(s)
+func (ids *IDService) sendIdentifyResp(s network.Stream) {
+	var ph *peerHandler
+
+	defer func() {
+		helpers.FullClose(s)
+		if ph != nil {
+			ph.snapshotMu.RUnlock()
+		}
+	}()
+
 	c := s.Conn()
 
+	phCh := make(chan *peerHandler, 1)
+	select {
+	case ids.addPeerHandlerCh <- addPeerHandlerReq{c.RemotePeer(), phCh}:
+	case <-ids.ctx.Done():
+		return
+	}
+
+	select {
+	case ph = <-phCh:
+	case <-ids.ctx.Done():
+		return
+	}
+
+	ph.snapshotMu.RLock()
+	mes := &pb.Identify{}
+	ids.populateMessage(mes, c, ph.snapshot)
 	w := ggio.NewDelimitedWriter(s)
-	mes := pb.Identify{}
-	ids.populateMessage(&mes, s.Conn())
-	w.WriteMsg(&mes)
+	w.WriteMsg(mes)
 
 	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
 }
 
-func (ids *IDService) responseHandler(s network.Stream) {
+func (ids *IDService) handleIdentifyResponse(s network.Stream) {
 	c := s.Conn()
 
 	r := ggio.NewDelimitedReader(s, 2048)
@@ -267,95 +419,53 @@ func (ids *IDService) responseHandler(s network.Stream) {
 	ids.consumeMessage(&mes, c)
 }
 
-func (ids *IDService) broadcast(proto protocol.ID, payloadWriter func(s network.Stream)) {
-	var wg sync.WaitGroup
-
-	ctx, cancel := context.WithTimeout(ids.ctx, 30*time.Second)
-	ctx = network.WithNoDial(ctx, string(proto))
-
-	pstore := ids.Host.Peerstore()
-	for _, p := range ids.Host.Network().Peers() {
-		wg.Add(1)
-
-		go func(p peer.ID, conns []network.Conn) {
-			defer wg.Done()
-
-			// if we're in the process of identifying the connection, let's wait.
-			// we don't use ids.IdentifyWait() to avoid unnecessary channel creation.
-		Loop:
-			for _, c := range conns {
-				ids.currmu.RLock()
-				if wait, ok := ids.currid[c]; ok {
-					ids.currmu.RUnlock()
-					select {
-					case <-wait:
-						break Loop
-					case <-ctx.Done():
-						return
-					}
-				}
-				ids.currmu.RUnlock()
-			}
-
-			// avoid the unnecessary stream if the peer does not support the protocol.
-			if sup, err := pstore.SupportsProtocols(p, string(proto)); err != nil && len(sup) == 0 {
-				// the peer does not support the required protocol.
-				return
-			}
-			// if the peerstore query errors, we go ahead anyway.
-
-			s, err := ids.Host.NewStream(ctx, p, proto)
-			if err != nil {
-				log.Debugf("error opening push stream to %s: %s", p, err.Error())
-				return
-			}
-
-			rch := make(chan struct{}, 1)
-			go func() {
-				payloadWriter(s)
-				rch <- struct{}{}
-			}()
-
-			select {
-			case <-rch:
-			case <-ctx.Done():
-				// this is taking too long, abort!
-				s.Reset()
-			}
-		}(p, ids.Host.Network().ConnsToPeer(p))
+func (ids *IDService) getSnapshot() *identifySnapshot {
+	snapshot := new(identifySnapshot)
+	if cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore()); ok {
+		snapshot.record = cab.GetPeerRecord(ids.Host.ID())
+		if snapshot.record == nil {
+			log.Errorf("latest peer record does not exist. identify message incomplete!")
+		}
 	}
-
-	// this supervisory goroutine is necessary to cancel the context
-	go func() {
-		wg.Wait()
-		cancel()
-	}()
+	snapshot.addrs = ids.Host.Addrs()
+	snapshot.protocols = ids.Host.Mux().Protocols()
+	return snapshot
 }
 
-func (ids *IDService) populateMessage(mes *pb.Identify, c network.Conn) {
+func (ids *IDService) populateMessage(
+	mes *pb.Identify,
+	conn network.Conn,
+	snapshot *identifySnapshot,
+) {
+	remoteAddr := conn.RemoteMultiaddr()
+	localAddr := conn.LocalMultiaddr()
+
 	// set protocols this node is currently handling
-	protos := ids.Host.Mux().Protocols()
-	mes.Protocols = make([]string, len(protos))
-	for i, p := range protos {
-		mes.Protocols[i] = p
-	}
+	mes.Protocols = snapshot.protocols
 
 	// observed address so other side is informed of their
 	// "public" address, at least in relation to us.
-	mes.ObservedAddr = c.RemoteMultiaddr().Bytes()
+	mes.ObservedAddr = remoteAddr.Bytes()
 
-	// set listen addrs, get our latest addrs from Host.
-	laddrs := ids.Host.Addrs()
+	// populate unsigned addresses.
+	// peers that do not yet support signed addresses will need this.
 	// Note: LocalMultiaddr is sometimes 0.0.0.0
-	viaLoopback := manet.IsIPLoopback(c.LocalMultiaddr()) || manet.IsIPLoopback(c.RemoteMultiaddr())
-	mes.ListenAddrs = make([][]byte, 0, len(laddrs))
-	for _, addr := range laddrs {
+	viaLoopback := manet.IsIPLoopback(localAddr) || manet.IsIPLoopback(remoteAddr)
+	mes.ListenAddrs = make([][]byte, 0, len(snapshot.addrs))
+	for _, addr := range snapshot.addrs {
 		if !viaLoopback && manet.IsIPLoopback(addr) {
 			continue
 		}
 		mes.ListenAddrs = append(mes.ListenAddrs, addr.Bytes())
 	}
-	log.Debugf("%s sent listen addrs to %s: %s", c.LocalPeer(), c.RemotePeer(), laddrs)
+
+	recBytes, err := snapshot.record.Marshal()
+	if err != nil {
+		log.Errorf("error marshaling peer record: %v", err)
+	} else {
+		mes.SignedPeerRecord = recBytes
+		log.Debugf("%s sent peer record to %s", ids.Host.ID(), conn.RemotePeer())
+	}
 
 	// set our public key
 	ownKey := ids.Host.Peerstore().PubKey(ids.Host.ID())
@@ -415,18 +525,35 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c network.Conn) {
 	// that picks random source ports, this can cause DHT nodes to collect
 	// many undialable addresses for other peers.
 
+	// add certified addresses for the peer, if they sent us a signed peer record
+	// otherwise use the unsigned addresses.
+	var signedPeerRecord *record.Envelope
+	signedPeerRecord, err := signedPeerRecordFromMessage(mes)
+	if err != nil {
+		log.Errorf("error getting peer record from Identify message: %v", err)
+	}
+
 	// Extend the TTLs on the known (probably) good addresses.
 	// Taking the lock ensures that we don't concurrently process a disconnect.
 	ids.addrMu.Lock()
-	switch ids.Host.Network().Connectedness(p) {
-	case network.Connected:
-		// invalidate previous addrs -- we use a transient ttl instead of 0 to ensure there
-		// is no period of having no good addrs whatsoever
-		ids.Host.Peerstore().UpdateAddrs(p, peerstore.ConnectedAddrTTL, transientTTL)
-		ids.Host.Peerstore().AddAddrs(p, lmaddrs, peerstore.ConnectedAddrTTL)
-	default:
-		ids.Host.Peerstore().UpdateAddrs(p, peerstore.ConnectedAddrTTL, transientTTL)
-		ids.Host.Peerstore().AddAddrs(p, lmaddrs, peerstore.RecentlyConnectedAddrTTL)
+	ttl := peerstore.RecentlyConnectedAddrTTL
+	if ids.Host.Network().Connectedness(p) == network.Connected {
+		ttl = peerstore.ConnectedAddrTTL
+	}
+
+	// invalidate previous addrs -- we use a transient ttl instead of 0 to ensure there
+	// is no period of having no good addrs whatsoever
+	ids.Host.Peerstore().UpdateAddrs(p, peerstore.ConnectedAddrTTL, transientTTL)
+
+	// add signed addrs if we have them and the peerstore supports them
+	cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore())
+	if ok && signedPeerRecord != nil {
+		_, addErr := cab.ConsumePeerRecord(signedPeerRecord, ttl)
+		if addErr != nil {
+			log.Debugf("error adding signed addrs to peerstore: %v", addErr)
+		}
+	} else {
+		ids.Host.Peerstore().AddAddrs(p, lmaddrs, ttl)
 	}
 	ids.addrMu.Unlock()
 
@@ -546,26 +673,6 @@ func HasConsistentTransport(a ma.Multiaddr, green []ma.Multiaddr) bool {
 	return false
 }
 
-// IdentifyWait returns a channel which will be closed once
-// "ProtocolIdentify" (handshake3) finishes on given conn.
-// This happens async so the connection can start to be used
-// even if handshake3 knowledge is not necessary.
-// Users **MUST** call IdentifyWait _after_ IdentifyConn
-func (ids *IDService) IdentifyWait(c network.Conn) <-chan struct{} {
-	ids.currmu.Lock()
-	ch, found := ids.currid[c]
-	ids.currmu.Unlock()
-	if found {
-		return ch
-	}
-
-	// if not found, it means we are already done identifying it, or
-	// haven't even started. either way, return a new channel closed.
-	ch = make(chan struct{})
-	close(ch)
-	return ch
-}
-
 func (ids *IDService) consumeObservedAddress(observed []byte, c network.Conn) {
 	if observed == nil {
 		return
@@ -577,31 +684,7 @@ func (ids *IDService) consumeObservedAddress(observed []byte, c network.Conn) {
 		return
 	}
 
-	// we should only use ObservedAddr when our connection's LocalAddr is one
-	// of our ListenAddrs. If we Dial out using an ephemeral addr, knowing that
-	// address's external mapping is not very useful because the port will not be
-	// the same as the listen addr.
-	ifaceaddrs, err := ids.Host.Network().InterfaceListenAddresses()
-	if err != nil {
-		log.Infof("failed to get interface listen addrs", err)
-		return
-	}
-
-	log.Debugf("identify identifying observed multiaddr: %s %s", c.LocalMultiaddr(), ifaceaddrs)
-	if !addrInAddrs(c.LocalMultiaddr(), ifaceaddrs) && !addrInAddrs(c.LocalMultiaddr(), ids.Host.Network().ListenAddresses()) {
-		// not in our list
-		return
-	}
-
-	if !HasConsistentTransport(maddr, ids.Host.Addrs()) {
-		log.Debugf("ignoring observed multiaddr that doesn't match the transports of any addresses we're announcing", c.RemoteMultiaddr())
-		return
-	}
-
-	// ok! we have the observed version of one of our ListenAddresses!
-	log.Debugf("added own observed listen addr: %s --> %s", c.LocalMultiaddr(), maddr)
-	ids.observedAddrs.Add(maddr, c.LocalMultiaddr(), c.RemoteMultiaddr(),
-		c.Stat().Direction)
+	ids.observedAddrs.Record(c, maddr)
 }
 
 func addrInAddrs(a ma.Multiaddr, as []ma.Multiaddr) bool {
@@ -613,6 +696,14 @@ func addrInAddrs(a ma.Multiaddr, as []ma.Multiaddr) bool {
 	return false
 }
 
+func signedPeerRecordFromMessage(msg *pb.Identify) (*record.Envelope, error) {
+	if msg.SignedPeerRecord == nil || len(msg.SignedPeerRecord) == 0 {
+		return nil, nil
+	}
+	env, _, err := record.ConsumeEnvelope(msg.SignedPeerRecord, peer.PeerRecordEnvelopeDomain)
+	return env, err
+}
+
 // netNotifiee defines methods to be used with the IpfsDHT
 type netNotifiee IDService
 
@@ -621,17 +712,27 @@ func (nn *netNotifiee) IDService() *IDService {
 }
 
 func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
-	// TODO: deprecate the setConnHandler hook, and kick off
-	// identification here.
+	nn.IDService().IdentifyWait(v)
 }
 
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
-	// undo the setting of addresses to peer.ConnectedAddrTTL we did
 	ids := nn.IDService()
+
+	// Stop tracking the connection.
+	ids.removeConn(v)
+
+	// undo the setting of addresses to peer.ConnectedAddrTTL we did
 	ids.addrMu.Lock()
 	defer ids.addrMu.Unlock()
 
 	if ids.Host.Network().Connectedness(v.RemotePeer()) != network.Connected {
+		// consider removing the peer handler for this
+		select {
+		case ids.rmPeerHandlerCh <- rmPeerHandlerReq{v.RemotePeer()}:
+		case <-ids.ctx.Done():
+			return
+		}
+
 		// Last disconnect.
 		ps := ids.Host.Peerstore()
 		ps.UpdateAddrs(v.RemotePeer(), peerstore.ConnectedAddrTTL, peerstore.RecentlyConnectedAddrTTL)

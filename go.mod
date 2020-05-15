@@ -12,11 +12,11 @@ require (
 	github.com/jbenet/goprocess v0.1.4
 	github.com/libp2p/go-conn-security-multistream v0.2.0
 	github.com/libp2p/go-eventbus v0.1.0
-	github.com/libp2p/go-libp2p-autonat v0.2.1
-	github.com/libp2p/go-libp2p-blankhost v0.1.4
-	github.com/libp2p/go-libp2p-circuit v0.2.1
-	github.com/libp2p/go-libp2p-core v0.5.5
-	github.com/libp2p/go-libp2p-discovery v0.3.0
+	github.com/libp2p/go-libp2p-autonat v0.2.2
+	github.com/libp2p/go-libp2p-blankhost v0.1.5-0.20200504035409-3dd0148936e2
+	github.com/libp2p/go-libp2p-circuit v0.2.2
+	github.com/libp2p/go-libp2p-core v0.5.4-0.20200513121538-909c77480f73
+	github.com/libp2p/go-libp2p-discovery v0.4.0
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.3
 	github.com/libp2p/go-libp2p-nat v0.0.6
@@ -25,12 +25,13 @@ require (
 	github.com/libp2p/go-libp2p-secio v0.2.2
 	github.com/libp2p/go-libp2p-swarm v0.2.4-0.20200413072055-fb9362ad8f18
 	github.com/libp2p/go-libp2p-testing v0.1.1
+	github.com/libp2p/go-libp2p-tls v0.1.3
 	github.com/libp2p/go-libp2p-transport-upgrader v0.2.1-0.20200513191341-03eaee6978e2
 	github.com/libp2p/go-libp2p-yamux v0.2.7
 	github.com/libp2p/go-stream-muxer-multistream v0.3.0
 	github.com/libp2p/go-tcp-transport v0.2.0
-	github.com/libp2p/go-ws-transport v0.3.0
-	github.com/multiformats/go-multiaddr v0.2.2
+	github.com/libp2p/go-ws-transport v0.3.1
+	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.5
 	github.com/multiformats/go-multibase v0.0.2 // indirect

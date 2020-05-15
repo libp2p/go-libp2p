@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"time"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -43,8 +44,15 @@ type NATManagerC func(network.Network) bhost.NATManager
 
 type RoutingC func(host.Host) (routing.PeerRouting, error)
 
-// AutoNATMode defines the AutoNAT behavior for the libp2p host.
-//
+// AutoNATConfig defines the AutoNAT behavior for the libp2p host.
+type AutoNATConfig struct {
+	ForceReachability   *network.Reachability
+	EnableService       bool
+	ThrottleGlobalLimit int
+	ThrottlePeerLimit   int
+	ThrottleInterval    time.Duration
+}
+
 // Config describes a set of settings for a libp2p node
 //
 // This is *not* a stable interface. Use the options defined in the root
@@ -82,9 +90,8 @@ type Config struct {
 	Routing RoutingC
 
 	EnableAutoRelay bool
-	Reachability    network.Reachability
-	AutoNATService  bool
-	StaticRelays    []peer.AddrInfo
+	AutoNATConfig
+	StaticRelays []peer.AddrInfo
 }
 
 func (cfg *Config) makeSwarm(ctx context.Context) (*swarm.Swarm, error) {
@@ -275,10 +282,17 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		}
 	}
 
-	autonatOpts := []autonat.Option{autonat.UsingAddresses(func() []ma.Multiaddr {
-		return addrF(h.AllAddrs())
-	})}
-	if cfg.AutoNATService {
+	autonatOpts := []autonat.Option{
+		autonat.UsingAddresses(func() []ma.Multiaddr {
+			return addrF(h.AllAddrs())
+		}),
+	}
+	if cfg.AutoNATConfig.ThrottleInterval != 0 {
+		autonatOpts = append(autonatOpts,
+			autonat.WithThrottling(cfg.AutoNATConfig.ThrottleGlobalLimit, cfg.AutoNATConfig.ThrottleInterval),
+			autonat.WithPeerThrottling(cfg.AutoNATConfig.ThrottlePeerLimit))
+	}
+	if cfg.AutoNATConfig.EnableService {
 		autonatPrivKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
 		if err != nil {
 			return nil, err
@@ -317,8 +331,8 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		// closed (as long as we close the underlying network).
 		autonatOpts = append(autonatOpts, autonat.EnableService(dialerHost.Network()))
 	}
-	if cfg.Reachability != network.ReachabilityUnknown {
-		autonatOpts = append(autonatOpts, autonat.WithReachability(cfg.Reachability))
+	if cfg.AutoNATConfig.ForceReachability != nil {
+		autonatOpts = append(autonatOpts, autonat.WithReachability(*cfg.AutoNATConfig.ForceReachability))
 	}
 
 	if _, err = autonat.New(ctx, h, autonatOpts...); err != nil {
