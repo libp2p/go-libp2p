@@ -23,6 +23,7 @@ import (
 	inat "github.com/libp2p/go-libp2p-nat"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-netroute"
 
 	logging "github.com/ipfs/go-log"
 
@@ -103,6 +104,9 @@ type BasicHost struct {
 
 	signKey crypto.PrivKey
 	caBook  peerstore.CertifiedAddrBook
+
+	localIPv4Addr net.IP
+	localIPv6Addr net.IP
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -141,11 +145,11 @@ type HostOpts struct {
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
-func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHost, error) {
+func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*BasicHost, error) {
 	hostCtx, cancel := context.WithCancel(ctx)
 
 	h := &BasicHost{
-		network:        net,
+		network:        network,
 		mux:            msmux.NewMultistreamMuxer(),
 		negtimeout:     DefaultNegotiationTimeout,
 		AddrsFactory:   DefaultAddrsFactory,
@@ -157,6 +161,21 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	}
 
 	var err error
+
+	localIpv4, err := getLocalIPAddrFor(net.IPv4(0, 0, 0, 0))
+	if err != nil {
+		log.Debugw("failed to fetch local IPv4 address", "err", err)
+	} else {
+		h.localIPv4Addr = localIpv4
+	}
+
+	localIpv6, err := getLocalIPAddrFor(net.ParseIP("::"))
+	if err != nil {
+		log.Debugw("failed to fetch local IPv6 address", "err", err)
+	} else {
+		h.localIPv6Addr = localIpv6
+	}
+
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
 		return nil, err
 	}
@@ -164,7 +183,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		return nil, err
 	}
 
-	cab, ok := peerstore.GetCertifiedAddrBook(net.Peerstore())
+	cab, ok := peerstore.GetCertifiedAddrBook(network.Peerstore())
 	if !ok {
 		return nil, errors.New("peerstore should also be a certified address book")
 	}
@@ -191,7 +210,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	}
 
 	if opts.NATManager != nil {
-		h.natmgr = opts.NATManager(net)
+		h.natmgr = opts.NATManager(network)
 	}
 
 	if opts.MultiaddrResolver != nil {
@@ -202,14 +221,14 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.cmgr = &connmgr.NullConnMgr{}
 	} else {
 		h.cmgr = opts.ConnManager
-		net.Notify(h.cmgr.Notifee())
+		network.Notify(h.cmgr.Notifee())
 	}
 
 	if opts.EnablePing {
 		h.pings = ping.NewPingService(h)
 	}
 
-	net.SetStreamHandler(h.newStreamHandler)
+	network.SetStreamHandler(h.newStreamHandler)
 
 	// persist a signed peer record for self to the peerstore.
 	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), h.Addrs()})
@@ -222,6 +241,19 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	}
 
 	return h, nil
+}
+
+func getLocalIPAddrFor(ip net.IP) (net.IP, error) {
+	r, err := netroute.New()
+	if err != nil {
+		return nil, err
+	}
+	_, _, src, err := r.Route(ip)
+	if err != nil {
+		return nil, err
+	}
+
+	return src, err
 }
 
 // New constructs and sets up a new *BasicHost with given Network and options.
@@ -700,9 +732,39 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		natMappings = h.natmgr.NAT().Mappings()
 	}
 
-	finalAddrs := listenAddrs
-	if len(natMappings) > 0 {
+	var finalAddrs []ma.Multiaddr
 
+	for _, a := range listenAddrs {
+		// add loopback addresses for all transports.
+		if manet.IsIPLoopback(a) {
+			finalAddrs = append(finalAddrs, a)
+			continue
+		}
+
+		// add public addresses for all transports
+		if manet.IsPublicAddr(a) {
+			finalAddrs = append(finalAddrs, a)
+			continue
+		}
+
+		ip, err := manet.ToIP(a)
+		if err != nil {
+			continue
+		}
+		// add default local IPv4 address for all transports.
+		if len(ip.To4()) == 4 && h.localIPv4Addr != nil && h.localIPv4Addr.Equal(ip) {
+			finalAddrs = append(finalAddrs, a)
+			continue
+		}
+
+		// add default local IPv6 address for all transports.
+		if h.localIPv6Addr != nil && h.localIPv6Addr.Equal(ip) {
+			finalAddrs = append(finalAddrs, a)
+			continue
+		}
+	}
+
+	if len(natMappings) > 0 {
 		// We have successfully mapped ports on our NAT. Use those
 		// instead of observed addresses (mostly).
 

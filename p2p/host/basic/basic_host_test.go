@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net"
 	"reflect"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	manet "github.com/multiformats/go-multiaddr-net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -167,6 +169,48 @@ func TestHostAddrsFactory(t *testing.T) {
 	if !addrs[0].Equal(maddr) {
 		t.Fatalf("expected %s, got %s", maddr.String(), addrs[0].String())
 	}
+}
+
+func TestAddrs(t *testing.T) {
+	ctx := context.Background()
+	h := New(swarmt.GenSwarm(t, ctx))
+	defer h.Close()
+
+	// already listens on loopback
+	addrs := h.Addrs()
+	require.Len(t, addrs, 1)
+	require.True(t, manet.IsIPLoopback(addrs[0]))
+
+	// private ip4 addr for IPv4
+	lip, err := getLocalIPAddrFor(net.IPv4(0, 0, 0, 0))
+	require.NoError(t, err)
+	require.NotEmpty(t, lip)
+
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
+	require.True(t, len(h.Addrs()) > 1)
+	var hasPrivateIPv4 bool
+	for _, a := range h.Addrs() {
+		if !manet.IsIPLoopback(a) && manet.IsPrivateAddr(a) {
+			hasPrivateIPv4 = true
+			ip, err := manet.ToIP(a)
+			require.NoError(t, err)
+			require.True(t, ip.Equal(lip))
+		}
+	}
+	require.True(t, hasPrivateIPv4)
+
+	// private addr for IPv6
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip6/::/tcp/0")))
+	require.True(t, len(h.Addrs()) > 2)
+	var hasPrivateIPv6 bool
+	for _, a := range h.Addrs() {
+		nip, err := manet.ToIP(a)
+		require.NoError(t, err)
+		if len(nip.To4()) != 4 && manet.IsPrivateAddr(a) {
+			hasPrivateIPv6 = true
+		}
+	}
+	require.True(t, hasPrivateIPv6)
 }
 
 func getHostPair(ctx context.Context, t *testing.T) (host.Host, host.Host) {
