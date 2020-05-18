@@ -11,7 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 
 	ma "github.com/multiformats/go-multiaddr"
-	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr-net"
 )
 
@@ -35,20 +34,6 @@ var observedAddrManagerWorkerChannelSize = 16
 // maxObservedAddrsPerIPAndTransport is the maximum number of observed addresses
 // we will return for each (IPx/TCP or UDP) group.
 var maxObservedAddrsPerIPAndTransport = 2
-
-var (
-	ip4 = mafmt.Base(ma.P_IP4)
-	ip6 = mafmt.Base(ma.P_IP6)
-	udp = mafmt.Base(ma.P_UDP)
-	tcp = mafmt.Base(ma.P_TCP)
-
-	addrPatterns = []mafmt.Pattern{
-		mafmt.And(ip4, udp),
-		mafmt.And(ip4, tcp),
-		mafmt.And(ip6, udp),
-		mafmt.And(ip6, tcp),
-	}
-)
 
 type observation struct {
 	seenTime      time.Time
@@ -74,7 +59,7 @@ func (oa *ObservedAddr) activated() bool {
 	return len(oa.SeenBy) >= ActivationThresh
 }
 
-func (oa *ObservedAddr) nInbound() int {
+func (oa *ObservedAddr) numInbound() int {
 	count := 0
 	for obs := range oa.SeenBy {
 		if oa.SeenBy[obs].connDirection == network.DirInbound {
@@ -86,14 +71,14 @@ func (oa *ObservedAddr) nInbound() int {
 }
 
 func (oa *ObservedAddr) GroupKey() string {
-	for i := range addrPatterns {
-		pat := addrPatterns[i]
-		if pat.Matches(oa.Addr) {
-			return pat.String()
-		}
+	key := ""
+	protos := oa.Addr.Protocols()
+
+	for i := range protos {
+		key = key + protos[i].Name
 	}
 
-	return ""
+	return key
 }
 
 type newObservation struct {
@@ -174,7 +159,7 @@ func (oas *ObservedAddrManager) Addrs() []ma.Multiaddr {
 }
 
 func (oas *ObservedAddrManager) filter(observedAddrs []*ObservedAddr) []ma.Multiaddr {
-	pmap := make(map[string][]*ObservedAddr, len(addrPatterns))
+	pmap := make(map[string][]*ObservedAddr)
 	now := time.Now()
 
 	for i := range observedAddrs {
@@ -201,7 +186,7 @@ func (oas *ObservedAddrManager) filter(observedAddrs []*ObservedAddr) []ma.Multi
 			first := s[i]
 			second := s[j]
 
-			if first.nInbound() > second.nInbound() {
+			if first.numInbound() > second.numInbound() {
 				return true
 			}
 

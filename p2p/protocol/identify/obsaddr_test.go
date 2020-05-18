@@ -15,7 +15,6 @@ import (
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	ma "github.com/multiformats/go-multiaddr"
-	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,10 +52,11 @@ func (h *harness) conn(observer peer.ID) network.Conn {
 	return c
 }
 
-func (h *harness) observe(observed ma.Multiaddr, observer peer.ID) {
+func (h *harness) observe(observed ma.Multiaddr, observer peer.ID) network.Conn {
 	c := h.conn(observer)
 	h.oas.Record(c, observed)
-	time.Sleep(1 * time.Millisecond) // let the worker run
+	time.Sleep(100 * time.Millisecond) // let the worker run
+	return c
 }
 
 func newHarness(ctx context.Context, t *testing.T) harness {
@@ -332,18 +332,17 @@ func TestObservedAddrFiltering(t *testing.T) {
 }
 
 func TestObservedAddrGroupKey(t *testing.T) {
-	ip4 := mafmt.Base(ma.P_IP4)
-	udp := mafmt.Base(ma.P_UDP)
-	tcp := mafmt.Base(ma.P_TCP)
-
 	oa1 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/tcp/1231")}
-	require.Equal(t, mafmt.And(ip4, tcp).String(), oa1.GroupKey())
+	require.Equal(t, "ip4tcp", oa1.GroupKey())
 
 	oa2 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.5/tcp/2222")}
-	require.Equal(t, mafmt.And(ip4, tcp).String(), oa2.GroupKey())
+	require.Equal(t, "ip4tcp", oa2.GroupKey())
 
 	oa3 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/udp/1231")}
-	require.Equal(t, mafmt.And(ip4, udp).String(), oa3.GroupKey())
+	require.Equal(t, "ip4udp", oa3.GroupKey())
 	oa4 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.3.3.4/udp/1531")}
-	require.Equal(t, mafmt.And(ip4, udp).String(), oa4.GroupKey())
+	require.Equal(t, "ip4udp", oa4.GroupKey())
+
+	oa5 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.3.3.4/udp/1531/quic")}
+	require.Equal(t, "ip4udpquic", oa5.GroupKey())
 }
