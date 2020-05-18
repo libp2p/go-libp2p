@@ -87,6 +87,8 @@ type IDService struct {
 	// track resources that need to be shut down before we shut down
 	refCount sync.WaitGroup
 
+	disableSignedPeerRecord bool
+
 	// Identified connections (finished and in progress).
 	connsMu sync.RWMutex
 	conns   map[network.Conn]chan struct{}
@@ -128,6 +130,8 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 		ctxCancel:     cancel,
 		conns:         make(map[network.Conn]chan struct{}),
 		observedAddrs: NewObservedAddrManager(hostCtx, h),
+
+		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
 
 		addPeerHandlerCh: make(chan addPeerHandlerReq),
 		rmPeerHandlerCh:  make(chan rmPeerHandlerReq),
@@ -421,10 +425,12 @@ func (ids *IDService) handleIdentifyResponse(s network.Stream) {
 
 func (ids *IDService) getSnapshot() *identifySnapshot {
 	snapshot := new(identifySnapshot)
-	if cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore()); ok {
-		snapshot.record = cab.GetPeerRecord(ids.Host.ID())
-		if snapshot.record == nil {
-			log.Errorf("latest peer record does not exist. identify message incomplete!")
+	if !ids.disableSignedPeerRecord {
+		if cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore()); ok {
+			snapshot.record = cab.GetPeerRecord(ids.Host.ID())
+			if snapshot.record == nil {
+				log.Errorf("latest peer record does not exist. identify message incomplete!")
+			}
 		}
 	}
 	snapshot.addrs = ids.Host.Addrs()
@@ -459,12 +465,14 @@ func (ids *IDService) populateMessage(
 		mes.ListenAddrs = append(mes.ListenAddrs, addr.Bytes())
 	}
 
-	recBytes, err := snapshot.record.Marshal()
-	if err != nil {
-		log.Errorf("error marshaling peer record: %v", err)
-	} else {
-		mes.SignedPeerRecord = recBytes
-		log.Debugf("%s sent peer record to %s", ids.Host.ID(), conn.RemotePeer())
+	if !ids.disableSignedPeerRecord {
+		recBytes, err := snapshot.record.Marshal()
+		if err != nil {
+			log.Errorf("error marshaling peer record: %v", err)
+		} else {
+			mes.SignedPeerRecord = recBytes
+			log.Debugf("%s sent peer record to %s", ids.Host.ID(), conn.RemotePeer())
+		}
 	}
 
 	// set our public key

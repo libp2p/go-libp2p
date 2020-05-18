@@ -107,7 +107,8 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host
 	}
 
 	opts := &bhost.HostOpts{
-		NegotiationTimeout: -1,
+		NegotiationTimeout:      -1,
+		DisableSignedPeerRecord: true,
 	}
 
 	h, err := bhost.NewHost(mn.ctx, n, opts)
