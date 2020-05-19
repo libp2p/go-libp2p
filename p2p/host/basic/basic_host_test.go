@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-eventbus"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-netroute"
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -182,7 +183,10 @@ func TestAddrs(t *testing.T) {
 	require.True(t, manet.IsIPLoopback(addrs[0]))
 
 	// private ip4 addr for IPv4
-	lip, err := getLocalIPAddrFor(net.IPv4(0, 0, 0, 0))
+	r, err := netroute.New()
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	_, _, lip, err := r.Route(net.IPv4(0, 0, 0, 0))
 	require.NoError(t, err)
 	require.NotEmpty(t, lip)
 

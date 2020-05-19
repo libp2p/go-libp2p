@@ -149,11 +149,11 @@ type HostOpts struct {
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
-func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*BasicHost, error) {
+func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost, error) {
 	hostCtx, cancel := context.WithCancel(ctx)
 
 	h := &BasicHost{
-		network:                 net,
+		network:                 n,
 		mux:                     msmux.NewMultistreamMuxer(),
 		negtimeout:              DefaultNegotiationTimeout,
 		AddrsFactory:            DefaultAddrsFactory,
@@ -165,22 +165,23 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
 	}
 
+	if r, err := netroute.New(); err != nil {
+		log.Debugw("failed to build Router for kernel's routing table", "err", err)
+	} else {
+		if _, _, localIPv4Addr, err := r.Route(net.IPv4zero); err != nil {
+			log.Debugw("failed to fetch local IPv4 address", "err", err)
+		} else {
+			h.localIPv4Addr = localIPv4Addr
+		}
+
+		if _, _, localIpv6, err := r.Route(net.IPv6unspecified); err != nil {
+			log.Debugw("failed to fetch local IPv6 address", "err", err)
+		} else {
+			h.localIPv6Addr = localIpv6
+		}
+	}
+
 	var err error
-
-	localIpv4, err := getLocalIPAddrFor(net.IPv4(0, 0, 0, 0))
-	if err != nil {
-		log.Debugw("failed to fetch local IPv4 address", "err", err)
-	} else {
-		h.localIPv4Addr = localIpv4
-	}
-
-	localIpv6, err := getLocalIPAddrFor(net.ParseIP("::"))
-	if err != nil {
-		log.Debugw("failed to fetch local IPv6 address", "err", err)
-	} else {
-		h.localIPv6Addr = localIpv6
-	}
-
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
 		return nil, err
 	}
@@ -188,14 +189,12 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 		return nil, err
 	}
 
-
 	if !h.disableSignedPeerRecord {
-		cab, ok := peerstore.GetCertifiedAddrBook(net.Peerstore())
+		cab, ok := peerstore.GetCertifiedAddrBook(n.Peerstore())
 		if !ok {
 			return nil, errors.New("peerstore should also be a certified address book")
 		}
 		h.caBook = cab
-
 
 		h.signKey = h.Peerstore().PrivKey(h.ID())
 		if h.signKey == nil {
@@ -233,7 +232,7 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 	}
 
 	if opts.NATManager != nil {
-		h.natmgr = opts.NATManager(network)
+		h.natmgr = opts.NATManager(n)
 	}
 
 	if opts.MultiaddrResolver != nil {
@@ -244,29 +243,16 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 		h.cmgr = &connmgr.NullConnMgr{}
 	} else {
 		h.cmgr = opts.ConnManager
-		network.Notify(h.cmgr.Notifee())
+		n.Notify(h.cmgr.Notifee())
 	}
 
 	if opts.EnablePing {
 		h.pings = ping.NewPingService(h)
 	}
 
-	network.SetStreamHandler(h.newStreamHandler)
+	n.SetStreamHandler(h.newStreamHandler)
 
 	return h, nil
-}
-
-func getLocalIPAddrFor(ip net.IP) (net.IP, error) {
-	r, err := netroute.New()
-	if err != nil {
-		return nil, err
-	}
-	_, _, src, err := r.Route(ip)
-	if err != nil {
-		return nil, err
-	}
-
-	return src, err
 }
 
 // New constructs and sets up a new *BasicHost with given Network and options.
