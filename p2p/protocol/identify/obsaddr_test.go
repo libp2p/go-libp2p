@@ -55,7 +55,7 @@ func (h *harness) conn(observer peer.ID) network.Conn {
 func (h *harness) observe(observed ma.Multiaddr, observer peer.ID) network.Conn {
 	c := h.conn(observer)
 	h.oas.Record(c, observed)
-	time.Sleep(100 * time.Millisecond) // let the worker run
+	time.Sleep(50 * time.Millisecond) // let the worker run
 	return c
 }
 
@@ -275,8 +275,6 @@ func TestObservedAddrFiltering(t *testing.T) {
 	if !addrsMarch(harness.oas.Addrs(), nil) {
 		t.Error("addrs should be empty")
 	}
-	// Also listen on UDP so udp addresses are accepted
-	require.NoError(t, harness.host.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/5555")))
 
 	// IP4/TCP
 	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
@@ -284,13 +282,8 @@ func TestObservedAddrFiltering(t *testing.T) {
 	it3 := ma.StringCast("/ip4/1.2.3.4/tcp/1233")
 	it4 := ma.StringCast("/ip4/1.2.3.4/tcp/1234")
 	it5 := ma.StringCast("/ip4/1.2.3.4/tcp/1235")
-
-	// IP4/UDP
-	iu1 := ma.StringCast("/ip4/1.2.3.4/udp/1231")
-	iu2 := ma.StringCast("/ip4/1.2.3.4/udp/1232")
-	iu3 := ma.StringCast("/ip4/1.2.3.4/udp/1233")
-	iu4 := ma.StringCast("/ip4/1.2.3.4/udp/1234")
-	iu5 := ma.StringCast("/ip4/1.2.3.4/udp/1235")
+	it6 := ma.StringCast("/ip4/1.2.3.4/tcp/1236")
+	it7 := ma.StringCast("/ip4/1.2.3.4/tcp/1237")
 
 	// observers
 	b1 := ma.StringCast("/ip4/1.2.3.6/tcp/1236")
@@ -299,10 +292,6 @@ func TestObservedAddrFiltering(t *testing.T) {
 	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
 	b5 := ma.StringCast("/ip4/1.2.3.10/tcp/1237")
 
-	// it1 will be inbound with one vote.
-	// it3 will have max votes.
-	// iu2 will be inbound with one vote.
-	// iu4 will have max votes
 	peers := []peer.ID{harness.add(b1), harness.add(b2), harness.add(b3), harness.add(b4), harness.add(b5)}
 	for i := 0; i < 4; i++ {
 		harness.observe(it1, peers[i])
@@ -310,25 +299,18 @@ func TestObservedAddrFiltering(t *testing.T) {
 		harness.observe(it3, peers[i])
 		harness.observe(it4, peers[i])
 		harness.observe(it5, peers[i])
-
-		harness.observe(iu1, peers[i])
-		harness.observe(iu2, peers[i])
-		harness.observe(iu3, peers[i])
-		harness.observe(iu4, peers[i])
-		harness.observe(iu5, peers[i])
+		harness.observe(it6, peers[i])
+		harness.observe(it7, peers[i])
 	}
 
-	harness.observe(it3, peers[4])
-	harness.observe(it4, peers[4])
-	harness.observe(iu2, peers[4])
-	harness.observe(iu5, peers[4])
+	harness.observe(it1, peers[4])
+	harness.observe(it7, peers[4])
 
 	addrs := harness.oas.Addrs()
-	require.Len(t, addrs, 4)
-	require.Contains(t, addrs, it3)
-	require.Contains(t, addrs, it4)
-	require.Contains(t, addrs, iu2)
-	require.Contains(t, addrs, iu5)
+	require.Len(t, addrs, 2)
+	require.Contains(t, addrs, it1)
+	require.Contains(t, addrs, it7)
+
 }
 
 func TestObservedAddrGroupKey(t *testing.T) {
