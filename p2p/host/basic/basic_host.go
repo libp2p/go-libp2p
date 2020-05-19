@@ -102,11 +102,12 @@ type BasicHost struct {
 
 	addrChangeChan chan struct{}
 
-	signKey crypto.PrivKey
-	caBook  peerstore.CertifiedAddrBook
-
 	localIPv4Addr net.IP
 	localIPv6Addr net.IP
+
+	disableSignedPeerRecord bool
+	signKey                 crypto.PrivKey
+	caBook                  peerstore.CertifiedAddrBook
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -142,6 +143,9 @@ type HostOpts struct {
 
 	// UserAgent sets the user-agent for the host. Defaults to ClientVersion.
 	UserAgent string
+
+	// DisableSignedPeerRecord disables the generation of Signed Peer Records on this host.
+	DisableSignedPeerRecord bool
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -149,15 +153,16 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 	hostCtx, cancel := context.WithCancel(ctx)
 
 	h := &BasicHost{
-		network:        network,
-		mux:            msmux.NewMultistreamMuxer(),
-		negtimeout:     DefaultNegotiationTimeout,
-		AddrsFactory:   DefaultAddrsFactory,
-		maResolver:     madns.DefaultResolver,
-		eventbus:       eventbus.NewBus(),
-		addrChangeChan: make(chan struct{}, 1),
-		ctx:            hostCtx,
-		ctxCancel:      cancel,
+		network:                 net,
+		mux:                     msmux.NewMultistreamMuxer(),
+		negtimeout:              DefaultNegotiationTimeout,
+		AddrsFactory:            DefaultAddrsFactory,
+		maResolver:              madns.DefaultResolver,
+		eventbus:                eventbus.NewBus(),
+		addrChangeChan:          make(chan struct{}, 1),
+		ctx:                     hostCtx,
+		ctxCancel:               cancel,
+		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
 	}
 
 	var err error
@@ -183,15 +188,29 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 		return nil, err
 	}
 
-	cab, ok := peerstore.GetCertifiedAddrBook(network.Peerstore())
-	if !ok {
-		return nil, errors.New("peerstore should also be a certified address book")
-	}
-	h.caBook = cab
 
-	h.signKey = h.Peerstore().PrivKey(h.ID())
-	if h.signKey == nil {
-		return nil, errors.New("unable to access host key")
+	if !h.disableSignedPeerRecord {
+		cab, ok := peerstore.GetCertifiedAddrBook(net.Peerstore())
+		if !ok {
+			return nil, errors.New("peerstore should also be a certified address book")
+		}
+		h.caBook = cab
+
+
+		h.signKey = h.Peerstore().PrivKey(h.ID())
+		if h.signKey == nil {
+			return nil, errors.New("unable to access host key")
+		}
+
+		// persist a signed peer record for self to the peerstore.
+		rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), h.Addrs()})
+		ev, err := record.Seal(rec, h.signKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
+		}
+		if _, err := cab.ConsumePeerRecord(ev, peerstore.PermanentAddrTTL); err != nil {
+			return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
+		}
 	}
 
 	if opts.MultistreamMuxer != nil {
@@ -199,7 +218,11 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 	}
 
 	// we can't set this as a default above because it depends on the *BasicHost.
-	h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+	if h.disableSignedPeerRecord {
+		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
+	} else {
+		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {
 		h.negtimeout = opts.NegotiationTimeout
@@ -229,16 +252,6 @@ func NewHost(ctx context.Context, network network.Network, opts *HostOpts) (*Bas
 	}
 
 	network.SetStreamHandler(h.newStreamHandler)
-
-	// persist a signed peer record for self to the peerstore.
-	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), h.Addrs()})
-	ev, err := record.Seal(rec, h.signKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create signed record for self: %w", err)
-	}
-	if _, err := cab.ConsumePeerRecord(ev, peerstore.PermanentAddrTTL); err != nil {
-		return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
-	}
 
 	return h, nil
 }
@@ -416,18 +429,20 @@ func (h *BasicHost) background() {
 			return
 		}
 
-		// add signed peer record to the event
-		sr, err := h.makeSignedPeerRecord(changeEvt)
-		if err != nil {
-			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
-			return
-		}
-		changeEvt.SignedPeerRecord = sr
+		if !h.disableSignedPeerRecord {
+			// add signed peer record to the event
+			sr, err := h.makeSignedPeerRecord(changeEvt)
+			if err != nil {
+				log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
+				return
+			}
+			changeEvt.SignedPeerRecord = sr
 
-		// persist the signed record to the peerstore
-		if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
-			log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
-			return
+			// persist the signed record to the peerstore
+			if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
+				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+				return
+			}
 		}
 
 		// emit addr change event on the bus
