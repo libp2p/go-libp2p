@@ -315,16 +315,16 @@ func TestObservedAddrFiltering(t *testing.T) {
 
 func TestObservedAddrGroupKey(t *testing.T) {
 	oa1 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/tcp/1231")}
-	require.Equal(t, "ip4tcp", oa1.GroupKey())
+	require.Equal(t, "/ip4/tcp", oa1.GroupKey())
 
 	oa2 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.5/tcp/2222")}
-	require.Equal(t, "ip4tcp", oa2.GroupKey())
+	require.Equal(t, "/ip4/tcp", oa2.GroupKey())
 
 	oa3 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/udp/1231")}
-	require.Equal(t, "ip4udp", oa3.GroupKey())
+	require.Equal(t, "/ip4/udp", oa3.GroupKey())
 	oa4 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.3.3.4/udp/1531")}
-	require.Equal(t, "ip4udp", oa4.GroupKey())
+	require.Equal(t, "/ip4/udp", oa4.GroupKey())
 
 	oa5 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.3.3.4/udp/1531/quic")}
-	require.Equal(t, "ip4udpquic", oa5.GroupKey())
+	require.Equal(t, "/ip4/udp/quic", oa5.GroupKey())
 }

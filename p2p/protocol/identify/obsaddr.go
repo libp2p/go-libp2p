@@ -75,7 +75,7 @@ func (oa *ObservedAddr) GroupKey() string {
 	protos := oa.Addr.Protocols()
 
 	for i := range protos {
-		key = key + protos[i].Name
+		key = key + "/" + protos[i].Name
 	}
 
 	return key
@@ -167,12 +167,8 @@ func (oas *ObservedAddrManager) filter(observedAddrs []*ObservedAddr) []ma.Multi
 		if now.Sub(a.LastSeen) <= oas.ttl && a.activated() {
 			// group addresses by their IPX/Transport Protocol(TCP or UDP) pattern.
 			pat := a.GroupKey()
-			if len(pat) != 0 {
-				pmap[pat] = append(pmap[pat], a)
-			} else {
-				log.Debugw("unable to group observed addr into IPx/(TCP or UDP) patterm", "address",
-					a.Addr.String())
-			}
+			pmap[pat] = append(pmap[pat], a)
+
 		}
 	}
 
