@@ -201,7 +201,6 @@ func TestAllAddrs(t *testing.T) {
 
 	h.lipMu.RLock()
 	localIPv4Addr := h.localIPv4Addr
-	localIPv6Addr := h.localIPv6Addr
 	h.lipMu.RUnlock()
 
 	// listen on private IP address and see it's available on the address
@@ -221,20 +220,6 @@ func TestAllAddrs(t *testing.T) {
 	}
 	require.Contains(t, ipmap, localIPv4Addr.String())
 	require.Contains(t, ipmap, manet.IP4Loopback.String())
-
-	// listen on IPv6 interface
-	require.NoError(t, h.Network().Listen(ma.StringCast("/ip6/::/tcp/0")))
-	// should contain IPv6 local host and private IP address and previous addrs
-	require.Len(t, h.AllAddrs(), 5)
-
-	for _, a := range h.AllAddrs() {
-		ipmap[ma.Split(a)[0].String()] = struct{}{}
-	}
-
-	require.Contains(t, ipmap, localIPv4Addr.String())
-	require.Contains(t, ipmap, manet.IP4Loopback.String())
-	require.Contains(t, ipmap, localIPv6Addr.String())
-	require.Contains(t, ipmap, manet.IP6Loopback.String())
 }
 
 func getHostPair(ctx context.Context, t *testing.T) (host.Host, host.Host) {
