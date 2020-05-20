@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"net"
 	"reflect"
 	"sync"
 	"testing"
@@ -23,7 +22,6 @@ import (
 	"github.com/libp2p/go-eventbus"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-netroute"
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -172,49 +170,71 @@ func TestHostAddrsFactory(t *testing.T) {
 	}
 }
 
-func TestAddrs(t *testing.T) {
+func TestLocalIPChangesWhenListenAddrChanges(t *testing.T) {
 	ctx := context.Background()
-	h := New(swarmt.GenSwarm(t, ctx))
+
+	// no listen addrs
+	h := New(swarmt.GenSwarm(t, ctx, swarmt.OptDialOnly))
 	defer h.Close()
 
-	// already listens on loopback
-	addrs := h.Addrs()
-	require.Len(t, addrs, 1)
-	require.True(t, manet.IsIPLoopback(addrs[0]))
+	h.lipMu.Lock()
+	h.localIPv4Addr = nil
+	h.lipMu.Unlock()
 
-	// private ip4 addr for IPv4
-	r, err := netroute.New()
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	_, _, lip, err := r.Route(net.IPv4(0, 0, 0, 0))
-	require.NoError(t, err)
-	require.NotEmpty(t, lip)
-
+	// change listen addrs and veify local IP addr is not nil again
 	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
-	require.True(t, len(h.Addrs()) > 1)
-	var hasPrivateIPv4 bool
-	for _, a := range h.Addrs() {
-		if !manet.IsIPLoopback(a) && manet.IsPrivateAddr(a) {
-			hasPrivateIPv4 = true
-			ip, err := manet.ToIP(a)
-			require.NoError(t, err)
-			require.True(t, ip.Equal(lip))
-		}
-	}
-	require.True(t, hasPrivateIPv4)
+	h.SignalAddressChange()
+	time.Sleep(1 * time.Second)
 
-	// private addr for IPv6
-	require.NoError(t, h.Network().Listen(ma.StringCast("/ip6/::/tcp/0")))
-	require.True(t, len(h.Addrs()) > 2)
-	var hasPrivateIPv6 bool
-	for _, a := range h.Addrs() {
-		nip, err := manet.ToIP(a)
-		require.NoError(t, err)
-		if len(nip.To4()) != 4 && manet.IsPrivateAddr(a) {
-			hasPrivateIPv6 = true
-		}
+	h.lipMu.RLock()
+	h.lipMu.RUnlock()
+	require.NotNil(t, h.localIPv4Addr)
+}
+
+func TestAllAddrs(t *testing.T) {
+	ctx := context.Background()
+
+	// no listen addrs
+	h := New(swarmt.GenSwarm(t, ctx, swarmt.OptDialOnly))
+	defer h.Close()
+	require.Nil(t, h.AllAddrs())
+
+	h.lipMu.RLock()
+	localIPv4Addr := h.localIPv4Addr
+	localIPv6Addr := h.localIPv6Addr
+	h.lipMu.RUnlock()
+
+	// listen on private IP address and see it's available on the address
+	laddr := localIPv4Addr.Encapsulate(ma.StringCast("/tcp/0"))
+	require.NoError(t, h.Network().Listen(laddr))
+	require.Len(t, h.AllAddrs(), 1)
+	addr := ma.Split(h.AllAddrs()[0])
+	require.Equal(t, localIPv4Addr.String(), addr[0].String())
+
+	// listen on IPv4 0.0.0.0
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
+	// should contain localhost and private local addr along with previous listen address
+	require.Len(t, h.AllAddrs(), 3)
+	ipmap := make(map[string]struct{})
+	for _, a := range h.AllAddrs() {
+		ipmap[ma.Split(a)[0].String()] = struct{}{}
 	}
-	require.True(t, hasPrivateIPv6)
+	require.Contains(t, ipmap, localIPv4Addr.String())
+	require.Contains(t, ipmap, manet.IP4Loopback.String())
+
+	// listen on IPv6 interface
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip6/::/tcp/0")))
+	// should contain IPv6 local host and private IP address and previous addrs
+	require.Len(t, h.AllAddrs(), 5)
+
+	for _, a := range h.AllAddrs() {
+		ipmap[ma.Split(a)[0].String()] = struct{}{}
+	}
+
+	require.Contains(t, ipmap, localIPv4Addr.String())
+	require.Contains(t, ipmap, manet.IP4Loopback.String())
+	require.Contains(t, ipmap, localIPv6Addr.String())
+	require.Contains(t, ipmap, manet.IP6Loopback.String())
 }
 
 func getHostPair(ctx context.Context, t *testing.T) (host.Host, host.Host) {

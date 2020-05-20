@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-core/record"
 
+	addrutil "github.com/libp2p/go-addr-util"
 	"github.com/libp2p/go-eventbus"
 	inat "github.com/libp2p/go-libp2p-nat"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -40,6 +41,8 @@ const maxAddressResolution = 32
 
 // addrChangeTickrInterval is the interval between two address change ticks.
 var addrChangeTickrInterval = 5 * time.Second
+
+var localIpChangeTickrInterval = 5 * time.Minute
 
 var log = logging.Logger("basichost")
 
@@ -102,8 +105,10 @@ type BasicHost struct {
 
 	addrChangeChan chan struct{}
 
-	localIPv4Addr net.IP
-	localIPv6Addr net.IP
+	localIPChangeCh chan struct{}
+	lipMu           sync.RWMutex
+	localIPv4Addr   ma.Multiaddr
+	localIPv6Addr   ma.Multiaddr
 
 	disableSignedPeerRecord bool
 	signKey                 crypto.PrivKey
@@ -160,26 +165,13 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 		maResolver:              madns.DefaultResolver,
 		eventbus:                eventbus.NewBus(),
 		addrChangeChan:          make(chan struct{}, 1),
+		localIPChangeCh:         make(chan struct{}, 1),
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
 	}
 
-	if r, err := netroute.New(); err != nil {
-		log.Debugw("failed to build Router for kernel's routing table", "err", err)
-	} else {
-		if _, _, localIPv4Addr, err := r.Route(net.IPv4zero); err != nil {
-			log.Debugw("failed to fetch local IPv4 address", "err", err)
-		} else {
-			h.localIPv4Addr = localIPv4Addr
-		}
-
-		if _, _, localIpv6, err := r.Route(net.IPv6unspecified); err != nil {
-			log.Debugw("failed to fetch local IPv6 address", "err", err)
-		} else {
-			h.localIPv6Addr = localIpv6
-		}
-	}
+	h.updateLocalIpAddr()
 
 	var err error
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
@@ -255,6 +247,33 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	return h, nil
 }
 
+func (h *BasicHost) updateLocalIpAddr() {
+	h.lipMu.Lock()
+	defer h.lipMu.Unlock()
+
+	if r, err := netroute.New(); err != nil {
+		log.Debugw("failed to build Router for kernel's routing table", "err", err)
+	} else {
+		if _, _, localIPv4, err := r.Route(net.IPv4zero); err != nil {
+			log.Debugw("failed to fetch local IPv4 address", "err", err)
+		} else {
+			maddr, err := manet.FromIP(localIPv4)
+			if err == nil {
+				h.localIPv4Addr = maddr
+			}
+		}
+
+		if _, _, localIpv6, err := r.Route(net.IPv6unspecified); err != nil {
+			log.Debugw("failed to fetch local IPv6 address", "err", err)
+		} else {
+			maddr, err := manet.FromIP(localIpv6)
+			if err == nil {
+				h.localIPv6Addr = maddr
+			}
+		}
+	}
+}
+
 // New constructs and sets up a new *BasicHost with given Network and options.
 // The following options can be passed:
 // * NATPortMap
@@ -296,7 +315,28 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 // Start starts background tasks in the host
 func (h *BasicHost) Start() {
 	h.refCount.Add(1)
-	go h.background()
+	go h.listenAddrChangeLoop()
+
+	h.refCount.Add(1)
+	go h.localIpAddrChangeLoop()
+}
+
+func (h *BasicHost) localIpAddrChangeLoop() {
+	defer h.refCount.Done()
+
+	tickr := time.NewTicker(localIpChangeTickrInterval)
+	defer tickr.Stop()
+
+	for {
+		select {
+		case <-tickr.C:
+			h.updateLocalIpAddr()
+		case <-h.localIPChangeCh:
+			h.updateLocalIpAddr()
+		case <-h.ctx.Done():
+			return
+		}
+	}
 }
 
 // newStreamHandler is the remote-opened stream handler for network.Network
@@ -399,7 +439,7 @@ func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*
 	return record.Seal(rec, h.signKey)
 }
 
-func (h *BasicHost) background() {
+func (h *BasicHost) listenAddrChangeLoop() {
 	defer h.refCount.Done()
 	var lastAddrs []ma.Multiaddr
 
@@ -434,6 +474,12 @@ func (h *BasicHost) background() {
 		// emit addr change event on the bus
 		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
 			log.Warnf("error emitting event for updated addrs: %s", err)
+		}
+
+		// the local IP addrs might have changed
+		select {
+		case h.localIPChangeCh <- struct{}{}:
+		default:
 		}
 	}
 
@@ -721,48 +767,43 @@ func dedupAddrs(addrs []ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
-	listenAddrs, err := h.Network().InterfaceListenAddresses()
-	if err != nil {
-		log.Debug("error retrieving network interface addrs")
+	h.lipMu.RLock()
+	localIPv4Addr := h.localIPv4Addr
+	localIPv6Addr := h.localIPv6Addr
+	h.lipMu.RUnlock()
+
+	var finalAddrs []ma.Multiaddr
+	listenAddrs := h.Network().ListenAddresses()
+	for _, addr := range listenAddrs {
+		if !manet.IsIPUnspecified(addr) {
+			finalAddrs = append(finalAddrs, addr)
+			continue
+		}
+
+		ifaceAddrs := []ma.Multiaddr{manet.IP4Loopback, manet.IP6Loopback}
+		if localIPv4Addr != nil {
+			ifaceAddrs = append(ifaceAddrs, localIPv4Addr)
+		}
+		if localIPv6Addr != nil {
+			ifaceAddrs = append(ifaceAddrs, localIPv6Addr)
+		}
+
+		resolved, err := addrutil.ResolveUnspecifiedAddress(addr, ifaceAddrs)
+		if err == nil {
+			for _, r := range resolved {
+				finalAddrs = append(finalAddrs, r)
+			}
+		}
 	}
+
+	finalAddrs = dedupAddrs(finalAddrs)
+
 	var natMappings []inat.Mapping
 
 	// natmgr is nil if we do not use nat option;
 	// h.natmgr.NAT() is nil if not ready, or no nat is available.
 	if h.natmgr != nil && h.natmgr.NAT() != nil {
 		natMappings = h.natmgr.NAT().Mappings()
-	}
-
-	var finalAddrs []ma.Multiaddr
-
-	for _, a := range listenAddrs {
-		// add loopback addresses for all transports.
-		if manet.IsIPLoopback(a) {
-			finalAddrs = append(finalAddrs, a)
-			continue
-		}
-
-		// add public addresses for all transports
-		if manet.IsPublicAddr(a) {
-			finalAddrs = append(finalAddrs, a)
-			continue
-		}
-
-		ip, err := manet.ToIP(a)
-		if err != nil {
-			continue
-		}
-		// add default local IPv4 address for all transports.
-		if len(ip.To4()) == 4 && h.localIPv4Addr != nil && h.localIPv4Addr.Equal(ip) {
-			finalAddrs = append(finalAddrs, a)
-			continue
-		}
-
-		// add default local IPv6 address for all transports.
-		if h.localIPv6Addr != nil && h.localIPv6Addr.Equal(ip) {
-			finalAddrs = append(finalAddrs, a)
-			continue
-		}
 	}
 
 	if len(natMappings) > 0 {
