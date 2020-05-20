@@ -333,20 +333,20 @@ func AutoNATServiceRateLimit(global, perPeer int, interval time.Duration) Option
 // Deprecated: Please use ConnectionGater() instead.
 func FilterAddresses(addrs ...*net.IPNet) Option {
 	return func(cfg *Config) error {
-		var f *FiltersConnectionGater
+		var f *filtersConnectionGater
 
 		// preserve backwards compatibility.
-		// if we have a connection gater, try to cast it to a *FiltersConnectionGater.
+		// if we have a connection gater, try to cast it to a *filtersConnectionGater.
 		if cfg.ConnectionGater != nil {
 			var ok bool
-			if f, ok = cfg.ConnectionGater.(*FiltersConnectionGater); !ok {
+			if f, ok = cfg.ConnectionGater.(*filtersConnectionGater); !ok {
 				return errors.New("cannot configure both Filters and Connection Gater. " +
 					"\n Please consider configuring just a ConnectionGater instead.")
 			}
 		}
 
 		if f == nil {
-			f = (*FiltersConnectionGater)(ma.NewFilters())
+			f = (*filtersConnectionGater)(ma.NewFilters())
 			cfg.ConnectionGater = f
 		}
 
@@ -374,7 +374,7 @@ func Filters(filters *ma.Filters) Option {
 				"\n Please consider configuring just a ConnectionGater instead.")
 
 		}
-		cfg.ConnectionGater = (*FiltersConnectionGater)(filters)
+		cfg.ConnectionGater = (*filtersConnectionGater)(filters)
 		return nil
 	}
 }
