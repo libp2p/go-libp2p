@@ -587,11 +587,13 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 
 	h2pi := h2.Peerstore().PeerInfo(h2p)
 	require.NoError(t, h1.Connect(ctx, h2pi))
+	// h1 should immediately see a connection from h2
 	require.Len(t, h1.Network().ConnsToPeer(h2p), 1)
-	require.Len(t, h2.Network().ConnsToPeer(h1p), 1)
-
-	// wait for identify to complete and assert current addresses
+	// wait for h2 to Identify itself so we are sure h2 has seen the connection.
 	ids1.IdentifyConn(h1.Network().ConnsToPeer(h2p)[0])
+
+	// h2 should now see the connection and we should wait for h1 to Identify itself to h2.
+	require.Len(t, h2.Network().ConnsToPeer(h1p), 1)
 	ids2.IdentifyConn(h2.Network().ConnsToPeer(h1p)[0])
 
 	testKnowsAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
