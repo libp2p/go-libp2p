@@ -42,8 +42,6 @@ const maxAddressResolution = 32
 // addrChangeTickrInterval is the interval between two address change ticks.
 var addrChangeTickrInterval = 5 * time.Second
 
-var localIpChangeTickrInterval = 5 * time.Minute
-
 var log = logging.Logger("basichost")
 
 var (
@@ -105,10 +103,9 @@ type BasicHost struct {
 
 	addrChangeChan chan struct{}
 
-	localIPChangeCh chan struct{}
-	lipMu           sync.RWMutex
-	localIPv4Addr   ma.Multiaddr
-	localIPv6Addr   ma.Multiaddr
+	lipMu         sync.RWMutex
+	localIPv4Addr ma.Multiaddr
+	localIPv6Addr ma.Multiaddr
 
 	disableSignedPeerRecord bool
 	signKey                 crypto.PrivKey
@@ -165,7 +162,6 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 		maResolver:              madns.DefaultResolver,
 		eventbus:                eventbus.NewBus(),
 		addrChangeChan:          make(chan struct{}, 1),
-		localIPChangeCh:         make(chan struct{}, 1),
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
@@ -315,28 +311,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 // Start starts background tasks in the host
 func (h *BasicHost) Start() {
 	h.refCount.Add(1)
-	go h.listenAddrChangeLoop()
-
-	h.refCount.Add(1)
-	go h.localIpAddrChangeLoop()
-}
-
-func (h *BasicHost) localIpAddrChangeLoop() {
-	defer h.refCount.Done()
-
-	tickr := time.NewTicker(localIpChangeTickrInterval)
-	defer tickr.Stop()
-
-	for {
-		select {
-		case <-tickr.C:
-			h.updateLocalIpAddr()
-		case <-h.localIPChangeCh:
-			h.updateLocalIpAddr()
-		case <-h.ctx.Done():
-			return
-		}
-	}
+	go h.background()
 }
 
 // newStreamHandler is the remote-opened stream handler for network.Network
@@ -439,7 +414,7 @@ func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*
 	return record.Seal(rec, h.signKey)
 }
 
-func (h *BasicHost) listenAddrChangeLoop() {
+func (h *BasicHost) background() {
 	defer h.refCount.Done()
 	var lastAddrs []ma.Multiaddr
 
@@ -475,12 +450,6 @@ func (h *BasicHost) listenAddrChangeLoop() {
 		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
 			log.Warnf("error emitting event for updated addrs: %s", err)
 		}
-
-		// the local IP addrs might have changed
-		select {
-		case h.localIPChangeCh <- struct{}{}:
-		default:
-		}
 	}
 
 	// periodically schedules an IdentifyPush to update our peers for changes
@@ -489,6 +458,7 @@ func (h *BasicHost) listenAddrChangeLoop() {
 	defer ticker.Stop()
 
 	for {
+		h.updateLocalIpAddr()
 		curr := h.Addrs()
 		emitAddrChange(curr, lastAddrs)
 		lastAddrs = curr
