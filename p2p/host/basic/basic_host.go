@@ -245,7 +245,7 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	listenHandler := func(network.Network, ma.Multiaddr) {
 		h.SignalAddressChange()
 	}
-	net.Notify(&network.NotifyBundle{
+	n.Notify(&network.NotifyBundle{
 		ListenF:      listenHandler,
 		ListenCloseF: listenHandler,
 	})
