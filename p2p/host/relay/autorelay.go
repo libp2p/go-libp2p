@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -28,6 +29,11 @@ var (
 	DesiredRelays = 1
 
 	BootDelay = 20 * time.Second
+
+	CheckUpdateFactor   float64       = 2
+	CheckUpdateJitter                 = true
+	CheckUpdateMinDelay time.Duration = 15 * time.Second
+	CheckUpdateMaxDelay time.Duration = 15 * time.Minute
 )
 
 // These are the known PL-operated relays
@@ -133,6 +139,8 @@ func (ar *AutoRelay) background(ctx context.Context) {
 
 func (ar *AutoRelay) findRelays(ctx context.Context, reachabilityChanged <-chan struct{}, updatec chan<- struct{}) {
 	running := false
+	retrys := 0
+	delay := CheckUpdateMinDelay
 
 	for {
 		select {
@@ -145,15 +153,39 @@ func (ar *AutoRelay) findRelays(ctx context.Context, reachabilityChanged <-chan 
 			}
 			ar.mx.Unlock()
 
-		case <-time.After(30 * time.Second):
+		case <-time.After(delay):
 		case <-ctx.Done():
 			return
 		}
-		if running && ar.checkUpdate(ctx) {
-			select {
-			case updatec <- struct{}{}:
-			default:
+		if running {
+			if ar.checkUpdate(ctx) {
+				select {
+				case updatec <- struct{}{}:
+				default:
+				}
+				retrys = 0
+				delay = CheckUpdateMinDelay
+			} else {
+				if ar.numRelays() >= DesiredRelays {
+					retrys = 0
+					delay = CheckUpdateMinDelay
+				} else {
+					dur := float64(CheckUpdateMinDelay) * math.Pow(CheckUpdateFactor, float64(retrys))
+					if CheckUpdateJitter {
+						dur = dur + rand.Float64()*float64(CheckUpdateMinDelay)
+					}
+					if dur > float64(CheckUpdateMaxDelay) {
+						delay = CheckUpdateMaxDelay
+						continue
+					}
+
+					retrys++
+					delay = time.Duration(dur)
+				}
 			}
+		} else {
+			retrys = 0
+			delay = CheckUpdateMinDelay
 		}
 	}
 }
