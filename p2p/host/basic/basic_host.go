@@ -267,17 +267,17 @@ func (h *BasicHost) updateLocalIpAddr() {
 	} else {
 		if _, _, localIPv4, err := r.Route(net.IPv4zero); err != nil {
 			log.Debugw("failed to fetch local IPv4 address", "error", err)
-		} else {
+		} else if localIPv4.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv4)
 			if err == nil {
 				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
 			}
 		}
 
-		if _, _, localIpv6, err := r.Route(net.IPv6unspecified); err != nil {
+		if _, _, localIPv6, err := r.Route(net.IPv6unspecified); err != nil {
 			log.Debugw("failed to fetch local IPv6 address", "error", err)
-		} else {
-			maddr, err := manet.FromIP(localIpv6)
+		} else if localIPv6.IsGlobalUnicast() {
+			maddr, err := manet.FromIP(localIPv6)
 			if err == nil {
 				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
 			}
