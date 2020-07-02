@@ -25,7 +25,6 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
-	manet "github.com/multiformats/go-multiaddr-net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -209,18 +208,20 @@ func TestLocalIPChangesWhenListenAddrChanges(t *testing.T) {
 	h := New(swarmt.GenSwarm(t, ctx, swarmt.OptDialOnly))
 	defer h.Close()
 
-	h.lipMu.Lock()
-	h.localIPv4Addr = nil
-	h.lipMu.Unlock()
+	h.addrMu.Lock()
+	h.filteredInterfaceAddrs = nil
+	h.allInterfaceAddrs = nil
+	h.addrMu.Unlock()
 
 	// change listen addrs and veify local IP addr is not nil again
 	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
 	h.SignalAddressChange()
 	time.Sleep(1 * time.Second)
 
-	h.lipMu.RLock()
-	h.lipMu.RUnlock()
-	require.NotNil(t, h.localIPv4Addr)
+	h.addrMu.RLock()
+	defer h.addrMu.RUnlock()
+	require.NotEmpty(t, h.filteredInterfaceAddrs)
+	require.NotEmpty(t, h.allInterfaceAddrs)
 }
 
 func TestAllAddrs(t *testing.T) {
@@ -231,27 +232,24 @@ func TestAllAddrs(t *testing.T) {
 	defer h.Close()
 	require.Nil(t, h.AllAddrs())
 
-	h.lipMu.RLock()
-	localIPv4Addr := h.localIPv4Addr
-	h.lipMu.RUnlock()
-
-	// listen on private IP address and see it's available on the address
-	laddr := localIPv4Addr.Encapsulate(ma.StringCast("/tcp/0"))
+	// listen on loopback
+	laddr := ma.StringCast("/ip4/127.0.0.1/tcp/0")
 	require.NoError(t, h.Network().Listen(laddr))
 	require.Len(t, h.AllAddrs(), 1)
-	addr := ma.Split(h.AllAddrs()[0])
-	require.Equal(t, localIPv4Addr.String(), addr[0].String())
+	firstAddr := h.AllAddrs()[0]
+	require.Equal(t, "/ip4/127.0.0.1", ma.Split(firstAddr)[0].String())
 
 	// listen on IPv4 0.0.0.0
 	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
 	// should contain localhost and private local addr along with previous listen address
 	require.Len(t, h.AllAddrs(), 3)
-	ipmap := make(map[string]struct{})
+	// Should still contain the original addr.
 	for _, a := range h.AllAddrs() {
-		ipmap[ma.Split(a)[0].String()] = struct{}{}
+		if a.Equal(firstAddr) {
+			return
+		}
 	}
-	require.Contains(t, ipmap, localIPv4Addr.String())
-	require.Contains(t, ipmap, manet.IP4Loopback.String())
+	t.Fatal("expected addrs to contain original addr")
 }
 
 func getHostPair(ctx context.Context, t *testing.T) (host.Host, host.Host) {
