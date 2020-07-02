@@ -103,9 +103,8 @@ type BasicHost struct {
 
 	addrChangeChan chan struct{}
 
-	lipMu         sync.RWMutex
-	localIPv4Addr ma.Multiaddr
-	localIPv6Addr ma.Multiaddr
+	lipMu          sync.RWMutex
+	interfaceAddrs []ma.Multiaddr
 
 	disableSignedPeerRecord bool
 	signKey                 crypto.PrivKey
@@ -257,24 +256,49 @@ func (h *BasicHost) updateLocalIpAddr() {
 	h.lipMu.Lock()
 	defer h.lipMu.Unlock()
 
+	h.interfaceAddrs = nil
+
 	if r, err := netroute.New(); err != nil {
-		log.Debugw("failed to build Router for kernel's routing table", "err", err)
+		log.Debugw("failed to build Router for kernel's routing table", "error", err)
 	} else {
 		if _, _, localIPv4, err := r.Route(net.IPv4zero); err != nil {
-			log.Debugw("failed to fetch local IPv4 address", "err", err)
+			log.Debugw("failed to fetch local IPv4 address", "error", err)
 		} else {
 			maddr, err := manet.FromIP(localIPv4)
 			if err == nil {
-				h.localIPv4Addr = maddr
+				h.interfaceAddrs = append(h.interfaceAddrs, maddr)
 			}
 		}
 
 		if _, _, localIpv6, err := r.Route(net.IPv6unspecified); err != nil {
-			log.Debugw("failed to fetch local IPv6 address", "err", err)
+			log.Debugw("failed to fetch local IPv6 address", "error", err)
 		} else {
 			maddr, err := manet.FromIP(localIpv6)
 			if err == nil {
-				h.localIPv6Addr = maddr
+				h.interfaceAddrs = append(h.interfaceAddrs, maddr)
+			}
+		}
+	}
+
+	ifaceAddrs, err := manet.InterfaceMultiaddrs()
+	if err != nil {
+		log.Errorw("failed to resolve local interface addresses", "error", err)
+		// Add both loopback addresses anyways.
+		h.interfaceAddrs = append(h.interfaceAddrs, manet.IP4Loopback, manet.IP6Loopback)
+		return
+	}
+
+	// If netroute failed to get us any interface addresses, use all of
+	// them.
+	if len(h.interfaceAddrs) == 0 {
+		// Add all addresses.
+		h.interfaceAddrs = append(h.interfaceAddrs, ifaceAddrs...)
+	} else {
+		// Only add loopback addresses. Filter these because we might
+		// not _have_ an IPv6 loopback address.
+		for _, addr := range ifaceAddrs {
+			if manet.IsIPLoopback(addr) {
+				h.interfaceAddrs = append(h.interfaceAddrs, addr)
 			}
 		}
 	}
@@ -748,17 +772,8 @@ func dedupAddrs(addrs []ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	h.lipMu.RLock()
-	localIPv4Addr := h.localIPv4Addr
-	localIPv6Addr := h.localIPv6Addr
+	ifaceAddrs := h.interfaceAddrs
 	h.lipMu.RUnlock()
-
-	ifaceAddrs := []ma.Multiaddr{manet.IP4Loopback, manet.IP6Loopback}
-	if localIPv4Addr != nil {
-		ifaceAddrs = append(ifaceAddrs, localIPv4Addr)
-	}
-	if localIPv6Addr != nil {
-		ifaceAddrs = append(ifaceAddrs, localIPv6Addr)
-	}
 
 	// Iterate over all _unresolved_ listen addresses, resolving our primary
 	// interface only to avoid advertising too many addresses.
