@@ -103,8 +103,9 @@ type BasicHost struct {
 
 	addrChangeChan chan struct{}
 
-	lipMu          sync.RWMutex
-	interfaceAddrs []ma.Multiaddr
+	addrMu                 sync.RWMutex
+	filteredInterfaceAddrs []ma.Multiaddr
+	allInterfaceAddrs      []ma.Multiaddr
 
 	disableSignedPeerRecord bool
 	signKey                 crypto.PrivKey
@@ -253,10 +254,13 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 }
 
 func (h *BasicHost) updateLocalIpAddr() {
-	h.lipMu.Lock()
-	defer h.lipMu.Unlock()
+	h.addrMu.Lock()
+	defer h.addrMu.Unlock()
 
-	h.interfaceAddrs = nil
+	h.filteredInterfaceAddrs = nil
+	h.allInterfaceAddrs = nil
+
+	// Try to use the default ipv4/6 addresses.
 
 	if r, err := netroute.New(); err != nil {
 		log.Debugw("failed to build Router for kernel's routing table", "error", err)
@@ -266,7 +270,7 @@ func (h *BasicHost) updateLocalIpAddr() {
 		} else {
 			maddr, err := manet.FromIP(localIPv4)
 			if err == nil {
-				h.interfaceAddrs = append(h.interfaceAddrs, maddr)
+				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
 			}
 		}
 
@@ -275,30 +279,38 @@ func (h *BasicHost) updateLocalIpAddr() {
 		} else {
 			maddr, err := manet.FromIP(localIpv6)
 			if err == nil {
-				h.interfaceAddrs = append(h.interfaceAddrs, maddr)
+				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
 			}
 		}
 	}
 
+	// Resolve the interface addresses
 	ifaceAddrs, err := manet.InterfaceMultiaddrs()
 	if err != nil {
 		log.Errorw("failed to resolve local interface addresses", "error", err)
-		// Add both loopback addresses anyways.
-		h.interfaceAddrs = append(h.interfaceAddrs, manet.IP4Loopback, manet.IP6Loopback)
+	} else {
+		h.allInterfaceAddrs = ifaceAddrs
+	}
+
+	// If we failed to lookup interface addrs.
+	if len(h.allInterfaceAddrs) == 0 {
+		// Add the loopback addresses to the filtered addrs and use them as the non-filtered addrs.
+		h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, manet.IP4Loopback, manet.IP6Loopback)
+		h.allInterfaceAddrs = h.filteredInterfaceAddrs
 		return
 	}
 
 	// If netroute failed to get us any interface addresses, use all of
 	// them.
-	if len(h.interfaceAddrs) == 0 {
+	if len(h.filteredInterfaceAddrs) == 0 {
 		// Add all addresses.
-		h.interfaceAddrs = append(h.interfaceAddrs, ifaceAddrs...)
+		h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, ifaceAddrs...)
 	} else {
 		// Only add loopback addresses. Filter these because we might
 		// not _have_ an IPv6 loopback address.
 		for _, addr := range ifaceAddrs {
 			if manet.IsIPLoopback(addr) {
-				h.interfaceAddrs = append(h.interfaceAddrs, addr)
+				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, addr)
 			}
 		}
 	}
@@ -771,26 +783,21 @@ func dedupAddrs(addrs []ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
-	h.lipMu.RLock()
-	ifaceAddrs := h.interfaceAddrs
-	h.lipMu.RUnlock()
+	h.addrMu.RLock()
+	filteredIfaceAddrs := h.filteredInterfaceAddrs
+	allIfaceAddrs := h.allInterfaceAddrs
+	h.addrMu.RUnlock()
 
 	// Iterate over all _unresolved_ listen addresses, resolving our primary
 	// interface only to avoid advertising too many addresses.
 	listenAddrs := h.Network().ListenAddresses()
 	var finalAddrs []ma.Multiaddr
-	for _, addr := range listenAddrs {
-		if !manet.IsIPUnspecified(addr) {
-			finalAddrs = append(finalAddrs, addr)
-			continue
-		}
-
-		resolved, err := addrutil.ResolveUnspecifiedAddress(addr, ifaceAddrs)
-		if err == nil {
-			for _, r := range resolved {
-				finalAddrs = append(finalAddrs, r)
-			}
-		}
+	if resolved, err := addrutil.ResolveUnspecifiedAddresses(listenAddrs, filteredIfaceAddrs); err != nil {
+		// This can happen if we're listening on no addrs, or listening
+		// on IPv6 addrs, but only have IPv4 interface addrs.
+		log.Debugw("failed to resolve listen addrs", "error", err)
+	} else {
+		finalAddrs = append(finalAddrs, resolved...)
 	}
 
 	finalAddrs = dedupAddrs(finalAddrs)
@@ -903,27 +910,35 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 			// No.
 			// in case router give us a wrong address.
 			// also add observed addresses
-
-			// Now, check if we have any observed addresses that
-			// differ from the one reported by the router. Routers
-			// don't always give the most accurate information.
-			observed := h.ids.ObservedAddrsFor(listen)
-
-			if len(observed) == 0 {
+			resolved, err := addrutil.ResolveUnspecifiedAddress(listen, allIfaceAddrs)
+			if err != nil {
+				// This an happen we try to resolve /ip6/::/...
+				// without any IPv6 interface addresses.
 				continue
 			}
 
-			// Drop the IP from the external maddr
-			_, extMaddrNoIP := ma.SplitFirst(mappedMaddr)
+			for _, addr := range resolved {
+				// Now, check if we have any observed addresses that
+				// differ from the one reported by the router. Routers
+				// don't always give the most accurate information.
+				observed := h.ids.ObservedAddrsFor(addr)
 
-			for _, obsMaddr := range observed {
-				// Extract a public observed addr.
-				ip, _ := ma.SplitFirst(obsMaddr)
-				if ip == nil || !manet.IsPublicAddr(ip) {
+				if len(observed) == 0 {
 					continue
 				}
 
-				finalAddrs = append(finalAddrs, ma.Join(ip, extMaddrNoIP))
+				// Drop the IP from the external maddr
+				_, extMaddrNoIP := ma.SplitFirst(mappedMaddr)
+
+				for _, obsMaddr := range observed {
+					// Extract a public observed addr.
+					ip, _ := ma.SplitFirst(obsMaddr)
+					if ip == nil || !manet.IsPublicAddr(ip) {
+						continue
+					}
+
+					finalAddrs = append(finalAddrs, ma.Join(ip, extMaddrNoIP))
+				}
 			}
 		}
 	} else {
