@@ -888,8 +888,11 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 				extMaddr = ma.Join(extMaddr, rest)
 			}
 
-			// Add in the mapped addr.
-			finalAddrs = append(finalAddrs, extMaddr)
+			// if the router reported a sane address
+			if !manet.IsIPUnspecified(extMaddr) {
+				// Add in the mapped addr.
+				finalAddrs = append(finalAddrs, extMaddr)
+			}
 
 			// Did the router give us a routable public addr?
 			if manet.IsPublicAddr(mappedMaddr) {
