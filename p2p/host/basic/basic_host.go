@@ -289,7 +289,12 @@ func (h *BasicHost) updateLocalIpAddr() {
 	if err != nil {
 		log.Errorw("failed to resolve local interface addresses", "error", err)
 	} else {
-		h.allInterfaceAddrs = ifaceAddrs
+		for _, addr := range ifaceAddrs {
+			// Skip link-local addrs, they're mostly useless.
+			if !manet.IsIP6LinkLocal(addr) {
+				h.allInterfaceAddrs = append(h.allInterfaceAddrs, addr)
+			}
+		}
 	}
 
 	// If we failed to lookup interface addrs.
@@ -304,11 +309,11 @@ func (h *BasicHost) updateLocalIpAddr() {
 	// them.
 	if len(h.filteredInterfaceAddrs) == 0 {
 		// Add all addresses.
-		h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, ifaceAddrs...)
+		h.filteredInterfaceAddrs = h.allInterfaceAddrs
 	} else {
 		// Only add loopback addresses. Filter these because we might
 		// not _have_ an IPv6 loopback address.
-		for _, addr := range ifaceAddrs {
+		for _, addr := range h.allInterfaceAddrs {
 			if manet.IsIPLoopback(addr) {
 				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, addr)
 			}
