@@ -917,7 +917,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 			// also add observed addresses
 			resolved, err := addrutil.ResolveUnspecifiedAddress(listen, allIfaceAddrs)
 			if err != nil {
-				// This an happen we try to resolve /ip6/::/...
+				// This can happen if we try to resolve /ip6/::/...
 				// without any IPv6 interface addresses.
 				continue
 			}
