@@ -915,7 +915,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 			}
 
 			// No.
-			// in case router give us a wrong address or we're behind a double-NAT.
+			// in case the router gives us a wrong address or we're behind a double-NAT.
 			// also add observed addresses
 			resolved, err := addrutil.ResolveUnspecifiedAddress(listen, allIfaceAddrs)
 			if err != nil {
