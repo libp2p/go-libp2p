@@ -287,22 +287,22 @@ func (h *BasicHost) updateLocalIpAddr() {
 	// Resolve the interface addresses
 	ifaceAddrs, err := manet.InterfaceMultiaddrs()
 	if err != nil {
+		// This usually shouldn't happen, but we could be in some kind
+		// of funky restricted environment.
 		log.Errorw("failed to resolve local interface addresses", "error", err)
-	} else {
-		for _, addr := range ifaceAddrs {
-			// Skip link-local addrs, they're mostly useless.
-			if !manet.IsIP6LinkLocal(addr) {
-				h.allInterfaceAddrs = append(h.allInterfaceAddrs, addr)
-			}
-		}
-	}
 
-	// If we failed to lookup interface addrs.
-	if len(h.allInterfaceAddrs) == 0 {
 		// Add the loopback addresses to the filtered addrs and use them as the non-filtered addrs.
+		// Then bail. There's nothing else we can do here.
 		h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, manet.IP4Loopback, manet.IP6Loopback)
 		h.allInterfaceAddrs = h.filteredInterfaceAddrs
 		return
+	}
+
+	for _, addr := range ifaceAddrs {
+		// Skip link-local addrs, they're mostly useless.
+		if !manet.IsIP6LinkLocal(addr) {
+			h.allInterfaceAddrs = append(h.allInterfaceAddrs, addr)
+		}
 	}
 
 	// If netroute failed to get us any interface addresses, use all of
@@ -904,6 +904,8 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 			if !manet.IsIPUnspecified(extMaddr) {
 				// Add in the mapped addr.
 				finalAddrs = append(finalAddrs, extMaddr)
+			} else {
+				log.Warn("NAT device reported an unspecified IP as it's external address")
 			}
 
 			// Did the router give us a routable public addr?
@@ -913,7 +915,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 			}
 
 			// No.
-			// in case router give us a wrong address.
+			// in case router give us a wrong address or we're behind a double-NAT.
 			// also add observed addresses
 			resolved, err := addrutil.ResolveUnspecifiedAddress(listen, allIfaceAddrs)
 			if err != nil {
