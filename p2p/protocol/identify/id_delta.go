@@ -9,7 +9,7 @@ import (
 
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
-	ggio "github.com/gogo/protobuf/io"
+	"github.com/libp2p/go-msgio/protoio"
 )
 
 const IDDelta = "/p2p/id/delta/1.0.0"
@@ -18,7 +18,7 @@ const IDDelta = "/p2p/id/delta/1.0.0"
 func (ids *IDService) deltaHandler(s network.Stream) {
 	c := s.Conn()
 
-	r := ggio.NewDelimitedReader(s, 2048)
+	r := protoio.NewDelimitedReader(s, 2048)
 	mes := pb.Identify{}
 	if err := r.ReadMsg(&mes); err != nil {
 		log.Warning("error reading identify message: ", err)

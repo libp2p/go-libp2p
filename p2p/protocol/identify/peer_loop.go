@@ -15,7 +15,7 @@ import (
 
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
-	ggio "github.com/gogo/protobuf/io"
+	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -132,7 +132,7 @@ func (ph *peerHandler) sendDelta(ctx context.Context) error {
 	defer helpers.FullClose(ds)
 
 	c := ds.Conn()
-	if err := ggio.NewDelimitedWriter(ds).WriteMsg(&pb.Identify{Delta: mes}); err != nil {
+	if err := protoio.NewDelimitedWriter(ds).WriteMsg(&pb.Identify{Delta: mes}); err != nil {
 		return fmt.Errorf("failed to send delta message, %w", err)
 	}
 	log.Debugw("sent identify update", "protocol", ds.Protocol(), "peer", c.RemotePeer(),

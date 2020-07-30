@@ -29,7 +29,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
-	ggio "github.com/gogo/protobuf/io"
+	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -516,7 +516,7 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	block := make(chan struct{})
 	handler := func(s network.Stream) {
 		<-block
-		w := ggio.NewDelimitedWriter(s)
+		w := protoio.NewDelimitedWriter(s)
 		w.WriteMsg(&pb.Identify{Protocols: h1.Mux().Protocols()})
 		helpers.FullClose(s)
 	}
