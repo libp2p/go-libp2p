@@ -23,8 +23,8 @@ func (f *filtersConnectionGater) InterceptPeerDial(p peer.ID) (allow bool) {
 	return true
 }
 
-func (f *filtersConnectionGater) InterceptAccept(_ network.ConnMultiaddrs) (allow bool) {
-	return true
+func (f *filtersConnectionGater) InterceptAccept(connAddr network.ConnMultiaddrs) (allow bool) {
+	return !(*ma.Filters)(f).AddrBlocked(connAddr.RemoteMultiaddr())
 }
 
 func (f *filtersConnectionGater) InterceptSecured(_ network.Direction, _ peer.ID, _ network.ConnMultiaddrs) (allow bool) {
