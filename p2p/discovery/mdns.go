@@ -131,18 +131,25 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 			}
 		}()
 
-		log.Debug("starting mdns query")
-		qp := &mdns.QueryParam{
-			Domain:  "local",
-			Entries: entriesCh,
-			Service: m.tag,
-			Timeout: time.Second * 5,
+		log.Debug("starting mdns query on active interfaces")
+		ifaces, _ := net.Interfaces()
+		for _, iface := range ifaces {
+			if (iface.Flags & net.FlagUp) != 0 && (iface.Flags & net.FlagLoopback) == 0 {
+				qp := &mdns.QueryParam{
+					Domain:  "local",
+					Entries: entriesCh,
+					Service: m.tag,
+					Timeout: time.Second * 5,
+					Interface: &iface,
+				}
+
+				err := mdns.Query(qp)
+				if err != nil {
+					log.Warnw("mdns lookup error", "error", err)
+				}
+			}
 		}
 
-		err := mdns.Query(qp)
-		if err != nil {
-			log.Warnw("mdns lookup error", "error", err)
-		}
 		close(entriesCh)
 		log.Debug("mdns query complete")
 
