@@ -38,10 +38,11 @@ type Notifee interface {
 }
 
 type mdnsService struct {
-	server  *mdns.Server
-	service *mdns.MDNSService
-	host    host.Host
-	tag     string
+	server    *mdns.Server
+	service   *mdns.MDNSService
+	host      host.Host
+	tag       string
+
 	ifaceName string
 
 	lk       sync.Mutex
@@ -110,12 +111,12 @@ func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Durat
 	}
 
 	s := &mdnsService{
-		server:   server,
-		service:  service,
-		host:     peerhost,
-		interval: interval,
-		tag:      serviceTag,
-		ifaceName:    iface.Name,
+		server:    server,
+		service:   service,
+		host:      peerhost,
+		interval:  interval,
+		tag:       serviceTag,
+		ifaceName: iface.Name,
 	}
 
 	go s.pollForEntries(ctx)
@@ -145,12 +146,12 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 			log.Error("Cannot find interface: ", err)
 		}
 		log.Debug("starting mdns query on interface ", m.ifaceName)
-		if (iface.Flags & net.FlagUp) != 0 && (iface.Flags & net.FlagLoopback) == 0 {
+		if (iface.Flags&net.FlagUp) != 0 && (iface.Flags&net.FlagLoopback) == 0 {
 			qp := &mdns.QueryParam{
-				Domain:  "local",
-				Entries: entriesCh,
-				Service: m.tag,
-				Timeout: time.Second * 5,
+				Domain:    "local",
+				Entries:   entriesCh,
+				Service:   m.tag,
+				Timeout:   time.Second * 5,
 				Interface: iface,
 			}
 
