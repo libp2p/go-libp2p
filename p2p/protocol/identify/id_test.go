@@ -788,7 +788,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	// add protocol strings to make the message larger
 	// about 2K of protocol strings
 	for i := 0; i < 500; i++ {
-		r := "rand" + string(i)
+		r := fmt.Sprintf("rand%d", i)
 		h1.SetStreamHandler(protocol.ID(r), func(network.Stream) {})
 		h2.SetStreamHandler(protocol.ID(r), func(network.Stream) {})
 	}
@@ -898,7 +898,7 @@ func TestLargePushMessage(t *testing.T) {
 	// add protocol strings to make the message larger
 	// about 2K of protocol strings
 	for i := 0; i < 500; i++ {
-		r := "rand" + string(i)
+		r := fmt.Sprintf("rand%d", i)
 		h1.SetStreamHandler(protocol.ID(r), func(network.Stream) {})
 		h2.SetStreamHandler(protocol.ID(r), func(network.Stream) {})
 	}

@@ -7,8 +7,8 @@ import (
 
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	mplex "github.com/libp2p/go-libp2p-mplex"
+	noise "github.com/libp2p/go-libp2p-noise"
 	pstoremem "github.com/libp2p/go-libp2p-peerstore/pstoremem"
-	secio "github.com/libp2p/go-libp2p-secio"
 	tls "github.com/libp2p/go-libp2p-tls"
 	yamux "github.com/libp2p/go-libp2p-yamux"
 	tcp "github.com/libp2p/go-tcp-transport"
@@ -21,7 +21,7 @@ import (
 // Useful when you want to extend, but not replace, the supported transport
 // security protocols.
 var DefaultSecurity = ChainOptions(
-	Security(secio.ID, secio.New),
+	Security(noise.ID, noise.New),
 	Security(tls.ID, tls.New),
 )
 

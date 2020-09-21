@@ -3,6 +3,7 @@ package relay_test
 import (
 	"context"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -132,7 +133,22 @@ func TestAutoRelay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = libp2p.New(ctx, libp2p.EnableRelay(circuit.OptHop), libp2p.EnableAutoRelay(), libp2p.Routing(makeRouting))
+	// announce dns addrs because filter out private addresses from relays,
+	// and we consider dns addresses "public".
+	_, err = libp2p.New(ctx,
+		libp2p.EnableRelay(circuit.OptHop),
+		libp2p.EnableAutoRelay(),
+		libp2p.Routing(makeRouting),
+		libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			for i, addr := range addrs {
+				saddr := addr.String()
+				if strings.HasPrefix(saddr, "/ip4/127.0.0.1/") {
+					addrNoIP := strings.TrimPrefix(saddr, "/ip4/127.0.0.1")
+					addrs[i] = ma.StringCast("/dns4/localhost" + addrNoIP)
+				}
+			}
+			return addrs
+		}))
 	if err != nil {
 		t.Fatal(err)
 	}
