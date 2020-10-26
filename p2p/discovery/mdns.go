@@ -38,10 +38,10 @@ type Notifee interface {
 }
 
 type mdnsService struct {
-	server    *mdns.Server
-	service   *mdns.MDNSService
-	host      host.Host
-	tag       string
+	server  *mdns.Server
+	service *mdns.MDNSService
+	host    host.Host
+	tag     string
 
 	ifaceName string
 
@@ -164,7 +164,7 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 			} else if iface != nil && (iface.Flags&net.FlagUp) != 0 && (iface.Flags&net.FlagLoopback) == 0 {
 				log.Debug("Starting mdns query on interface ", m.ifaceName)
 			} else {
-				log.Warn("Interface ", m.ifaceName," is either down or loopback: ", iface.Flags)
+				log.Warn("Interface ", m.ifaceName, " is either down or loopback: ", iface.Flags)
 				iface = nil
 			}
 		}
