@@ -161,7 +161,7 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 			iface, err := net.InterfaceByName(m.ifaceName)
 			if err != nil {
 				log.Error("Cannot find interface: ", err)
-			} else if iface != nil && (iface.Flags&net.FlagUp) != 0 && (iface.Flags&net.FlagLoopback) == 0 {
+			} else if iface != nil && (iface.Flags&net.FlagUp) != 0 && (iface.Flags&net.FlagMulticast) != 0 && (iface.Flags&net.FlagLoopback) == 0 {
 				log.Debug("Starting mdns query on interface ", m.ifaceName)
 			} else {
 				log.Warn("Interface ", m.ifaceName, " is either down or loopback: ", iface.Flags)
