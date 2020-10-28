@@ -157,8 +157,9 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 
 		// get interface from name, if any, and verify the interface is up before sending a new query
 		var iface *net.Interface
+		var err error
 		if m.ifaceName != "" {
-			iface, err := net.InterfaceByName(m.ifaceName)
+			iface, err = net.InterfaceByName(m.ifaceName)
 			if err != nil {
 				log.Error("Cannot find interface: ", err)
 			} else if iface != nil && (iface.Flags&net.FlagUp) != 0 && (iface.Flags&net.FlagMulticast) != 0 && (iface.Flags&net.FlagLoopback) == 0 {
@@ -177,7 +178,7 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 			Interface: iface,
 		}
 
-		err := mdns.Query(qp)
+		err = mdns.Query(qp)
 		if err != nil {
 			log.Warnw("mdns lookup error", "error", err)
 		}
