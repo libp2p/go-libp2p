@@ -65,19 +65,21 @@ func getDialableListenAddrs(ph host.Host, iface *net.Interface) ([]*net.TCPAddr,
 		// if `iface` is specified, use address from `iface`
 		// otherwise get any TCP-capable address.
 		if iface != nil {
-			ips, _ := iface.Addrs()
+			ips, err := iface.Addrs()
+			if err != nil {
+				return nil, err
+			}
+
 			for _, i := range ips {
 				if strings.Contains(na.String(), strings.Split(i.String(), "/")[0]) {
-					tcp, ok := na.(*net.TCPAddr)
-					if ok {
+					if tcp, ok := na.(*net.TCPAddr); ok {
 						out = append(out, tcp)
 						break
 					}
 				}
 			}
 		} else {
-			tcp, ok := na.(*net.TCPAddr)
-			if ok {
+			if tcp, ok := na.(*net.TCPAddr); ok {
 				out = append(out, tcp)
 			}
 		}
