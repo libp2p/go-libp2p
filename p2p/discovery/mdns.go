@@ -50,6 +50,12 @@ type mdnsService struct {
 	interval time.Duration
 }
 
+type MdnsServiceInit struct {
+	Interval  time.Duration // time between mDNS requests. Default: 30 seconds
+	IfaceName string        // network interface name, such as "wlan0". Empty string "" is the default to listen to any  TCP interface.
+	Tag       string        // peers find themselves using on this common tag. Default is Tag = "_ipfs-discovery._udp"
+}
+
 func getDialableListenAddrs(ph host.Host, iface *net.Interface) ([]*net.TCPAddr, error) {
 	var out []*net.TCPAddr
 	addrs, err := ph.Network().InterfaceListenAddresses()
@@ -90,9 +96,25 @@ func getDialableListenAddrs(ph host.Host, iface *net.Interface) ([]*net.TCPAddr,
 	return out, nil
 }
 
-func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Duration, serviceTag string, iface *net.Interface) (Service, error) {
+func NewMdnsService(ctx context.Context, peerhost host.Host, options ...func(*MdnsServiceInit)) (Service, error) {
 	var ipaddrs []net.IP
 	port := 4001
+
+	// Init options with default and call user-defined functions to override the default values
+	opts := MdnsServiceInit{Interval: time.Duration(30) * time.Second, IfaceName: "", Tag: ServiceTag}
+	for _, option := range options {
+		option(&opts)
+	}
+
+	// Get interface from name passed in options if any
+	var iface *net.Interface
+	if opts.IfaceName != "" {
+		var err error
+		iface, err = net.InterfaceByName(opts.IfaceName)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	addrs, err := getDialableListenAddrs(peerhost, iface)
 	if err != nil {
@@ -107,10 +129,7 @@ func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Durat
 	myid := peerhost.ID().Pretty()
 
 	info := []string{myid}
-	if serviceTag == "" {
-		serviceTag = ServiceTag
-	}
-	service, err := mdns.NewMDNSService(myid, serviceTag, "", "", port, ipaddrs, info)
+	service, err := mdns.NewMDNSService(myid, opts.Tag, "", "", port, ipaddrs, info)
 	if err != nil {
 		return nil, err
 	}
@@ -121,18 +140,13 @@ func NewMdnsService(ctx context.Context, peerhost host.Host, interval time.Durat
 		return nil, err
 	}
 
-	ifaceName := ""
-	if iface != nil {
-		ifaceName = iface.Name
-	}
-
 	s := &mdnsService{
 		server:    server,
 		service:   service,
 		host:      peerhost,
-		interval:  interval,
-		tag:       serviceTag,
-		ifaceName: ifaceName,
+		interval:  opts.Interval,
+		tag:       opts.Tag,
+		ifaceName: opts.IfaceName,
 	}
 
 	go s.pollForEntries(ctx)
