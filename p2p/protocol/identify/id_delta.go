@@ -2,7 +2,6 @@ package identify
 
 import (
 	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
@@ -22,11 +21,11 @@ func (ids *IDService) deltaHandler(s network.Stream) {
 	mes := pb.Identify{}
 	if err := r.ReadMsg(&mes); err != nil {
 		log.Warning("error reading identify message: ", err)
-		s.Reset()
+		_ = s.Reset()
 		return
 	}
 
-	defer helpers.FullClose(s)
+	defer s.Close()
 
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
 
@@ -37,6 +36,7 @@ func (ids *IDService) deltaHandler(s network.Stream) {
 
 	p := s.Conn().RemotePeer()
 	if err := ids.consumeDelta(p, delta); err != nil {
+		_ = s.Reset()
 		log.Warningf("delta update from peer %s failed: %s", p, err)
 	}
 }

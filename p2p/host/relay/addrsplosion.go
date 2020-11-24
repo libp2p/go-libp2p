@@ -5,7 +5,7 @@ import (
 
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr-net"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // This function cleans up a relay's address set to remove private addresses and curtail

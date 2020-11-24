@@ -11,7 +11,6 @@ import (
 
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -518,7 +517,7 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 		<-block
 		w := protoio.NewDelimitedWriter(s)
 		w.WriteMsg(&pb.Identify{Protocols: h1.Mux().Protocols()})
-		helpers.FullClose(s)
+		s.Close()
 	}
 	h1.RemoveStreamHandler(identify.ID)
 	h1.SetStreamHandler(identify.ID, handler)

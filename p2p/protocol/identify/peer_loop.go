@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
@@ -129,10 +128,11 @@ func (ph *peerHandler) sendDelta(ctx context.Context) error {
 		return fmt.Errorf("failed to open delta stream: %w", err)
 	}
 
-	defer helpers.FullClose(ds)
+	defer ds.Close()
 
 	c := ds.Conn()
 	if err := protoio.NewDelimitedWriter(ds).WriteMsg(&pb.Identify{Delta: mes}); err != nil {
+		_ = ds.Reset()
 		return fmt.Errorf("failed to send delta message, %w", err)
 	}
 	log.Debugw("sent identify update", "protocol", ds.Protocol(), "peer", c.RemotePeer(),
@@ -150,13 +150,14 @@ func (ph *peerHandler) sendPush(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open push stream: %w", err)
 	}
-	defer helpers.FullClose(dp)
+	defer dp.Close()
 
 	snapshot := ph.ids.getSnapshot()
 	ph.snapshotMu.Lock()
 	ph.snapshot = snapshot
 	ph.snapshotMu.Unlock()
 	if err := ph.ids.writeChunkedIdentifyMsg(dp.Conn(), snapshot, dp); err != nil {
+		_ = dp.Reset()
 		return fmt.Errorf("failed to send push message: %w", err)
 	}
 

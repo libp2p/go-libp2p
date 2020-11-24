@@ -116,7 +116,9 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host
 		return nil, err
 	}
 
-	mn.proc.AddChild(n.proc)
+	// Ensure we close the hoset when we close the mock network.
+	// Otherwise, tests leak memory.
+	mn.proc.AddChild(goprocess.WithTeardown(h.Close))
 
 	mn.Lock()
 	mn.nets[n.peer] = n

@@ -109,7 +109,7 @@ func (s *stream) SetProtocol(proto protocol.ID) {
 	s.protocol.Store(proto)
 }
 
-func (s *stream) Close() error {
+func (s *stream) CloseWrite() error {
 	select {
 	case s.close <- struct{}{}:
 	default:
@@ -119,6 +119,15 @@ func (s *stream) Close() error {
 		return s.writeErr
 	}
 	return nil
+}
+
+func (s *stream) CloseRead() error {
+	return s.read.CloseWithError(ErrClosed)
+}
+
+func (s *stream) Close() error {
+	_ = s.CloseRead()
+	return s.CloseWrite()
 }
 
 func (s *stream) Reset() error {
@@ -258,7 +267,7 @@ func (s *stream) transport() {
 			return
 		case <-s.close:
 			if err := drainBuf(); err != nil {
-				s.resetWith(err)
+				s.cancelWrite(err)
 				return
 			}
 			s.writeErr = s.write.Close()
@@ -268,20 +277,19 @@ func (s *stream) transport() {
 			return
 		case o := <-s.toDeliver:
 			if err := deliverOrWait(o); err != nil {
-				s.resetWith(err)
+				s.cancelWrite(err)
 				return
 			}
 		case <-timer.C: // ok, due to write it out.
 			if err := drainBuf(); err != nil {
-				s.resetWith(err)
+				s.cancelWrite(err)
 				return
 			}
 		}
 	}
 }
 
-func (s *stream) resetWith(err error) {
+func (s *stream) cancelWrite(err error) {
 	s.write.CloseWithError(err)
-	s.read.CloseWithError(err)
 	s.writeErr = err
 }

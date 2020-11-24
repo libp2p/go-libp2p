@@ -10,7 +10,6 @@ import (
 
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -23,7 +22,7 @@ import (
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr-net"
+	manet "github.com/multiformats/go-multiaddr/net"
 	msmux "github.com/multiformats/go-multistream"
 
 	"github.com/gogo/protobuf/proto"
@@ -377,7 +376,7 @@ func (ids *IDService) sendIdentifyResp(s network.Stream) {
 	var ph *peerHandler
 
 	defer func() {
-		helpers.FullClose(s)
+		_ = s.Close()
 		if ph != nil {
 			ph.snapshotMu.RUnlock()
 		}
@@ -421,7 +420,7 @@ func (ids *IDService) handleIdentifyResponse(s network.Stream) {
 		return
 	}
 
-	defer func() { go helpers.FullClose(s) }()
+	defer s.Close()
 
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
 

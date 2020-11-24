@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
@@ -85,13 +84,13 @@ func TestNotifications(t *testing.T) {
 
 	for _, s := range nets {
 		s.SetStreamHandler(func(s network.Stream) {
-			helpers.FullClose(s)
+			s.Close()
 		})
 	}
 
 	for _, s := range nets {
 		s.SetStreamHandler(func(s network.Stream) {
-			helpers.FullClose(s)
+			s.Close()
 		})
 	}
 
@@ -105,7 +104,7 @@ func TestNotifications(t *testing.T) {
 				continue
 			}
 			t.Logf("%s %s <--%p--> %s %s", c.LocalPeer(), c.LocalMultiaddr(), st1, c.RemotePeer(), c.RemoteMultiaddr())
-			helpers.FullClose(st1)
+			st1.Close()
 		}
 	}
 

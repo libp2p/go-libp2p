@@ -17,7 +17,7 @@ import (
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr-net"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (

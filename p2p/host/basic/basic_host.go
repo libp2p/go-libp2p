@@ -32,7 +32,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
-	manet "github.com/multiformats/go-multiaddr-net"
+	manet "github.com/multiformats/go-multiaddr/net"
 	msmux "github.com/multiformats/go-multistream"
 )
 
@@ -1001,7 +1001,7 @@ func (h *BasicHost) Close() error {
 
 type streamWrapper struct {
 	network.Stream
-	rw io.ReadWriter
+	rw io.ReadWriteCloser
 }
 
 func (s *streamWrapper) Read(b []byte) (int, error) {
@@ -1010,4 +1010,20 @@ func (s *streamWrapper) Read(b []byte) (int, error) {
 
 func (s *streamWrapper) Write(b []byte) (int, error) {
 	return s.rw.Write(b)
+}
+
+func (s *streamWrapper) Close() error {
+	return s.rw.Close()
+}
+
+func (s *streamWrapper) CloseWrite() error {
+	// Flush the handshake before closing, but ignore the error. The other
+	// end may have closed their side for reading.
+	//
+	// If something is wrong with the stream, the user will get on error on
+	// read instead.
+	if flusher, ok := s.rw.(interface{ Flush() error }); ok {
+		_ = flusher.Flush()
+	}
+	return s.Stream.CloseWrite()
 }
