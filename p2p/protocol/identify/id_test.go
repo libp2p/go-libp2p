@@ -978,3 +978,83 @@ func TestLargePushMessage(t *testing.T) {
 	}, 5*time.Second, 500*time.Millisecond)
 	testHasCertifiedAddrs(t, h2, h1p, h1.Addrs())
 }
+
+func TestIdentifyResponseReadTimeout(t *testing.T) {
+	ctx := context.Background()
+	timeout := identify.StreamReadTimeout
+	identify.StreamReadTimeout = 100 * time.Millisecond
+	defer func() {
+		identify.StreamReadTimeout = timeout
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	defer h1.Close()
+	defer h2.Close()
+
+	h2p := h2.ID()
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer ids1.Close()
+	defer ids2.Close()
+	// remote stream handler will just hang and not send back an identify response
+	h2.SetStreamHandler(identify.ID, func(s network.Stream) {
+		time.Sleep(100 * time.Second)
+	})
+
+	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationFailed), eventbus.BufSize(16))
+	require.NoError(t, err)
+
+	h2pi := h2.Peerstore().PeerInfo(h2p)
+	require.NoError(t, h1.Connect(ctx, h2pi))
+
+	select {
+	case ev := <- sub.Out():
+		fev := ev.(event.EvtPeerIdentificationFailed)
+		require.EqualError(t, fev.Reason, "i/o deadline reached")
+	case <- time.After(5 * time.Second):
+		t.Fatal("did not recieve identify failure event")
+	}
+}
+
+func TestIncomingIDStreamsTimeout(t *testing.T) {
+	ctx := context.Background()
+	timeout := identify.StreamReadTimeout
+	identify.StreamReadTimeout = 100 * time.Millisecond
+	defer func() {
+		identify.StreamReadTimeout = timeout
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	protocols := []protocol.ID{identify.IDPush, identify.IDDelta}
+
+	for _, p := range protocols {
+		h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+		h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+		defer h1.Close()
+		defer h2.Close()
+
+		ids1 := identify.NewIDService(h1)
+		ids2 := identify.NewIDService(h2)
+		defer ids1.Close()
+		defer ids2.Close()
+
+		h2p := h2.ID()
+		h2pi := h2.Peerstore().PeerInfo(h2p)
+		require.NoError(t, h1.Connect(ctx, h2pi))
+
+		s, err := h1.NewStream(ctx, h2p, p)
+		require.NoError(t, err)
+		// wait for stream read on remote peer to timeout
+		time.Sleep(500 * time.Millisecond)
+
+		// stream must already be reset by other side as we were too late
+		_, err = s.Write([]byte("test"))
+		require.EqualError(t, err, "stream reset")
+	}
+}

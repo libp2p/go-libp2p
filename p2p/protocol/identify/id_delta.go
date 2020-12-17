@@ -5,6 +5,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	"time"
 
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
@@ -15,6 +16,8 @@ const IDDelta = "/p2p/id/delta/1.0.0"
 
 // deltaHandler handles incoming delta updates from peers.
 func (ids *IDService) deltaHandler(s network.Stream) {
+	s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
+
 	c := s.Conn()
 
 	r := protoio.NewDelimitedReader(s, 2048)

@@ -46,6 +46,9 @@ const LibP2PVersion = "ipfs/0.1.0"
 // Deprecated: Set this with the UserAgent option.
 var ClientVersion = "github.com/libp2p/go-libp2p"
 
+// StreamReadTimeout is the read timeout on all incoming Identify family streams.
+var StreamReadTimeout = 60 * time.Second
+
 var (
 	legacyIDSize = 2 * 1024 // 2k Bytes
 	signedIDSize = 8 * 1024 // 8K
@@ -369,10 +372,13 @@ func (ids *IDService) identifyConn(c network.Conn, signal chan struct{}) {
 		s.Reset()
 		return
 	}
-	ids.handleIdentifyResponse(s)
+
+	err = ids.handleIdentifyResponse(s)
 }
 
 func (ids *IDService) sendIdentifyResp(s network.Stream) {
+	s.SetDeadline(time.Now().Add(StreamReadTimeout))
+
 	var ph *peerHandler
 
 	defer func() {
@@ -408,7 +414,9 @@ func (ids *IDService) sendIdentifyResp(s network.Stream) {
 	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
 }
 
-func (ids *IDService) handleIdentifyResponse(s network.Stream) {
+func (ids *IDService) handleIdentifyResponse(s network.Stream) error {
+	s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
+
 	c := s.Conn()
 
 	r := protoio.NewDelimitedReader(s, signedIDSize)
@@ -417,7 +425,7 @@ func (ids *IDService) handleIdentifyResponse(s network.Stream) {
 	if err := readAllIDMessages(r, mes); err != nil {
 		log.Warning("error reading identify message: ", err)
 		s.Reset()
-		return
+		return err
 	}
 
 	defer s.Close()
@@ -425,6 +433,8 @@ func (ids *IDService) handleIdentifyResponse(s network.Stream) {
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
 
 	ids.consumeMessage(mes, c)
+
+	return nil
 }
 
 func readAllIDMessages(r protoio.Reader, finalMsg proto.Message) error {
