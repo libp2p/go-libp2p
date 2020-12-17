@@ -1016,7 +1016,7 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 		fev := ev.(event.EvtPeerIdentificationFailed)
 		require.EqualError(t, fev.Reason, "i/o deadline reached")
 	case <- time.After(5 * time.Second):
-		t.Fatal("did not recieve identify failure event")
+		t.Fatal("did not receive identify failure event")
 	}
 }
 
@@ -1048,13 +1048,13 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 		h2pi := h2.Peerstore().PeerInfo(h2p)
 		require.NoError(t, h1.Connect(ctx, h2pi))
 
-		s, err := h1.NewStream(ctx, h2p, p)
+		_, err := h1.NewStream(ctx, h2p, p)
 		require.NoError(t, err)
-		// wait for stream read on remote peer to timeout
-		time.Sleep(500 * time.Millisecond)
 
-		// stream must already be reset by other side as we were too late
-		_, err = s.Write([]byte("test"))
-		require.EqualError(t, err, "stream reset")
+		// remote peer should eventually reset stream
+		require.Eventually(t, func() bool {
+			c := h2.Network().ConnsToPeer(h1.ID())[0]
+			return len(c.GetStreams()) == 0
+		}, 1 * time.Second, 200 * time.Millisecond)
 	}
 }
