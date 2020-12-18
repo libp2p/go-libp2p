@@ -1012,10 +1012,10 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 	require.NoError(t, h1.Connect(ctx, h2pi))
 
 	select {
-	case ev := <- sub.Out():
+	case ev := <-sub.Out():
 		fev := ev.(event.EvtPeerIdentificationFailed)
 		require.EqualError(t, fev.Reason, "i/o deadline reached")
-	case <- time.After(5 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("did not receive identify failure event")
 	}
 }
@@ -1055,6 +1055,6 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 		require.Eventually(t, func() bool {
 			c := h2.Network().ConnsToPeer(h1.ID())[0]
 			return len(c.GetStreams()) == 0
-		}, 1 * time.Second, 200 * time.Millisecond)
+		}, 1*time.Second, 200*time.Millisecond)
 	}
 }

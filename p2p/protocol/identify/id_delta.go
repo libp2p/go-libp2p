@@ -16,7 +16,7 @@ const IDDelta = "/p2p/id/delta/1.0.0"
 
 // deltaHandler handles incoming delta updates from peers.
 func (ids *IDService) deltaHandler(s network.Stream) {
-	s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
+	_ = s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
 
 	c := s.Conn()
 

@@ -377,8 +377,6 @@ func (ids *IDService) identifyConn(c network.Conn, signal chan struct{}) {
 }
 
 func (ids *IDService) sendIdentifyResp(s network.Stream) {
-	s.SetDeadline(time.Now().Add(StreamReadTimeout))
-
 	var ph *peerHandler
 
 	defer func() {
@@ -415,7 +413,7 @@ func (ids *IDService) sendIdentifyResp(s network.Stream) {
 }
 
 func (ids *IDService) handleIdentifyResponse(s network.Stream) error {
-	s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
+	_ = s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
 
 	c := s.Conn()
 
