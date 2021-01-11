@@ -1007,6 +1007,10 @@ func (h *BasicHost) Close() error {
 		_ = h.emitters.evtLocalAddrsUpdated.Close()
 		h.Network().Close()
 
+		if h.Peerstore() != nil {
+			h.Peerstore().Close()
+		}
+
 		h.refCount.Wait()
 	})
 
