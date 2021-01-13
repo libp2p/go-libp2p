@@ -52,7 +52,7 @@ func ChainOptions(opts ...Option) Option {
 // - If no peerstore is provided, the host is initialized with an empty
 // peerstore.
 //
-// Canceling the passed context followed by calling `Close` on the returned Host will stop the returned libp2p node.
+// To stop/shutdown the returned libp2p node, the user needs to cancel the passed context and call `Close` on the returned Host.
 func New(ctx context.Context, opts ...Option) (host.Host, error) {
 	return NewWithoutDefaults(ctx, append(opts, FallbackDefaults)...)
 }
