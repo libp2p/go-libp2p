@@ -344,7 +344,6 @@ func (oas *ObservedAddrManager) removeConn(conn network.Conn) {
 }
 
 func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observed ma.Multiaddr) {
-
 	// First, determine if this observation is even worth keeping...
 
 	// Ignore observations from loopback nodes. We already know our loopback

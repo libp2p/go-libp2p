@@ -7,6 +7,7 @@ import (
 	"time"
 
 	detectrace "github.com/ipfs/go-detect-race"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -374,4 +375,85 @@ func TestObservedAddrFiltering(t *testing.T) {
 	require.Len(t, addrs, 2)
 	require.Contains(t, addrs, it2)
 	require.Contains(t, addrs, it3)
+}
+
+func TestEmitNATDeviceTypeHard(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	harness := newHarness(ctx, t)
+	require.Empty(t, harness.oas.Addrs())
+
+	// IP4/TCP
+	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
+	it2 := ma.StringCast("/ip4/1.2.3.4/tcp/1232")
+	it3 := ma.StringCast("/ip4/1.2.3.4/tcp/1233")
+	it4 := ma.StringCast("/ip4/1.2.3.4/tcp/1234")
+
+	// observers
+	b1 := ma.StringCast("/ip4/1.2.3.6/tcp/1236")
+	b2 := ma.StringCast("/ip4/1.2.3.7/tcp/1237")
+	b3 := ma.StringCast("/ip4/1.2.3.8/tcp/1237")
+	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
+
+	peers := []peer.ID{
+		harness.add(b1),
+		harness.add(b2),
+		harness.add(b3),
+		harness.add(b4),
+	}
+
+	harness.observe(it1, peers[0])
+	harness.observe(it2, peers[1])
+	harness.observe(it3, peers[2])
+	harness.observe(it4, peers[3])
+
+	sub, err := harness.host.EventBus().Subscribe(new(event.EvtNATDeviceTypeChanged))
+	require.NoError(t, err)
+	select {
+	case ev := <-sub.Out():
+		evt := ev.(event.EvtNATDeviceTypeChanged)
+		require.Equal(t, network.NATDeviceTypeHard, evt.NatDeviceType)
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not get Hard NAT event")
+	}
+}
+
+func TestEmitNATDeviceTypeEasy(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	harness := newHarness(ctx, t)
+	require.Empty(t, harness.oas.Addrs())
+
+	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
+	it2 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
+	it3 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
+	it4 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
+
+	// observers
+	b1 := ma.StringCast("/ip4/1.2.3.6/tcp/1236")
+	b2 := ma.StringCast("/ip4/1.2.3.7/tcp/1237")
+	b3 := ma.StringCast("/ip4/1.2.3.8/tcp/1237")
+	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
+
+	peers := []peer.ID{
+		harness.add(b1),
+		harness.add(b2),
+		harness.add(b3),
+		harness.add(b4),
+	}
+
+	harness.observe(it1, peers[0])
+	harness.observe(it2, peers[1])
+	harness.observe(it3, peers[2])
+	harness.observe(it4, peers[3])
+
+	sub, err := harness.host.EventBus().Subscribe(new(event.EvtNATDeviceTypeChanged))
+	require.NoError(t, err)
+	select {
+	case ev := <-sub.Out():
+		evt := ev.(event.EvtNATDeviceTypeChanged)
+		require.Equal(t, network.NATDeviceTypeEasy, evt.NatDeviceType)
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not get Hard NAT event")
+	}
 }
