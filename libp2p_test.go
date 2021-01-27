@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
@@ -12,7 +13,10 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/transport"
+	noise "github.com/libp2p/go-libp2p-noise"
 	"github.com/libp2p/go-tcp-transport"
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/require"
 
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 )
@@ -191,4 +195,53 @@ func TestChainOptions(t *testing.T) {
 			t.Errorf("expected opt %d, got opt %d", i, x)
 		}
 	}
+}
+
+func TestTcpSimultaneousConnect(t *testing.T) {
+	ctx := context.Background()
+
+	// Host1
+	h1, err := New(ctx, Transport(tcp.NewTCPTransport), Security(noise.ID, noise.New),
+		ListenAddrs(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
+	require.NoError(t, err)
+	defer h1.Close()
+
+	// Host2
+	h2, err := New(ctx, Transport(tcp.NewTCPTransport), Security(noise.ID, noise.New),
+		ListenAddrs(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
+	require.NoError(t, err)
+	defer h2.Close()
+
+	h1Info := peer.AddrInfo{
+		ID:    h1.ID(),
+		Addrs: h1.Addrs(),
+	}
+
+	h2Info := peer.AddrInfo{
+		ID:    h2.ID(),
+		Addrs: h2.Addrs(),
+	}
+
+	wg := new(sync.WaitGroup)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			require.NoError(t, h1.Connect(context.Background(), h2Info))
+			require.NoError(t, h1.Network().ClosePeer(h2.ID()))
+		}
+	}()
+
+	// use another peer to constantly connect/disconnect with first peer.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			require.NoError(t, h2.Connect(context.Background(), h1Info))
+			require.NoError(t, h2.Network().ClosePeer(h1.ID()))
+		}
+	}()
+
+	wg.Wait()
 }
