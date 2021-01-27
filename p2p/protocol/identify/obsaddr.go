@@ -2,10 +2,13 @@ package identify
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-eventbus"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -109,11 +112,14 @@ type ObservedAddrManager struct {
 
 	// this is the worker channel
 	wch chan newObservation
+
+	currentNATDeviceType     network.NATDeviceType
+	emitNATDeviceTypeChanged event.Emitter
 }
 
 // NewObservedAddrManager returns a new address manager using
 // peerstore.OwnObservedAddressTTL as the TTL.
-func NewObservedAddrManager(ctx context.Context, host host.Host) *ObservedAddrManager {
+func NewObservedAddrManager(ctx context.Context, host host.Host) (*ObservedAddrManager, error) {
 	oas := &ObservedAddrManager{
 		addrs:       make(map[string][]*observedAddr),
 		ttl:         peerstore.OwnObservedAddrTTL,
@@ -123,9 +129,16 @@ func NewObservedAddrManager(ctx context.Context, host host.Host) *ObservedAddrMa
 		// refresh every ttl/2 so we don't forget observations from connected peers
 		refreshTimer: time.NewTimer(peerstore.OwnObservedAddrTTL / 2),
 	}
+
+	emitter, err := host.EventBus().Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create emitter for NATDeviceType: %s", err)
+	}
+	oas.emitNATDeviceTypeChanged = emitter
+
 	oas.host.Network().Notify((*obsAddrNotifiee)(oas))
 	go oas.worker(ctx)
-	return oas
+	return oas, nil
 }
 
 // AddrsFor return all activated observed addresses associated with the given
@@ -236,6 +249,7 @@ func (oas *ObservedAddrManager) worker(ctx context.Context) {
 		select {
 		case obs := <-oas.wch:
 			oas.maybeRecordObservation(obs.conn, obs.observed)
+
 		case <-ticker.C:
 			oas.gc()
 		case <-oas.refreshTimer.C:
@@ -374,6 +388,7 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 	oas.mu.Lock()
 	defer oas.mu.Unlock()
 	oas.recordObservationUnlocked(conn, observed)
+	oas.emitNATTypeUnlocked()
 }
 
 func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, observed ma.Multiaddr) {
@@ -416,6 +431,51 @@ func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, obs
 		oa.numInbound++
 	}
 	oas.addrs[localString] = append(oas.addrs[localString], oa)
+}
+
+// 1. If we have an activated address, we are behind an easy NAT.
+//
+// 2. If four different peers observe a different address for us on outbound connections, we
+// are MOST probably behind a hard NAT.
+func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
+	var allObserved []*observedAddr
+	for k := range oas.addrs {
+		allObserved = append(allObserved, oas.addrs[k]...)
+	}
+
+	now := time.Now()
+	seenBy := make(map[string]struct{})
+	cnt := 0
+	for i := range allObserved {
+		oa := allObserved[i]
+
+		if now.Sub(oa.lastSeen) <= oas.ttl && oa.activated() {
+			if oas.currentNATDeviceType != network.NATDeviceTypeEasy {
+				oas.currentNATDeviceType = network.NATDeviceTypeEasy
+				oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
+					NatDeviceType: network.NATDeviceTypeEasy,
+				})
+			}
+			return
+		}
+
+		// An observed address on an outbound connection that has ONLY been seen by one peer
+		if now.Sub(oa.lastSeen) <= oas.ttl && oa.numInbound == 0 && len(oa.seenBy) == 1 {
+			cnt++
+			for s, _ := range oa.seenBy {
+				seenBy[s] = struct{}{}
+			}
+		}
+	}
+
+	if cnt >= ActivationThresh && len(seenBy) >= ActivationThresh {
+		if oas.currentNATDeviceType != network.NATDeviceTypeHard {
+			oas.currentNATDeviceType = network.NATDeviceTypeHard
+			oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
+				NatDeviceType: network.NATDeviceTypeHard,
+			})
+		}
+	}
 }
 
 // observerGroup is a function that determines what part of

@@ -119,7 +119,7 @@ type IDService struct {
 
 // NewIDService constructs a new *IDService and activates it by
 // attaching its stream handler to the given host.Host.
-func NewIDService(h host.Host, opts ...Option) *IDService {
+func NewIDService(h host.Host, opts ...Option) (*IDService, error) {
 	var cfg config
 	for _, opt := range opts {
 		opt(&cfg)
@@ -135,10 +135,9 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 		Host:      h,
 		UserAgent: userAgent,
 
-		ctx:           hostCtx,
-		ctxCancel:     cancel,
-		conns:         make(map[network.Conn]chan struct{}),
-		observedAddrs: NewObservedAddrManager(hostCtx, h),
+		ctx:       hostCtx,
+		ctxCancel: cancel,
+		conns:     make(map[network.Conn]chan struct{}),
 
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
 
@@ -148,6 +147,12 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 
 	// handle local protocol handler updates, and push deltas to peers.
 	var err error
+
+	observedAddrs, err := NewObservedAddrManager(hostCtx, h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create observed address manager: %s", err)
+	}
+	s.observedAddrs = observedAddrs
 
 	s.refCount.Add(1)
 	go s.loop()
@@ -171,7 +176,7 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 	h.SetStreamHandler(IDPush, s.pushHandler)
 
 	h.Network().Notify((*netNotifiee)(s))
-	return s
+	return s, nil
 }
 
 func (ids *IDService) loop() {

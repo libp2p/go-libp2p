@@ -209,9 +209,12 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 
 	// we can't set this as a default above because it depends on the *BasicHost.
 	if h.disableSignedPeerRecord {
-		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
+		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
 	} else {
-		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Identify service: %s", err)
 	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {

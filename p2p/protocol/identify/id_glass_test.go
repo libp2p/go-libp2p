@@ -7,6 +7,7 @@ import (
 
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
 
 	blhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
@@ -20,7 +21,8 @@ func TestFastDisconnect(t *testing.T) {
 
 	target := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
 	defer target.Close()
-	ids := NewIDService(target)
+	ids, err := NewIDService(target)
+	require.NoError(t, err)
 	defer ids.Close()
 
 	sync := make(chan struct{})
@@ -46,7 +48,7 @@ func TestFastDisconnect(t *testing.T) {
 	source := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
 	defer source.Close()
 
-	err := source.Connect(ctx, peer.AddrInfo{ID: target.ID(), Addrs: target.Addrs()})
+	err = source.Connect(ctx, peer.AddrInfo{ID: target.ID(), Addrs: target.Addrs()})
 	if err != nil {
 		t.Fatal(err)
 	}

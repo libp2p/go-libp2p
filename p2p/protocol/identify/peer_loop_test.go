@@ -20,7 +20,8 @@ func TestMakeApplyDelta(t *testing.T) {
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
 	defer h1.Close()
-	ids1 := NewIDService(h1)
+	ids1, err := NewIDService(h1)
+	require.NoError(t, err)
 	ph := newPeerHandler(h1.ID(), ids1)
 	ph.start(ctx, func() {})
 	defer ph.stop()
@@ -65,7 +66,8 @@ func TestHandlerClose(t *testing.T) {
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
 	defer h1.Close()
-	ids1 := NewIDService(h1)
+	ids1, err := NewIDService(h1)
+	require.NoError(t, err)
 	ph := newPeerHandler(h1.ID(), ids1)
 	closedCh := make(chan struct{}, 2)
 	ph.start(ctx, func() {
@@ -93,7 +95,8 @@ func TestPeerSupportsProto(t *testing.T) {
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
 	defer h1.Close()
-	ids1 := NewIDService(h1)
+	ids1, err := NewIDService(h1)
+	require.NoError(t, err)
 
 	rp := peer.ID("test")
 	ph := newPeerHandler(rp, ids1)

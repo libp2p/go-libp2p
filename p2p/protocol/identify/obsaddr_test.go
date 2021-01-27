@@ -94,8 +94,11 @@ func newHarness(ctx context.Context, t *testing.T) harness {
 		t.Fatal(err)
 	}
 
+	oas, err := identify.NewObservedAddrManager(ctx, h)
+	require.NoError(t, err)
+
 	return harness{
-		oas:     identify.NewObservedAddrManager(ctx, h),
+		oas:     oas,
 		mocknet: mn,
 		host:    h,
 		t:       t,

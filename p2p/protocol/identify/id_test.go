@@ -43,8 +43,12 @@ func subtestIDService(t *testing.T) {
 	h1p := h1.ID()
 	h2p := h2.ID()
 
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer ids1.Close()
 	defer ids2.Close()
 
@@ -337,9 +341,15 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 		Addrs: p2addrs[1:],
 	})
 
-	ids1 := identify.NewIDService(p1)
-	ids2 := identify.NewIDService(p2)
-	ids3 := identify.NewIDService(p3)
+	ids1, err := identify.NewIDService(p1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(p2)
+	require.NoError(t, err)
+
+	ids3, err := identify.NewIDService(p3)
+	require.NoError(t, err)
+
 	defer func() {
 		ids1.Close()
 		ids2.Close()
@@ -380,8 +390,12 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 
 	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
 
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer func() {
 		ids1.Close()
 		ids2.Close()
@@ -505,8 +519,12 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	defer h2.Close()
 	defer h1.Close()
 
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer ids1.Close()
 	defer ids2.Close()
 
@@ -573,8 +591,11 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	h1p := h1.ID()
 	h2p := h2.ID()
 
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer ids1.Close()
 	defer ids2.Close()
 
@@ -724,14 +745,18 @@ func TestSendPushIfDeltaNotSupported(t *testing.T) {
 	defer h2.Close()
 	defer h1.Close()
 
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer func() {
 		ids1.Close()
 		ids2.Close()
 	}()
 
-	err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
+	err = h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
 	require.NoError(t, err)
 
 	// wait for them to Identify each other
@@ -795,8 +820,12 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	h1p := h1.ID()
 	h2p := h2.ID()
 
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer ids1.Close()
 	defer ids2.Close()
 
@@ -905,8 +934,12 @@ func TestLargePushMessage(t *testing.T) {
 	h1p := h1.ID()
 	h2p := h2.ID()
 
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer ids1.Close()
 	defer ids2.Close()
 
@@ -996,8 +1029,12 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 	defer h2.Close()
 
 	h2p := h2.ID()
-	ids1 := identify.NewIDService(h1)
-	ids2 := identify.NewIDService(h2)
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+
 	defer ids1.Close()
 	defer ids2.Close()
 	// remote stream handler will just hang and not send back an identify response
@@ -1039,8 +1076,12 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 		defer h1.Close()
 		defer h2.Close()
 
-		ids1 := identify.NewIDService(h1)
-		ids2 := identify.NewIDService(h2)
+		ids1, err := identify.NewIDService(h1)
+		require.NoError(t, err)
+
+		ids2, err := identify.NewIDService(h2)
+		require.NoError(t, err)
+
 		defer ids1.Close()
 		defer ids2.Close()
 
@@ -1048,7 +1089,7 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 		h2pi := h2.Peerstore().PeerInfo(h2p)
 		require.NoError(t, h1.Connect(ctx, h2pi))
 
-		_, err := h1.NewStream(ctx, h2p, p)
+		_, err = h1.NewStream(ctx, h2p, p)
 		require.NoError(t, err)
 
 		// remote peer should eventually reset stream
