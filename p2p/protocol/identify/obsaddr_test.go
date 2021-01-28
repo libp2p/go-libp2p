@@ -377,13 +377,13 @@ func TestObservedAddrFiltering(t *testing.T) {
 	require.Contains(t, addrs, it3)
 }
 
-func TestEmitNATDeviceTypeHard(t *testing.T) {
+func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	harness := newHarness(ctx, t)
 	require.Empty(t, harness.oas.Addrs())
 
-	// IP4/TCP
+	// TCP
 	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
 	it2 := ma.StringCast("/ip4/1.2.3.4/tcp/1232")
 	it3 := ma.StringCast("/ip4/1.2.3.4/tcp/1233")
@@ -412,13 +412,15 @@ func TestEmitNATDeviceTypeHard(t *testing.T) {
 	select {
 	case ev := <-sub.Out():
 		evt := ev.(event.EvtNATDeviceTypeChanged)
-		require.Equal(t, network.NATDeviceTypeHard, evt.NatDeviceType)
+		require.Equal(t, network.NATDeviceTypeSymmetric, evt.NatDeviceType)
+		require.Equal(t, event.NATTransportTCP, evt.TransportProtocol)
 	case <-time.After(5 * time.Second):
-		t.Fatal("did not get Hard NAT event")
+		t.Fatal("did not get Symmetric NAT event")
 	}
+
 }
 
-func TestEmitNATDeviceTypeEasy(t *testing.T) {
+func TestEmitNATDeviceTypeCone(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	harness := newHarness(ctx, t)
@@ -452,8 +454,8 @@ func TestEmitNATDeviceTypeEasy(t *testing.T) {
 	select {
 	case ev := <-sub.Out():
 		evt := ev.(event.EvtNATDeviceTypeChanged)
-		require.Equal(t, network.NATDeviceTypeEasy, evt.NatDeviceType)
+		require.Equal(t, network.NATDeviceTypeCone, evt.NatDeviceType)
 	case <-time.After(5 * time.Second):
-		t.Fatal("did not get Hard NAT event")
+		t.Fatal("did not get Cone NAT event")
 	}
 }

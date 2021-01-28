@@ -113,7 +113,9 @@ type ObservedAddrManager struct {
 	// this is the worker channel
 	wch chan newObservation
 
-	currentNATDeviceType     network.NATDeviceType
+	currentUDPNATDeviceType network.NATDeviceType
+	currentTCPNATDeviceType network.NATDeviceType
+
 	emitNATDeviceTypeChanged event.Emitter
 }
 
@@ -432,27 +434,89 @@ func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, obs
 	oas.addrs[localString] = append(oas.addrs[localString], oa)
 }
 
-// 1. If we have an activated address, we are behind an easy NAT.
+// For a given transport Protocol (TCP/UDP):
+//
+// 1. If we have an activated address, we are behind an Cone NAT.
 //
 // 2. If four different peers observe a different address for us on outbound connections, we
-// are MOST probably behind a hard NAT.
+// are MOST probably behind a Symmetric NAT.
 func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
 	var allObserved []*observedAddr
 	for k := range oas.addrs {
 		allObserved = append(allObserved, oas.addrs[k]...)
 	}
 
+	oas.emitTCPNATTypeUnlocked(allObserved)
+	oas.emitUDPTypeUnlocked(allObserved)
+}
+
+func (oas *ObservedAddrManager) emitTCPNATTypeUnlocked(addrs []*observedAddr) {
 	now := time.Now()
 	seenBy := make(map[string]struct{})
 	cnt := 0
-	for i := range allObserved {
-		oa := allObserved[i]
 
+	for i := range addrs {
+		oa := addrs[i]
+		// only process TCP addresses
+		_, err := oa.addr.ValueForProtocol(ma.P_TCP)
+		if err != nil {
+			continue
+		}
+
+		// if we have an activated TCP addresses, it's a Cone NAT for TCP.
 		if now.Sub(oa.lastSeen) <= oas.ttl && oa.activated() {
-			if oas.currentNATDeviceType != network.NATDeviceTypeEasy {
-				oas.currentNATDeviceType = network.NATDeviceTypeEasy
+			if oas.currentTCPNATDeviceType != network.NATDeviceTypeCone {
+				oas.currentTCPNATDeviceType = network.NATDeviceTypeCone
 				oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
-					NatDeviceType: network.NATDeviceTypeEasy,
+					TransportProtocol: event.NATTransportTCP,
+					NatDeviceType:     network.NATDeviceTypeCone,
+				})
+			}
+			return
+		}
+
+		// An observed address on an outbound connection that has ONLY been seen by one peer
+		if now.Sub(oa.lastSeen) <= oas.ttl && oa.numInbound == 0 && len(oa.seenBy) == 1 {
+			cnt++
+			for s, _ := range oa.seenBy {
+				seenBy[s] = struct{}{}
+			}
+		}
+	}
+
+	// If four different peers observe a different address for us on each of four outbound connections, we
+	// are MOST probably behind a Symmetric NAT.
+	if cnt >= ActivationThresh && len(seenBy) >= ActivationThresh {
+		if oas.currentTCPNATDeviceType != network.NATDeviceTypeSymmetric {
+			oas.currentTCPNATDeviceType = network.NATDeviceTypeSymmetric
+			oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
+				TransportProtocol: event.NATTransportTCP,
+				NatDeviceType:     network.NATDeviceTypeSymmetric,
+			})
+		}
+	}
+}
+
+func (oas *ObservedAddrManager) emitUDPTypeUnlocked(addrs []*observedAddr) {
+	now := time.Now()
+	seenBy := make(map[string]struct{})
+	cnt := 0
+
+	for i := range addrs {
+		oa := addrs[i]
+		// only process UDP addresses
+		_, err := oa.addr.ValueForProtocol(ma.P_UDP)
+		if err != nil {
+			continue
+		}
+
+		// if we have an activated UDP addresses, it's a Cone NAT for UDP.
+		if now.Sub(oa.lastSeen) <= oas.ttl && oa.activated() {
+			if oas.currentUDPNATDeviceType != network.NATDeviceTypeCone {
+				oas.currentUDPNATDeviceType = network.NATDeviceTypeCone
+				oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
+					TransportProtocol: event.NATTransportUDP,
+					NatDeviceType:     network.NATDeviceTypeCone,
 				})
 			}
 			return
@@ -468,10 +532,11 @@ func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
 	}
 
 	if cnt >= ActivationThresh && len(seenBy) >= ActivationThresh {
-		if oas.currentNATDeviceType != network.NATDeviceTypeHard {
-			oas.currentNATDeviceType = network.NATDeviceTypeHard
+		if oas.currentUDPNATDeviceType != network.NATDeviceTypeSymmetric {
+			oas.currentUDPNATDeviceType = network.NATDeviceTypeSymmetric
 			oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
-				NatDeviceType: network.NATDeviceTypeHard,
+				TransportProtocol: event.NATTransportUDP,
+				NatDeviceType:     network.NATDeviceTypeSymmetric,
 			})
 		}
 	}
