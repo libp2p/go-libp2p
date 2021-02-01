@@ -437,42 +437,55 @@ func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, obs
 // For a given transport Protocol (TCP/UDP):
 //
 // 1. If we have an activated address, we are behind an Cone NAT.
+// With regards to RFC 3489, this could be either a Full Cone NAT, a Restricted Cone NAT or a
+// Port Restricted Cone NAT. However, we do NOT differentiate between them here and simply classify all such NATs as a Cone NAT.
 //
 // 2. If four different peers observe a different address for us on outbound connections, we
 // are MOST probably behind a Symmetric NAT.
+//
+// Please see the documentation on the enumerations for `network.NATDeviceType` for more details about these NAT Device types
+// and how they relate to NAT traversal via Hole Punching.
 func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
 	var allObserved []*observedAddr
 	for k := range oas.addrs {
 		allObserved = append(allObserved, oas.addrs[k]...)
 	}
 
-	oas.emitTCPNATTypeUnlocked(allObserved)
-	oas.emitUDPTypeUnlocked(allObserved)
+	hasChanged, natType := oas.emitNATType(allObserved, ma.P_TCP, event.NATTransportTCP, oas.currentTCPNATDeviceType)
+	if hasChanged {
+		oas.currentTCPNATDeviceType = natType
+	}
+
+	hasChanged, natType = oas.emitNATType(allObserved, ma.P_UDP, event.NATTransportUDP, oas.currentUDPNATDeviceType)
+	if hasChanged {
+		oas.currentUDPNATDeviceType = natType
+	}
 }
 
-func (oas *ObservedAddrManager) emitTCPNATTypeUnlocked(addrs []*observedAddr) {
+// returns true along with the new NAT device type if the NAT device type for the given protocol has changed.
+// returns false otherwise.
+func (oas *ObservedAddrManager) emitNATType(addrs []*observedAddr, protoCode int, transportProto event.NATTransportProtocol,
+	currentNATType network.NATDeviceType) (bool, network.NATDeviceType) {
 	now := time.Now()
 	seenBy := make(map[string]struct{})
 	cnt := 0
 
 	for i := range addrs {
 		oa := addrs[i]
-		// only process TCP addresses
-		_, err := oa.addr.ValueForProtocol(ma.P_TCP)
+		_, err := oa.addr.ValueForProtocol(protoCode)
 		if err != nil {
 			continue
 		}
 
-		// if we have an activated TCP addresses, it's a Cone NAT for TCP.
+		// if we have an activated addresses, it's a Cone NAT.
 		if now.Sub(oa.lastSeen) <= oas.ttl && oa.activated() {
-			if oas.currentTCPNATDeviceType != network.NATDeviceTypeCone {
-				oas.currentTCPNATDeviceType = network.NATDeviceTypeCone
+			if currentNATType != network.NATDeviceTypeCone {
 				oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
-					TransportProtocol: event.NATTransportTCP,
+					TransportProtocol: transportProto,
 					NatDeviceType:     network.NATDeviceTypeCone,
 				})
+				return true, network.NATDeviceTypeCone
 			}
-			return
 		}
 
 		// An observed address on an outbound connection that has ONLY been seen by one peer
@@ -487,59 +500,16 @@ func (oas *ObservedAddrManager) emitTCPNATTypeUnlocked(addrs []*observedAddr) {
 	// If four different peers observe a different address for us on each of four outbound connections, we
 	// are MOST probably behind a Symmetric NAT.
 	if cnt >= ActivationThresh && len(seenBy) >= ActivationThresh {
-		if oas.currentTCPNATDeviceType != network.NATDeviceTypeSymmetric {
-			oas.currentTCPNATDeviceType = network.NATDeviceTypeSymmetric
+		if currentNATType != network.NATDeviceTypeSymmetric {
 			oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
-				TransportProtocol: event.NATTransportTCP,
+				TransportProtocol: transportProto,
 				NatDeviceType:     network.NATDeviceTypeSymmetric,
 			})
-		}
-	}
-}
-
-func (oas *ObservedAddrManager) emitUDPTypeUnlocked(addrs []*observedAddr) {
-	now := time.Now()
-	seenBy := make(map[string]struct{})
-	cnt := 0
-
-	for i := range addrs {
-		oa := addrs[i]
-		// only process UDP addresses
-		_, err := oa.addr.ValueForProtocol(ma.P_UDP)
-		if err != nil {
-			continue
-		}
-
-		// if we have an activated UDP addresses, it's a Cone NAT for UDP.
-		if now.Sub(oa.lastSeen) <= oas.ttl && oa.activated() {
-			if oas.currentUDPNATDeviceType != network.NATDeviceTypeCone {
-				oas.currentUDPNATDeviceType = network.NATDeviceTypeCone
-				oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
-					TransportProtocol: event.NATTransportUDP,
-					NatDeviceType:     network.NATDeviceTypeCone,
-				})
-			}
-			return
-		}
-
-		// An observed address on an outbound connection that has ONLY been seen by one peer
-		if now.Sub(oa.lastSeen) <= oas.ttl && oa.numInbound == 0 && len(oa.seenBy) == 1 {
-			cnt++
-			for s, _ := range oa.seenBy {
-				seenBy[s] = struct{}{}
-			}
+			return true, network.NATDeviceTypeSymmetric
 		}
 	}
 
-	if cnt >= ActivationThresh && len(seenBy) >= ActivationThresh {
-		if oas.currentUDPNATDeviceType != network.NATDeviceTypeSymmetric {
-			oas.currentUDPNATDeviceType = network.NATDeviceTypeSymmetric
-			oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
-				TransportProtocol: event.NATTransportUDP,
-				NatDeviceType:     network.NATDeviceTypeSymmetric,
-			})
-		}
-	}
+	return false, 0
 }
 
 // observerGroup is a function that determines what part of
