@@ -486,6 +486,9 @@ func (oas *ObservedAddrManager) emitNATType(addrs []*observedAddr, protoCode int
 				})
 				return true, network.NATDeviceTypeCone
 			}
+
+			// our current NAT Device Type is already CONE, nothing to do here.
+			return false, 0
 		}
 
 		// An observed address on an outbound connection that has ONLY been seen by one peer
