@@ -4,6 +4,8 @@ go 1.12
 
 require (
 	github.com/gogo/protobuf v1.3.1
+	github.com/google/gopacket v1.1.18 // indirect
+	github.com/google/uuid v1.1.2 // indirect
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-detect-race v0.0.1
@@ -19,7 +21,6 @@ require (
 	github.com/libp2p/go-libp2p-circuit v0.4.0
 	github.com/libp2p/go-libp2p-core v0.8.1-0.20210128094021-3723a852faa9
 	github.com/libp2p/go-libp2p-discovery v0.5.0
-	github.com/libp2p/go-libp2p-kad-dht v0.11.1
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.4.1
 	github.com/libp2p/go-libp2p-nat v0.0.6
@@ -42,5 +43,5 @@ require (
 	github.com/multiformats/go-multistream v0.2.0
 	github.com/stretchr/testify v1.6.1
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
-	google.golang.org/protobuf v1.23.0 // indirect
+	go.uber.org/zap v1.16.0 // indirect
 )
