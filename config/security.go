@@ -56,7 +56,7 @@ func makeInsecureTransport(id peer.ID, privKey crypto.PrivKey) sec.SecureMuxer {
 	return secMuxer
 }
 
-func makeSecurityTransport(h host.Host, tpts []MsSecC) (sec.SecureMuxer, error) {
+func makeSecurityMuxer(h host.Host, tpts []MsSecC) (sec.SecureMuxer, error) {
 	secMuxer := new(csms.SSMuxer)
 	transportSet := make(map[string]struct{}, len(tpts))
 	for _, tptC := range tpts {
