@@ -389,7 +389,7 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 	oas.mu.Lock()
 	defer oas.mu.Unlock()
 	oas.recordObservationUnlocked(conn, observed)
-	oas.emitNATTypeUnlocked()
+	oas.emitAllNATTypes()
 }
 
 func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, observed ma.Multiaddr) {
@@ -445,18 +445,18 @@ func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, obs
 //
 // Please see the documentation on the enumerations for `network.NATDeviceType` for more details about these NAT Device types
 // and how they relate to NAT traversal via Hole Punching.
-func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
+func (oas *ObservedAddrManager) emitAllNATTypes() {
 	var allObserved []*observedAddr
 	for k := range oas.addrs {
 		allObserved = append(allObserved, oas.addrs[k]...)
 	}
 
-	hasChanged, natType := oas.emitNATType(allObserved, ma.P_TCP, event.NATTransportTCP, oas.currentTCPNATDeviceType)
+	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, event.NATTransportTCP, oas.currentTCPNATDeviceType)
 	if hasChanged {
 		oas.currentTCPNATDeviceType = natType
 	}
 
-	hasChanged, natType = oas.emitNATType(allObserved, ma.P_UDP, event.NATTransportUDP, oas.currentUDPNATDeviceType)
+	hasChanged, natType = oas.emitSpecificNATType(allObserved, ma.P_UDP, event.NATTransportUDP, oas.currentUDPNATDeviceType)
 	if hasChanged {
 		oas.currentUDPNATDeviceType = natType
 	}
@@ -464,7 +464,7 @@ func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
 
 // returns true along with the new NAT device type if the NAT device type for the given protocol has changed.
 // returns false otherwise.
-func (oas *ObservedAddrManager) emitNATType(addrs []*observedAddr, protoCode int, transportProto event.NATTransportProtocol,
+func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, protoCode int, transportProto event.NATTransportProtocol,
 	currentNATType network.NATDeviceType) (bool, network.NATDeviceType) {
 	now := time.Now()
 	seenBy := make(map[string]struct{})
