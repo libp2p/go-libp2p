@@ -113,9 +113,11 @@ type ObservedAddrManager struct {
 	// this is the worker channel
 	wch chan newObservation
 
-	currentUDPNATDeviceType network.NATDeviceType
-	currentTCPNATDeviceType network.NATDeviceType
+	reachabilitySub event.Subscription
+	reachability    network.Reachability
 
+	currentUDPNATDeviceType  network.NATDeviceType
+	currentTCPNATDeviceType  network.NATDeviceType
 	emitNATDeviceTypeChanged event.Emitter
 }
 
@@ -131,6 +133,12 @@ func NewObservedAddrManager(ctx context.Context, host host.Host) (*ObservedAddrM
 		// refresh every ttl/2 so we don't forget observations from connected peers
 		refreshTimer: time.NewTimer(peerstore.OwnObservedAddrTTL / 2),
 	}
+
+	reachabilitySub, err := host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to reachability event: %s", err)
+	}
+	oas.reachabilitySub = reachabilitySub
 
 	emitter, err := host.EventBus().Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
 	if err != nil {
@@ -234,6 +242,7 @@ func (oas *ObservedAddrManager) Record(conn network.Conn, observed ma.Multiaddr)
 
 func (oas *ObservedAddrManager) teardown() {
 	oas.host.Network().StopNotify((*obsAddrNotifiee)(oas))
+	oas.reachabilitySub.Close()
 
 	oas.mu.Lock()
 	oas.refreshTimer.Stop()
@@ -247,8 +256,16 @@ func (oas *ObservedAddrManager) worker(ctx context.Context) {
 	defer ticker.Stop()
 
 	hostClosing := oas.host.Network().Process().Closing()
+	subChan := oas.reachabilitySub.Out()
 	for {
 		select {
+		case evt, ok := <-subChan:
+			if !ok {
+				subChan = nil
+			}
+			ev := evt.(event.EvtLocalReachabilityChanged)
+			oas.reachability = ev.Reachability
+
 		case obs := <-oas.wch:
 			oas.maybeRecordObservation(obs.conn, obs.observed)
 
@@ -389,7 +406,10 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 	oas.mu.Lock()
 	defer oas.mu.Unlock()
 	oas.recordObservationUnlocked(conn, observed)
-	oas.emitAllNATTypes()
+
+	if oas.reachability == network.ReachabilityPrivate {
+		oas.emitAllNATTypes()
+	}
 }
 
 func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, observed ma.Multiaddr) {
