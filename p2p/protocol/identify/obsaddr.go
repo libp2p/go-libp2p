@@ -471,12 +471,12 @@ func (oas *ObservedAddrManager) emitAllNATTypes() {
 		allObserved = append(allObserved, oas.addrs[k]...)
 	}
 
-	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, event.NATTransportTCP, oas.currentTCPNATDeviceType)
+	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType)
 	if hasChanged {
 		oas.currentTCPNATDeviceType = natType
 	}
 
-	hasChanged, natType = oas.emitSpecificNATType(allObserved, ma.P_UDP, event.NATTransportUDP, oas.currentUDPNATDeviceType)
+	hasChanged, natType = oas.emitSpecificNATType(allObserved, ma.P_UDP, network.NATTransportUDP, oas.currentUDPNATDeviceType)
 	if hasChanged {
 		oas.currentUDPNATDeviceType = natType
 	}
@@ -484,7 +484,7 @@ func (oas *ObservedAddrManager) emitAllNATTypes() {
 
 // returns true along with the new NAT device type if the NAT device type for the given protocol has changed.
 // returns false otherwise.
-func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, protoCode int, transportProto event.NATTransportProtocol,
+func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, protoCode int, transportProto network.NATTransportProtocol,
 	currentNATType network.NATDeviceType) (bool, network.NATDeviceType) {
 	now := time.Now()
 	seenBy := make(map[string]struct{})
