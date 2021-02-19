@@ -4,8 +4,6 @@ go 1.12
 
 require (
 	github.com/gogo/protobuf v1.3.1
-	github.com/google/gopacket v1.1.18 // indirect
-	github.com/google/uuid v1.1.2 // indirect
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-detect-race v0.0.1

@@ -468,8 +468,8 @@ func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, obs
 // and how they relate to NAT traversal via Hole Punching.
 func (oas *ObservedAddrManager) emitAllNATTypes() {
 	var allObserved []*observedAddr
-	for k := range oas.addrs {
-		allObserved = append(allObserved, oas.addrs[k]...)
+	for _, addrs := range oas.addrs {
+		allObserved = append(allObserved, addrs...)
 	}
 
 	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType)
