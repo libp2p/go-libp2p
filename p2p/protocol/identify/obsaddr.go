@@ -180,8 +180,8 @@ func (oas *ObservedAddrManager) Addrs() []ma.Multiaddr {
 	}
 
 	var allObserved []*observedAddr
-	for k := range oas.addrs {
-		allObserved = append(allObserved, oas.addrs[k]...)
+	for _, addrs := range oas.addrs {
+		allObserved = append(allObserved, addrs...)
 	}
 	return oas.filter(allObserved)
 }
@@ -262,6 +262,7 @@ func (oas *ObservedAddrManager) worker(ctx context.Context) {
 		case evt, ok := <-subChan:
 			if !ok {
 				subChan = nil
+				continue
 			}
 			ev := evt.(event.EvtLocalReachabilityChanged)
 			oas.reachability = ev.Reachability
@@ -490,8 +491,7 @@ func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, proto
 	seenBy := make(map[string]struct{})
 	cnt := 0
 
-	for i := range addrs {
-		oa := addrs[i]
+	for _, oa := range addrs {
 		_, err := oa.addr.ValueForProtocol(protoCode)
 		if err != nil {
 			continue
@@ -514,7 +514,7 @@ func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, proto
 		// An observed address on an outbound connection that has ONLY been seen by one peer
 		if now.Sub(oa.lastSeen) <= oas.ttl && oa.numInbound == 0 && len(oa.seenBy) == 1 {
 			cnt++
-			for s, _ := range oa.seenBy {
+			for s := range oa.seenBy {
 				seenBy[s] = struct{}{}
 			}
 		}
