@@ -283,7 +283,7 @@ func assertWait(t *testing.T, c chan protocol.ID, exp protocol.ID) {
 	select {
 	case proto := <-c:
 		if proto != exp {
-			t.Fatal("should have connected on ", exp)
+			t.Fatalf("should have connected on %s, got %s", exp, proto)
 		}
 	case <-time.After(time.Second * 5):
 		t.Fatal("timeout waiting for stream")
@@ -308,6 +308,10 @@ func TestHostProtoPreference(t *testing.T) {
 		connectedOn <- s.Protocol()
 		s.Close()
 	}
+
+	// Prevent pushing identify information so this test works.
+	h2.RemoveStreamHandler(identify.IDPush)
+	h2.RemoveStreamHandler(identify.IDDelta)
 
 	h1.SetStreamHandler(protoOld, handler)
 
@@ -344,8 +348,6 @@ func TestHostProtoPreference(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// XXX: This is racy now that we push protocol updates. If this tests
-	// fails, try allowing both protoOld and protoMinor.
 	assertWait(t, connectedOn, protoOld)
 
 	s2.Close()
@@ -398,6 +400,10 @@ func TestHostProtoPreknowledge(t *testing.T) {
 	}
 
 	h1.SetStreamHandler("/super", handler)
+
+	// Prevent pushing identify information so this test actually _uses_ the super protocol.
+	h2.RemoveStreamHandler(identify.IDPush)
+	h2.RemoveStreamHandler(identify.IDDelta)
 
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
 	if err := h1.Connect(ctx, h2pi); err != nil {

@@ -1050,7 +1050,7 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 	select {
 	case ev := <-sub.Out():
 		fev := ev.(event.EvtPeerIdentificationFailed)
-		require.EqualError(t, fev.Reason, "i/o deadline reached")
+		require.Contains(t, fev.Reason.Error(), "deadline")
 	case <-time.After(5 * time.Second):
 		t.Fatal("did not receive identify failure event")
 	}
