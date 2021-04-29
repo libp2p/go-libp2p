@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	detectrace "github.com/ipfs/go-detect-race"
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -266,6 +267,10 @@ func emitAddrChangeEvt(t *testing.T, h host.Host) {
 // this is because it used to be concurrent. Now, Dial wait till the
 // id service is done.
 func TestIDService(t *testing.T) {
+	// This test is highly timing dependent, waiting on timeouts/expiration.
+	if detectrace.WithRace() {
+		t.Skip("skipping highly timing dependent test when race detector is enabled")
+	}
 	oldTTL := peerstore.RecentlyConnectedAddrTTL
 	peerstore.RecentlyConnectedAddrTTL = time.Second
 	defer func() {
