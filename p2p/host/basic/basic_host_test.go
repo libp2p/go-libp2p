@@ -663,18 +663,19 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	ctx := context.Background()
 	taddrs := []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1234")}
 
+	starting := make(chan struct{})
 	h := New(swarmt.GenSwarm(t, ctx), AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		<-starting
 		return taddrs
 	}))
 	defer h.Close()
 
 	sub, err := h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
+	close(starting)
 	if err != nil {
 		t.Error(err)
 	}
 	defer sub.Close()
-	// wait for the host background thread to start
-	time.Sleep(1 * time.Second)
 
 	expected := event.EvtLocalAddressesUpdated{
 		Diffs: true,
@@ -843,7 +844,7 @@ func waitForAddrChangeEvent(ctx context.Context, sub event.Subscription, t *test
 			return evt.(event.EvtLocalAddressesUpdated)
 		case <-ctx.Done():
 			t.Fatal("context should not have cancelled")
-		case <-time.After(2 * time.Second):
+		case <-time.After(5 * time.Second):
 			t.Fatal("timed out waiting for address change event")
 		}
 	}
