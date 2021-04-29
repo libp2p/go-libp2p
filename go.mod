@@ -25,7 +25,7 @@ require (
 	github.com/libp2p/go-libp2p-nat v0.0.6
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-noise v0.1.3
-	github.com/libp2p/go-libp2p-peerstore v0.2.6
+	github.com/libp2p/go-libp2p-peerstore v0.2.7-0.20210429235808-3c78a8aebffd
 	github.com/libp2p/go-libp2p-swarm v0.5.0
 	github.com/libp2p/go-libp2p-testing v0.4.0
 	github.com/libp2p/go-libp2p-tls v0.1.3
