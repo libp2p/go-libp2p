@@ -139,8 +139,15 @@ func TestNotifications(t *testing.T) {
 	}
 
 	for _, n1 := range notifiees {
+		// Avoid holding this lock while waiting, otherwise we can deadlock.
+		streamStateCopy := map[network.Stream]chan struct{}{}
 		n1.streamState.Lock()
-		for str1, ch1 := range n1.streamState.m {
+		for str, ch := range n1.streamState.m {
+			streamStateCopy[str] = ch
+		}
+		n1.streamState.Unlock()
+
+		for str1, ch1 := range streamStateCopy {
 			<-ch1
 			str2 := StreamComplement(str1)
 			n2 := notifiees[str1.Conn().RemotePeer()]
@@ -151,8 +158,6 @@ func TestNotifications(t *testing.T) {
 
 			<-ch2
 		}
-
-		n1.streamState.Unlock()
 	}
 }
 
