@@ -532,16 +532,16 @@ func TestProtoDowngrade(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if s2.Protocol() != "/testing" {
+		t.Fatal("shoould have gotten /testing")
+	}
+
 	_, err = s2.Write(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	assertWait(t, connectedOn, "/testing")
-
-	if s2.Protocol() != "/testing" {
-		t.Fatal("shoould have gotten /testing")
-	}
 	s2.Close()
 
 }

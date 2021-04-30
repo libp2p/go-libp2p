@@ -218,7 +218,7 @@ func TestObsAddrSet(t *testing.T) {
 	harness.oas.SetTTL(time.Millisecond * 200)
 	time.Sleep(time.Millisecond * 300)
 	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
-		t.Error("addrs should only have a1, a2")
+		t.Errorf("addrs should only have %s, %s; have %s", a1, a2, harness.oas.Addrs())
 	}
 
 	// disconnect from all but b5.
