@@ -28,12 +28,17 @@ func TestFastDisconnect(t *testing.T) {
 	sync := make(chan struct{})
 	target.SetStreamHandler(ID, func(s network.Stream) {
 		// Wait till the stream is setup on both sides.
-		<-sync
+		select {
+		case <-sync:
+		case <-ctx.Done():
+			return
+		}
 
 		// Kill the connection, and make sure we're completely disconnected.
 		s.Conn().Close()
 		for target.Network().Connectedness(s.Conn().RemotePeer()) == network.Connected {
-			// wait till we're disconnected.
+			// let something else run
+			time.Sleep(time.Millisecond)
 		}
 		// Now try to handle the response.
 		// This should not block indefinitely, or panic, or anything like that.
@@ -42,7 +47,11 @@ func TestFastDisconnect(t *testing.T) {
 		ids.sendIdentifyResp(s)
 
 		// Ok, allow the outer test to continue.
-		<-sync
+		select {
+		case <-sync:
+		case <-ctx.Done():
+			return
+		}
 	})
 
 	source := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
@@ -59,13 +68,15 @@ func TestFastDisconnect(t *testing.T) {
 	select {
 	case sync <- struct{}{}:
 	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 	s.Reset()
 	select {
 	case sync <- struct{}{}:
 	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
-	// Make sure we didn't timeout anywhere.
+	// double-check to make sure we didn't actually timeout somewhere.
 	if ctx.Err() != nil {
 		t.Fatal(ctx.Err())
 	}
