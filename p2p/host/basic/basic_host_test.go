@@ -513,7 +513,7 @@ func TestProtoDowngrade(t *testing.T) {
 	}
 	s.Close()
 
-	h1.Network().ConnsToPeer(h2.ID())[0].Close()
+	h1.Network().ClosePeer(h2.ID())
 
 	time.Sleep(time.Millisecond * 50) // allow notifications to propagate
 	h1.RemoveStreamHandler("/testing/1.0.0")
