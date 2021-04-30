@@ -216,7 +216,7 @@ func TestObsAddrSet(t *testing.T) {
 
 	// force a refresh.
 	harness.oas.SetTTL(time.Millisecond * 200)
-	<-time.After(time.Millisecond * 210)
+	time.Sleep(time.Millisecond * 300)
 	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
 		t.Error("addrs should only have a1, a2")
 	}
@@ -230,7 +230,7 @@ func TestObsAddrSet(t *testing.T) {
 	}
 
 	// wait for all other addresses to time out.
-	<-time.After(time.Millisecond * 210)
+	time.Sleep(time.Millisecond * 300)
 
 	// Should still have a2
 	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a2}) {
@@ -240,7 +240,7 @@ func TestObsAddrSet(t *testing.T) {
 	harness.host.Network().ClosePeer(pb5)
 
 	// wait for all addresses to timeout
-	<-time.After(time.Millisecond * 400)
+	time.Sleep(time.Millisecond * 400)
 
 	// Should still have a2
 	if !addrsMatch(harness.oas.Addrs(), nil) {
