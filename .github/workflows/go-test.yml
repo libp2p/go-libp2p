@@ -10,7 +10,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ "ubuntu", "windows", "macos" ]
-        go: [ "1.15.x", "1.16.x" ]
+        go: [ "1.16.x", "1.17.x" ]
+    env:
+      COVERAGES: ""
     runs-on: ${{ matrix.os }}-latest
     name: ${{ matrix.os}} (go ${{ matrix.go }})
     steps:
@@ -24,24 +26,30 @@ jobs:
         run: |
           go version
           go env
+      - name: Run repo-specific setup
+        uses: ./.github/actions/go-test-setup
+        if: hashFiles('./.github/actions/go-test-setup') != ''
       - name: Run tests
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@v1.2
         with:
-          run: go test -v -coverprofile coverage.txt ./...
+          run: go test -v -coverprofile module-coverage.txt ./...
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@v1.2
         env:
           GOARCH: 386
         with:
           run: go test -v ./...
       - name: Run tests with race detector
         if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@v1.2
         with:
           run: go test -v -race ./...
+      - name: Collect coverage files
+        shell: bash
+        run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@a1ed4b322b4b38cb846afb5a0ebfa17086917d27 # v1.5.0
+        uses: codecov/codecov-action@51d810878be5422784e86451c0e7c14e5860ec47 # v2.0.2
         with:
-          file: coverage.txt
+          files: '${{ env.COVERAGES }}'
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
