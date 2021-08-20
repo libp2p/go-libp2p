@@ -33,7 +33,9 @@ jobs:
   automerge:
     needs: automerge-check
     runs-on: ubuntu-latest
-    if: ${{ needs.automerge-check.outputs.status == 'true' }}
+    # The check for the user is redundant here, as this job depends on the automerge-check job,
+    # but it prevents this job from spinning up, just to be skipped shortly after.
+    if: github.event.pull_request.user.login == 'web3-bot' && needs.automerge-check.outputs.status == 'true'
     steps:
     - name: Wait on tests
       uses: lewagon/wait-on-check-action@bafe56a6863672c681c3cf671f5e10b20abf2eaa # v0.2
