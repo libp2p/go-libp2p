@@ -8,17 +8,28 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     name: All
+    env:
+      RUNGOGENERATE: false
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: recursive
       - uses: actions/setup-go@v2
         with:
-          go-version: "1.16.x"
+          go-version: "1.17.x"
+      - name: Run repo-specific setup
+        uses: ./.github/actions/go-check-setup
+        if: hashFiles('./.github/actions/go-check-setup') != ''
+      - name: Read config
+        if: hashFiles('./.github/workflows/go-check-config.json') != ''
+        run: |
+          if jq -re .gogenerate ./.github/workflows/go-check-config.json; then
+            echo "RUNGOGENERATE=true" >> $GITHUB_ENV
+          fi
       - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@434f5f3816b358fe468fa83dcba62d794e7fe04b # 2021.1 (v0.2.0)
+        run: go install honnef.co/go/tools/cmd/staticcheck@df71e5d0e0ed317ebf43e6e59cf919430fa4b8f2 # 2021.1.1 (v0.2.1)
       - name: Check that go.mod is tidy
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@v1.2
         with:
           run: |
             go mod tidy
@@ -37,14 +48,27 @@ jobs:
           fi
       - name: go vet
         if: ${{ success() || failure() }} # run this step even if the previous one failed
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@v1.2
         with:
           run: go vet ./...
       - name: staticcheck
         if: ${{ success() || failure() }} # run this step even if the previous one failed
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@v1.2
         with:
           run: |
             set -o pipefail
             staticcheck ./... | sed -e 's@\(.*\)\.go@./\1.go@g'
+      - name: go generate
+        uses: protocol/multiple-go-modules@v1.2
+        if: (success() || failure()) && env.RUNGOGENERATE == 'true'
+        with:
+          run: |
+            git clean -fd # make sure there aren't untracked files / directories
+            go generate ./...
+            # check if go generate modified or added any files
+            if ! $(git add . && git diff-index HEAD --exit-code --quiet); then
+              echo "go generated caused changes to the repository:"
+              git status --short
+              exit 1
+            fi
 
