@@ -30,9 +30,14 @@ func run() {
 
 	// Tell the host to relay connections for other peers (The ability to *use*
 	// a relay vs the ability to *be* a relay)
-	h2, err := libp2p.New(context.Background(), libp2p.EnableRelay(circuit.OptHop))
+	h2, err := libp2p.New(context.Background(), libp2p.DisableRelay())
 	if err != nil {
 		log.Printf("Failed to create h2: %v", err)
+		return
+	}
+	_, err = circuit.NewRelay(context.Background(), h2, nil, circuit.OptHop)
+	if err != nil {
+		log.Printf("Failed to instantiate h2 relay: %v", err)
 		return
 	}
 
