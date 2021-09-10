@@ -324,9 +324,13 @@ func makeRelayedHosts(t *testing.T, h1Opt holepunch.Option, addHolePuncher bool)
 	var err error
 	relay, err = libp2p.New(context.Background(),
 		libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/tcp/0"), ma.StringCast("/ip6/::1/tcp/0")),
-		libp2p.EnableRelay(circuit.OptHop),
+		libp2p.DisableRelay(),
 	)
 	require.NoError(t, err)
+
+	_, err = circuit.NewRelay(context.Background(), relay, nil, circuit.OptHop)
+	require.NoError(t, err)
+
 	h2 = mkHostWithStaticAutoRelay(t, context.Background(), relay)
 	if addHolePuncher {
 		hps = addHolePunchService(t, h2)
