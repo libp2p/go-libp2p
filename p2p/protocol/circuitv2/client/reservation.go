@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	pbv2 "github.com/libp2p/go-libp2p/p2p/host/circuitv2/pb"
-	"github.com/libp2p/go-libp2p/p2p/host/circuitv2/proto"
-	"github.com/libp2p/go-libp2p/p2p/host/circuitv2/util"
+	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/util"
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"

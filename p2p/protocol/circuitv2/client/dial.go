@@ -6,9 +6,9 @@ import (
 	"time"
 
 	pbv1 "github.com/libp2p/go-libp2p-circuit/pb"
-	pbv2 "github.com/libp2p/go-libp2p/p2p/host/circuitv2/pb"
-	"github.com/libp2p/go-libp2p/p2p/host/circuitv2/proto"
-	"github.com/libp2p/go-libp2p/p2p/host/circuitv2/util"
+	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/util"
 
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
