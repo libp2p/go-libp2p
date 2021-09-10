@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	circuit "github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/metrics"
@@ -210,17 +209,15 @@ func AddrsFactory(factory config.AddrsFactory) Option {
 	}
 }
 
-// EnableRelay configures libp2p to enable the relay transport with
-// configuration options. By default, this option only configures libp2p to
-// accept inbound connections from relays and make outbound connections
-// _through_ relays when requested by the remote peer. (default: enabled)
-//
-// To _act_ as a relay, pass the circuit.OptHop option.
-func EnableRelay(options ...circuit.RelayOpt) Option {
+// EnableRelay configures libp2p to enable the relay transport.
+// This option only configures libp2p to accept inbound connections from relays
+// and make outbound connections_through_ relays when requested by the remote peer.
+// This option supports both circuit v1 and v2 connections.
+// (default: enabled)
+func EnableRelay() Option {
 	return func(cfg *Config) error {
 		cfg.RelayCustom = true
 		cfg.Relay = true
-		cfg.RelayOpts = options
 		return nil
 	}
 }
@@ -240,14 +237,8 @@ func DisableRelay() Option {
 //  * Relay (enabled by default)
 //  * Routing (to find relays), or StaticRelays/DefaultStaticRelays.
 //
-// This subsystem performs two functions:
-//
-// 1. When this libp2p node is configured to act as a relay "hop"
-//    (circuit.OptHop is passed to EnableRelay), this node will advertise itself
-//    as a public relay using the provided routing system.
-// 2. When this libp2p node is _not_ configured as a relay "hop", it will
-//    automatically detect if it is unreachable (e.g., behind a NAT). If so, it will
-//    find, configure, and announce a set of public relays.
+// This subsystem performs automatic address rewriting to advertise relay addresses when it
+// detects that the node is publicly unreachable (e.g. behind a NAT).
 func EnableAutoRelay() Option {
 	return func(cfg *Config) error {
 		cfg.EnableAutoRelay = true

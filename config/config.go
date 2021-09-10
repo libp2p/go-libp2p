@@ -21,11 +21,11 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/relay"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
+	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	holepunch "github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
 	autonat "github.com/libp2p/go-libp2p-autonat"
 	blankhost "github.com/libp2p/go-libp2p-blankhost"
-	circuit "github.com/libp2p/go-libp2p-circuit"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
@@ -76,7 +76,6 @@ type Config struct {
 
 	RelayCustom bool
 	Relay       bool
-	RelayOpts   []circuit.RelayOpt
 
 	ListenAddrs     []ma.Multiaddr
 	AddrsFactory    bhost.AddrsFactory
@@ -173,7 +172,7 @@ func (cfg *Config) addTransports(ctx context.Context, h host.Host) (err error) {
 	}
 
 	if cfg.Relay {
-		err := circuit.AddRelayTransport(ctx, h, upgrader, cfg.RelayOpts...)
+		err := circuitv2.AddTransport(ctx, h, upgrader)
 		if err != nil {
 			h.Close()
 			return err
@@ -259,15 +258,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 			return nil, fmt.Errorf("cannot enable autorelay; relay is not enabled")
 		}
 
-		hop := false
-		for _, opt := range cfg.RelayOpts {
-			if opt == circuit.OptHop {
-				hop = true
-				break
-			}
-		}
-
-		if !hop && len(cfg.StaticRelays) > 0 {
+		if len(cfg.StaticRelays) > 0 {
 			_ = relay.NewAutoRelay(ctx, h, nil, router, cfg.StaticRelays)
 		} else {
 			if router == nil {
@@ -283,12 +274,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 
 			discovery := discovery.NewRoutingDiscovery(crouter)
 
-			if hop {
-				// advertise ourselves
-				relay.Advertise(ctx, discovery)
-			} else {
-				_ = relay.NewAutoRelay(ctx, h, discovery, router, cfg.StaticRelays)
-			}
+			_ = relay.NewAutoRelay(ctx, h, discovery, router, cfg.StaticRelays)
 		}
 	}
 
