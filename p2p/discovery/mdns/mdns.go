@@ -40,27 +40,28 @@ type mdnsService struct {
 	serviceName string
 
 	// The context is canceled when Close() is called.
+	ctx       context.Context
 	ctxCancel context.CancelFunc
 
-	resolverWG sync.WaitGroup
-	server     *zeroconf.Server
+	resolveOnce sync.Once
+	resolverWG  sync.WaitGroup
+	server      *zeroconf.Server
 
 	mutex    sync.Mutex
 	notifees []Notifee
 }
 
 func NewMdnsService(host host.Host, serviceName string) *mdnsService {
-	ctx, cancel := context.WithCancel(context.Background())
 	if serviceName == "" {
 		serviceName = ServiceName
 	}
 	s := &mdnsService{
-		ctxCancel:   cancel,
 		host:        host,
 		serviceName: serviceName,
 	}
+	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 	s.startServer()
-	s.startResolver(ctx)
+	// The resolver is started one the first notifee joins (in RegisterNotifee).
 	return s
 }
 
@@ -150,9 +151,9 @@ func (s *mdnsService) startServer() error {
 	return nil
 }
 
-func (s *mdnsService) startResolver(ctx context.Context) {
+func (s *mdnsService) startResolver() {
 	s.resolverWG.Add(2)
-	entryChan := make(chan *zeroconf.ServiceEntry, 1000)
+	entryChan := make(chan *zeroconf.ServiceEntry, 16)
 	go func() {
 		defer s.resolverWG.Done()
 		for entry := range entryChan {
@@ -187,7 +188,7 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 	}()
 	go func() {
 		defer s.resolverWG.Done()
-		if err := zeroconf.Browse(ctx, s.serviceName, mdnsDomain, entryChan); err != nil {
+		if err := zeroconf.Browse(s.ctx, s.serviceName, mdnsDomain, entryChan); err != nil {
 			log.Debugf("zeroconf browsing failed: %s", err)
 		}
 	}()
@@ -197,6 +198,7 @@ func (s *mdnsService) RegisterNotifee(n Notifee) {
 	s.mutex.Lock()
 	s.notifees = append(s.notifees, n)
 	s.mutex.Unlock()
+	s.resolveOnce.Do(s.startResolver)
 }
 
 func (s *mdnsService) UnregisterNotifee(n Notifee) {
