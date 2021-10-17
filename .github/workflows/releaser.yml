@@ -1,0 +1,12 @@
+# File managed by web3-bot. DO NOT EDIT.
+# See https://github.com/protocol/.github/ for details.
+
+name: Releaser
+on:
+  push:
+    paths: [ 'version.json' ]
+    branches: [ master ]
+
+jobs:
+  releaser:
+    uses: protocol/.github/.github/workflows/releaser.yml@master
