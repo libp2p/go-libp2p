@@ -1,0 +1,12 @@
+# File managed by web3-bot. DO NOT EDIT.
+# See https://github.com/protocol/.github/ for details.
+
+name: Tag Push Checker
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  releaser:
+    uses: protocol/.github/.github/workflows/tagpush.yml@master
