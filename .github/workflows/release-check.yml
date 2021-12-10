@@ -5,7 +5,6 @@ name: Release Checker
 on:
   pull_request:
     paths: [ 'version.json' ]
-    branches: [ master ]
 
 jobs:
   release-check:
