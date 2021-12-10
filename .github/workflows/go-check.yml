@@ -27,7 +27,7 @@ jobs:
             echo "RUNGOGENERATE=true" >> $GITHUB_ENV
           fi
       - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@df71e5d0e0ed317ebf43e6e59cf919430fa4b8f2 # 2021.1.1 (v0.2.1)
+        run: go install honnef.co/go/tools/cmd/staticcheck@c8caa92bad8c27ae734c6725b8a04932d54a147b # 2021.1.2 (v0.2.2)
       - name: Check that go.mod is tidy
         uses: protocol/multiple-go-modules@v1.2
         with:
