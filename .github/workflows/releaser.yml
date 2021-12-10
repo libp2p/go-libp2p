@@ -5,7 +5,6 @@ name: Releaser
 on:
   push:
     paths: [ 'version.json' ]
-    branches: [ master ]
 
 jobs:
   releaser:
