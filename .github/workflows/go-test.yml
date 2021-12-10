@@ -26,13 +26,24 @@ jobs:
         run: |
           go version
           go env
+      - name: Use msys2 on windows
+        if: ${{ matrix.os == 'windows' }}
+        shell: bash
+        # The executable for msys2 is also called bash.cmd
+        #   https://github.com/actions/virtual-environments/blob/main/images/win/Windows2019-Readme.md#shells
+        # If we prepend its location to the PATH
+        #   subsequent 'shell: bash' steps will use msys2 instead of gitbash
+        run: echo "C:/msys64/usr/bin" >> $GITHUB_PATH
       - name: Run repo-specific setup
         uses: ./.github/actions/go-test-setup
         if: hashFiles('./.github/actions/go-test-setup') != ''
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
-          run: go test -v -coverprofile module-coverage.txt ./...
+          # Use -coverpkg=./..., so that we include cross-package coverage.
+          # If package ./A imports ./B, and ./A's tests also cover ./B,
+          # this means ./B's coverage will be significantly higher than 0%.
+          run: go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./...
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
         uses: protocol/multiple-go-modules@v1.2
@@ -49,7 +60,7 @@ jobs:
         shell: bash
         run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@51d810878be5422784e86451c0e7c14e5860ec47 # v2.0.2
+        uses: codecov/codecov-action@f32b3a3741e1053eb607407145bc9619351dc93b # v2.1.0
         with:
           files: '${{ env.COVERAGES }}'
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
