@@ -370,5 +370,5 @@ func (pn *peernet) notifyAll(notification func(f network.Notifiee)) {
 }
 
 func (pn *peernet) ResourceManager() network.ResourceManager {
-	return nil
+	return network.NullResourceManager
 }

@@ -405,7 +405,12 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 		}
 	}
 
-	s.SetProtocol(protocol.ID(protoID))
+	if err := s.SetProtocol(protocol.ID(protoID)); err != nil {
+		log.Debugf("error setting stream protocol: %s", err)
+		s.Reset()
+		return
+	}
+
 	log.Debugf("protocol negotiation took %s", took)
 
 	go handle(protoID, s)

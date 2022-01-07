@@ -105,8 +105,9 @@ func (s *stream) Stat() network.Stats {
 	return s.stat
 }
 
-func (s *stream) SetProtocol(proto protocol.ID) {
+func (s *stream) SetProtocol(proto protocol.ID) error {
 	s.protocol.Store(proto)
+	return nil
 }
 
 func (s *stream) CloseWrite() error {
@@ -290,7 +291,7 @@ func (s *stream) transport() {
 }
 
 func (s *stream) Scope() network.StreamScope {
-	return nil
+	return network.NullScope
 }
 
 func (s *stream) cancelWrite(err error) {

@@ -25,6 +25,8 @@ var log = logging.Logger("relay")
 const (
 	ProtoID = "/libp2p/circuit/relay/0.1.0"
 
+	ServiceName = "libp2p.relay/v1"
+
 	StreamTimeout    = time.Minute
 	ConnectTimeout   = 30 * time.Second
 	HandshakeTimeout = time.Minute
@@ -40,9 +42,10 @@ type Relay struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	host host.Host
-	rc   Resources
-	acl  ACLFilter
+	host  host.Host
+	rc    Resources
+	acl   ACLFilter
+	scope network.TransactionalScope
 
 	mx     sync.Mutex
 	conns  map[peer.ID]int
@@ -64,6 +67,17 @@ func NewRelay(h host.Host, opts ...Option) (*Relay, error) {
 		}
 	}
 
+	// get a scope for memory reservations at service level
+	err := h.Network().ResourceManager().ViewService(ServiceName,
+		func(s network.ServiceScope) error {
+			var err error
+			r.scope, err = s.BeginTransaction()
+			return err
+		})
+	if err != nil {
+		return nil, err
+	}
+
 	h.SetStreamHandler(ProtoID, r.handleStream)
 
 	return r, nil
@@ -72,18 +86,32 @@ func NewRelay(h host.Host, opts ...Option) (*Relay, error) {
 func (r *Relay) Close() error {
 	if atomic.CompareAndSwapInt32(&r.closed, 0, 1) {
 		r.host.RemoveStreamHandler(ProtoID)
+		r.scope.Done()
 		r.cancel()
 	}
 	return nil
 }
 
 func (r *Relay) handleStream(s network.Stream) {
-	s.SetReadDeadline(time.Now().Add(StreamTimeout))
-
 	log.Debugf("new relay stream from: %s", s.Conn().RemotePeer())
+
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to relay service: %s", err)
+		s.Reset()
+		return
+	}
+
+	if err := s.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
+		log.Debugf("error reserving memory for stream: %s", err)
+		s.Reset()
+		return
+	}
+	defer s.Scope().ReleaseMemory(maxMessageSize)
 
 	rd := util.NewDelimitedReader(s, maxMessageSize)
 	defer rd.Close()
+
+	s.SetReadDeadline(time.Now().Add(StreamTimeout))
 
 	var msg pb.CircuitRelay
 
@@ -108,31 +136,50 @@ func (r *Relay) handleStream(s network.Stream) {
 }
 
 func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
+	txn, err := r.scope.BeginTransaction()
+	if err != nil {
+		log.Debugf("failed to begin relay transaction: %s", err)
+		r.handleError(s, pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		return
+	}
+
+	fail := func(code pb.CircuitRelay_Status) {
+		txn.Done()
+		r.handleError(s, code)
+	}
+
+	// reserve buffers for the relay
+	if err := txn.ReserveMemory(2*r.rc.BufferSize, network.ReservationPriorityHigh); err != nil {
+		log.Debugf("error reserving memory for relay: %s", err)
+		fail(pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		return
+	}
+
 	src, err := peerToPeerInfo(msg.GetSrcPeer())
 	if err != nil {
-		r.handleError(s, pb.CircuitRelay_HOP_SRC_MULTIADDR_INVALID)
+		fail(pb.CircuitRelay_HOP_SRC_MULTIADDR_INVALID)
 		return
 	}
 
 	if src.ID != s.Conn().RemotePeer() {
-		r.handleError(s, pb.CircuitRelay_HOP_SRC_MULTIADDR_INVALID)
+		fail(pb.CircuitRelay_HOP_SRC_MULTIADDR_INVALID)
 		return
 	}
 
 	dest, err := peerToPeerInfo(msg.GetDstPeer())
 	if err != nil {
-		r.handleError(s, pb.CircuitRelay_HOP_DST_MULTIADDR_INVALID)
+		fail(pb.CircuitRelay_HOP_DST_MULTIADDR_INVALID)
 		return
 	}
 
 	if dest.ID == r.host.ID() {
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_RELAY_TO_SELF)
+		fail(pb.CircuitRelay_HOP_CANT_RELAY_TO_SELF)
 		return
 	}
 
 	if r.acl != nil && !r.acl.AllowHop(src.ID, dest.ID) {
 		log.Debugf("refusing hop from %s to %s; ACL refused", src.ID, dest.ID)
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		fail(pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
 		return
 	}
 
@@ -140,7 +187,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	if r.active >= r.rc.MaxCircuits {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; too many active circuits", src.ID, dest.ID)
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		fail(pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
 		return
 	}
 
@@ -148,7 +195,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	if srcConns >= r.rc.MaxCircuitsPerPeer {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; too many connections from %s", src.ID, dest.ID, src)
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		fail(pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
 		return
 	}
 
@@ -156,7 +203,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	if destConns >= r.rc.MaxCircuitsPerPeer {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; too many connecitons to %s", src.ID, dest.ID, dest.ID)
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		fail(pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
 		return
 	}
 
@@ -166,6 +213,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	r.mx.Unlock()
 
 	cleanup := func() {
+		txn.Done()
 		r.mx.Lock()
 		r.active--
 		r.rmConn(src.ID)
@@ -190,7 +238,26 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 		return
 	}
 
+	fail = func(code pb.CircuitRelay_Status) {
+		bs.Reset()
+		cleanup()
+		r.handleError(s, code)
+	}
+
+	if err := bs.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to relay service: %s", err)
+		fail(pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		return
+	}
+
 	// stop handshake
+	if err := bs.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
+		log.Debugf("failed to reserve memory for stream: %s", err)
+		fail(pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
+		return
+	}
+	defer bs.Scope().ReleaseMemory(maxMessageSize)
+
 	rd := util.NewDelimitedReader(bs, maxMessageSize)
 	wr := util.NewDelimitedWriter(bs)
 	defer rd.Close()
@@ -203,9 +270,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	err = wr.WriteMsg(msg)
 	if err != nil {
 		log.Debugf("error writing stop handshake: %s", err.Error())
-		bs.Reset()
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
-		cleanup()
+		fail(pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
 		return
 	}
 
@@ -214,25 +279,19 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	err = rd.ReadMsg(msg)
 	if err != nil {
 		log.Debugf("error reading stop response: %s", err.Error())
-		bs.Reset()
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
-		cleanup()
+		fail(pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
 		return
 	}
 
 	if msg.GetType() != pb.CircuitRelay_STATUS {
 		log.Debugf("unexpected relay stop response: not a status message (%d)", msg.GetType())
-		bs.Reset()
-		r.handleError(s, pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
-		cleanup()
+		fail(pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
 		return
 	}
 
 	if msg.GetCode() != pb.CircuitRelay_SUCCESS {
 		log.Debugf("relay stop failure: %d", msg.GetCode())
-		bs.Reset()
-		r.handleError(s, msg.GetCode())
-		cleanup()
+		fail(msg.GetCode())
 		return
 	}
 

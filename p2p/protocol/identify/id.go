@@ -41,6 +41,8 @@ const ID = "/ipfs/id/1.0.0"
 // 0.4.17 which asserted an exact version match.
 const LibP2PVersion = "ipfs/0.1.0"
 
+const ServiceName = "libp2p.identify"
+
 // StreamReadTimeout is the read timeout on all incoming Identify family streams.
 var StreamReadTimeout = 60 * time.Second
 
@@ -370,7 +372,11 @@ func (ids *idService) identifyConn(c network.Conn, signal chan struct{}) {
 		ids.removeConn(c)
 		return
 	}
-	s.SetProtocol(ID)
+
+	if err := s.SetProtocol(ID); err != nil {
+		log.Warnf("error setting identify protocol for stream: %s", err)
+		s.Reset()
+	}
 
 	// ok give the response to our handler.
 	if err = msmux.SelectProtoOrFail(ID, s); err != nil {
@@ -386,6 +392,12 @@ func (ids *idService) identifyConn(c network.Conn, signal chan struct{}) {
 }
 
 func (ids *idService) sendIdentifyResp(s network.Stream) {
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Warnf("error attaching stream to identify service: %s", err)
+		s.Reset()
+		return
+	}
+
 	defer s.Close()
 
 	c := s.Conn()
@@ -418,6 +430,19 @@ func (ids *idService) sendIdentifyResp(s network.Stream) {
 }
 
 func (ids *idService) handleIdentifyResponse(s network.Stream) error {
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Warnf("error attaching stream to identify service: %s", err)
+		s.Reset()
+		return err
+	}
+
+	if err := s.Scope().ReserveMemory(signedIDSize, network.ReservationPriorityAlways); err != nil {
+		log.Warnf("error reserving memory for identify stream: %s", err)
+		s.Reset()
+		return err
+	}
+	defer s.Scope().ReleaseMemory(signedIDSize)
+
 	_ = s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
 
 	c := s.Conn()

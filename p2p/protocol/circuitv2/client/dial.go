@@ -144,6 +144,12 @@ func (c *Client) dialPeer(ctx context.Context, relay, dest peer.AddrInfo) (*Conn
 }
 
 func (c *Client) connectV2(s network.Stream, dest peer.AddrInfo) (*Conn, error) {
+	if err := s.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
+		s.Reset()
+		return nil, err
+	}
+	defer s.Scope().ReleaseMemory(maxMessageSize)
+
 	rd := util.NewDelimitedReader(s, maxMessageSize)
 	wr := util.NewDelimitedWriter(s)
 	defer rd.Close()
@@ -196,6 +202,12 @@ func (c *Client) connectV2(s network.Stream, dest peer.AddrInfo) (*Conn, error) 
 }
 
 func (c *Client) connectV1(s network.Stream, dest peer.AddrInfo) (*Conn, error) {
+	if err := s.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
+		s.Reset()
+		return nil, err
+	}
+	defer s.Scope().ReleaseMemory(maxMessageSize)
+
 	rd := util.NewDelimitedReader(s, maxMessageSize)
 	wr := util.NewDelimitedWriter(s)
 	defer rd.Close()

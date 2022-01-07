@@ -10,6 +10,7 @@ import (
 	noise "github.com/libp2p/go-libp2p-noise"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	quic "github.com/libp2p/go-libp2p-quic-transport"
+	rcmgr "github.com/libp2p/go-libp2p-resource-manager"
 	tls "github.com/libp2p/go-libp2p-tls"
 	yamux "github.com/libp2p/go-libp2p-yamux"
 	"github.com/libp2p/go-tcp-transport"
@@ -85,6 +86,14 @@ var DefaultEnableRelay = func(cfg *Config) error {
 	return cfg.Apply(EnableRelay())
 }
 
+var DefaultResourceManager = func(cfg *Config) error {
+	// Default memory limit: 1/8th of total memory, minimum 128MB, maximum 1GB
+	limiter := rcmgr.NewStaticLimiter(0.125, 128<<20, 1<<30)
+	SetDefaultServiceLimits(limiter)
+	mgr := rcmgr.NewResourceManager(limiter)
+	return cfg.Apply(ResourceManager(mgr))
+}
+
 // Complete list of default options and when to fallback on them.
 //
 // Please *DON'T* specify default options any other way. Putting this all here
@@ -120,6 +129,10 @@ var defaults = []struct {
 	{
 		fallback: func(cfg *Config) bool { return !cfg.RelayCustom },
 		opt:      DefaultEnableRelay,
+	},
+	{
+		fallback: func(cfg *Config) bool { return cfg.ResourceManager == nil },
+		opt:      DefaultResourceManager,
 	},
 }
 
