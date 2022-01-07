@@ -99,25 +99,25 @@ func (ps *PingService) Ping(ctx context.Context, p peer.ID) <-chan Result {
 	return Ping(ctx, ps.Host, p)
 }
 
+func pingError(err error) chan Result {
+	ch := make(chan Result, 1)
+	ch <- Result{Error: err}
+	close(ch)
+	return ch
+}
+
 // Ping pings the remote peer until the context is canceled, returning a stream
 // of RTTs or errors.
 func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
-	fail := func(err error) chan Result {
-		ch := make(chan Result, 1)
-		ch <- Result{Error: err}
-		close(ch)
-		return ch
-	}
-
 	s, err := h.NewStream(network.WithUseTransient(ctx, "ping"), p, ID)
 	if err != nil {
-		return fail(err)
+		return pingError(err)
 	}
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Debugf("error attaching stream to ping service: %s", err)
 		s.Reset()
-		return fail(err)
+		return pingError(err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
