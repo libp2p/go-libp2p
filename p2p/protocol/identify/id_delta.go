@@ -15,13 +15,28 @@ import (
 
 const IDDelta = "/p2p/id/delta/1.0.0"
 
+const deltaMsgSize = 2048
+
 // deltaHandler handles incoming delta updates from peers.
 func (ids *idService) deltaHandler(s network.Stream) {
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Warnf("error attaching stream to identify service: %s", err)
+		s.Reset()
+		return
+	}
+
+	if err := s.Scope().ReserveMemory(deltaMsgSize, network.ReservationPriorityAlways); err != nil {
+		log.Warnf("error reserving memory for identify stream: %s", err)
+		s.Reset()
+		return
+	}
+	defer s.Scope().ReleaseMemory(deltaMsgSize)
+
 	_ = s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
 
 	c := s.Conn()
 
-	r := protoio.NewDelimitedReader(s, 2048)
+	r := protoio.NewDelimitedReader(s, deltaMsgSize)
 	mes := pb.Identify{}
 	if err := r.ReadMsg(&mes); err != nil {
 		log.Warn("error reading identify message: ", err)
