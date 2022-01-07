@@ -410,7 +410,6 @@ github.com/libp2p/go-libp2p-core v0.10.0/go.mod h1:ECdxehoYosLYHgDDFa2N4yE8Y7aQR
 github.com/libp2p/go-libp2p-core v0.11.0/go.mod h1:ECdxehoYosLYHgDDFa2N4yE8Y7aQRAMf0sX9mf2sbGg=
 github.com/libp2p/go-libp2p-core v0.12.0/go.mod h1:ECdxehoYosLYHgDDFa2N4yE8Y7aQRAMf0sX9mf2sbGg=
 github.com/libp2p/go-libp2p-core v0.13.1-0.20220104095837-d2ff78890732/go.mod h1:KlkHsZ0nKerWsXLZJm3LfFQwusI5k3iN4BgtYTE4IYE=
-github.com/libp2p/go-libp2p-core v0.13.1-0.20220106080354-2192774acd82/go.mod h1:KlkHsZ0nKerWsXLZJm3LfFQwusI5k3iN4BgtYTE4IYE=
 github.com/libp2p/go-libp2p-core v0.13.1-0.20220107083545-005b84b557bb h1:mMWwfcMQgaUY7AN2WKd+L7k0XnTkmvx159KNvHPg2oo=
 github.com/libp2p/go-libp2p-core v0.13.1-0.20220107083545-005b84b557bb/go.mod h1:KlkHsZ0nKerWsXLZJm3LfFQwusI5k3iN4BgtYTE4IYE=
 github.com/libp2p/go-libp2p-discovery v0.6.0 h1:1XdPmhMJr8Tmj/yUfkJMIi8mgwWrLUsCB3bMxdT+DSo=
