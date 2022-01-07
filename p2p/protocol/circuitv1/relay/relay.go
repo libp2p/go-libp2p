@@ -252,7 +252,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 
 	// stop handshake
 	if err := bs.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("erro reserving memory for stream: %s", err)
+		log.Debugf("failed to reserve memory for stream: %s", err)
 		bs.Reset()
 		r.handleError(s, pb.CircuitRelay_HOP_CANT_SPEAK_RELAY)
 		cleanup()
