@@ -24,6 +24,8 @@ import (
 )
 
 const (
+	ServiceName = "libp2p.relay/v2"
+
 	ReservationTagWeight = 10
 
 	StreamTimeout    = time.Minute
@@ -37,8 +39,6 @@ const (
 )
 
 var log = logging.Logger("relay")
-
-var ServiceName = "libp2p.relay/v2"
 
 // Relay is the (limited) relay service object.
 type Relay struct {

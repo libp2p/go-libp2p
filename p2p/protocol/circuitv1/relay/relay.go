@@ -22,10 +22,10 @@ import (
 
 var log = logging.Logger("relay")
 
-var ServiceName = "libp2p.relay/v1"
-
 const (
 	ProtoID = "/libp2p/circuit/relay/0.1.0"
+
+	ServiceName = "libp2p.relay/v1"
 
 	StreamTimeout    = time.Minute
 	ConnectTimeout   = 30 * time.Second
