@@ -21,7 +21,7 @@ require (
 	github.com/libp2p/go-libp2p-asn-util v0.1.0
 	github.com/libp2p/go-libp2p-blankhost v0.3.0
 	github.com/libp2p/go-libp2p-circuit v0.4.1-0.20220104134013-4072e3e3454a
-	github.com/libp2p/go-libp2p-core v0.13.1-0.20220107083545-005b84b557bb
+	github.com/libp2p/go-libp2p-core v0.13.1-0.20220109131216-9d473a86d827
 	github.com/libp2p/go-libp2p-discovery v0.6.0
 	github.com/libp2p/go-libp2p-mplex v0.4.1
 	github.com/libp2p/go-libp2p-nat v0.1.0
@@ -29,7 +29,8 @@ require (
 	github.com/libp2p/go-libp2p-noise v0.3.0
 	github.com/libp2p/go-libp2p-peerstore v0.6.0
 	github.com/libp2p/go-libp2p-quic-transport v0.15.1-0.20220108115653-809bf14dd0e9
-	github.com/libp2p/go-libp2p-swarm v0.9.1-0.20220108170512-66dcf0c4f16b
+	github.com/libp2p/go-libp2p-resource-manager v0.0.0-20220109083258-ecd0ec092fe7
+	github.com/libp2p/go-libp2p-swarm v0.9.1-0.20220109140334-b7e99ba17dba
 	github.com/libp2p/go-libp2p-testing v0.6.1-0.20220107070227-f126df46085e
 	github.com/libp2p/go-libp2p-tls v0.3.1
 	github.com/libp2p/go-libp2p-transport-upgrader v0.6.1-0.20220108150807-be66941c1ea9
