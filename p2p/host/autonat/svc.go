@@ -19,6 +19,12 @@ import (
 
 var streamTimeout = 60 * time.Second
 
+const (
+	ServiceName = "libp2p.autonat"
+
+	maxMsgSize = 4096
+)
+
 // AutoNATService provides NAT autodetection services to other peers
 type autoNATService struct {
 	instanceLock      sync.Mutex
@@ -45,13 +51,26 @@ func newAutoNATService(c *config) (*autoNATService, error) {
 }
 
 func (as *autoNATService) handleStream(s network.Stream) {
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to autonat service: %s", err)
+		s.Reset()
+		return
+	}
+
+	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
+		log.Debugf("error reserving memory for autonat stream: %s", err)
+		s.Reset()
+		return
+	}
+	defer s.Scope().ReleaseMemory(maxMsgSize)
+
 	s.SetDeadline(time.Now().Add(streamTimeout))
 	defer s.Close()
 
 	pid := s.Conn().RemotePeer()
 	log.Debugf("New stream from %s", pid.Pretty())
 
-	r := protoio.NewDelimitedReader(s, network.MessageSizeMax)
+	r := protoio.NewDelimitedReader(s, maxMsgSize)
 	w := protoio.NewDelimitedWriter(s)
 
 	var req pb.Message

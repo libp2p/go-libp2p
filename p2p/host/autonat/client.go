@@ -36,12 +36,26 @@ func (c *client) DialBack(ctx context.Context, p peer.ID) (ma.Multiaddr, error) 
 	if err != nil {
 		return nil, err
 	}
+
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to autonat service: %s", err)
+		s.Reset()
+		return nil, err
+	}
+
+	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
+		log.Debugf("error reserving memory for autonat stream: %s", err)
+		s.Reset()
+		return nil, err
+	}
+	defer s.Scope().ReleaseMemory(maxMsgSize)
+
 	s.SetDeadline(time.Now().Add(streamTimeout))
 	// Might as well just reset the stream. Once we get to this point, we
 	// don't care about being nice.
 	defer s.Close()
 
-	r := protoio.NewDelimitedReader(s, network.MessageSizeMax)
+	r := protoio.NewDelimitedReader(s, maxMsgSize)
 	w := protoio.NewDelimitedWriter(s)
 
 	req := newDialMessage(peer.AddrInfo{ID: c.h.ID(), Addrs: c.addrFunc()})
