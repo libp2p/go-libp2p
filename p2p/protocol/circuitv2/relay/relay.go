@@ -38,6 +38,8 @@ const (
 
 var log = logging.Logger("relay")
 
+var ServiceName = "libp2p.relay/v2"
+
 // Relay is the (limited) relay service object.
 type Relay struct {
 	closed uint32
@@ -48,6 +50,7 @@ type Relay struct {
 	rc          Resources
 	acl         ACLFilter
 	constraints *constraints
+	scope       network.TransactionalScope
 
 	mx    sync.Mutex
 	rsvp  map[peer.ID]time.Time
@@ -77,6 +80,17 @@ func New(h host.Host, opts ...Option) (*Relay, error) {
 		}
 	}
 
+	// get a scope for memory reservations at service level
+	err := h.Network().ResourceManager().ViewService(ServiceName,
+		func(s network.ServiceScope) error {
+			var err error
+			r.scope, err = s.BeginTransaction()
+			return err
+		})
+	if err != nil {
+		return nil, err
+	}
+
 	r.constraints = newConstraints(&r.rc)
 	r.selfAddr = ma.StringCast(fmt.Sprintf("/p2p/%s", h.ID()))
 
@@ -93,6 +107,7 @@ func New(h host.Host, opts ...Option) (*Relay, error) {
 func (r *Relay) Close() error {
 	if atomic.CompareAndSwapUint32(&r.closed, 0, 1) {
 		r.host.RemoveStreamHandler(proto.ProtoIDv2Hop)
+		r.scope.Done()
 		r.cancel()
 		r.mx.Lock()
 		for p := range r.rsvp {
@@ -104,12 +119,25 @@ func (r *Relay) Close() error {
 }
 
 func (r *Relay) handleStream(s network.Stream) {
-	s.SetReadDeadline(time.Now().Add(StreamTimeout))
-
 	log.Infof("new relay stream from: %s", s.Conn().RemotePeer())
+
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to relay service: %s", err)
+		s.Reset()
+		return
+	}
+
+	if err := s.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
+		log.Debugf("error reserving memory for stream: %s", err)
+		s.Reset()
+		return
+	}
+	defer s.Scope().ReleaseMemory(maxMessageSize)
 
 	rd := util.NewDelimitedReader(s, maxMessageSize)
 	defer rd.Close()
+
+	s.SetReadDeadline(time.Now().Add(StreamTimeout))
 
 	var msg pbv2.HopMessage
 
@@ -184,20 +212,38 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	src := s.Conn().RemotePeer()
 	a := s.Conn().RemoteMultiaddr()
 
+	txn, err := r.scope.BeginTransaction()
+	if err != nil {
+		log.Debugf("failed to begin relay transaction: %s", err)
+		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		return
+	}
+
+	// reserve buffers for the relay
+	if err := txn.ReserveMemory(2*r.rc.BufferSize, network.ReservationPriorityHigh); err != nil {
+		log.Debugf("error reserving memory for relay: %s", err)
+		txn.Done()
+		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		return
+	}
+
 	if isRelayAddr(a) {
 		log.Debugf("refusing connection from %s; connection attempt over relay connection")
+		txn.Done()
 		r.handleError(s, pbv2.Status_PERMISSION_DENIED)
 		return
 	}
 
 	dest, err := util.PeerToPeerInfoV2(msg.GetPeer())
 	if err != nil {
+		txn.Done()
 		r.handleError(s, pbv2.Status_MALFORMED_MESSAGE)
 		return
 	}
 
 	if r.acl != nil && !r.acl.AllowConnect(src, s.Conn().RemoteMultiaddr(), dest.ID) {
 		log.Debugf("refusing connection from %s to %s; permission denied", src, dest.ID)
+		txn.Done()
 		r.handleError(s, pbv2.Status_PERMISSION_DENIED)
 		return
 	}
@@ -207,6 +253,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	if !rsvp {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; no reservation", src, dest.ID)
+		txn.Done()
 		r.handleError(s, pbv2.Status_NO_RESERVATION)
 		return
 	}
@@ -215,6 +262,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	if srcConns >= r.rc.MaxCircuits {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; too many connections from %s", src, dest.ID, src)
+		txn.Done()
 		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return
 	}
@@ -223,6 +271,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	if destConns >= r.rc.MaxCircuits {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; too many connecitons to %s", src, dest.ID, dest.ID)
+		txn.Done()
 		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return
 	}
@@ -232,6 +281,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	r.mx.Unlock()
 
 	cleanup := func() {
+		txn.Done()
 		r.mx.Lock()
 		r.rmConn(src)
 		r.rmConn(dest.ID)
@@ -251,7 +301,24 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 		return
 	}
 
+	if err := bs.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to relay service: %s", err)
+		bs.Reset()
+		cleanup()
+		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		return
+	}
+
 	// handshake
+	if err := bs.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
+		log.Debugf("erro reserving memory for stream: %s", err)
+		bs.Reset()
+		cleanup()
+		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		return
+	}
+	defer bs.Scope().ReleaseMemory(maxMessageSize)
+
 	rd := util.NewDelimitedReader(bs, maxMessageSize)
 	wr := util.NewDelimitedWriter(bs)
 	defer rd.Close()
