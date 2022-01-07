@@ -219,32 +219,33 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 		return
 	}
 
+	fail := func(status pbv2.Status) {
+		txn.Done()
+		r.handleError(s, status)
+	}
+
 	// reserve buffers for the relay
 	if err := txn.ReserveMemory(2*r.rc.BufferSize, network.ReservationPriorityHigh); err != nil {
 		log.Debugf("error reserving memory for relay: %s", err)
-		txn.Done()
-		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		fail(pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return
 	}
 
 	if isRelayAddr(a) {
 		log.Debugf("refusing connection from %s; connection attempt over relay connection")
-		txn.Done()
-		r.handleError(s, pbv2.Status_PERMISSION_DENIED)
+		fail(pbv2.Status_PERMISSION_DENIED)
 		return
 	}
 
 	dest, err := util.PeerToPeerInfoV2(msg.GetPeer())
 	if err != nil {
-		txn.Done()
-		r.handleError(s, pbv2.Status_MALFORMED_MESSAGE)
+		fail(pbv2.Status_MALFORMED_MESSAGE)
 		return
 	}
 
 	if r.acl != nil && !r.acl.AllowConnect(src, s.Conn().RemoteMultiaddr(), dest.ID) {
 		log.Debugf("refusing connection from %s to %s; permission denied", src, dest.ID)
-		txn.Done()
-		r.handleError(s, pbv2.Status_PERMISSION_DENIED)
+		fail(pbv2.Status_PERMISSION_DENIED)
 		return
 	}
 
@@ -253,8 +254,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	if !rsvp {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; no reservation", src, dest.ID)
-		txn.Done()
-		r.handleError(s, pbv2.Status_NO_RESERVATION)
+		fail(pbv2.Status_NO_RESERVATION)
 		return
 	}
 
@@ -262,8 +262,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	if srcConns >= r.rc.MaxCircuits {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; too many connections from %s", src, dest.ID, src)
-		txn.Done()
-		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		fail(pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return
 	}
 
@@ -271,8 +270,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	if destConns >= r.rc.MaxCircuits {
 		r.mx.Unlock()
 		log.Debugf("refusing connection from %s to %s; too many connecitons to %s", src, dest.ID, dest.ID)
-		txn.Done()
-		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		fail(pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return
 	}
 
@@ -301,20 +299,22 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 		return
 	}
 
-	if err := bs.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to relay service: %s", err)
+	fail = func(status pbv2.Status) {
 		bs.Reset()
 		cleanup()
-		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		r.handleError(s, status)
+	}
+
+	if err := bs.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to relay service: %s", err)
+		fail(pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return
 	}
 
 	// handshake
 	if err := bs.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
 		log.Debugf("erro reserving memory for stream: %s", err)
-		bs.Reset()
-		cleanup()
-		r.handleError(s, pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
+		fail(pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return
 	}
 	defer bs.Scope().ReleaseMemory(maxMessageSize)
@@ -333,9 +333,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	err = wr.WriteMsg(&stopmsg)
 	if err != nil {
 		log.Debugf("error writing stop handshake")
-		bs.Reset()
-		cleanup()
-		r.handleError(s, pbv2.Status_CONNECTION_FAILED)
+		fail(pbv2.Status_CONNECTION_FAILED)
 		return
 	}
 
@@ -344,25 +342,19 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	err = rd.ReadMsg(&stopmsg)
 	if err != nil {
 		log.Debugf("error reading stop response: %s", err.Error())
-		bs.Reset()
-		cleanup()
-		r.handleError(s, pbv2.Status_CONNECTION_FAILED)
+		fail(pbv2.Status_CONNECTION_FAILED)
 		return
 	}
 
 	if t := stopmsg.GetType(); t != pbv2.StopMessage_STATUS {
 		log.Debugf("unexpected stop response; not a status message (%d)", t)
-		bs.Reset()
-		cleanup()
-		r.handleError(s, pbv2.Status_CONNECTION_FAILED)
+		fail(pbv2.Status_CONNECTION_FAILED)
 		return
 	}
 
 	if status := stopmsg.GetStatus(); status != pbv2.Status_OK {
 		log.Debugf("relay stop failure: %d", status)
-		bs.Reset()
-		cleanup()
-		r.handleError(s, pbv2.Status_CONNECTION_FAILED)
+		fail(pbv2.Status_CONNECTION_FAILED)
 		return
 	}
 
