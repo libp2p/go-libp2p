@@ -324,7 +324,6 @@ func (hs *Service) directConnect(rp peer.ID) error {
 }
 
 func (hs *Service) incomingHolePunch(s network.Stream) (rtt time.Duration, addrs []ma.Multiaddr, err error) {
-
 	// sanity check: a hole punch request should only come from peers behind a relay
 	if !isRelayAddress(s.Conn().RemoteMultiaddr()) {
 		return 0, nil, fmt.Errorf("received hole punch stream: %s", s.Conn().RemoteMultiaddr())
