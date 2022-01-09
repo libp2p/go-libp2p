@@ -372,7 +372,11 @@ func (ids *idService) identifyConn(c network.Conn, signal chan struct{}) {
 		ids.removeConn(c)
 		return
 	}
-	s.SetProtocol(ID)
+
+	if err := s.SetProtocol(ID); err != nil {
+		log.Warnf("error setting identify protocol for stream: %s", err)
+		s.Reset()
+	}
 
 	// ok give the response to our handler.
 	if err = msmux.SelectProtoOrFail(ID, s); err != nil {
@@ -380,13 +384,6 @@ func (ids *idService) identifyConn(c network.Conn, signal chan struct{}) {
 			"peer", c.RemotePeer(),
 			"error", err,
 		)
-		s.Reset()
-		return
-	}
-
-	// this is not set I believe, so we have to do it manually
-	if s.Scope().(network.StreamManagementScope).SetProtocol(ID); err != nil {
-		log.Warnf("error setting identify protocol scope: %s", err)
 		s.Reset()
 		return
 	}

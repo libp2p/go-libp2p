@@ -150,6 +150,9 @@ func (cfg *Config) makeSwarm() (*swarm.Swarm, error) {
 	if cfg.DialTimeout != 0 {
 		opts = append(opts, swarm.WithDialTimeout(cfg.DialTimeout))
 	}
+	if cfg.ResourceManager != nil {
+		opts = append(opts, swarm.WithResourceManager(cfg.ResourceManager))
+	}
 	// TODO: Make the swarm implementation configurable.
 	return swarm.NewSwarm(pid, cfg.Peerstore, opts...)
 }
