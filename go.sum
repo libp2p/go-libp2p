@@ -434,8 +434,8 @@ github.com/libp2p/go-libp2p-quic-transport v0.15.1-0.20220108115653-809bf14dd0e9
 github.com/libp2p/go-libp2p-quic-transport v0.15.1-0.20220108115653-809bf14dd0e9/go.mod h1:QgXb66laBD2IR9Jz0nbiK22cd+ywp+6D5TlPS29mNFs=
 github.com/libp2p/go-libp2p-swarm v0.8.0/go.mod h1:sOMp6dPuqco0r0GHTzfVheVBh6UEL0L1lXUZ5ot2Fvc=
 github.com/libp2p/go-libp2p-swarm v0.9.1-0.20220104132952-1894fa82d9a9/go.mod h1:s3UxbgMKgF9Iw84vHI/6Bi2SqzTqakCrQ+BIVVFjYa0=
-github.com/libp2p/go-libp2p-swarm v0.9.1-0.20220108170512-66dcf0c4f16b h1:jlTbYdIQKFpubKSgPWVfv6cyK40nmj7GlPW9NXV4z9M=
-github.com/libp2p/go-libp2p-swarm v0.9.1-0.20220108170512-66dcf0c4f16b/go.mod h1:1zuT53Mm1GQc7DUKadVX3tJZAoOAClsUhw9gMGUiR98=
+github.com/libp2p/go-libp2p-swarm v0.9.1-0.20220109093239-b6620e0d815f h1:ymDbP31nV5/IKuIyofeW8jGlOHnojnCKJW0rXtkD4tI=
+github.com/libp2p/go-libp2p-swarm v0.9.1-0.20220109093239-b6620e0d815f/go.mod h1:1zuT53Mm1GQc7DUKadVX3tJZAoOAClsUhw9gMGUiR98=
 github.com/libp2p/go-libp2p-testing v0.0.3/go.mod h1:gvchhf3FQOtBdr+eFUABet5a4MBLK8jM3V4Zghvmi+E=
 github.com/libp2p/go-libp2p-testing v0.1.1/go.mod h1:xaZWMJrPUM5GlDBxCeGUi7kI4eqnjVyavGroI2nxEM0=
 github.com/libp2p/go-libp2p-testing v0.1.2-0.20200422005655-8775583591d8/go.mod h1:Qy8sAncLKpwXtS2dSnDOP8ktexIAHKu+J+pnZOFZLTc=
