@@ -197,5 +197,5 @@ func (c *conn) Stat() network.ConnStats {
 }
 
 func (c *conn) Scope() network.ConnScope {
-	return nil
+	return network.NullScope
 }

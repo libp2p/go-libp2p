@@ -290,7 +290,7 @@ func (s *stream) transport() {
 }
 
 func (s *stream) Scope() network.StreamScope {
-	return nil
+	return network.NullScope
 }
 
 func (s *stream) cancelWrite(err error) {
