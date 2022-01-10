@@ -9,6 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
+
+	"github.com/libp2p/go-libp2p"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
+
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -21,13 +28,8 @@ import (
 	"github.com/libp2p/go-libp2p-testing/race"
 
 	"github.com/libp2p/go-eventbus"
-	"github.com/libp2p/go-libp2p"
-	blhost "github.com/libp2p/go-libp2p-blankhost"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -35,22 +37,23 @@ import (
 )
 
 func subtestIDService(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	defer h1.Close()
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h2, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	defer h2.Close()
 
 	h1p := h1.ID()
 	h2p := h2.ID()
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
 
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
-
-	defer ids1.Close()
 	defer ids2.Close()
 
 	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.BufSize(16))
@@ -70,9 +73,7 @@ func subtestIDService(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	h2pi := h2.Peerstore().PeerInfo(h2p)
-	if err := h1.Connect(ctx, h2pi); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	h1t2c := h1.Network().ConnsToPeer(h2p)
 	if len(h1t2c) == 0 {
@@ -139,15 +140,13 @@ func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiadd
 	t.Helper()
 
 	actual := h.Peerstore().Addrs(p)
-	checkAddrs(t, expected, actual, fmt.Sprintf("%s did not have addr for %s", h.ID(), p))
+	require.ElementsMatchf(t, expected, actual, "missing addr")
 }
 
 func testHasCertifiedAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
 	t.Helper()
 	cab, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
-	if !ok {
-		t.Error("expected peerstore to implement CertifiedAddrBook")
-	}
+	require.True(t, ok, "expected peerstore to implement CertifiedAddrBook")
 	recordEnvelope := cab.GetPeerRecord(p)
 	if recordEnvelope == nil {
 		if len(expected) == 0 {
@@ -156,34 +155,10 @@ func testHasCertifiedAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.M
 		t.Fatalf("peerstore has no signed record for peer %s", p)
 	}
 	r, err := recordEnvelope.Record()
-	if err != nil {
-		t.Error("Error unwrapping signed PeerRecord from envelope", err)
-	}
+	require.NoError(t, err, "unwrapping signed PeerRecord from envelope failed")
 	rec, ok := r.(*peer.PeerRecord)
-	if !ok {
-		t.Error("unexpected record type")
-	}
-
-	checkAddrs(t, expected, rec.Addrs, fmt.Sprintf("%s did not have certified addr for %s", h.ID(), p))
-}
-
-func checkAddrs(t *testing.T, expected, actual []ma.Multiaddr, msg string) {
-	t.Helper()
-	if len(actual) != len(expected) {
-		t.Errorf("expected: %s", expected)
-		t.Errorf("actual: %s", actual)
-		t.Fatal("dont have the same addresses")
-	}
-
-	have := map[string]struct{}{}
-	for _, addr := range actual {
-		have[addr.String()] = struct{}{}
-	}
-	for _, addr := range expected {
-		if _, found := have[addr.String()]; !found {
-			t.Errorf("%s: %s", msg, addr)
-		}
-	}
+	require.True(t, ok, "unexpected record type")
+	require.ElementsMatchf(t, expected, rec.Addrs, "missing certified addr")
 }
 
 func testHasProtocolVersions(t *testing.T, h host.Host, p peer.ID) {
@@ -203,10 +178,7 @@ func testHasProtocolVersions(t *testing.T, h host.Host, p peer.ID) {
 
 func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) {
 	k := h.Peerstore().PubKey(p)
-	if k == nil {
-		t.Error("no public key")
-		return
-	}
+	require.NotNil(t, k, "no public key")
 	if !k.Equals(shouldBe) {
 		t.Error("key mismatch")
 		return
@@ -227,7 +199,7 @@ func getSignedRecord(t *testing.T, h host.Host, p peer.ID) *record.Envelope {
 	return rec
 }
 
-// we're using BlankHost in our tests, which doesn't automatically generate peer records
+// we're using base host in our tests, which doesn't automatically generate peer records
 // and emit address change events on the bus like BasicHost.
 // This generates a record, puts it in the peerstore and emits an addr change event
 // which will cause the identify service to push it to all peers it's connected to.
@@ -235,17 +207,13 @@ func emitAddrChangeEvt(t *testing.T, h host.Host) {
 	t.Helper()
 
 	key := h.Peerstore().PrivKey(h.ID())
-	if key == nil {
-		t.Fatal("no private key for host")
-	}
+	require.NotNil(t, key, "no private key for host")
 
 	rec := peer.NewPeerRecord()
 	rec.PeerID = h.ID()
 	rec.Addrs = h.Addrs()
 	signed, err := record.Seal(rec, key)
-	if err != nil {
-		t.Fatalf("error generating peer record: %s", err)
-	}
+	require.NoError(t, err)
 
 	cab, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
 	require.True(t, ok)
@@ -304,47 +272,34 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	defer mn.Close()
 	id1 := coretest.RandPeerIDFatal(t)
 	ps1, err := pstoremem.NewPeerstore()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	p1addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 	p1addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/2345")
 	ps1.AddAddrs(id1, []ma.Multiaddr{p1addr1, p1addr2}, peerstore.PermanentAddrTTL)
 	p1, err := mn.AddPeerWithPeerstore(id1, ps1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	id2 := coretest.RandPeerIDFatal(t)
 	ps2, err := pstoremem.NewPeerstore()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	p2addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.5/tcp/1234")
 	p2addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/3456")
 	p2addrs := []ma.Multiaddr{p2addr1, p2addr2}
 	ps2.AddAddrs(id2, p2addrs, peerstore.PermanentAddrTTL)
 	p2, err := mn.AddPeerWithPeerstore(id2, ps2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	id3 := coretest.RandPeerIDFatal(t)
 	ps3, err := pstoremem.NewPeerstore()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	p3addr1, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/4567")
 	ps3.AddAddrs(id3, []ma.Multiaddr{p3addr1}, peerstore.PermanentAddrTTL)
 	p3, err := mn.AddPeerWithPeerstore(id3, ps3)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	err = mn.LinkAll()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, mn.LinkAll())
 	p1.Connect(context.Background(), peer.AddrInfo{
 		ID:    id2,
 		Addrs: p2addrs[0:1],
@@ -393,30 +348,25 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 }
 
 func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	defer h2.Close()
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h1.Close()
+
+	h2, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	defer h2.Close()
 
 	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
 
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
+	defer ids2.Close()
 
-	defer func() {
-		ids1.Close()
-		ids2.Close()
-	}()
-
-	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
 
 	conn := h1.Network().ConnsToPeer(h2.ID())[0]
 	select {
@@ -426,9 +376,7 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	}
 
 	protos, err := h1.Peerstore().GetProtocols(h2.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sort.Strings(protos)
 	if sort.SearchStrings(protos, string(protocol.TestingID)) == len(protos) {
 		t.Fatalf("expected peer 1 to know that peer 2 speaks the Test protocol amongst others")
@@ -437,9 +385,7 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	// set up a subscriber to listen to peer protocol updated events in h1. We expect to receive events from h2
 	// as protocols are added and removed.
 	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer sub.Close()
 
 	// add two new protocols in h2 and wait for identify to send deltas.
@@ -524,21 +470,20 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 
 // TestIdentifyDeltaWhileIdentifyingConn tests that the host waits to push delta updates if an identify is ongoing.
 func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	defer h2.Close()
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h1.Close()
+
+	h2, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	defer h2.Close()
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
 
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
-
-	defer ids1.Close()
 	defer ids2.Close()
 
 	// replace the original identify handler by one that blocks until we close the block channel.
@@ -554,23 +499,17 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	h1.SetStreamHandler(identify.ID, handler)
 
 	// from h2 connect to h1.
-	if err := h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
 
 	// from h2, identify h1.
 	conn := h2.Network().ConnsToPeer(h1.ID())[0]
-	go func() {
-		ids2.IdentifyConn(conn)
-	}()
+	go ids2.IdentifyConn(conn)
 
 	<-time.After(500 * time.Millisecond)
 
 	// subscribe to events in h1; after identify h1 should receive the delta from h2 and publish an event in the bus.
 	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer sub.Close()
 
 	// add a handler in h2; the delta to h1 will queue until we're done identifying h1.
@@ -595,28 +534,30 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 }
 
 func TestIdentifyPushOnAddrChange(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	defer h1.Close()
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h2, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	defer h2.Close()
 
 	h1p := h1.ID()
 	h2p := h2.ID()
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
+
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
-
-	defer ids1.Close()
 	defer ids2.Close()
 
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{}) // nothing
 
 	h2pi := h2.Peerstore().PeerInfo(h2p)
-	require.NoError(t, h1.Connect(ctx, h2pi))
+	require.NoError(t, h1.Connect(context.Background(), h2pi))
 	// h1 should immediately see a connection from h2
 	require.NotEmpty(t, h1.Network().ConnsToPeer(h2p))
 	// wait for h2 to Identify itself so we are sure h2 has seen the connection.
@@ -682,29 +623,17 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 }
 
 func TestUserAgent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	h1, err := libp2p.New(libp2p.UserAgent("foo"), libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer h1.Close()
 
 	h2, err := libp2p.New(libp2p.UserAgent("bar"), libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer h2.Close()
 
-	err = h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
 	av, err := h1.Peerstore().Get(h2.ID(), "AgentVersion")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if ver, ok := av.(string); !ok || ver != "bar" {
 		t.Errorf("expected agent version %q, got %q", "bar", av)
 	}
@@ -714,49 +643,34 @@ func TestNotListening(t *testing.T) {
 	// Make sure we don't panic if we're not listening on any addresses.
 	//
 	// https://github.com/libp2p/go-libp2p/issues/939
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	h1, err := libp2p.New(libp2p.NoListenAddrs)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer h1.Close()
 
 	h2, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer h2.Close()
 
-	err = h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
 }
 
 func TestSendPushIfDeltaNotSupported(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	defer h2.Close()
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h1.Close()
+
+	h2, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	defer h2.Close()
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
-
+	defer ids1.Close()
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
+	defer ids2.Close()
 
-	defer func() {
-		ids1.Close()
-		ids2.Close()
-	}()
-
-	err = h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
-	require.NoError(t, err)
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
 
 	// wait for them to Identify each other
 	ids1.IdentifyConn(h1.Network().ConnsToPeer(h2.ID())[0])
@@ -797,16 +711,18 @@ func TestLargeIdentifyMessage(t *testing.T) {
 		peerstore.RecentlyConnectedAddrTTL = oldTTL
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sk1, _, err := coretest.RandTestKeyPair(ic.RSA, 4096)
 	require.NoError(t, err)
 	sk2, _, err := coretest.RandTestKeyPair(ic.RSA, 4096)
 	require.NoError(t, err)
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk1)))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk2)))
+	h1, err := blank.NewHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk1)))
+	require.NoError(t, err)
+	defer h1.Close()
+
+	h2, err := blank.NewHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk2)))
+	require.NoError(t, err)
+	defer h2.Close()
 
 	// add protocol strings to make the message larger
 	// about 2K of protocol strings
@@ -821,17 +737,14 @@ func TestLargeIdentifyMessage(t *testing.T) {
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
 
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
-
-	defer ids1.Close()
 	defer ids2.Close()
 
 	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.BufSize(16))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{}) // nothing
@@ -845,9 +758,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	h2pi := h2.Peerstore().PeerInfo(h2p)
-	if err := h1.Connect(ctx, h2pi); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	h1t2c := h1.Network().ConnsToPeer(h2p)
 	if len(h1t2c) == 0 {
@@ -919,8 +830,13 @@ func TestLargePushMessage(t *testing.T) {
 	sk2, _, err := coretest.RandTestKeyPair(ic.RSA, 4096)
 	require.NoError(t, err)
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk1)))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk2)))
+	h1, err := blank.NewHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk1)))
+	require.NoError(t, err)
+	defer h1.Close()
+
+	h2, err := blank.NewHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk2)))
+	require.NoError(t, err)
+	defer h2.Close()
 
 	// add protocol strings to make the message larger
 	// about 2K of protocol strings
@@ -935,11 +851,10 @@ func TestLargePushMessage(t *testing.T) {
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
 
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
-
-	defer ids1.Close()
 	defer ids2.Close()
 
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
@@ -1018,23 +933,23 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 		identify.StreamReadTimeout = timeout
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h1.Close()
+
+	h2, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h2.Close()
 
 	h2p := h2.ID()
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
 
 	ids2, err := identify.NewIDService(h2)
 	require.NoError(t, err)
-
-	defer ids1.Close()
 	defer ids2.Close()
+
 	// remote stream handler will just hang and not send back an identify response
 	h2.SetStreamHandler(identify.ID, func(s network.Stream) {
 		time.Sleep(100 * time.Second)
@@ -1044,7 +959,7 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	h2pi := h2.Peerstore().PeerInfo(h2p)
-	require.NoError(t, h1.Connect(ctx, h2pi))
+	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	select {
 	case ev := <-sub.Out():
@@ -1062,31 +977,30 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 		identify.StreamReadTimeout = timeout
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	protocols := []protocol.ID{identify.IDPush, identify.IDDelta}
 
 	for _, p := range protocols {
-		h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-		h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+		h1, err := blank.NewHost(swarmt.GenSwarm(t))
+		require.NoError(t, err)
 		defer h1.Close()
+
+		h2, err := blank.NewHost(swarmt.GenSwarm(t))
+		require.NoError(t, err)
 		defer h2.Close()
 
 		ids1, err := identify.NewIDService(h1)
 		require.NoError(t, err)
+		defer ids1.Close()
 
 		ids2, err := identify.NewIDService(h2)
 		require.NoError(t, err)
-
-		defer ids1.Close()
 		defer ids2.Close()
 
 		h2p := h2.ID()
 		h2pi := h2.Peerstore().PeerInfo(h2p)
-		require.NoError(t, h1.Connect(ctx, h2pi))
+		require.NoError(t, h1.Connect(context.Background(), h2pi))
 
-		_, err = h1.NewStream(ctx, h2p, p)
+		_, err = h1.NewStream(context.Background(), h2p, p)
 		require.NoError(t, err)
 
 		// remote peer should eventually reset stream

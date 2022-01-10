@@ -6,7 +6,10 @@ import (
 	"net"
 	"testing"
 
-	blankhost "github.com/libp2p/go-libp2p-blankhost"
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/transport"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
@@ -55,7 +58,9 @@ func TestSkipDial(t *testing.T) {
 	defer cancel()
 
 	s := swarmt.GenSwarm(t)
-	d := dialPolicy{host: blankhost.NewBlankHost(s)}
+	h, err := blank.NewHost(s)
+	require.NoError(t, err)
+	d := dialPolicy{host: h}
 	if d.skipDial(makeMA("/ip4/8.8.8.8")) != false {
 		t.Fatal("failed dialing a valid public addr")
 	}
@@ -69,10 +74,7 @@ func TestSkipDial(t *testing.T) {
 	}
 
 	s.AddTransport(&mockT{ctx, makeMA("/ip4/8.8.8.8")})
-	err := s.AddListenAddr(makeMA("/ip4/8.8.8.8"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.AddListenAddr(makeMA("/ip4/8.8.8.8")))
 	if d.skipDial(makeMA("/ip4/8.8.8.8")) != true {
 		t.Fatal("failed dialing a valid host address")
 	}
@@ -83,7 +85,9 @@ func TestSkipPeer(t *testing.T) {
 	defer cancel()
 
 	s := swarmt.GenSwarm(t)
-	d := dialPolicy{host: blankhost.NewBlankHost(s)}
+	h, err := blank.NewHost(s)
+	require.NoError(t, err)
+	d := dialPolicy{host: h}
 	if d.skipPeer([]multiaddr.Multiaddr{makeMA("/ip4/8.8.8.8")}) != false {
 		t.Fatal("failed dialing a valid public addr")
 	}
@@ -95,10 +99,7 @@ func TestSkipPeer(t *testing.T) {
 	}
 
 	s.AddTransport(&mockT{ctx, makeMA("/ip4/8.8.8.8")})
-	err := s.AddListenAddr(makeMA("/ip4/8.8.8.8"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.AddListenAddr(makeMA("/ip4/8.8.8.8")))
 
 	if d.skipPeer([]multiaddr.Multiaddr{makeMA("/ip4/8.8.8.8"), makeMA("/ip4/192.168.0.1")}) != true {
 		t.Fatal("succeeded dialing host address")
@@ -116,12 +117,11 @@ func TestSkipLocalPeer(t *testing.T) {
 	defer cancel()
 
 	s := swarmt.GenSwarm(t)
-	d := dialPolicy{host: blankhost.NewBlankHost(s)}
+	h, err := blank.NewHost(s)
+	require.NoError(t, err)
+	d := dialPolicy{host: h}
 	s.AddTransport(&mockT{ctx, makeMA("/ip4/192.168.0.1")})
-	err := s.AddListenAddr(makeMA("/ip4/192.168.0.1"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.AddListenAddr(makeMA("/ip4/192.168.0.1")))
 
 	if d.skipPeer([]multiaddr.Multiaddr{makeMA("/ip4/8.8.8.8")}) != false {
 		t.Fatal("failed dialing a valid public addr")

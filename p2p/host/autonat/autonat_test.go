@@ -6,13 +6,13 @@ import (
 	"time"
 
 	pb "github.com/libp2p/go-libp2p/p2p/host/autonat/pb"
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
 
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 
-	bhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -21,7 +21,8 @@ import (
 
 // these are mock service implementations for testing
 func makeAutoNATServicePrivate(t *testing.T) host.Host {
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	h.SetStreamHandler(AutoNATProto, sayPrivateStreamHandler(t))
 	return h
 }
@@ -44,7 +45,8 @@ func sayPrivateStreamHandler(t *testing.T) network.StreamHandler {
 }
 
 func makeAutoNATServicePublic(t *testing.T) host.Host {
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	h.SetStreamHandler(AutoNATProto, func(s network.Stream) {
 		defer s.Close()
 		r := protoio.NewDelimitedReader(s, network.MessageSizeMax)
@@ -63,7 +65,8 @@ func makeAutoNATServicePublic(t *testing.T) host.Host {
 }
 
 func makeAutoNAT(t *testing.T, ash host.Host) (host.Host, AutoNAT) {
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	h.Peerstore().AddAddrs(ash.ID(), ash.Addrs(), time.Minute)
 	h.Peerstore().AddProtocols(ash.ID(), AutoNATProto)
 	a, _ := New(h, WithSchedule(100*time.Millisecond, time.Second), WithoutStartupDelay())
@@ -275,21 +278,16 @@ func TestAutoNATObservationRecording(t *testing.T) {
 	if an.Status() != network.ReachabilityPublic {
 		t.Fatalf("too-extreme private transition.")
 	}
-
 }
 
 func TestStaticNat(t *testing.T) {
-	_, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h.Close()
-	s, _ := h.EventBus().Subscribe(&event.EvtLocalReachabilityChanged{})
 
+	s, _ := h.EventBus().Subscribe(&event.EvtLocalReachabilityChanged{})
 	nat, err := New(h, WithReachability(network.ReachabilityPrivate))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if nat.Status() != network.ReachabilityPrivate {
 		t.Fatalf("should be private")
 	}

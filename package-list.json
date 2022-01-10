@@ -9,7 +9,6 @@
     "Libp2p",
     ["libp2p/go-libp2p", "go-libp2p", "go-libp2p entry point"],
     ["libp2p/go-libp2p-core", "go-libp2p-core", "core interfaces, types, and abstractions"],
-    ["libp2p/go-libp2p-blankhost", "go-libp2p-blankhost", "minimal implementation of the \"host\" interface"],
 
     "Network",
     ["libp2p/go-libp2p-swarm", "go-libp2p-swarm", "reference implementation of network state machine"],

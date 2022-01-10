@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
-	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -66,6 +66,8 @@ type AddrsFactory func([]ma.Multiaddr) []ma.Multiaddr
 //  * uses an identity service to send + receive node information
 //  * uses a nat service to establish NAT port mappings
 type BasicHost struct {
+	*blank.BaseHost // a base host
+
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	// ensures we shutdown ONLY once
@@ -73,16 +75,12 @@ type BasicHost struct {
 	// keep track of resources we need to wait on before shutting down
 	refCount sync.WaitGroup
 
-	network      network.Network
-	psManager    *pstoremanager.PeerstoreManager
 	mux          *msmux.MultistreamMuxer
 	ids          identify.IDService
 	hps          *holepunch.Service
 	pings        *ping.PingService
 	natmgr       NATManager
 	maResolver   *madns.Resolver
-	cmgr         connmgr.ConnManager
-	eventbus     event.Bus
 	relayManager *relaysvc.RelayManager
 
 	AddrsFactory AddrsFactory
@@ -90,8 +88,7 @@ type BasicHost struct {
 	negtimeout time.Duration
 
 	emitters struct {
-		evtLocalProtocolsUpdated event.Emitter
-		evtLocalAddrsUpdated     event.Emitter
+		evtLocalAddrsUpdated event.Emitter
 	}
 
 	addrChangeChan chan struct{}
@@ -107,7 +104,7 @@ type BasicHost struct {
 	autoNat autonat.AutoNAT
 }
 
-var _ host.Host = (*BasicHost)(nil)
+var _ host.Host = &BasicHost{}
 
 // HostOpts holds options that can be passed to NewHost in order to
 // customize construction of the *BasicHost.
@@ -157,24 +154,28 @@ type HostOpts struct {
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
 func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
-	eventBus := eventbus.NewBus()
-	psManager, err := pstoremanager.NewPeerstoreManager(n.Peerstore(), eventBus)
-	if err != nil {
-		return nil, err
-	}
-	hostCtx, cancel := context.WithCancel(context.Background())
 	if opts == nil {
 		opts = &HostOpts{}
 	}
+	var baseOpts []blank.Option
+	if opts.MultistreamMuxer != nil {
+		baseOpts = append(baseOpts, blank.WithMultistreamMuxer(opts.MultistreamMuxer))
+	}
+	if opts.ConnManager != nil {
+		baseOpts = append(baseOpts, blank.WithConnMgr(opts.ConnManager))
+	}
+	baseHost, err := blank.NewHost(n, baseOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	hostCtx, cancel := context.WithCancel(context.Background())
 
 	h := &BasicHost{
-		network:                 n,
-		psManager:               psManager,
-		mux:                     msmux.NewMultistreamMuxer(),
+		BaseHost:                baseHost,
 		negtimeout:              DefaultNegotiationTimeout,
 		AddrsFactory:            DefaultAddrsFactory,
 		maResolver:              madns.DefaultResolver,
-		eventbus:                eventBus,
 		addrChangeChan:          make(chan struct{}, 1),
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
@@ -183,17 +184,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	h.updateLocalIpAddr()
 
-	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
+	if h.emitters.evtLocalAddrsUpdated, err = h.EventBus().Emitter(&event.EvtLocalAddressesUpdated{}, eventbus.Stateful); err != nil {
 		return nil, err
 	}
-	if h.emitters.evtLocalAddrsUpdated, err = h.eventbus.Emitter(&event.EvtLocalAddressesUpdated{}, eventbus.Stateful); err != nil {
-		return nil, err
-	}
-	evtPeerConnectednessChanged, err := h.eventbus.Emitter(&event.EvtPeerConnectednessChanged{})
-	if err != nil {
-		return nil, err
-	}
-	h.Network().Notify(newPeerConnectWatcher(evtPeerConnectednessChanged))
 
 	if !h.disableSignedPeerRecord {
 		cab, ok := peerstore.GetCertifiedAddrBook(n.Peerstore())
@@ -256,13 +249,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	if opts.MultiaddrResolver != nil {
 		h.maResolver = opts.MultiaddrResolver
-	}
-
-	if opts.ConnManager == nil {
-		h.cmgr = &connmgr.NullConnMgr{}
-	} else {
-		h.cmgr = opts.ConnManager
-		n.Notify(h.cmgr.Notifee())
 	}
 
 	if opts.EnableRelayService {
@@ -358,7 +344,7 @@ func (h *BasicHost) updateLocalIpAddr() {
 
 // Start starts background tasks in the host
 func (h *BasicHost) Start() {
-	h.psManager.Start()
+	h.BaseHost.Start()
 	h.refCount.Add(1)
 	go h.background()
 }
@@ -510,7 +496,7 @@ func (h *BasicHost) background() {
 	defer ticker.Stop()
 
 	for {
-		if len(h.network.ListenAddresses()) > 0 {
+		if len(h.Network().ListenAddresses()) > 0 {
 			h.updateLocalIpAddr()
 		}
 		// Request addresses anyways because, technically, address filters still apply.
@@ -528,71 +514,9 @@ func (h *BasicHost) background() {
 	}
 }
 
-// ID returns the (local) peer.ID associated with this Host
-func (h *BasicHost) ID() peer.ID {
-	return h.Network().LocalPeer()
-}
-
-// Peerstore returns the Host's repository of Peer Addresses and Keys.
-func (h *BasicHost) Peerstore() peerstore.Peerstore {
-	return h.Network().Peerstore()
-}
-
-// Network returns the Network interface of the Host
-func (h *BasicHost) Network() network.Network {
-	return h.network
-}
-
-// Mux returns the Mux multiplexing incoming streams to protocol handlers
-func (h *BasicHost) Mux() protocol.Switch {
-	return h.mux
-}
-
 // IDService returns
 func (h *BasicHost) IDService() identify.IDService {
 	return h.ids
-}
-
-func (h *BasicHost) EventBus() event.Bus {
-	return h.eventbus
-}
-
-// SetStreamHandler sets the protocol handler on the Host's Mux.
-// This is equivalent to:
-//   host.Mux().SetHandler(proto, handler)
-// (Threadsafe)
-func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
-	h.Mux().AddHandler(string(pid), func(p string, rwc io.ReadWriteCloser) error {
-		is := rwc.(network.Stream)
-		is.SetProtocol(protocol.ID(p))
-		handler(is)
-		return nil
-	})
-	h.emitters.evtLocalProtocolsUpdated.Emit(event.EvtLocalProtocolsUpdated{
-		Added: []protocol.ID{pid},
-	})
-}
-
-// SetStreamHandlerMatch sets the protocol handler on the Host's Mux
-// using a matching function to do protocol comparisons
-func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(string) bool, handler network.StreamHandler) {
-	h.Mux().AddHandlerWithFunc(string(pid), m, func(p string, rwc io.ReadWriteCloser) error {
-		is := rwc.(network.Stream)
-		is.SetProtocol(protocol.ID(p))
-		handler(is)
-		return nil
-	})
-	h.emitters.evtLocalProtocolsUpdated.Emit(event.EvtLocalProtocolsUpdated{
-		Added: []protocol.ID{pid},
-	})
-}
-
-// RemoveStreamHandler returns ..
-func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
-	h.Mux().RemoveHandler(string(pid))
-	h.emitters.evtLocalProtocolsUpdated.Emit(event.EvtLocalProtocolsUpdated{
-		Removed: []protocol.ID{pid},
-	})
 }
 
 // NewStream opens a new stream to given peer p, and writes a p2p/protocol
@@ -782,10 +706,6 @@ func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 
 	log.Debugf("host %s finished dialing %s", h.ID(), p)
 	return nil
-}
-
-func (h *BasicHost) ConnManager() connmgr.ConnManager {
-	return h.cmgr
 }
 
 // Addrs returns listening addresses that are safe to announce to the network.
@@ -1019,12 +939,10 @@ func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
 	h.closeSync.Do(func() {
+		h.BaseHost.Close()
 		h.ctxCancel()
 		if h.natmgr != nil {
 			h.natmgr.Close()
-		}
-		if h.cmgr != nil {
-			h.cmgr.Close()
 		}
 		if h.ids != nil {
 			h.ids.Close()
@@ -1038,15 +956,7 @@ func (h *BasicHost) Close() error {
 		if h.hps != nil {
 			h.hps.Close()
 		}
-
-		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 		_ = h.emitters.evtLocalAddrsUpdated.Close()
-		h.Network().Close()
-
-		h.psManager.Close()
-		if h.Peerstore() != nil {
-			h.Peerstore().Close()
-		}
 
 		h.refCount.Wait()
 	})

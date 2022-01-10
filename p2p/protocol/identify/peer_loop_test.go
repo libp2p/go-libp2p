@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
+
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 
-	blhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,10 +18,14 @@ func TestMakeApplyDelta(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h1.Close()
+
 	ids1, err := NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
+
 	ph := newPeerHandler(h1.ID(), ids1)
 	ph.start(ctx, func() {})
 	defer ph.stop()
@@ -64,10 +68,13 @@ func TestHandlerClose(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h1.Close()
 	ids1, err := NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
+
 	ph := newPeerHandler(h1.ID(), ids1)
 	closedCh := make(chan struct{}, 2)
 	ph.start(ctx, func() {
@@ -93,10 +100,13 @@ func TestPeerSupportsProto(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h1, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h1.Close()
+
 	ids1, err := NewIDService(h1)
 	require.NoError(t, err)
+	defer ids1.Close()
 
 	rp := peer.ID("test")
 	ph := newPeerHandler(rp, ids1)

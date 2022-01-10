@@ -1,4 +1,4 @@
-package basichost
+package blank
 
 import (
 	"context"
@@ -14,10 +14,10 @@ import (
 )
 
 func TestPeerConnectedness(t *testing.T) {
-	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	h1, err := NewHost(swarmt.GenSwarm(t))
 	require.NoError(t, err)
 	defer h1.Close()
-	h2, err := NewHost(swarmt.GenSwarm(t), nil)
+	h2, err := NewHost(swarmt.GenSwarm(t))
 	require.NoError(t, err)
 
 	sub1, err := h1.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})

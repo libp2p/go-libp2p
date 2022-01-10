@@ -5,9 +5,11 @@ import (
 	"testing"
 	"time"
 
-	blhost "github.com/libp2p/go-libp2p-blankhost"
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
+
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +22,8 @@ func TestFastDisconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	target := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	target, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer target.Close()
 	ids, err := NewIDService(target)
 	require.NoError(t, err)
@@ -60,7 +63,8 @@ func TestFastDisconnect(t *testing.T) {
 		}
 	})
 
-	source := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	source, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer source.Close()
 
 	// only connect to the first address, to make sure we only end up with one connection

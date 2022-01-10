@@ -5,6 +5,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/host/autonat"
+	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
+	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
+	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
+	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
+	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
+
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -18,15 +27,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/transport"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 
-	"github.com/libp2p/go-libp2p/p2p/host/autonat"
-	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
-	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
-	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
-	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
-	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
-
-	blankhost "github.com/libp2p/go-libp2p-blankhost"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
@@ -333,7 +333,11 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			h.Close()
 			return nil, err
 		}
-		dialerHost := blankhost.NewBlankHost(dialer)
+		dialerHost, err := blank.NewHost(dialer)
+		if err != nil {
+			h.Close()
+			return nil, err
+		}
 		if err := autoNatCfg.addTransports(dialerHost); err != nil {
 			dialerHost.Close()
 			h.Close()

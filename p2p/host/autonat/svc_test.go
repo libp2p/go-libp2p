@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/host/blank"
+
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 
-	bhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -18,8 +19,10 @@ import (
 )
 
 func makeAutoNATConfig(t *testing.T) *config {
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	dh := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
+	dh, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	c := config{host: h, dialer: dh.Network()}
 	_ = defaults(&c)
 	c.forceReachability = true
@@ -29,16 +32,14 @@ func makeAutoNATConfig(t *testing.T) *config {
 
 func makeAutoNATService(t *testing.T, c *config) *autoNATService {
 	as, err := newAutoNATService(c)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	as.Enable()
-
 	return as
 }
 
 func makeAutoNATClient(t *testing.T) (host.Host, Client) {
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	cli := NewAutoNATClient(h, nil)
 	return h, cli
 }
@@ -195,9 +196,11 @@ func TestAutoNATServiceRateLimitJitter(t *testing.T) {
 }
 
 func TestAutoNATServiceStartup(t *testing.T) {
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer h.Close()
-	dh := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	dh, err := blank.NewHost(swarmt.GenSwarm(t))
+	require.NoError(t, err)
 	defer dh.Close()
 	an, err := New(h, EnableService(dh.Network()))
 	an.(*AmbientAutoNAT).config.dialPolicy.allowSelfDials = true
