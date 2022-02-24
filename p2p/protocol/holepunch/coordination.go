@@ -29,7 +29,7 @@ var StreamTimeout = 1 * time.Minute
 // TODO Should we have options for these ?
 const (
 	maxMsgSize  = 4 * 1024 // 4K
-	dialTimeout = 10 * time.Second
+	dialTimeout = 20 * time.Second
 	maxRetries  = 3
 	retryWait   = 2 * time.Second
 )
