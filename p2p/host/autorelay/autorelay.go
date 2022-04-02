@@ -492,37 +492,28 @@ func (ar *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 		return addrs
 	}
 
-	if ar.cachedAddrs != nil && time.Now().Before(ar.cachedAddrsExpiry) {
-		return ar.cachedAddrs
-	}
-
-	raddrs := make([]ma.Multiaddr, 0, 4*len(ar.relays)+4)
-
+	raddrs := make([]ma.Multiaddr, 0, 4+len(ar.cachedAddrs))
 	// only keep private addrs from the original addr set
 	for _, addr := range addrs {
 		if manet.IsPrivateAddr(addr) {
 			raddrs = append(raddrs, addr)
 		}
 	}
+	numPrivateAddrs := len(raddrs)
+	if len(ar.cachedAddrs) > 0 && time.Now().Before(ar.cachedAddrsExpiry) {
+		return append(raddrs, ar.cachedAddrs...)
+	}
 
 	// add relay specific addrs to the list
 	for p := range ar.relays {
-		addrs := cleanupAddressSet(ar.host.Peerstore().Addrs(p))
-
-		circuit, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s/p2p-circuit", p.Pretty()))
-		if err != nil {
-			panic(err)
-		}
-
-		for _, addr := range addrs {
+		circuit := ma.StringCast(fmt.Sprintf("/p2p/%s/p2p-circuit", p.Pretty()))
+		for _, addr := range cleanupAddressSet(ar.host.Peerstore().Addrs(p)) {
 			pub := addr.Encapsulate(circuit)
 			raddrs = append(raddrs, pub)
 		}
 	}
-
-	ar.cachedAddrs = raddrs
+	ar.cachedAddrs = raddrs[numPrivateAddrs:] // only cache the relay addresses
 	ar.cachedAddrsExpiry = time.Now().Add(30 * time.Second)
-
 	return raddrs
 }
 
