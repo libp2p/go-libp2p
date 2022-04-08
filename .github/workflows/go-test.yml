@@ -10,11 +10,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ "ubuntu", "windows", "macos" ]
-        go: [ "1.16.x", "1.17.x" ]
+        go: [ "1.17.x", "1.18.x" ]
     env:
       COVERAGES: ""
-    runs-on: ${{ matrix.os }}-latest
-    name: ${{ matrix.os}} (go ${{ matrix.go }})
+    runs-on: ${{ format('{0}-latest', matrix.os) }}
+    name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
       - uses: actions/checkout@v2
         with:
@@ -50,7 +50,9 @@ jobs:
         env:
           GOARCH: 386
         with:
-          run: go test -v ./...
+          run: |
+            export "PATH=${{ env.PATH_386 }}:$PATH"
+            go test -v ./...
       - name: Run tests with race detector
         if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
         uses: protocol/multiple-go-modules@v1.2
