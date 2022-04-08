@@ -1,53 +1,11 @@
 # File managed by web3-bot. DO NOT EDIT.
 # See https://github.com/protocol/.github/ for details.
 
-# Automatically merge pull requests opened by web3-bot, as soon as (and only if) all tests pass.
-# This reduces the friction associated with updating with our workflows.
-
-on: [ pull_request ]
 name: Automerge
+on: [ pull_request ]
 
 jobs:
-  automerge-check:
-    if: github.event.pull_request.user.login == 'web3-bot'
-    runs-on: ubuntu-latest
-    outputs:
-      status: ${{ steps.should-automerge.outputs.status }}
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - name: Check if we should automerge
-      id: should-automerge
-      run: |
-        for commit in $(git rev-list --first-parent origin/${{ github.event.pull_request.base.ref }}..${{ github.event.pull_request.head.sha }}); do
-          committer=$(git show --format=$'%ce' -s $commit)
-          echo "Committer: $committer"
-          if [[ "$committer" != "web3-bot@users.noreply.github.com" ]]; then
-            echo "Commit $commit wasn't committed by web3-bot, but by $committer."
-            echo "::set-output name=status::false"
-            exit
-          fi
-        done
-        echo "::set-output name=status::true"
   automerge:
-    needs: automerge-check
-    runs-on: ubuntu-latest
-    # The check for the user is redundant here, as this job depends on the automerge-check job,
-    # but it prevents this job from spinning up, just to be skipped shortly after.
-    if: github.event.pull_request.user.login == 'web3-bot' && needs.automerge-check.outputs.status == 'true'
-    steps:
-    - name: Wait on tests
-      uses: lewagon/wait-on-check-action@bafe56a6863672c681c3cf671f5e10b20abf2eaa # v0.2
-      with:
-        ref: ${{ github.event.pull_request.head.sha }}
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-        wait-interval: 10
-        running-workflow-name: 'automerge' # the name of this job
-    - name: Merge PR
-      uses: pascalgn/automerge-action@741c311a47881be9625932b0a0de1b0937aab1ae # v0.13.1
-      env:
-        GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-        MERGE_LABELS: ""
-        MERGE_METHOD: "squash"
-        MERGE_DELETE_BRANCH: true
+    uses: protocol/.github/.github/workflows/automerge.yml@master
+    with:
+      job: 'automerge'
