@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -54,19 +53,6 @@ var (
 	maxMessages      = 10
 	defaultUserAgent = "github.com/libp2p/go-libp2p"
 )
-
-func init() {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return
-	}
-	version := bi.Main.Version
-	if version == "(devel)" {
-		defaultUserAgent = bi.Main.Path
-	} else {
-		defaultUserAgent = fmt.Sprintf("%s@%s", bi.Main.Path, bi.Main.Version)
-	}
-}
 
 type addPeerHandlerReq struct {
 	rp   peer.ID
