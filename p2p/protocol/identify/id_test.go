@@ -66,21 +66,18 @@ func testHasCertifiedAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.M
 }
 
 func testHasProtocolVersions(t *testing.T, h host.Host, p peer.ID) {
+	t.Helper()
 	v, err := h.Peerstore().Get(p, "ProtocolVersion")
-	if v == nil {
-		t.Error("no protocol version")
-		return
-	}
-	if v.(string) != identify.LibP2PVersion {
-		t.Error("protocol mismatch", err)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, v, "no protocol version")
+	require.Equal(t, identify.LibP2PVersion, v.(string), "protocol mismatch")
 	v, err = h.Peerstore().Get(p, "AgentVersion")
-	if v.(string) != "github.com/libp2p/go-libp2p" { // this is the default user agent
-		t.Error("agent version mismatch", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "github.com/libp2p/go-libp2p", v.(string), "agent version mismatch")
 }
 
 func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) {
+	t.Helper()
 	k := h.Peerstore().PubKey(p)
 	if k == nil {
 		t.Error("no public key")
@@ -191,7 +188,7 @@ func TestIDService(t *testing.T) {
 	ids1.IdentifyConn(h1t2c[0])
 
 	// the idService should be opened automatically, by the network.
-	// what we should see now is that both peers know about each others listen addresses.
+	// what we should see now is that both peers know about each other's listen addresses.
 	t.Log("test peer1 has peer2 addrs correctly")
 	testKnowsAddrs(t, h1, h2p, h2.Addrs())                       // has them
 	testHasCertifiedAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p)) // should have signed addrs also
