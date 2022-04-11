@@ -5,7 +5,7 @@ labels: feature
 ---
 
 <!--
-Note: If you'd like to suggest an idea related to libp2p but not specifically related to the go implementation, please file an issue at https://github.com/libp2p/specs instead. Even better, create a new topic on the forums (https://discuss.libp2p.io).
+Note: If you'd like to suggest an idea related to libp2p but not specifically related to the Go implementation, please file an issue at https://github.com/libp2p/specs instead. Even better, create a new topic on the forums (https://discuss.libp2p.io).
 
 When requesting a _feature_, please be sure to include:
   * Your motivation. Why do you need the feature?
