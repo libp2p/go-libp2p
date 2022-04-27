@@ -45,9 +45,11 @@ type Service struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
-	host        host.Host
-	ids         identify.IDService
-	holePuncher *holePuncher
+	host host.Host
+	ids  identify.IDService
+
+	holePuncherMx sync.Mutex
+	holePuncher   *holePuncher
 
 	hasPublicAddrsChan chan struct{}
 
@@ -138,7 +140,9 @@ func (s *Service) watchForPublicAddr() {
 			if e.(event.EvtLocalReachabilityChanged).Reachability != network.ReachabilityPrivate {
 				continue
 			}
+			s.holePuncherMx.Lock()
 			s.holePuncher = newHolePuncher(s.host, s.ids, s.tracer)
+			s.holePuncherMx.Unlock()
 			close(s.hasPublicAddrsChan)
 			return
 		}
@@ -147,7 +151,12 @@ func (s *Service) watchForPublicAddr() {
 
 // Close closes the Hole Punch Service.
 func (s *Service) Close() error {
-	err := s.holePuncher.Close()
+	var err error
+	s.holePuncherMx.Lock()
+	if s.holePuncher != nil {
+		err = s.holePuncher.Close()
+	}
+	s.holePuncherMx.Unlock()
 	s.tracer.Close()
 	s.host.RemoveStreamHandler(Protocol)
 	s.ctxCancel()
