@@ -37,7 +37,7 @@ func NewNATManager(net network.Network) NATManager {
 //  * closing the natManager closes the nat and its mappings.
 type natManager struct {
 	net   network.Network
-	natmu sync.RWMutex
+	natMx sync.RWMutex
 	nat   *inat.NAT
 
 	ready    chan struct{} // closed once the nat is ready to process port mappings
@@ -86,9 +86,9 @@ func (nmgr *natManager) background(ctx context.Context) {
 		return
 	}
 
-	nmgr.natmu.Lock()
+	nmgr.natMx.Lock()
 	nmgr.nat = natInstance
-	nmgr.natmu.Unlock()
+	nmgr.natMx.Unlock()
 	close(nmgr.ready)
 
 	// sign natManager up for network notifications
@@ -207,8 +207,8 @@ func (nmgr *natManager) doSync() {
 // (a) the search process is still ongoing, or (b) the search process
 // found no nat. Clients must check whether the return value is nil.
 func (nmgr *natManager) NAT() *inat.NAT {
-	nmgr.natmu.Lock()
-	defer nmgr.natmu.Unlock()
+	nmgr.natMx.Lock()
+	defer nmgr.natMx.Unlock()
 	return nmgr.nat
 }
 
