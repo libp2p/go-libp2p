@@ -65,7 +65,13 @@ func newNatManager(net network.Network) *natManager {
 func (nmgr *natManager) Close() error {
 	nmgr.ctxCancel()
 	nmgr.refCount.Wait()
-	return nil
+	var err error
+	nmgr.natMx.Lock()
+	if nmgr.nat != nil {
+		err = nmgr.nat.Close()
+	}
+	nmgr.natMx.Unlock()
+	return err
 }
 
 // Ready returns a channel which will be closed when the NAT has been found
