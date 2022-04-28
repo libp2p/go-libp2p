@@ -266,5 +266,7 @@ func (s *Service) handleNewStream(str network.Stream) {
 // TODO: find a solution for this.
 func (s *Service) DirectConnect(p peer.ID) error {
 	<-s.hasPublicAddrsChan
+	s.holePuncherMx.Lock()
+	defer s.holePuncherMx.Unlock()
 	return s.holePuncher.DirectConnect(p)
 }
