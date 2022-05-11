@@ -37,7 +37,7 @@ func sayPrivateStreamHandler(t *testing.T) network.StreamHandler {
 		w := protoio.NewDelimitedWriter(s)
 		res := pb.Message{
 			Type:         pb.Message_DIAL_RESPONSE.Enum(),
-			DialResponse: newDialResponseError(pb.Message_E_DIAL_ERROR, "no dialable addresses"),
+			DialResponse: newDialResponseError(pb.Message_E_DIAL_ERROR, "dial failed"),
 		}
 		w.WriteMsg(&res)
 	}

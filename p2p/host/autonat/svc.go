@@ -126,7 +126,8 @@ func (as *autoNATService) handleDial(p peer.ID, obsaddr ma.Multiaddr, mpi *pb.Me
 	// need to know their public IP address, and it needs to be different from our public IP
 	// address.
 	if as.config.dialPolicy.skipDial(obsaddr) {
-		return newDialResponseError(pb.Message_E_DIAL_ERROR, "refusing to dial peer with blocked observed address")
+		// Note: versions < v0.20.0 return Message_E_DIAL_ERROR here, thus we can not rely on this error code.
+		return newDialResponseError(pb.Message_E_DIAL_REFUSED, "refusing to dial peer with blocked observed address")
 	}
 
 	// Determine the peer's IP address.
@@ -187,7 +188,8 @@ func (as *autoNATService) handleDial(p peer.ID, obsaddr ma.Multiaddr, mpi *pb.Me
 	}
 
 	if len(addrs) == 0 {
-		return newDialResponseError(pb.Message_E_DIAL_ERROR, "no dialable addresses")
+		// Note: versions < v0.20.0 return Message_E_DIAL_ERROR here, thus we can not rely on this error code.
+		return newDialResponseError(pb.Message_E_DIAL_REFUSED, "no dialable addresses")
 	}
 
 	return as.doDial(peer.AddrInfo{ID: p, Addrs: addrs})

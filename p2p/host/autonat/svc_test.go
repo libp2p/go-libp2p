@@ -44,7 +44,7 @@ func makeAutoNATClient(t *testing.T) (host.Host, Client) {
 }
 
 // Note: these tests assume that the host has only private network addresses!
-func TestAutoNATServiceDialError(t *testing.T) {
+func TestAutoNATServiceDialRefused(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -64,7 +64,7 @@ func TestAutoNATServiceDialError(t *testing.T) {
 		t.Fatal("Dial back succeeded unexpectedly!")
 	}
 
-	if !IsDialError(err) {
+	if !IsDialRefused(err) {
 		t.Fatal(err)
 	}
 }
