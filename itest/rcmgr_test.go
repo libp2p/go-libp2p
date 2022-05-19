@@ -44,7 +44,7 @@ func waitForConnection(t *testing.T, src, dest *Echo) {
 	require.Eventually(t, func() bool {
 		return src.Host.Network().Connectedness(dest.Host.ID()) == network.Connected &&
 			dest.Host.Network().Connectedness(src.Host.ID()) == network.Connected
-	}, time.Second, time.Millisecond)
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestResourceManagerConnInbound(t *testing.T) {

@@ -92,29 +92,20 @@ func TestMultipleClose(t *testing.T) {
 func TestSignedPeerRecordWithNoListenAddrs(t *testing.T) {
 	h, err := NewHost(swarmt.GenSwarm(t, swarmt.OptDialOnly), nil)
 	require.NoError(t, err)
+	defer h.Close()
 	h.Start()
 
-	if len(h.Addrs()) != 0 {
-		t.Errorf("expected no listen addrs, got %d", len(h.Addrs()))
-	}
-
+	require.Empty(t, h.Addrs(), "expected no listen addrs")
 	// now add a listen addr
 	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
-	if len(h.Addrs()) < 1 {
-		t.Errorf("expected at least 1 listen addr, got %d", len(h.Addrs()))
-	}
-
-	// we need to sleep for a moment, since the signed record with the new addr is
-	// added async
-	time.Sleep(20 * time.Millisecond)
+	require.NotEmpty(t, h.Addrs(), "expected at least 1 listen addr")
 
 	cab, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
 	if !ok {
 		t.Fatalf("peerstore doesn't support certified addrs")
 	}
-	if cab.GetPeerRecord(h.ID()) == nil {
-		t.Fatalf("no signed peer record in peerstore for new host %s", h.ID())
-	}
+	// the signed record with the new addr is added async
+	require.Eventually(t, func() bool { return cab.GetPeerRecord(h.ID()) != nil }, 100*time.Millisecond, 10*time.Millisecond)
 }
 
 func TestProtocolHandlerEvents(t *testing.T) {

@@ -197,11 +197,12 @@ func TestResourceManagerAcceptDenied(t *testing.T) {
 	clientConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	clientRcmgr.EXPECT().OpenConnection(network.DirOutbound, false).Return(clientConnScope, nil)
 	clientConnScope.EXPECT().SetPeer(serverID)
+	// In rare instances, the connection gating error will already occur on Dial.
+	// In that case, Done is called on the connection scope.
+	clientConnScope.EXPECT().Done().MaxTimes(1)
 	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
 	// In rare instances, the connection gating error will already occur on Dial.
-	if err != nil {
-		clientConnScope.EXPECT().Done()
-	} else {
+	if err == nil {
 		_, err = conn.AcceptStream()
 		require.Error(t, err)
 	}
@@ -550,7 +551,13 @@ func TestHolePunching(t *testing.T) {
 	// Make sure the server role (the dial on t2) has progressed far enough.
 	// If it hasn't created the hole punch map entry, the connection will be accepted as a regular connection,
 	// which would make this test fail.
-	time.Sleep(25 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		tr := t2.(*transport)
+		tr.holePunchingMx.Lock()
+		defer tr.holePunchingMx.Unlock()
+		return len(tr.holePunching) > 0
+	}, time.Second, 10*time.Millisecond)
+
 	conn1, err := t1.Dial(
 		network.WithSimultaneousConnect(context.Background(), true, ""),
 		ln2.Multiaddr(),

@@ -135,10 +135,19 @@ func TestEndToEndSimConnect(t *testing.T) {
 	require.Equal(t, holepunch.StartHolePunchEvtT, h2Events[0].Type)
 	require.Equal(t, holepunch.HolePunchAttemptEvtT, h2Events[1].Type)
 	require.Equal(t, holepunch.EndHolePunchEvtT, h2Events[2].Type)
+
 	h1Events := h1tr.getEvents()
-	require.Len(t, h1Events, 2)
+	// We don't really expect a hole-punched connection to be established in this test,
+	// as we probably don't get the timing right for the TCP simultaneous open.
+	// From time to time, it still happens occasionally, and then we get a EndHolePunchEvtT here.
+	if len(h1Events) != 2 && len(h1Events) != 3 {
+		t.Fatal("expected either 2 or 3 events")
+	}
 	require.Equal(t, holepunch.StartHolePunchEvtT, h1Events[0].Type)
 	require.Equal(t, holepunch.HolePunchAttemptEvtT, h1Events[1].Type)
+	if len(h1Events) == 3 {
+		require.Equal(t, holepunch.EndHolePunchEvtT, h1Events[2].Type)
+	}
 }
 
 func TestFailuresOnInitiator(t *testing.T) {

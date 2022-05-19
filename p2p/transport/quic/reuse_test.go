@@ -56,7 +56,7 @@ func cleanup(t *testing.T, reuse *reuse) {
 
 func TestReuseListenOnAllIPv4(t *testing.T) {
 	reuse := newReuse()
-	require.Eventually(t, isGarbageCollectorRunning, 100*time.Millisecond, time.Millisecond, "expected garbage collector to be running")
+	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:0")
@@ -68,7 +68,7 @@ func TestReuseListenOnAllIPv4(t *testing.T) {
 
 func TestReuseListenOnAllIPv6(t *testing.T) {
 	reuse := newReuse()
-	require.Eventually(t, isGarbageCollectorRunning, 100*time.Millisecond, time.Millisecond, "expected garbage collector to be running")
+	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp6", "[::]:1234")
@@ -171,5 +171,5 @@ func TestReuseGarbageCollect(t *testing.T) {
 		require.Equal(t, num, 1)
 		time.Sleep(2 * time.Millisecond)
 	}
-	require.Eventually(t, func() bool { return numGlobals() == 0 }, 4*garbageCollectInterval, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return numGlobals() == 0 }, 4*garbageCollectInterval, 10*time.Millisecond)
 }

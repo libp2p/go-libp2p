@@ -165,7 +165,13 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 		go func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			_, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "")
+			conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "")
+			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
+			// and closes the underlying connection when that context is canceled.
+			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
+			if err == nil {
+				_, err = conn.Read([]byte{0})
+			}
 			errChan <- err
 		}()
 		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
@@ -188,7 +194,13 @@ func TestPeerIDMismatch(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+			conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
+			// and closes the underlying connection when that context is canceled.
+			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
+			if err == nil {
+				_, err = conn.Read([]byte{0})
+			}
 			errChan <- err
 		}()
 

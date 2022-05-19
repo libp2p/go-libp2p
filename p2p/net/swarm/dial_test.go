@@ -479,7 +479,10 @@ func TestDialExistingConnection(t *testing.T) {
 	s1 := swarms[0]
 	s2 := swarms[1]
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
+	// Only use one of the addresses here.
+	// Otherwise, we might dial TCP and QUIC simultaneously here, and end up with two connections,
+	// if the handshake latencies line up exactly.
+	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses()[:1], peerstore.PermanentAddrTTL)
 
 	c1, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
@@ -487,7 +490,10 @@ func TestDialExistingConnection(t *testing.T) {
 	c2, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
 
-	require.Equal(t, c1, c2, "expecting the same connection from both dials")
+	// can't use require.Equal here, as this does a deep comparison
+	if c1 != c2 {
+		t.Fatalf("expecting the same connection from both dials, got %s <-> %s vs %s <-> %s", c1.LocalMultiaddr(), c1.RemoteMultiaddr(), c2.LocalMultiaddr(), c2.RemoteMultiaddr())
+	}
 }
 
 func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {

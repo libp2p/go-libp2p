@@ -16,7 +16,7 @@ const TestResolution = 50 * time.Millisecond
 
 func waitForTag(t *testing.T, mgr *BasicConnMgr, id peer.ID) {
 	t.Helper()
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(id) != nil }, 500*time.Millisecond, time.Millisecond)
+	require.Eventually(t, func() bool { return mgr.GetTagInfo(id) != nil }, 500*time.Millisecond, 10*time.Millisecond)
 }
 
 func TestDecayExpire(t *testing.T) {
@@ -51,7 +51,7 @@ func TestMultipleBumps(t *testing.T) {
 	require.Equal(t, mgr.GetTagInfo(id).Value, 10)
 
 	require.NoError(t, tag.Bump(id, 100))
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 20 }, 100*time.Millisecond, time.Millisecond, "expected tag value to decay to 20")
+	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 20 }, 100*time.Millisecond, 10*time.Millisecond, "expected tag value to decay to 20")
 }
 
 func TestMultipleTagsNoDecay(t *testing.T) {
@@ -144,7 +144,7 @@ func TestMultiplePeers(t *testing.T) {
 	// allow the background goroutine to process bumps.
 	require.Eventually(t, func() bool {
 		return mgr.GetTagInfo(ids[0]) != nil && mgr.GetTagInfo(ids[1]) != nil && mgr.GetTagInfo(ids[2]) != nil
-	}, 100*time.Millisecond, time.Millisecond)
+	}, 100*time.Millisecond, 10*time.Millisecond)
 
 	mockClock.Add(3 * time.Second)
 
@@ -170,7 +170,7 @@ func TestLinearDecayOverwrite(t *testing.T) {
 	require.Equal(t, 250, mgr.GetTagInfo(id).Value)
 
 	_ = tag1.Bump(id, 1000)
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 1000 }, 500*time.Millisecond, time.Millisecond, "expected value to be 1000")
+	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 1000 }, 500*time.Millisecond, 10*time.Millisecond, "expected value to be 1000")
 }
 
 func TestResolutionMisaligned(t *testing.T) {
@@ -241,7 +241,7 @@ func TestTagRemoval(t *testing.T) {
 
 	// next tick. both peers only have 1 tag, both at 998 value.
 	mockClock.Add(TestResolution)
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(id1).Tags["beep"] == 0 }, 500*time.Millisecond, time.Millisecond)
+	require.Eventually(t, func() bool { return mgr.GetTagInfo(id1).Tags["beep"] == 0 }, 500*time.Millisecond, 10*time.Millisecond)
 	require.Equal(t, 998, mgr.GetTagInfo(id1).Tags["bop"])
 	require.Equal(t, 998, mgr.GetTagInfo(id2).Tags["beep"])
 
@@ -281,7 +281,7 @@ func TestTagClosure(t *testing.T) {
 	require.NoError(t, tag1.Close())
 
 	// allow the background goroutine to process the closure.
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 998 }, 500*time.Millisecond, time.Millisecond)
+	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 998 }, 500*time.Millisecond, 10*time.Millisecond)
 
 	// a second closure should not error.
 	require.NoError(t, tag1.Close())

@@ -115,7 +115,10 @@ func TestDialWorkerLoopBasic(t *testing.T) {
 		t.Fatal("dial didn't complete")
 	}
 
-	require.Equal(t, conn, conn2)
+	// can't use require.Equal here, as this does a deep comparison
+	if conn != conn2 {
+		t.Fatal("expecting the same connection from both dials")
+	}
 
 	close(reqch)
 	worker.wg.Wait()
