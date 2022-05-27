@@ -163,6 +163,7 @@ func TestLinearDecayOverwrite(t *testing.T) {
 	_ = tag1.Bump(id, 1000)
 	waitForTag(t, mgr, id)
 
+	require.Equal(t, 1000, mgr.GetTagInfo(id).Value)
 	mockClock.Add(250 * time.Millisecond)
 	require.Equal(t, 500, mgr.GetTagInfo(id).Value)
 
