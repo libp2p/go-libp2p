@@ -56,7 +56,7 @@ var DefaultPeerstore Option = func(cfg *Config) error {
 
 // RandomIdentity generates a random identity. (default behaviour)
 var RandomIdentity = func(cfg *Config) error {
-	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, rand.Reader)
+	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
 		return err
 	}
