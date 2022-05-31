@@ -54,7 +54,13 @@ func newDialLimiter(df dialfunc) *dialLimiter {
 			fd = int(n)
 		}
 	}
-	return newDialLimiterWithParams(df, fd, DefaultPerPeerRateLimit)
+	perPeerRateLimit := DefaultPerPeerRateLimit
+	if env := os.Getenv("LIBP2P_SWARM_PEER_RATE_LIMIT"); env != "" {
+		if n, err := strconv.ParseInt(env, 10, 32); err == nil {
+			perPeerRateLimit = int(n)
+		}
+	}
+	return newDialLimiterWithParams(df, fd, perPeerRateLimit)
 }
 
 func newDialLimiterWithParams(df dialfunc, fdLimit, perPeerLimit int) *dialLimiter {
