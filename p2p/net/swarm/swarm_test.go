@@ -542,3 +542,57 @@ func TestResourceManagerAcceptStream(t *testing.T) {
 	}
 	require.EqualError(t, err, "stream reset")
 }
+
+func TestListenCloseCount(t *testing.T) {
+	s := GenSwarm(t, OptDialOnly)
+	addrsToListen := []ma.Multiaddr{
+		ma.StringCast("/ip4/0.0.0.0/tcp/0"),
+		ma.StringCast("/ip4/0.0.0.0/udp/0/quic"),
+	}
+
+	if err := s.Listen(addrsToListen...); err != nil {
+		t.Fatal(err)
+	}
+	listenedAddrs := s.ListenAddresses()
+	require.Equal(t, 2, len(listenedAddrs))
+
+	s.ListenClose(listenedAddrs...)
+	time.Sleep(time.Millisecond) // wait for deferred listener deletion
+
+	remainingAddrs := s.ListenAddresses()
+	require.Equal(t, 0, len(remainingAddrs))
+}
+
+func TestListenCloseLog(t *testing.T) {
+	var logs bytes.Buffer
+
+	// pipe logs to buffer
+	lr := logging.NewPipeReader(logging.PipeFormat(logging.PlaintextOutput))
+	defer lr.Close()
+	go io.Copy(&logs, lr)
+
+	s := GenSwarm(t, OptDialOnly)
+	addrsToListen := []ma.Multiaddr{
+		ma.StringCast("/ip4/0.0.0.0/tcp/0"),
+		ma.StringCast("/ip4/0.0.0.0/udp/0/quic"),
+	}
+
+	if err := s.Listen(addrsToListen...); err != nil {
+		t.Fatal(err)
+	}
+	listenedAddrs := s.ListenAddresses() // closed 0, opened: 2
+
+	s.ListenClose(listenedAddrs[0]) // closed 1, opened: 1
+	time.Sleep(time.Millisecond)    // wait for deferred listener deletion
+
+	require.False(t, containsError(logs, swarm.ErrSwarmListenerAcceptError))
+
+	s.ListenClose(listenedAddrs[1]) // closed 2, opened: 0
+	time.Sleep(time.Millisecond)    // wait for deferred listener deletion
+
+	require.True(t, containsError(logs, swarm.ErrSwarmListenerAcceptError))
+}
+
+func containsError(logs bytes.Buffer, err error) bool {
+	return strings.Contains(logs.String(), err.Error())
+}

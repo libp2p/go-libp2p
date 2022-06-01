@@ -9,6 +9,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+var (
+	ErrSwarmListenerAcceptError = fmt.Errorf("swarm listener accept error")
+)
+
 // Listen sets up listeners for all of the given addresses.
 // It returns as long as we successfully listen on at least *one* address.
 func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
@@ -33,6 +37,20 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 	}
 
 	return nil
+}
+
+// ListenClose stop and delete listeners for all of the given addresses.
+func (s *Swarm) ListenClose(addrs ...ma.Multiaddr) {
+	s.listeners.Lock()
+	defer s.listeners.Unlock()
+
+	for l := range s.listeners.m {
+		if !containsMultiaddr(addrs, l.Multiaddr()) {
+			continue
+		}
+
+		l.Close()
+	}
 }
 
 // AddListenAddr tells the swarm to listen on a single address. Unlike Listen,
@@ -79,24 +97,27 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 	go func() {
 		defer func() {
 			list.Close()
+
 			s.listeners.Lock()
+			defer s.listeners.Unlock()
+
 			delete(s.listeners.m, list)
 			s.listeners.cacheEOL = time.Time{}
-			s.listeners.Unlock()
 
 			// signal to our notifiees on listen close.
 			s.notifyAll(func(n network.Notifiee) {
 				n.ListenClose(s, maddr)
 			})
 			s.refs.Done()
+
+			// log if no more listener and the swarm is still running.
+			if len(s.listeners.m) == 0 && s.ctx.Err() == nil {
+				log.Error(ErrSwarmListenerAcceptError)
+			}
 		}()
 		for {
 			c, err := list.Accept()
 			if err != nil {
-				if s.ctx.Err() == nil {
-					// only log if the swarm is still running.
-					log.Errorf("swarm listener accept error: %s", err)
-				}
 				return
 			}
 
@@ -118,4 +139,13 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 		}
 	}()
 	return nil
+}
+
+func containsMultiaddr(addrs []ma.Multiaddr, addr ma.Multiaddr) bool {
+	for _, a := range addrs {
+		if addr == a {
+			return true
+		}
+	}
+	return false
 }
