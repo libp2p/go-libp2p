@@ -5,12 +5,9 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
-)
-
-var (
-	ErrSwarmListenerAcceptError = fmt.Errorf("swarm listener accept error")
 )
 
 // Listen sets up listeners for all of the given addresses.
@@ -41,14 +38,21 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 
 // ListenClose stop and delete listeners for all of the given addresses.
 func (s *Swarm) ListenClose(addrs ...ma.Multiaddr) {
-	s.listeners.Lock()
-	defer s.listeners.Unlock()
+	var listenersToClose []transport.Listener
 
+	s.listeners.Lock()
 	for l := range s.listeners.m {
 		if !containsMultiaddr(addrs, l.Multiaddr()) {
 			continue
 		}
 
+		delete(s.listeners.m, l)
+		listenersToClose = append(listenersToClose, l)
+	}
+	s.listeners.cacheEOL = time.Time{}
+	s.listeners.Unlock()
+
+	for _, l := range listenersToClose {
 		l.Close()
 	}
 }
@@ -96,28 +100,38 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 
 	go func() {
 		defer func() {
-			list.Close()
-
 			s.listeners.Lock()
-			defer s.listeners.Unlock()
+			_, ok := s.listeners.m[list]
+			if ok {
+				delete(s.listeners.m, list)
+				s.listeners.cacheEOL = time.Time{}
+			}
+			s.listeners.Unlock()
 
-			delete(s.listeners.m, list)
-			s.listeners.cacheEOL = time.Time{}
+			if ok {
+				list.Close()
+			}
 
 			// signal to our notifiees on listen close.
 			s.notifyAll(func(n network.Notifiee) {
 				n.ListenClose(s, maddr)
 			})
 			s.refs.Done()
-
-			// log if no more listener and the swarm is still running.
-			if len(s.listeners.m) == 0 && s.ctx.Err() == nil {
-				log.Error(ErrSwarmListenerAcceptError)
-			}
 		}()
 		for {
 			c, err := list.Accept()
 			if err != nil {
+				if s.ctx.Err() == nil {
+					s.listeners.Lock()
+					_, ok := s.listeners.m[list]
+					s.listeners.Unlock()
+
+					if ok {
+						// only log if the swarm is still running and the
+						// listener has not been closed intentionally.
+						log.Errorf("swarm listener accept error: %s", err)
+					}
+				}
 				return
 			}
 
