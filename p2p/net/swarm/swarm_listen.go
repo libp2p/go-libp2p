@@ -110,6 +110,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 
 			if ok {
 				list.Close()
+				log.Errorf("swarm listener unintentionally closed")
 			}
 
 			// signal to our notifiees on listen close.
@@ -121,17 +122,6 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 		for {
 			c, err := list.Accept()
 			if err != nil {
-				if s.ctx.Err() == nil {
-					s.listeners.Lock()
-					_, ok := s.listeners.m[list]
-					s.listeners.Unlock()
-
-					if ok {
-						// only log if the swarm is still running and the
-						// listener has not been closed intentionally.
-						log.Errorf("swarm listener accept error: %s", err)
-					}
-				}
 				return
 			}
 
