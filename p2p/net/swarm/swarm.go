@@ -83,6 +83,20 @@ func WithResourceManager(m network.ResourceManager) Option {
 	}
 }
 
+func WithPerPeerLimit(perPeerLimit int) Option {
+	return func(s *Swarm) error {
+		s.perPeerLimit = perPeerLimit
+		return nil
+	}
+}
+
+func WithFDLimit(fdLimit int) Option {
+	return func(s *Swarm) error {
+		s.fdLimit = fdLimit
+		return nil
+	}
+}
+
 // Swarm is a connection muxer, allowing connections to other peers to
 // be opened and closed, while still using the same Chan for all
 // communication. The Chan sends/receives Messages, which note the
@@ -141,6 +155,10 @@ type Swarm struct {
 	ctxCancel context.CancelFunc
 
 	bwc metrics.Reporter
+
+	// dial limiter
+	perPeerLimit int
+	fdLimit      int
 }
 
 // NewSwarm constructs a Swarm.
@@ -153,6 +171,8 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 		ctxCancel:        cancel,
 		dialTimeout:      defaultDialTimeout,
 		dialTimeoutLocal: defaultDialTimeoutLocal,
+		perPeerLimit:     DefaultPerPeerRateLimit,
+		fdLimit:          ConcurrentFdDials,
 	}
 
 	s.conns.m = make(map[peer.ID][]*Conn)
@@ -170,7 +190,7 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 	}
 
 	s.dsync = newDialSync(s.dialWorkerLoop)
-	s.limiter = newDialLimiter(s.dialAddr)
+	s.limiter = newDialLimiterWithParams(s.dialAddr, s.fdLimit, s.perPeerLimit)
 	s.backf.init(s.ctx)
 	return s, nil
 }
