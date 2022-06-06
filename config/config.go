@@ -104,6 +104,9 @@ type Config struct {
 
 	EnableHolePunching  bool
 	HolePunchingOptions []holepunch.Option
+
+	FDLimit      int
+	PerPeerLimit int
 }
 
 func (cfg *Config) makeSwarm() (*swarm.Swarm, error) {
@@ -150,6 +153,12 @@ func (cfg *Config) makeSwarm() (*swarm.Swarm, error) {
 	}
 	if cfg.ResourceManager != nil {
 		opts = append(opts, swarm.WithResourceManager(cfg.ResourceManager))
+	}
+	if cfg.FDLimit != 0 {
+		opts = append(opts, swarm.WithFDLimit(cfg.FDLimit))
+	}
+	if cfg.PerPeerLimit != 0 {
+		opts = append(opts, swarm.WithPerPeerLimit(cfg.PerPeerLimit))
 	}
 	// TODO: Make the swarm implementation configurable.
 	return swarm.NewSwarm(pid, cfg.Peerstore, opts...)
