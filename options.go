@@ -477,3 +477,17 @@ func WithDialTimeout(t time.Duration) Option {
 		return nil
 	}
 }
+
+func WithPerPeerLimit(perPeerLimit int) Option {
+	return func(cfg *Config) error {
+		cfg.PerPeerLimit = perPeerLimit
+		return nil
+	}
+}
+
+func WithFDLimit(fdLimit int) Option {
+	return func(cfg *Config) error {
+		cfg.FDLimit = fdLimit
+		return nil
+	}
+}
