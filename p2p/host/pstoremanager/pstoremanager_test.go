@@ -86,13 +86,28 @@ func TestClose(t *testing.T) {
 
 	emitter, err := eventBus.Emitter(new(event.EvtPeerConnectednessChanged))
 	require.NoError(t, err)
+
+	sub, err := eventBus.Subscribe(&event.EvtPeerConnectednessChanged{})
+	require.NoError(t, err)
+
 	require.NoError(t, emitter.Emit(event.EvtPeerConnectednessChanged{
 		Peer:          "foobar",
 		Connectedness: network.NotConnected,
 	}))
-	time.Sleep(10 * time.Millisecond) // make sure the event is sent before we close
+
+	// make sure the event is sent before we close
+	select {
+	case <-sub.Out():
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Hit timeout")
+	}
+
 	done := make(chan struct{})
 	pstore.EXPECT().RemovePeer(peer.ID("foobar")).Do(func(peer.ID) { close(done) })
 	require.NoError(t, man.Close())
-	<-done
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Hit timeout")
+	}
 }

@@ -86,7 +86,8 @@ func connect(t *testing.T, a, b host.Host) {
 	}
 }
 
-func expectEvent(t *testing.T, s event.Subscription, expected network.Reachability) {
+func expectEvent(t *testing.T, s event.Subscription, expected network.Reachability, timeout time.Duration) {
+	t.Helper()
 	select {
 	case e := <-s.Out():
 		ev, ok := e.(event.EvtLocalReachabilityChanged)
@@ -94,7 +95,7 @@ func expectEvent(t *testing.T, s event.Subscription, expected network.Reachabili
 			t.Fatal("got wrong event type from the bus")
 		}
 
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(timeout):
 		t.Fatal("failed to get the reachability event from the bus")
 	}
 }
@@ -119,13 +120,7 @@ func TestAutoNATPrivate(t *testing.T) {
 	}
 
 	connect(t, hs, hc)
-	require.Eventually(t,
-		func() bool { return an.Status() == network.ReachabilityPrivate },
-		2*time.Second,
-		25*time.Millisecond,
-		"expected NAT status to be private",
-	)
-	expectEvent(t, s, network.ReachabilityPrivate)
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 }
 
 func TestAutoNATPublic(t *testing.T) {
@@ -147,14 +142,7 @@ func TestAutoNATPublic(t *testing.T) {
 	}
 
 	connect(t, hs, hc)
-	require.Eventually(t,
-		func() bool { return an.Status() == network.ReachabilityPublic },
-		2*time.Second,
-		25*time.Millisecond,
-		"expected NAT status to be public",
-	)
-
-	expectEvent(t, s, network.ReachabilityPublic)
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 }
 
 func TestAutoNATPublictoPrivate(t *testing.T) {
@@ -175,26 +163,14 @@ func TestAutoNATPublictoPrivate(t *testing.T) {
 	}
 
 	connect(t, hs, hc)
-	require.Eventually(t,
-		func() bool { return an.Status() == network.ReachabilityPublic },
-		2*time.Second,
-		25*time.Millisecond,
-		"expected NAT status to be public",
-	)
-	expectEvent(t, s, network.ReachabilityPublic)
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
 	hs.SetStreamHandler(AutoNATProto, sayPrivateStreamHandler(t))
 	hps := makeAutoNATServicePrivate(t)
 	connect(t, hps, hc)
 	identifyAsServer(hps, hc)
 
-	require.Eventually(t,
-		func() bool { return an.Status() == network.ReachabilityPrivate },
-		2*time.Second,
-		25*time.Millisecond,
-		"expected NAT status to be private",
-	)
-	expectEvent(t, s, network.ReachabilityPrivate)
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 }
 
 func TestAutoNATIncomingEvents(t *testing.T) {
@@ -252,7 +228,7 @@ func TestAutoNATObservationRecording(t *testing.T) {
 		t.Fatalf("failed to transition to public.")
 	}
 
-	expectEvent(t, s, network.ReachabilityPublic)
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
 	// a single recording should have confidence still at 0, and transition to private quickly.
 	an.recordObservation(autoNATResult{network.ReachabilityPrivate, nil})
@@ -260,7 +236,7 @@ func TestAutoNATObservationRecording(t *testing.T) {
 		t.Fatalf("failed to transition to private.")
 	}
 
-	expectEvent(t, s, network.ReachabilityPrivate)
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 
 	// stronger public confidence should be harder to undo.
 	an.recordObservation(autoNATResult{network.ReachabilityPublic, addr})
@@ -269,7 +245,7 @@ func TestAutoNATObservationRecording(t *testing.T) {
 		t.Fatalf("failed to transition to public.")
 	}
 
-	expectEvent(t, s, network.ReachabilityPublic)
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
 	an.recordObservation(autoNATResult{network.ReachabilityPrivate, nil})
 	if an.Status() != network.ReachabilityPublic {
@@ -293,5 +269,5 @@ func TestStaticNat(t *testing.T) {
 	if nat.Status() != network.ReachabilityPrivate {
 		t.Fatalf("should be private")
 	}
-	expectEvent(t, s, network.ReachabilityPrivate)
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 }

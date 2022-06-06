@@ -105,7 +105,14 @@ func TestSignedPeerRecordWithNoListenAddrs(t *testing.T) {
 		t.Fatalf("peerstore doesn't support certified addrs")
 	}
 	// the signed record with the new addr is added async
-	require.Eventually(t, func() bool { return cab.GetPeerRecord(h.ID()) != nil }, 100*time.Millisecond, 10*time.Millisecond)
+	var env *record.Envelope
+	require.Eventually(t, func() bool {
+		env = cab.GetPeerRecord(h.ID())
+		return env != nil
+	}, 500*time.Millisecond, 10*time.Millisecond)
+	rec, err := env.Record()
+	require.NoError(t, err)
+	require.NotEmpty(t, rec.(*peer.PeerRecord).Addrs)
 }
 
 func TestProtocolHandlerEvents(t *testing.T) {

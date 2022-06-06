@@ -541,18 +541,10 @@ func (s *Swarm) Backoff() *DialBackoff {
 
 // notifyAll sends a signal to all Notifiees
 func (s *Swarm) notifyAll(notify func(network.Notifiee)) {
-	var wg sync.WaitGroup
-
 	s.notifs.RLock()
-	wg.Add(len(s.notifs.m))
 	for f := range s.notifs.m {
-		go func(f network.Notifiee) {
-			defer wg.Done()
-			notify(f)
-		}(f)
+		notify(f)
 	}
-
-	wg.Wait()
 	s.notifs.RUnlock()
 }
 

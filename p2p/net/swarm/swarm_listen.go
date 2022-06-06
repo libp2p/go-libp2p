@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -33,6 +34,27 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 	}
 
 	return nil
+}
+
+// ListenClose stop and delete listeners for all of the given addresses.
+func (s *Swarm) ListenClose(addrs ...ma.Multiaddr) {
+	var listenersToClose []transport.Listener
+
+	s.listeners.Lock()
+	for l := range s.listeners.m {
+		if !containsMultiaddr(addrs, l.Multiaddr()) {
+			continue
+		}
+
+		delete(s.listeners.m, l)
+		listenersToClose = append(listenersToClose, l)
+	}
+	s.listeners.cacheEOL = time.Time{}
+	s.listeners.Unlock()
+
+	for _, l := range listenersToClose {
+		l.Close()
+	}
 }
 
 // AddListenAddr tells the swarm to listen on a single address. Unlike Listen,
@@ -78,11 +100,18 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 
 	go func() {
 		defer func() {
-			list.Close()
 			s.listeners.Lock()
-			delete(s.listeners.m, list)
-			s.listeners.cacheEOL = time.Time{}
+			_, ok := s.listeners.m[list]
+			if ok {
+				delete(s.listeners.m, list)
+				s.listeners.cacheEOL = time.Time{}
+			}
 			s.listeners.Unlock()
+
+			if ok {
+				list.Close()
+				log.Errorf("swarm listener unintentionally closed")
+			}
 
 			// signal to our notifiees on listen close.
 			s.notifyAll(func(n network.Notifiee) {
@@ -93,10 +122,6 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 		for {
 			c, err := list.Accept()
 			if err != nil {
-				if s.ctx.Err() == nil {
-					// only log if the swarm is still running.
-					log.Errorf("swarm listener accept error: %s", err)
-				}
 				return
 			}
 
@@ -118,4 +143,13 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 		}
 	}()
 	return nil
+}
+
+func containsMultiaddr(addrs []ma.Multiaddr, addr ma.Multiaddr) bool {
+	for _, a := range addrs {
+		if addr == a {
+			return true
+		}
+	}
+	return false
 }

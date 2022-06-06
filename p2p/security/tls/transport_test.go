@@ -15,6 +15,8 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"net"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,18 +49,36 @@ func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 }
 
 func connect(t *testing.T) (net.Conn, net.Conn) {
-	ln, err := net.Listen("tcp", "localhost:0")
+	ln, err := net.ListenTCP("tcp", nil)
 	require.NoError(t, err)
 	defer ln.Close()
-	serverConnChan := make(chan net.Conn)
+	serverConnChan := make(chan *net.TCPConn)
 	go func() {
 		conn, err := ln.Accept()
 		assert.NoError(t, err)
-		serverConnChan <- conn
+		sconn := conn.(*net.TCPConn)
+		serverConnChan <- sconn
 	}()
-	conn, err := net.Dial("tcp", ln.Addr().String())
+	conn, err := net.DialTCP("tcp", nil, ln.Addr().(*net.TCPAddr))
 	require.NoError(t, err)
-	return conn, <-serverConnChan
+	sconn := <-serverConnChan
+	// On Windows we have to set linger to 0, otherwise we'll occasionally run into errors like the following:
+	// "connectex: Only one usage of each socket address (protocol/network address/port) is normally permitted."
+	// See https://github.com/libp2p/go-libp2p/issues/1529.
+	conn.SetLinger(0)
+	sconn.SetLinger(0)
+	t.Cleanup(func() {
+		conn.Close()
+		sconn.Close()
+	})
+	return conn, sconn
+}
+
+func isWindowsTCPCloseError(err error) bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	return strings.Contains(err.Error(), "wsarecv: An existing connection was forcibly closed by the remote host")
 }
 
 func TestHandshakeSucceeds(t *testing.T) {
@@ -482,26 +502,25 @@ func TestInvalidCerts(t *testing.T) {
 				_, err := conn.Read([]byte{0})
 				clientErrChan <- err
 			}()
-			var clientErr error
 			select {
-			case clientErr = <-clientErrChan:
+			case err := <-clientErrChan:
+				require.Error(t, err)
+				if err.Error() != "remote error: tls: error decrypting message" &&
+					err.Error() != "remote error: tls: bad certificate" &&
+					!isWindowsTCPCloseError(err) {
+					t.Errorf("unexpected error: %s", err.Error())
+				}
 			case <-time.After(250 * time.Millisecond):
 				t.Fatal("expected the server handshake to return")
-			}
-			require.Error(t, clientErr)
-			if clientErr.Error() != "remote error: tls: error decrypting message" &&
-				clientErr.Error() != "remote error: tls: bad certificate" {
-				t.Fatalf("unexpected error: %s", err.Error())
 			}
 
-			var serverErr error
 			select {
-			case serverErr = <-serverErrChan:
+			case err := <-serverErrChan:
+				require.Error(t, err)
+				tr.checkErr(t, err)
 			case <-time.After(250 * time.Millisecond):
 				t.Fatal("expected the server handshake to return")
 			}
-			require.Error(t, serverErr)
-			tr.checkErr(t, serverErr)
 		})
 
 		t.Run(fmt.Sprintf("server offending: %s", tr.name), func(t *testing.T) {
@@ -530,7 +549,9 @@ func TestInvalidCerts(t *testing.T) {
 				t.Fatal("expected the server handshake to return")
 			}
 			require.Error(t, serverErr)
-			require.Contains(t, serverErr.Error(), "remote error: tls:")
+			if !isWindowsTCPCloseError(serverErr) {
+				require.Contains(t, serverErr.Error(), "remote error: tls:")
+			}
 		})
 	}
 }

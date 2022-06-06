@@ -542,3 +542,22 @@ func TestResourceManagerAcceptStream(t *testing.T) {
 	}
 	require.EqualError(t, err, "stream reset")
 }
+
+func TestListenCloseCount(t *testing.T) {
+	s := GenSwarm(t, OptDialOnly)
+	addrsToListen := []ma.Multiaddr{
+		ma.StringCast("/ip4/0.0.0.0/tcp/0"),
+		ma.StringCast("/ip4/0.0.0.0/udp/0/quic"),
+	}
+
+	if err := s.Listen(addrsToListen...); err != nil {
+		t.Fatal(err)
+	}
+	listenedAddrs := s.ListenAddresses()
+	require.Equal(t, 2, len(listenedAddrs))
+
+	s.ListenClose(listenedAddrs...)
+
+	remainingAddrs := s.ListenAddresses()
+	require.Equal(t, 0, len(remainingAddrs))
+}

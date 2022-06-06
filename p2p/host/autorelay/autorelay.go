@@ -101,7 +101,7 @@ func (r *AutoRelay) background() {
 			switch evt.Reachability {
 			case network.ReachabilityPrivate, network.ReachabilityUnknown:
 				if err := r.relayFinder.Start(); err != nil {
-					log.Error("failed to start relay finder")
+					log.Errorw("failed to start relay finder", "error", err)
 				}
 			case network.ReachabilityPublic:
 				r.relayFinder.Stop()

@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
@@ -28,17 +29,22 @@ import (
 
 	"github.com/libp2p/go-eventbus"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
-	"github.com/libp2p/go-libp2p-testing/race"
 
+	mockClock "github.com/benbjohnson/clock"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	logging.SetLogLevel("net/identify", "debug")
+}
+
 func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
 	t.Helper()
-	assert.ElementsMatchf(t, expected, h.Peerstore().Addrs(p), fmt.Sprintf("%s did not have addr for %s", h.ID(), p))
+	require.True(t, assert.ElementsMatchf(t, expected, h.Peerstore().Addrs(p), fmt.Sprintf("%s did not have addr for %s", h.ID(), p)))
 }
 
 func testHasCertifiedAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
@@ -62,7 +68,7 @@ func testHasCertifiedAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.M
 	if !ok {
 		t.Error("unexpected record type")
 	}
-	assert.ElementsMatchf(t, expected, rec.Addrs, fmt.Sprintf("%s did not have certified addr for %s", h.ID(), p))
+	require.True(t, assert.ElementsMatchf(t, expected, rec.Addrs, fmt.Sprintf("%s did not have certified addr for %s", h.ID(), p)))
 }
 
 func testHasProtocolVersions(t *testing.T, h host.Host, p peer.ID) {
@@ -147,15 +153,15 @@ func emitAddrChangeEvt(t *testing.T, h host.Host) {
 // id service is done.
 func TestIDService(t *testing.T) {
 	// This test is highly timing dependent, waiting on timeouts/expiration.
-	if race.WithRace() {
-		t.Skip("skipping highly timing dependent test when race detector is enabled")
-	}
 	oldTTL := peerstore.RecentlyConnectedAddrTTL
 	peerstore.RecentlyConnectedAddrTTL = 500 * time.Millisecond
 	t.Cleanup(func() { peerstore.RecentlyConnectedAddrTTL = oldTTL })
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	clk := mockClock.NewMock()
+	swarm1 := swarmt.GenSwarm(t, swarmt.WithClock(clk))
+	swarm2 := swarmt.GenSwarm(t, swarmt.WithClock(clk))
+	h1 := blhost.NewBlankHost(swarm1)
+	h2 := blhost.NewBlankHost(swarm2)
 
 	h1p := h1.ID()
 	h2p := h2.ID()
@@ -212,6 +218,8 @@ func TestIDService(t *testing.T) {
 	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p)) // h1 should have h2's public key
 
 	// Need both sides to actually notice that the connection has been closed.
+	sentDisconnect1 := waitForDisconnectNotification(swarm1)
+	sentDisconnect2 := waitForDisconnectNotification(swarm2)
 	h1.Network().ClosePeer(h2p)
 	h2.Network().ClosePeer(h1p)
 	if len(h2.Network().ConnsToPeer(h1.ID())) != 0 || len(h1.Network().ConnsToPeer(h2.ID())) != 0 {
@@ -225,10 +233,13 @@ func TestIDService(t *testing.T) {
 	testHasCertifiedAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
 	testHasCertifiedAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
 
+	<-sentDisconnect1
+	<-sentDisconnect2
+
 	// the addrs had their TTLs reduced on disconnect, and
 	// will be forgotten soon after
 	t.Log("testing addrs after TTL expiration")
-	time.Sleep(time.Second)
+	clk.Add(time.Second)
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{})
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{})
 	testHasCertifiedAddrs(t, h1, h2p, []ma.Multiaddr{})
@@ -373,16 +384,16 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 		ids2.Close()
 	}()
 
-	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
-		t.Fatal(err)
-	}
-
 	idComplete, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
 	require.NoError(t, err)
 	defer idComplete.Close()
 	idFailed, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationFailed{})
 	require.NoError(t, err)
 	defer idFailed.Close()
+
+	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
+		t.Fatal(err)
+	}
 
 	conn := h1.Network().ConnsToPeer(h2.ID())[0]
 	select {
@@ -794,13 +805,11 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	peerstore.RecentlyConnectedAddrTTL = 500 * time.Millisecond
 	t.Cleanup(func() { peerstore.RecentlyConnectedAddrTTL = oldTTL })
 
-	sk1, _, err := coretest.RandTestKeyPair(ic.RSA, 4096)
-	require.NoError(t, err)
-	sk2, _, err := coretest.RandTestKeyPair(ic.RSA, 4096)
-	require.NoError(t, err)
-
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk1)))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk2)))
+	clk := mockClock.NewMock()
+	swarm1 := swarmt.GenSwarm(t, swarmt.WithClock(clk))
+	swarm2 := swarmt.GenSwarm(t, swarmt.WithClock(clk))
+	h1 := blhost.NewBlankHost(swarm1)
+	h2 := blhost.NewBlankHost(swarm2)
 
 	// add protocol strings to make the message larger
 	// about 2K of protocol strings
@@ -833,10 +842,12 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	forgetMe, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 	h2.Peerstore().AddAddr(h1p, forgetMe, peerstore.RecentlyConnectedAddrTTL)
 
-	require.NoError(t, h1.Connect(context.Background(), h2.Peerstore().PeerInfo(h2p)))
+	h2pi := h2.Peerstore().PeerInfo(h2p)
+	h2pi.Addrs = h2pi.Addrs[:1]
+	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	h1t2c := h1.Network().ConnsToPeer(h2p)
-	require.NotEmpty(t, h1t2c, "should have a conn here")
+	require.Equal(t, 1, len(h1t2c), "should have a conn here")
 
 	ids1.IdentifyConn(h1t2c[0])
 
@@ -851,7 +862,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	// now, this wait we do have to do. it's the wait for the Listening side
 	// to be done identifying the connection.
 	c := h2.Network().ConnsToPeer(h1.ID())
-	if len(c) < 1 {
+	if len(c) != 1 {
 		t.Fatal("should have connection by now at least.")
 	}
 	ids2.IdentifyConn(c[0])
@@ -864,6 +875,8 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p)) // h1 should have h2's public key
 
 	// Need both sides to actually notice that the connection has been closed.
+	sentDisconnect1 := waitForDisconnectNotification(swarm1)
+	sentDisconnect2 := waitForDisconnectNotification(swarm2)
 	h1.Network().ClosePeer(h2p)
 	h2.Network().ClosePeer(h1p)
 	if len(h2.Network().ConnsToPeer(h1.ID())) != 0 || len(h1.Network().ConnsToPeer(h2.ID())) != 0 {
@@ -877,10 +890,13 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	testHasCertifiedAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
 	testHasCertifiedAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
 
+	<-sentDisconnect1
+	<-sentDisconnect2
+
 	// the addrs had their TTLs reduced on disconnect, and
 	// will be forgotten soon after
 	t.Log("testing addrs after TTL expiration")
-	time.Sleep(time.Second)
+	clk.Add(time.Second)
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{})
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{})
 	testHasCertifiedAddrs(t, h1, h2p, []ma.Multiaddr{})
@@ -898,13 +914,8 @@ func TestLargePushMessage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sk1, _, err := coretest.RandTestKeyPair(ic.RSA, 4096)
-	require.NoError(t, err)
-	sk2, _, err := coretest.RandTestKeyPair(ic.RSA, 4096)
-	require.NoError(t, err)
-
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk1)))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptPeerPrivateKey(sk2)))
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 
 	// add protocol strings to make the message larger
 	// about 2K of protocol strings
@@ -1108,4 +1119,23 @@ func waitForAddrInStream(t *testing.T, s <-chan ma.Multiaddr, expected ma.Multia
 			t.Fatalf(failMsg)
 		}
 	}
+}
+
+func waitForDisconnectNotification(swarm *swarm.Swarm) <-chan struct{} {
+	done := make(chan struct{})
+	var once sync.Once
+	var nb *network.NotifyBundle
+	nb = &network.NotifyBundle{
+		DisconnectedF: func(n network.Network, c network.Conn) {
+			once.Do(func() {
+				go func() {
+					swarm.StopNotify(nb)
+					close(done)
+				}()
+			})
+		},
+	}
+	swarm.Notify(nb)
+
+	return done
 }
