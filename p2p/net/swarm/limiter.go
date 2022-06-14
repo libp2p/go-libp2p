@@ -2,6 +2,8 @@ package swarm
 
 import (
 	"context"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -44,6 +46,22 @@ type dialLimiter struct {
 }
 
 type dialfunc func(context.Context, peer.ID, ma.Multiaddr) (transport.CapableConn, error)
+
+func newDialLimiter(df dialfunc) *dialLimiter {
+	fd := ConcurrentFdDials
+	if env := os.Getenv("LIBP2P_SWARM_FD_LIMIT"); env != "" {
+		if n, err := strconv.ParseInt(env, 10, 32); err == nil {
+			fd = int(n)
+		}
+	}
+	perPeerRateLimit := DefaultPerPeerRateLimit
+	if env := os.Getenv("LIBP2P_SWARM_PEER_RATE_LIMIT"); env != "" {
+		if n, err := strconv.ParseInt(env, 10, 32); err == nil {
+			perPeerRateLimit = int(n)
+		}
+	}
+	return newDialLimiterWithParams(df, fd, perPeerRateLimit)
+}
 
 func newDialLimiterWithParams(df dialfunc, fdLimit, perPeerLimit int) *dialLimiter {
 	return &dialLimiter{
