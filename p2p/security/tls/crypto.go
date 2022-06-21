@@ -63,7 +63,7 @@ func NewIdentity(privKey ic.PrivKey, opts ...IdentityOption) (*Identity, error) 
 
 	var err error
 	if config.CertTemplate == nil {
-		config.CertTemplate, err = DefaultCertTemplate()
+		config.CertTemplate, err = certTemplate()
 		if err != nil {
 			return nil, err
 		}
@@ -199,28 +199,28 @@ func PubKeyFromCertChain(chain []*x509.Certificate) (ic.PubKey, error) {
 // GenerateSignedExtension uses the provided private key to sign the public key, and returns the
 // signature within a pkix.Extension.
 // This extension is included in a certificate to cryptographically tie it to the libp2p private key.
-func GenerateSignedExtension(sk ic.PrivKey, pubKey crypto.PublicKey) (*pkix.Extension, error) {
+func GenerateSignedExtension(sk ic.PrivKey, pubKey crypto.PublicKey) (pkix.Extension, error) {
 	keyBytes, err := ic.MarshalPublicKey(sk.GetPublic())
 	if err != nil {
-		return nil, err
+		return pkix.Extension{}, err
 	}
 	certKeyPub, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
-		return nil, err
+		return pkix.Extension{}, err
 	}
 	signature, err := sk.Sign(append([]byte(certificatePrefix), certKeyPub...))
 	if err != nil {
-		return nil, err
+		return pkix.Extension{}, err
 	}
 	value, err := asn1.Marshal(signedKey{
 		PubKey:    keyBytes,
 		Signature: signature,
 	})
 	if err != nil {
-		return nil, err
+		return pkix.Extension{}, err
 	}
 
-	return &pkix.Extension{Id: extensionID, Critical: extensionCritical, Value: value}, nil
+	return pkix.Extension{Id: extensionID, Critical: extensionCritical, Value: value}, nil
 }
 
 // keyToCertificate generates a new ECDSA private key and corresponding x509 certificate.
@@ -237,7 +237,7 @@ func keyToCertificate(sk ic.PrivKey, certTmpl *x509.Certificate) (*tls.Certifica
 	if err != nil {
 		return nil, err
 	}
-	certTmpl.ExtraExtensions = append(certTmpl.ExtraExtensions, *extension)
+	certTmpl.ExtraExtensions = append(certTmpl.ExtraExtensions, extension)
 
 	certDER, err := x509.CreateCertificate(rand.Reader, certTmpl, certTmpl, certKey.Public(), certKey)
 	if err != nil {
@@ -249,8 +249,8 @@ func keyToCertificate(sk ic.PrivKey, certTmpl *x509.Certificate) (*tls.Certifica
 	}, nil
 }
 
-// DefaultCertTemplate returns the default template for generating an Identity's TLS certificates.
-func DefaultCertTemplate() (*x509.Certificate, error) {
+// certTemplate returns the template for generating an Identity's TLS certificates.
+func certTemplate() (*x509.Certificate, error) {
 	bigNum := big.NewInt(1 << 62)
 	sn, err := rand.Int(rand.Reader, bigNum)
 	if err != nil {

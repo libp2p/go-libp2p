@@ -65,12 +65,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 	clientID, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 
-	handshake := func(t *testing.T) {
-		clientTransport, err := New(clientKey)
-		require.NoError(t, err)
-		serverTransport, err := New(serverKey)
-		require.NoError(t, err)
-
+	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport) {
 		clientInsecureConn, serverInsecureConn := connect(t)
 
 		serverConnChan := make(chan sec.SecureConn)
@@ -109,15 +104,54 @@ func TestHandshakeSucceeds(t *testing.T) {
 		require.Equal(t, string(b), "foobar")
 	}
 
-	t.Run("with extension not critical", func(t *testing.T) {
-		handshake(t)
+	// Use standard transports with default TLS configuration
+	clientTransport, err := New(clientKey)
+	require.NoError(t, err)
+	serverTransport, err := New(serverKey)
+	require.NoError(t, err)
+
+	t.Run("standard TLS with extension not critical", func(t *testing.T) {
+		handshake(t, clientTransport, serverTransport)
 	})
 
-	t.Run("with extension critical", func(t *testing.T) {
+	t.Run("standard TLS with extension critical", func(t *testing.T) {
 		extensionCritical = true
 		t.Cleanup(func() { extensionCritical = false })
 
-		handshake(t)
+		handshake(t, clientTransport, serverTransport)
+	})
+
+	// Use transports with custom TLS certificates
+
+	// override client identity to use a custom certificate
+	clientCertTmlp, err := certTemplate()
+	require.NoError(t, err)
+
+	clientCertTmlp.Subject.CommonName = "client.test.name"
+	clientCertTmlp.EmailAddresses = []string{"server-unittest@example.com"}
+
+	clientTransport.identity, err = NewIdentity(clientKey, WithCertTemplate(clientCertTmlp))
+	require.NoError(t, err)
+
+	// override server identity to use a custom certificate
+	serverCertTmpl, err := certTemplate()
+	require.NoError(t, err)
+
+	serverCertTmpl.Subject.CommonName = "server.test.name"
+	serverCertTmpl.EmailAddresses = []string{"server-unittest@example.com"}
+
+	serverTransport.identity, err = NewIdentity(serverKey, WithCertTemplate(serverCertTmpl))
+	require.NoError(t, err)
+
+	t.Run("custom TLS with extension not critical", func(t *testing.T) {
+		handshake(t, clientTransport, serverTransport)
+	})
+
+	t.Run("custom TLS with extension critical", func(t *testing.T) {
+		extensionCritical = true
+		t.Cleanup(func() { extensionCritical = false })
+
+		handshake(t, clientTransport, serverTransport)
 	})
 }
 
