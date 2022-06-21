@@ -128,7 +128,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 	require.NoError(t, err)
 
 	clientCertTmlp.Subject.CommonName = "client.test.name"
-	clientCertTmlp.EmailAddresses = []string{"server-unittest@example.com"}
+	clientCertTmlp.EmailAddresses = []string{"client-unittest@example.com"}
 
 	clientTransport.identity, err = NewIdentity(clientKey, WithCertTemplate(clientCertTmlp))
 	require.NoError(t, err)
