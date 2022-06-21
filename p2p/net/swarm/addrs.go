@@ -2,7 +2,7 @@ package swarm
 
 import (
 	ma "github.com/multiformats/go-multiaddr"
-	mamask "github.com/whyrusleeping/multiaddr-filter"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // http://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
@@ -26,10 +26,14 @@ func init() {
 		"/ip4/203.0.113.0/ipcidr/24",
 		"/ip4/240.0.0.0/ipcidr/4",
 	} {
-		f, err := mamask.NewMask(p)
+		f, err := ma.NewMultiaddr(p)
 		if err != nil {
 			panic("error in lowTimeoutFilters init: " + err.Error())
 		}
-		lowTimeoutFilters.AddFilter(*f, ma.ActionDeny)
+		ipnet, err := manet.MultiaddrToIPNet(f)
+		if err != nil {
+			panic("error in lowTimeoutFilters init: " + err.Error())
+		}
+		lowTimeoutFilters.AddFilter(*ipnet, ma.ActionDeny)
 	}
 }
