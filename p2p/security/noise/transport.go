@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 
+	"github.com/libp2p/go-libp2p-core/canonicallog"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/sec"
@@ -38,7 +39,11 @@ func New(privkey crypto.PrivKey) (*Transport, error) {
 // SecureInbound runs the Noise handshake as the responder.
 // If p is empty, connections from any peer are accepted.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	return newSecureSession(t, ctx, insecure, p, false)
+	c, err := newSecureSession(t, ctx, insecure, p, false)
+	if err != nil {
+		canonicallog.LogMisbehavingPeerNetAddr(p, insecure.RemoteAddr(), "noise-security-handshake", err, "failed security handshake")
+	}
+	return c, err
 }
 
 // SecureOutbound runs the Noise handshake as the initiator.

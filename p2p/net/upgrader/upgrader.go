@@ -148,7 +148,6 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 	sconn, server, err := u.setupSecurity(ctx, conn, p, dir)
 	if err != nil {
 		conn.Close()
-		canonicallog.LogMisbehavingPeerNetAddr(p, conn.RemoteAddr(), "security-handshake", err, "failed to negotiate security protocol")
 		return nil, fmt.Errorf("failed to negotiate security protocol: %s", err)
 	}
 
