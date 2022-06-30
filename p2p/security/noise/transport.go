@@ -8,6 +8,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/sec"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // ID is the protocol ID for noise
@@ -41,7 +42,10 @@ func New(privkey crypto.PrivKey) (*Transport, error) {
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	c, err := newSecureSession(t, ctx, insecure, p, false)
 	if err != nil {
-		canonicallog.LogMisbehavingPeerNetAddr(p, insecure.RemoteAddr(), "noise-security-handshake", err, "failed security handshake")
+		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
+		if maErr == nil {
+			canonicallog.LogPeerStatus(100, p, addr, "handshake_failure", "noise", "err", err.Error())
+		}
 	}
 	return c, err
 }

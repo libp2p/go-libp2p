@@ -13,6 +13,7 @@ import (
 	ci "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/sec"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // ID is the protocol ID (used when negotiating with multistream)
@@ -53,7 +54,10 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 	config, keyCh := t.identity.ConfigForPeer(p)
 	cs, err := t.handshake(ctx, tls.Server(insecure, config), keyCh)
 	if err != nil {
-		canonicallog.LogMisbehavingPeerNetAddr(p, insecure.RemoteAddr(), "tls-security-handshake", err, "failed security handshake")
+		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
+		if maErr == nil {
+			canonicallog.LogPeerStatus(100, p, addr, "handshake_failure", "tls", "err", err.Error())
+		}
 		insecure.Close()
 	}
 	return cs, err
