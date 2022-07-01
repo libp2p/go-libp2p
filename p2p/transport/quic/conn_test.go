@@ -122,7 +122,7 @@ func TestResourceManagerSuccess(t *testing.T) {
 	connChan := make(chan tpt.CapableConn)
 	serverConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	go func() {
-		serverRcmgr.EXPECT().OpenConnection(network.DirInbound, false).Return(serverConnScope, nil)
+		serverRcmgr.EXPECT().OpenConnection(network.DirInbound, false, gomock.Not(ln.Multiaddr())).Return(serverConnScope, nil)
 		serverConnScope.EXPECT().SetPeer(clientID)
 		serverConn, err := ln.Accept()
 		require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestResourceManagerSuccess(t *testing.T) {
 	}()
 
 	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
-	clientRcmgr.EXPECT().OpenConnection(network.DirOutbound, false).Return(connScope, nil)
+	clientRcmgr.EXPECT().OpenConnection(network.DirOutbound, false, ln.Multiaddr()).Return(connScope, nil)
 	connScope.EXPECT().SetPeer(serverID)
 	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
 	require.NoError(t, err)
@@ -153,13 +153,15 @@ func TestResourceManagerDialDenied(t *testing.T) {
 	defer clientTransport.(io.Closer).Close()
 
 	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
-	rcmgr.EXPECT().OpenConnection(network.DirOutbound, false).Return(connScope, nil)
+	target := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic")
+
+	rcmgr.EXPECT().OpenConnection(network.DirOutbound, false, target).Return(connScope, nil)
 	rerr := errors.New("nope")
 	p := peer.ID("server")
 	connScope.EXPECT().SetPeer(p).Return(rerr)
 	connScope.EXPECT().Done()
 
-	_, err = clientTransport.Dial(context.Background(), ma.StringCast("/ip4/127.0.0.1/udp/1234/quic"), p)
+	_, err = clientTransport.Dial(context.Background(), target, p)
 	require.ErrorIs(t, err, rerr)
 }
 
@@ -178,7 +180,7 @@ func TestResourceManagerAcceptDenied(t *testing.T) {
 	serverConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	rerr := errors.New("denied")
 	gomock.InOrder(
-		serverRcmgr.EXPECT().OpenConnection(network.DirInbound, false).Return(serverConnScope, nil),
+		serverRcmgr.EXPECT().OpenConnection(network.DirInbound, false, gomock.Any()).Return(serverConnScope, nil),
 		serverConnScope.EXPECT().SetPeer(clientID).Return(rerr),
 		serverConnScope.EXPECT().Done(),
 	)
@@ -195,7 +197,7 @@ func TestResourceManagerAcceptDenied(t *testing.T) {
 	}()
 
 	clientConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
-	clientRcmgr.EXPECT().OpenConnection(network.DirOutbound, false).Return(clientConnScope, nil)
+	clientRcmgr.EXPECT().OpenConnection(network.DirOutbound, false, ln.Multiaddr()).Return(clientConnScope, nil)
 	clientConnScope.EXPECT().SetPeer(serverID)
 	// In rare instances, the connection gating error will already occur on Dial.
 	// In that case, Done is called on the connection scope.

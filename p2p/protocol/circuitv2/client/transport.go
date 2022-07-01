@@ -50,7 +50,7 @@ var _ transport.Transport = (*Client)(nil)
 var _ io.Closer = (*Client)(nil)
 
 func (c *Client) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
-	connScope, err := c.host.Network().ResourceManager().OpenConnection(network.DirOutbound, false)
+	connScope, err := c.host.Network().ResourceManager().OpenConnection(network.DirOutbound, false, a)
 	if err != nil {
 		return nil, err
 	}

@@ -98,7 +98,12 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 }
 
 func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
-	connScope, err := l.rcmgr.OpenConnection(network.DirInbound, false)
+	remoteMultiaddr, err := toQuicMultiaddr(qconn.RemoteAddr())
+	if err != nil {
+		return nil, err
+	}
+
+	connScope, err := l.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
 	if err != nil {
 		log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
 		return nil, err
@@ -119,11 +124,6 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 	}
 	if err := connScope.SetPeer(remotePeerID); err != nil {
 		log.Debugw("resource manager blocked incoming connection for peer", "peer", remotePeerID, "addr", qconn.RemoteAddr(), "error", err)
-		connScope.Done()
-		return nil, err
-	}
-	remoteMultiaddr, err := toQuicMultiaddr(qconn.RemoteAddr())
-	if err != nil {
 		connScope.Done()
 		return nil, err
 	}

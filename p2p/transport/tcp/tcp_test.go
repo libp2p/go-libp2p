@@ -70,7 +70,7 @@ func TestResourceManager(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		scope := mocknetwork.NewMockConnManagementScope(ctrl)
-		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true).Return(scope, nil)
+		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(scope, nil)
 		scope.EXPECT().SetPeer(peerA)
 		scope.EXPECT().PeerScope().Return(network.NullScope).AnyTimes() // called by the upgrader
 		conn, err := tb.Dial(context.Background(), ln.Multiaddr(), peerA)
@@ -81,14 +81,14 @@ func TestResourceManager(t *testing.T) {
 
 	t.Run("connection denied", func(t *testing.T) {
 		rerr := errors.New("nope")
-		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true).Return(nil, rerr)
+		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(nil, rerr)
 		_, err = tb.Dial(context.Background(), ln.Multiaddr(), peerA)
 		require.ErrorIs(t, err, rerr)
 	})
 
 	t.Run("peer denied", func(t *testing.T) {
 		scope := mocknetwork.NewMockConnManagementScope(ctrl)
-		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true).Return(scope, nil)
+		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(scope, nil)
 		rerr := errors.New("nope")
 		scope.EXPECT().SetPeer(peerA).Return(rerr)
 		scope.EXPECT().Done()

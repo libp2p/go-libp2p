@@ -201,7 +201,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 		return t.holePunch(ctx, netw, addr, p)
 	}
 
-	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false)
+	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
 	if err != nil {
 		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
 		return nil, err

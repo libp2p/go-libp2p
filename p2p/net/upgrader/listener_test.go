@@ -362,7 +362,7 @@ func TestListenerResourceManagement(t *testing.T) {
 
 	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	gomock.InOrder(
-		rcmgr.EXPECT().OpenConnection(network.DirInbound, true).Return(connScope, nil),
+		rcmgr.EXPECT().OpenConnection(network.DirInbound, true, gomock.Not(ln.Multiaddr())).Return(connScope, nil),
 		connScope.EXPECT().PeerScope(),
 		connScope.EXPECT().SetPeer(id),
 		connScope.EXPECT().PeerScope(),
@@ -385,7 +385,7 @@ func TestListenerResourceManagementDenied(t *testing.T) {
 	id, upgrader := createUpgrader(t, upgrader.WithResourceManager(rcmgr))
 	ln := createListener(t, upgrader)
 
-	rcmgr.EXPECT().OpenConnection(network.DirInbound, true).Return(nil, errors.New("nope"))
+	rcmgr.EXPECT().OpenConnection(network.DirInbound, true, gomock.Not(ln.Multiaddr())).Return(nil, errors.New("nope"))
 	_, err := dial(t, upgrader, ln.Multiaddr(), id, network.NullScope)
 	require.Error(t, err)
 

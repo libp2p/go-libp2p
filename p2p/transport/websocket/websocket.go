@@ -101,7 +101,7 @@ func (t *WebsocketTransport) Proxy() bool {
 }
 
 func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
-	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true)
+	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
 		return nil, err
 	}

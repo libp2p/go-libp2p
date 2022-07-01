@@ -93,7 +93,7 @@ func (l *listener) handleIncoming() {
 			continue
 		}
 
-		connScope, err := l.rcmgr.OpenConnection(network.DirInbound, true)
+		connScope, err := l.rcmgr.OpenConnection(network.DirInbound, true, maconn.RemoteMultiaddr())
 		if err != nil {
 			log.Debugw("resource manager blocked accept of new connection", "error", err)
 			if err := maconn.Close(); err != nil {
