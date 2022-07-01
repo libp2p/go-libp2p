@@ -9,7 +9,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
 
-	"github.com/libp2p/go-libp2p-core/canonicallog"
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -177,8 +176,6 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 		sconn.Close()
 		return nil, fmt.Errorf("failed to negotiate stream multiplexer: %s", err)
 	}
-
-	canonicallog.LogPeerStatus(100, sconn.RemotePeer(), maconn.RemoteMultiaddr(), "connection_status", "established")
 
 	tc := &transportConn{
 		MuxedConn:      smconn,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/libp2p/go-libp2p-core/canonicallog"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/transport"
 
@@ -124,6 +125,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 			if err != nil {
 				return
 			}
+			canonicallog.LogPeerStatus(100, c.RemotePeer(), c.RemoteMultiaddr(), "connection_status", "established", "dir", "inbound")
 
 			log.Debugf("swarm listener accepted connection: %s <-> %s", c.LocalMultiaddr(), c.RemoteMultiaddr())
 			s.refs.Add(1)
