@@ -47,8 +47,8 @@ var quicConfig = &quic.Config{
 		// TODO(#6): require source address validation when under load
 		return true
 	},
-	KeepAlive: true,
-	Versions:  []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
+	KeepAlivePeriod: 15 * time.Second,
+	Versions:        []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
 }
 
 const statelessResetKeyInfo = "libp2p quic stateless reset key"
