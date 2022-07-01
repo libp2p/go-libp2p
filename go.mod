@@ -11,7 +11,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru v0.5.4
-	github.com/ipfs/go-cid v0.1.0
+	github.com/ipfs/go-cid v0.2.0
 	github.com/ipfs/go-datastore v0.5.1
 	github.com/ipfs/go-ipfs-util v0.0.2
 	github.com/ipfs/go-log/v2 v2.5.1
@@ -20,8 +20,8 @@ require (
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-eventbus v0.2.1
 	github.com/libp2p/go-libp2p-asn-util v0.2.0
-	github.com/libp2p/go-libp2p-core v0.17.0
-	github.com/libp2p/go-libp2p-peerstore v0.7.0
+	github.com/libp2p/go-libp2p-core v0.18.0
+	github.com/libp2p/go-libp2p-peerstore v0.7.1
 	github.com/libp2p/go-libp2p-resource-manager v0.3.0
 	github.com/libp2p/go-libp2p-testing v0.9.2
 	github.com/libp2p/go-mplex v0.7.0
