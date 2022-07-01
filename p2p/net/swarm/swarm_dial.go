@@ -220,11 +220,6 @@ func (db *DialBackoff) cleanup() {
 // This allows us to use various transport protocols, do NAT traversal/relay,
 // etc. to achieve connection.
 func (s *Swarm) DialPeer(ctx context.Context, p peer.ID) (network.Conn, error) {
-	if s.gater != nil && !s.gater.InterceptPeerDial(p) {
-		log.Debugf("gater disallowed outbound connection to peer %s", p.Pretty())
-		return nil, &DialError{Peer: p, Cause: ErrGaterDisallowedConnection}
-	}
-
 	// Avoid typed nil issues.
 	c, err := s.dialPeer(ctx, p)
 	if err != nil {
@@ -252,6 +247,11 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 	conn := s.bestAcceptableConnToPeer(ctx, p)
 	if conn != nil {
 		return conn, nil
+	}
+
+	if s.gater != nil && !s.gater.InterceptPeerDial(p) {
+		log.Debugf("gater disallowed outbound connection to peer %s", p.Pretty())
+		return nil, &DialError{Peer: p, Cause: ErrGaterDisallowedConnection}
 	}
 
 	// apply the DialPeer timeout
