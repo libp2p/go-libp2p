@@ -14,7 +14,6 @@ import (
 
 	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
-	"github.com/libp2p/go-libp2p-core/canonicallog"
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -256,7 +255,6 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 		return nil, fmt.Errorf("secured connection gated")
 	}
 	t.addConn(qconn, c)
-	canonicallog.LogPeerStatus(100, p, remoteMultiaddr, "transport", "quic", "connection_status", "established")
 	return c, nil
 }
 
