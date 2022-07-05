@@ -11,10 +11,18 @@ jobs:
       matrix:
         os: [ "ubuntu", "windows", "macos" ]
         go: [ "1.17.x", "1.18.x" ]
+        suite: [ "basic", "32-bit", "race-detector" ]
+        exclude:
+          - os: macos  # can't run 32 bit tests on OSX.
+            suite: 32-bit
+          - os: macos # speed things up. Windows and OSX VMs are slow
+            suite: race-detector
+          - os: windows # speed things up. Windows and OSX VMs are slow
+            suite: race-detector
     env:
       COVERAGES: ""
     runs-on: ${{ format('{0}-latest', matrix.os) }}
-    name: ${{ matrix.os }} (go ${{ matrix.go }})
+    name: ${{ matrix.suite }} tests - ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
       - uses: actions/checkout@v2
         with:
@@ -39,13 +47,14 @@ jobs:
         if: hashFiles('./.github/actions/go-test-setup') != ''
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
+        if: ${{ matrix.suite == 'basic' }}
         with:
           # Use -coverpkg=./..., so that we include cross-package coverage.
           # If package ./A imports ./B, and ./A's tests also cover ./B,
           # this means ./B's coverage will be significantly higher than 0%.
           run: go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./...
       - name: Run tests (32 bit)
-        if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
+        if: ${{ matrix.suite == '32-bit' }} # can't run 32 bit tests on OSX.
         uses: protocol/multiple-go-modules@v1.2
         env:
           GOARCH: 386
@@ -54,14 +63,16 @@ jobs:
             export "PATH=${{ env.PATH_386 }}:$PATH"
             go test -v ./...
       - name: Run tests with race detector
-        if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
+        if: ${{ matrix.suite == 'race-detector' }} # speed things up. Windows and OSX VMs are slow
         uses: protocol/multiple-go-modules@v1.2
         with:
           run: go test -v -race ./...
       - name: Collect coverage files
+        if: ${{ matrix.suite == 'basic' }}
         shell: bash
         run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
       - name: Upload coverage to Codecov
+        if: ${{ matrix.suite == 'basic' }}
         uses: codecov/codecov-action@f32b3a3741e1053eb607407145bc9619351dc93b # v2.1.0
         with:
           files: '${{ env.COVERAGES }}'
