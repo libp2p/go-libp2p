@@ -1,6 +1,7 @@
 package connmgr
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -17,6 +18,23 @@ const TestResolution = 50 * time.Millisecond
 func waitForTag(t *testing.T, mgr *BasicConnMgr, id peer.ID) {
 	t.Helper()
 	require.Eventually(t, func() bool { return mgr.GetTagInfo(id) != nil }, 500*time.Millisecond, 10*time.Millisecond)
+}
+
+func waitForTags(t *testing.T, mgr *BasicConnMgr, ids []peer.ID) {
+	t.Helper()
+	for _, id := range ids {
+		waitForTag(t, mgr, id)
+	}
+}
+
+func waitForTagValue(t *testing.T, mgr *BasicConnMgr, id peer.ID, value int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		tagInfo := mgr.GetTagInfo(id)
+		t.Logf("tagValue %d", tagInfo.Value)
+		t.Logf("expectedValue %d", value)
+		return tagInfo != nil && tagInfo.Value == value
+	}, 500*time.Millisecond, 10*time.Millisecond)
 }
 
 func TestDecayExpire(t *testing.T) {
@@ -122,35 +140,49 @@ func TestMultiplePeers(t *testing.T) {
 	ids := []peer.ID{tu.RandPeerIDFatal(t), tu.RandPeerIDFatal(t), tu.RandPeerIDFatal(t)}
 	mgr, decay, mockClock := testDecayTracker(t)
 
-	tag1, err := decay.RegisterDecayingTag("beep", 250*time.Millisecond, connmgr.DecayFixed(10), connmgr.BumpSumUnbounded())
-	require.NoError(t, err)
-	tag2, err := decay.RegisterDecayingTag("bop", 100*time.Millisecond, connmgr.DecayFixed(5), connmgr.BumpSumUnbounded())
-	require.NoError(t, err)
-	tag3, err := decay.RegisterDecayingTag("foo", 50*time.Millisecond, connmgr.DecayFixed(1), connmgr.BumpSumUnbounded())
-	require.NoError(t, err)
+	type decayParams struct {
+		ratio int
+		value int
+	}
+	tagParams := []decayParams{
+		{5, 10},
+		{2, 5},
+		{1, 1},
+	}
 
-	_ = tag1.Bump(ids[0], 1000)
-	_ = tag2.Bump(ids[0], 1000)
-	_ = tag3.Bump(ids[0], 1000)
+	var tags []connmgr.DecayingTag
+	for i, p := range tagParams {
+		tag, err := decay.RegisterDecayingTag(strconv.Itoa(i), time.Duration(p.ratio)*TestResolution, connmgr.DecayFixed(p.value), connmgr.BumpSumUnbounded())
+		require.NoError(t, err)
+		tags = append(tags, tag)
+	}
 
-	_ = tag1.Bump(ids[1], 500)
-	_ = tag2.Bump(ids[1], 500)
-	_ = tag3.Bump(ids[1], 500)
+	initValues := make([]int, len(ids))
+	bump := func(i int, value int) {
+		for _, tag := range tags {
+			require.NoError(t, tag.Bump(ids[i], value))
+			initValues[i] += value
+		}
+	}
+	bump(0, 1000)
+	bump(1, 500)
+	bump(2, 100)
+	waitForTags(t, mgr, ids) // allow the background goroutine to process bumps.
 
-	_ = tag1.Bump(ids[2], 100)
-	_ = tag2.Bump(ids[2], 100)
-	_ = tag3.Bump(ids[2], 100)
-
-	// allow the background goroutine to process bumps.
-	require.Eventually(t, func() bool {
-		return mgr.GetTagInfo(ids[0]) != nil && mgr.GetTagInfo(ids[1]) != nil && mgr.GetTagInfo(ids[2]) != nil
-	}, 100*time.Millisecond, 10*time.Millisecond)
-
-	mockClock.Add(3 * time.Second)
-
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(ids[0]).Value == 2670 }, 500*time.Millisecond, 10*time.Millisecond)
-	require.Equal(t, 1170, mgr.GetTagInfo(ids[1]).Value)
-	require.Equal(t, 40, mgr.GetTagInfo(ids[2]).Value)
+	decayTicks := 60
+	mockClock.Add(time.Duration(decayTicks) * TestResolution)
+	for i := 0; i < len(ids); i++ {
+		t.Logf("init value %d: %d", i, initValues[i])
+		finalValue := initValues[i]
+		for _, p := range tagParams {
+			t.Logf("final value: %d", finalValue)
+			finalValue -= decayTicks / p.ratio * p.value
+			t.Logf("subtracting %d / %d * %d = %d",
+				decayTicks, p.ratio, p.value, decayTicks/p.ratio*p.value)
+		}
+		t.Logf("final value: %d", finalValue)
+		waitForTagValue(t, mgr, ids[i], finalValue)
+	}
 }
 
 func TestLinearDecayOverwrite(t *testing.T) {
