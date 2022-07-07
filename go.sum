@@ -345,12 +345,12 @@ github.com/libp2p/go-libp2p-core v0.2.0/go.mod h1:X0eyB0Gy93v0DZtSYbEM7RnMChm9Uv
 github.com/libp2p/go-libp2p-core v0.5.7/go.mod h1:txwbVEhHEXikXn9gfC7/UDDw7rkxuX0bJvM49Ykaswo=
 github.com/libp2p/go-libp2p-core v0.12.0/go.mod h1:ECdxehoYosLYHgDDFa2N4yE8Y7aQRAMf0sX9mf2sbGg=
 github.com/libp2p/go-libp2p-core v0.19.0/go.mod h1:AkA+FUKQfYt1FLNef5fOPlo/naAWjKy/RCjkcPjqzYg=
-github.com/libp2p/go-libp2p-core v0.19.1-0.20220705184706-49b5bc4fa9ca h1:ltT/sxj2TqWxzDE5mJ6GqaIEbAv+ohkMM1fUeEIPRAs=
-github.com/libp2p/go-libp2p-core v0.19.1-0.20220705184706-49b5bc4fa9ca/go.mod h1:2uLhmmqDiFY+dw+70KkBLeKvvsJHGWUINRDdeV1ip7k=
+github.com/libp2p/go-libp2p-core v0.19.1 h1:zaZQQCeCrFMtxFa1wHy6AhsVynyNmZAvwgWqSSPT3WE=
+github.com/libp2p/go-libp2p-core v0.19.1/go.mod h1:2uLhmmqDiFY+dw+70KkBLeKvvsJHGWUINRDdeV1ip7k=
 github.com/libp2p/go-libp2p-peerstore v0.7.1 h1:7FpALlqR+3+oOBXdzm3AVt0vjMYLW1b7jM03E4iEHlw=
 github.com/libp2p/go-libp2p-peerstore v0.7.1/go.mod h1:cdUWTHro83vpg6unCpGUr8qJoX3e93Vy8o97u5ppIM0=
-github.com/libp2p/go-libp2p-resource-manager v0.5.0 h1:se7dW2dCpa+KISlxmKCK2hCzOTtxCmdt/9b16KFKhbk=
-github.com/libp2p/go-libp2p-resource-manager v0.5.0/go.mod h1:CggtV6EZb+Y0dGh41q5ezO4udcVKyhcEFpydHD8EMe0=
+github.com/libp2p/go-libp2p-resource-manager v0.5.1 h1:jm0mdqn7yfh7wbUzlj948BYZX0KZ3RW7OqerkGQ5rYY=
+github.com/libp2p/go-libp2p-resource-manager v0.5.1/go.mod h1:CggtV6EZb+Y0dGh41q5ezO4udcVKyhcEFpydHD8EMe0=
 github.com/libp2p/go-libp2p-testing v0.1.1/go.mod h1:xaZWMJrPUM5GlDBxCeGUi7kI4eqnjVyavGroI2nxEM0=
 github.com/libp2p/go-libp2p-testing v0.10.0 h1:LO7wuUPPNAe1D1s0HZ+9WoROaGIn/MEl1wtugXuTRzg=
 github.com/libp2p/go-libp2p-testing v0.10.0/go.mod h1:jJ4fiJwyZ3UlPTLcnz/sEmPPSviQ79Q0MVD/CykzrP0=
