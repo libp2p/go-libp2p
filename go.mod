@@ -42,7 +42,7 @@ require (
 	github.com/multiformats/go-multistream v0.3.3
 	github.com/multiformats/go-varint v0.0.6
 	github.com/prometheus/client_golang v1.12.1
-	github.com/raulk/go-watchdog v1.2.0
+	github.com/raulk/go-watchdog v1.3.0
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
@@ -98,7 +98,6 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.35.0 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
-	github.com/raulk/clock v1.1.0 // indirect
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
