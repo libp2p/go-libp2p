@@ -525,23 +525,24 @@ func TestDialSimultaneousJoin(t *testing.T) {
 	s2silentAddrs, s2silentListener := newSilentListener(t)
 	go acceptAndHang(s2silentListener)
 
-	connch := make(chan network.Conn, 512)
+	secondDial := make(chan struct{})
 	errs := make(chan error, 2)
+	var c1, c2, c3 network.Conn
 
 	// start a dial to s2 through the silent addr
 	go func() {
+		var err error
 		s1.Peerstore().AddAddrs(s2.LocalPeer(), s2silentAddrs, peerstore.PermanentAddrTTL)
 
-		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
+		<-secondDial
+		c1, err = s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {
 			errs <- fmt.Errorf("first dial: %w", err)
-			connch <- nil
 			return
 		}
 
-		t.Logf("first dial succedded; conn: %+v", c)
+		t.Logf("first dial succedded; conn: %+v", c1)
 
-		connch <- c
 		errs <- nil
 	}()
 
@@ -550,6 +551,8 @@ func TestDialSimultaneousJoin(t *testing.T) {
 
 	// start a second dial to s2 that uses the real s2 addrs
 	go func() {
+		defer close(secondDial)
+		var err error
 		s2addrs, err := s2.InterfaceListenAddresses()
 		if err != nil {
 			errs <- err
@@ -557,38 +560,31 @@ func TestDialSimultaneousJoin(t *testing.T) {
 		}
 		s1.Peerstore().AddAddrs(s2.LocalPeer(), s2addrs[:1], peerstore.PermanentAddrTTL)
 
-		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
+		c2, err = s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {
 			errs <- fmt.Errorf("second dial: %w", err)
-			connch <- nil
 			return
 		}
 
-		t.Logf("second dial succedded; conn: %+v", c)
+		t.Logf("second dial succedded; conn: %+v", c2)
 
-		connch <- c
 		errs <- nil
 	}()
-
-	// wait for the second dial to finish
-	c2 := <-connch
 
 	// start a third dial to s2, this should get the existing connection from the successful dial
 	go func() {
-		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
+		var err error
+		<-secondDial
+		c3, err = s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {
 			errs <- fmt.Errorf("third dial: %w", err)
-			connch <- nil
 			return
 		}
 
-		t.Logf("third dial succedded; conn: %+v", c)
+		t.Logf("third dial succedded; conn: %+v", c3)
 
-		connch <- c
 		errs <- nil
 	}()
-
-	c3 := <-connch
 
 	// raise any errors from the previous goroutines
 	for i := 0; i < 3; i++ {
@@ -601,13 +597,8 @@ func TestDialSimultaneousJoin(t *testing.T) {
 
 	// next, the first dial to s2, using the silent addr should timeout; at this point the dial
 	// will error but the last chance check will see the existing connection and return it
-	select {
-	case c1 := <-connch:
-		if c1 != c2 {
-			t.Fatal("expected c1 and c2 to be the same")
-		}
-	case <-time.After(2 * dialTimeout):
-		t.Fatal("no connection from first dial")
+	if c1 != c2 {
+		t.Fatal("expected c1 and c2 to be the same")
 	}
 }
 
