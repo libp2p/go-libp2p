@@ -2,6 +2,7 @@ package swarm_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -533,7 +534,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 
 		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {
-			errs <- err
+			errs <- fmt.Errorf("first dial: %w", err)
 			connch <- nil
 			return
 		}
@@ -558,7 +559,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 
 		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {
-			errs <- err
+			errs <- fmt.Errorf("second dial: %w", err)
 			connch <- nil
 			return
 		}
@@ -576,7 +577,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 	go func() {
 		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {
-			errs <- err
+			errs <- fmt.Errorf("third dial: %w", err)
 			connch <- nil
 			return
 		}
