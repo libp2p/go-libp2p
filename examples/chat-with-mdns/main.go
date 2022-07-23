@@ -116,6 +116,9 @@ func main() {
 	peerChan := initMDNS(host, cfg.RendezvousString)
 
 	peer := <-peerChan // will block untill we discover a peer
+	for peer.ID == host.ID() {
+		peer = <-peerChan
+	}
 	fmt.Println("Found peer:", peer, ", connecting")
 
 	if err := host.Connect(ctx, peer); err != nil {

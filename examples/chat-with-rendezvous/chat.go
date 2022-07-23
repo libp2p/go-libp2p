@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"os"
 	"sync"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	discovery "github.com/libp2p/go-libp2p-discovery"
 
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/multiformats/go-multiaddr"
@@ -134,7 +134,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			if err := host.Connect(ctx, *peerinfo); err != nil {
-				logger.Warning(err)
+				logger.Warn(err)
 			} else {
 				logger.Info("Connection established with bootstrap node:", *peerinfo)
 			}
@@ -145,8 +145,8 @@ func main() {
 	// We use a rendezvous point "meet me here" to announce our location.
 	// This is like telling your friends to meet you at the Eiffel Tower.
 	logger.Info("Announcing ourselves...")
-	routingDiscovery := discovery.NewRoutingDiscovery(kademliaDHT)
-	discovery.Advertise(ctx, routingDiscovery, config.RendezvousString)
+	routingDiscovery := routing.NewRoutingDiscovery(kademliaDHT)
+	routingDiscovery.Advertise(ctx, config.RendezvousString)
 	logger.Debug("Successfully announced!")
 
 	// Now, look for others who have announced
@@ -167,7 +167,7 @@ func main() {
 		stream, err := host.NewStream(ctx, peer.ID, protocol.ID(config.ProtocolID))
 
 		if err != nil {
-			logger.Warning("Connection failed:", err)
+			logger.Warn("Connection failed:", err)
 			continue
 		} else {
 			rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
