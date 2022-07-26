@@ -176,6 +176,9 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 				continue
 			}
 			for _, info := range infos {
+				if info.ID == s.host.ID() {
+					continue
+				}
 				go s.notifee.HandlePeerFound(info)
 			}
 		}
