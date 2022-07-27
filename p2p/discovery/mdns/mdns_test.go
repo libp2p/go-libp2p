@@ -46,27 +46,6 @@ func (n *notif) GetPeers() []peer.AddrInfo {
 	return infos
 }
 
-func TestSelfDiscovery(t *testing.T) {
-	notif := &notif{}
-	hostID := setupMDNS(t, notif)
-	assert.Eventuallyf(
-		t,
-		func() bool {
-			var found bool
-			for _, info := range notif.GetPeers() {
-				if info.ID == hostID {
-					found = true
-					break
-				}
-			}
-			return found
-		},
-		5*time.Second,
-		5*time.Millisecond,
-		"expected peer to find itself",
-	)
-}
-
 func TestOtherDiscovery(t *testing.T) {
 	const n = 4
 
