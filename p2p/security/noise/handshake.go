@@ -57,6 +57,7 @@ func (s *secureSession) runHandshake(ctx context.Context) (err error) {
 		Pattern:       noise.HandshakeXX,
 		Initiator:     s.initiator,
 		StaticKeypair: kp,
+		Prologue:      s.prologue,
 	}
 
 	hs, err := noise.NewHandshakeState(cfg)
