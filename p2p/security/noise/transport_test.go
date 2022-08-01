@@ -384,18 +384,20 @@ func TestPrologueMatches(t *testing.T) {
 
 	go func() {
 		defer close(done)
-		conn, err := initTransport.
-			WithNoiseOptions(NoiseOptions{Prologue: commonPrologue}).
-			SecureOutbound(context.TODO(), initConn, respTransport.localID)
+		tpt, err := initTransport.
+			WithSessionOptions(Prologue(commonPrologue))
 		require.NoError(t, err)
+		conn, err := tpt.SecureOutbound(context.TODO(), initConn, respTransport.localID)
 		defer conn.Close()
+		require.NoError(t, err)
 	}()
 
-	conn, err := respTransport.
-		WithNoiseOptions(NoiseOptions{Prologue: commonPrologue}).
-		SecureInbound(context.TODO(), respConn, "")
+	tpt, err := respTransport.
+		WithSessionOptions(Prologue(commonPrologue))
 	require.NoError(t, err)
+	conn, err:= tpt.SecureInbound(context.TODO(), respConn, "")
 	defer conn.Close()
+	require.NoError(t, err)
 	<-done
 }
 
@@ -409,15 +411,18 @@ func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
 
 	go func() {
 		defer close(done)
-		_, err := initTransport.
-			WithNoiseOptions(NoiseOptions{Prologue: []byte("testtesttest")}).
-			SecureOutbound(context.TODO(), initConn, respTransport.localID)
+		tpt, err := initTransport.
+			WithSessionOptions(Prologue([]byte("testtesttest")))
+		require.NoError(t, err)
+		_, err = tpt.SecureOutbound(context.TODO(), initConn, respTransport.localID)
 		require.Error(t, err)
 	}()
 
-	_, err := respTransport.
-		WithNoiseOptions(NoiseOptions{Prologue: []byte("testtesttesttest")}).
-		SecureInbound(context.TODO(), respConn, "")
+	tpt, err := respTransport.
+		WithSessionOptions(Prologue([]byte("testtesttesttest")))
+	require.NoError(t, err)
+
+	_, err = tpt.SecureInbound(context.TODO(), respConn, "")
 	require.Error(t, err)
 	<-done
 }
