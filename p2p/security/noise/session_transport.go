@@ -10,7 +10,7 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-type SessionOption = func (*SessionTransport) error
+type SessionOption = func(*SessionTransport) error
 
 var _ sec.SecureTransport = &SessionTransport{}
 
@@ -41,7 +41,7 @@ func (i *SessionTransport) SecureOutbound(ctx context.Context, insecure net.Conn
 }
 
 func (t *Transport) WithSessionOptions(opts ...SessionOption) (sec.SecureTransport, error) {
-	st := &SessionTransport{ t: t}
+	st := &SessionTransport{t: t}
 	for _, opt := range opts {
 		if err := opt(st); err != nil {
 			return nil, err
@@ -51,7 +51,7 @@ func (t *Transport) WithSessionOptions(opts ...SessionOption) (sec.SecureTranspo
 }
 
 func Prologue(prologue []byte) SessionOption {
-	return func (s *SessionTransport) error {
+	return func(s *SessionTransport) error {
 		s.prologue = prologue
 		return nil
 	}

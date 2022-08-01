@@ -395,7 +395,7 @@ func TestPrologueMatches(t *testing.T) {
 	tpt, err := respTransport.
 		WithSessionOptions(Prologue(commonPrologue))
 	require.NoError(t, err)
-	conn, err:= tpt.SecureInbound(context.TODO(), respConn, "")
+	conn, err := tpt.SecureInbound(context.TODO(), respConn, "")
 	defer conn.Close()
 	require.NoError(t, err)
 	<-done
