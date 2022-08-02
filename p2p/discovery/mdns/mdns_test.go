@@ -57,14 +57,14 @@ func TestOtherDiscovery(t *testing.T) {
 		hostIDs[i] = setupMDNS(t, notif)
 	}
 
-	containsAllHostIDs := func(ids []peer.ID,hostCheckIndex int) bool {
-		for i := 0; i < n; i++ {
+	containsAllHostIDs := func(ids []peer.ID,currentHostID peer.ID) bool {
+		for _, id := range hostIDs {
 			var found bool
-			if i == hostCheckIndex {
+			if currentHostID == id {
 				continue
 			}
-			for _, id := range ids {
-				if hostIDs[i] == id {
+			for _, i := range ids {
+				if id == i {
 					found = true
 					break
 				}
@@ -79,13 +79,13 @@ func TestOtherDiscovery(t *testing.T) {
 	assert.Eventuallyf(
 		t,
 		func() bool {
-			for i := 0; i < n; i++ {
-				infos := notifs[i].GetPeers()
+			for i, notif := range notifs {
+				infos := notif.GetPeers()
 				ids := make([]peer.ID, 0, len(infos))
 				for _, info := range infos {
 					ids = append(ids, info.ID)
 				}
-				if !containsAllHostIDs(ids,i) {
+				if !containsAllHostIDs(ids,hostIDs[i]) {
 					return false
 				}
 			}
