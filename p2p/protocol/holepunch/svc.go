@@ -242,7 +242,7 @@ func (s *Service) handleNewStream(str network.Stream) {
 	rtt, addrs, err := s.incomingHolePunch(str)
 	if err != nil {
 		s.tracer.ProtocolError(rp, err)
-		log.Debugw("error handling holepunching stream from", rp, "error", err)
+		log.Debugw("error handling holepunching stream from", "peer", rp, "error", err)
 		str.Reset()
 		return
 	}
