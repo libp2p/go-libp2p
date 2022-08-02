@@ -57,7 +57,7 @@ func TestOtherDiscovery(t *testing.T) {
 		hostIDs[i] = setupMDNS(t, notif)
 	}
 
-	containsAllHostIDs := func(ids []peer.ID,currentHostID peer.ID) bool {
+	containsAllHostIDs := func(ids []peer.ID, currentHostID peer.ID) bool {
 		for _, id := range hostIDs {
 			var found bool
 			if currentHostID == id {
@@ -85,7 +85,7 @@ func TestOtherDiscovery(t *testing.T) {
 				for _, info := range infos {
 					ids = append(ids, info.ID)
 				}
-				if !containsAllHostIDs(ids,hostIDs[i]) {
+				if !containsAllHostIDs(ids, hostIDs[i]) {
 					return false
 				}
 			}
