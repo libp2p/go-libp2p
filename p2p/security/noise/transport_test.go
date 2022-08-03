@@ -402,6 +402,7 @@ func TestPrologueMatches(t *testing.T) {
 }
 
 func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
+	initPrologue, respPrologue := []byte("initPrologue"), []byte("respPrologue")
 	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
 	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
 
@@ -412,14 +413,13 @@ func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
 	go func() {
 		defer close(done)
 		tpt, err := initTransport.
-			WithSessionOptions(Prologue([]byte("testtesttest")))
+			WithSessionOptions(Prologue(initPrologue))
 		require.NoError(t, err)
 		_, err = tpt.SecureOutbound(context.TODO(), initConn, respTransport.localID)
 		require.Error(t, err)
 	}()
 
-	tpt, err := respTransport.
-		WithSessionOptions(Prologue([]byte("testtesttesttest")))
+	tpt, err := respTransport.WithSessionOptions(Prologue(respPrologue))
 	require.NoError(t, err)
 
 	_, err = tpt.SecureInbound(context.TODO(), respConn, "")
