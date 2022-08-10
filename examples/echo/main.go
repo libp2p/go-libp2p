@@ -18,18 +18,12 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 
-	golog "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// LibP2P code uses golog to log messages. They log with different
-	// string IDs (i.e. "swarm"). We can control the verbosity level for
-	// all loggers with:
-	golog.SetAllLoggers(golog.LevelInfo) // Change to INFO for extra info
 
 	// Parse options from the command line
 	listenF := flag.Int("l", 0, "wait for incoming connections")
@@ -89,7 +83,7 @@ func makeBasicHost(listenPort int, insecure bool, randseed int64) (host.Host, er
 
 func getHostAddress(ha host.Host) string {
 	// Build host multiaddress
-	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", ha.ID().Pretty()))
+	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
 
 	// Now we can build a full multiaddress to reach this host
 	// by encapsulating both addresses:
@@ -138,40 +132,29 @@ func runSender(ctx context.Context, ha host.Host, targetPeer string) {
 		}
 	})
 
-	// The following code extracts target's the peer ID from the
-	// given multiaddress
-	ipfsaddr, err := ma.NewMultiaddr(targetPeer)
+	// Turn the targetPeer into a multiaddr.
+	maddr, err := ma.NewMultiaddr(targetPeer)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	pid, err := ipfsaddr.ValueForProtocol(ma.P_IPFS)
+	// Extract the peer ID from the multiaddr.
+	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-
-	peerid, err := peer.Decode(pid)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// Decapsulate the /ipfs/<peerID> part from the target
-	// /ip4/<a.b.c.d>/ipfs/<peer> becomes /ip4/<a.b.c.d>
-	targetPeerAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", pid))
-	targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
 
 	// We have a peer ID and a targetAddr so we add it to the peerstore
 	// so LibP2P knows how to contact it
-	ha.Peerstore().AddAddr(peerid, targetAddr, peerstore.PermanentAddrTTL)
+	ha.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
 
 	log.Println("sender opening stream")
 	// make a new stream from host B to host A
 	// it should be handled on host A by the handler we set above because
 	// we use the same /echo/1.0.0 protocol
-	s, err := ha.NewStream(context.Background(), peerid, "/echo/1.0.0")
+	s, err := ha.NewStream(context.Background(), info.ID, "/echo/1.0.0")
 	if err != nil {
 		log.Println(err)
 		return
