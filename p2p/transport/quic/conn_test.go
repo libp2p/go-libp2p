@@ -30,6 +30,16 @@ import (
 
 //go:generate sh -c "mockgen -package libp2pquic -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p-core/connmgr ConnectionGater && goimports -w mock_connection_gater_test.go"
 
+type connTestCase struct {
+	Name    string
+	Options []Option
+}
+
+var connTestCases = []*connTestCase{
+	{"reuseport_on", []Option{}},
+	{"reuseport_off", []Option{DisableReuseport()}},
+}
+
 func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 	var priv ic.PrivKey
 	var err error
@@ -52,20 +62,29 @@ func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 
 func runServer(t *testing.T, tr tpt.Transport, addr string) tpt.Listener {
 	t.Helper()
+
 	ln, err := tr.Listen(ma.StringCast(addr))
 	require.NoError(t, err)
 	return ln
 }
 
 func TestHandshake(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testHandshake(t, tc)
+		})
+	}
+}
+
+func testHandshake(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	clientID, clientKey := createPeer(t)
-	serverTransport, err := NewTransport(serverKey, nil, nil, nil)
+	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 
 	handshake := func(t *testing.T, ln tpt.Listener) {
-		clientTransport, err := NewTransport(clientKey, nil, nil, nil)
+		clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 		require.NoError(t, err)
 		defer clientTransport.(io.Closer).Close()
 		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
@@ -100,6 +119,14 @@ func TestHandshake(t *testing.T) {
 }
 
 func TestResourceManagerSuccess(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testResourceManagerSuccess(t, tc)
+		})
+	}
+}
+
+func testResourceManagerSuccess(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	clientID, clientKey := createPeer(t)
 
@@ -107,7 +134,7 @@ func TestResourceManagerSuccess(t *testing.T) {
 	defer ctrl.Finish()
 
 	serverRcmgr := mocknetwork.NewMockResourceManager(ctrl)
-	serverTransport, err := NewTransport(serverKey, nil, nil, serverRcmgr)
+	serverTransport, err := NewTransport(serverKey, nil, nil, serverRcmgr, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic"))
@@ -115,7 +142,7 @@ func TestResourceManagerSuccess(t *testing.T) {
 	defer ln.Close()
 
 	clientRcmgr := mocknetwork.NewMockResourceManager(ctrl)
-	clientTransport, err := NewTransport(clientKey, nil, nil, clientRcmgr)
+	clientTransport, err := NewTransport(clientKey, nil, nil, clientRcmgr, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
 
@@ -143,12 +170,20 @@ func TestResourceManagerSuccess(t *testing.T) {
 }
 
 func TestResourceManagerDialDenied(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testResourceManagerDialDenied(t, tc)
+		})
+	}
+}
+
+func testResourceManagerDialDenied(t *testing.T, tc *connTestCase) {
 	_, clientKey := createPeer(t)
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
-	clientTransport, err := NewTransport(clientKey, nil, nil, rcmgr)
+	clientTransport, err := NewTransport(clientKey, nil, nil, rcmgr, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
 
@@ -163,16 +198,25 @@ func TestResourceManagerDialDenied(t *testing.T) {
 
 	_, err = clientTransport.Dial(context.Background(), target, p)
 	require.ErrorIs(t, err, rerr)
+
 }
 
 func TestResourceManagerAcceptDenied(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testResourceManagerAcceptDenied(t, tc)
+		})
+	}
+}
+
+func testResourceManagerAcceptDenied(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	clientID, clientKey := createPeer(t)
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	clientRcmgr := mocknetwork.NewMockResourceManager(ctrl)
-	clientTransport, err := NewTransport(clientKey, nil, nil, clientRcmgr)
+	clientTransport, err := NewTransport(clientKey, nil, nil, clientRcmgr, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
 
@@ -184,7 +228,7 @@ func TestResourceManagerAcceptDenied(t *testing.T) {
 		serverConnScope.EXPECT().SetPeer(clientID).Return(rerr),
 		serverConnScope.EXPECT().Done(),
 	)
-	serverTransport, err := NewTransport(serverKey, nil, nil, serverRcmgr)
+	serverTransport, err := NewTransport(serverKey, nil, nil, serverRcmgr, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic"))
@@ -216,16 +260,24 @@ func TestResourceManagerAcceptDenied(t *testing.T) {
 }
 
 func TestStreams(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testStreams(t, tc)
+		})
+	}
+}
+
+func testStreams(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
 
-	serverTransport, err := NewTransport(serverKey, nil, nil, nil)
+	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
 	defer ln.Close()
 
-	clientTransport, err := NewTransport(clientKey, nil, nil, nil)
+	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
 	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
@@ -248,16 +300,24 @@ func TestStreams(t *testing.T) {
 }
 
 func TestHandshakeFailPeerIDMismatch(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testHandshakeFailPeerIDMismatch(t, tc)
+		})
+	}
+}
+
+func testHandshakeFailPeerIDMismatch(t *testing.T, tc *connTestCase) {
 	_, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
 	thirdPartyID, _ := createPeer(t)
 
-	serverTransport, err := NewTransport(serverKey, nil, nil, nil)
+	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
 
-	clientTransport, err := NewTransport(clientKey, nil, nil, nil)
+	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	// dial, but expect the wrong peer ID
 	_, err = clientTransport.Dial(context.Background(), ln.Multiaddr(), thirdPartyID)
@@ -282,6 +342,14 @@ func TestHandshakeFailPeerIDMismatch(t *testing.T) {
 }
 
 func TestConnectionGating(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testConnectionGating(t, tc)
+		})
+	}
+}
+
+func testConnectionGating(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
 
@@ -290,7 +358,7 @@ func TestConnectionGating(t *testing.T) {
 	cg := NewMockConnectionGater(mockCtrl)
 
 	t.Run("accepted connections", func(t *testing.T) {
-		serverTransport, err := NewTransport(serverKey, nil, cg, nil)
+		serverTransport, err := NewTransport(serverKey, nil, cg, nil, tc.Options...)
 		defer serverTransport.(io.Closer).Close()
 		require.NoError(t, err)
 		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
@@ -305,7 +373,7 @@ func TestConnectionGating(t *testing.T) {
 			require.NoError(t, err)
 		}()
 
-		clientTransport, err := NewTransport(clientKey, nil, nil, nil)
+		clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 		require.NoError(t, err)
 		defer clientTransport.(io.Closer).Close()
 		// make sure that connection attempts fails
@@ -335,7 +403,7 @@ func TestConnectionGating(t *testing.T) {
 	})
 
 	t.Run("secured connections", func(t *testing.T) {
-		serverTransport, err := NewTransport(serverKey, nil, nil, nil)
+		serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 		require.NoError(t, err)
 		defer serverTransport.(io.Closer).Close()
 		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
@@ -344,7 +412,7 @@ func TestConnectionGating(t *testing.T) {
 		cg := NewMockConnectionGater(mockCtrl)
 		cg.EXPECT().InterceptSecured(gomock.Any(), gomock.Any(), gomock.Any())
 
-		clientTransport, err := NewTransport(clientKey, nil, cg, nil)
+		clientTransport, err := NewTransport(clientKey, nil, cg, nil, tc.Options...)
 		require.NoError(t, err)
 		defer clientTransport.(io.Closer).Close()
 
@@ -363,16 +431,24 @@ func TestConnectionGating(t *testing.T) {
 }
 
 func TestDialTwo(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testDialTwo(t, tc)
+		})
+	}
+}
+
+func testDialTwo(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
 	serverID2, serverKey2 := createPeer(t)
 
-	serverTransport, err := NewTransport(serverKey, nil, nil, nil)
+	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 	ln1 := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
 	defer ln1.Close()
-	serverTransport2, err := NewTransport(serverKey2, nil, nil, nil)
+	serverTransport2, err := NewTransport(serverKey2, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport2.(io.Closer).Close()
 	ln2 := runServer(t, serverTransport2, "/ip4/127.0.0.1/udp/0/quic")
@@ -398,7 +474,7 @@ func TestDialTwo(t *testing.T) {
 		}
 	}()
 
-	clientTransport, err := NewTransport(clientKey, nil, nil, nil)
+	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
 	c1, err := clientTransport.Dial(context.Background(), ln1.Multiaddr(), serverID)
@@ -435,6 +511,14 @@ func TestDialTwo(t *testing.T) {
 }
 
 func TestStatelessReset(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testStatelessReset(t, tc)
+		})
+	}
+}
+
+func testStatelessReset(t *testing.T, tc *connTestCase) {
 	origGarbageCollectInterval := garbageCollectInterval
 	origMaxUnusedDuration := maxUnusedDuration
 
@@ -449,7 +533,7 @@ func TestStatelessReset(t *testing.T) {
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
 
-	serverTransport, err := NewTransport(serverKey, nil, nil, nil)
+	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
@@ -466,7 +550,7 @@ func TestStatelessReset(t *testing.T) {
 	defer proxy.Close()
 
 	// establish a connection
-	clientTransport, err := NewTransport(clientKey, nil, nil, nil)
+	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
 	proxyAddr, err := toQuicMultiaddr(proxy.LocalAddr())
@@ -512,10 +596,18 @@ func TestStatelessReset(t *testing.T) {
 }
 
 func TestHolePunching(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testHolePunching(t, tc)
+		})
+	}
+}
+
+func testHolePunching(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	clientID, clientKey := createPeer(t)
 
-	t1, err := NewTransport(serverKey, nil, nil, nil)
+	t1, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer t1.(io.Closer).Close()
 	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
@@ -529,7 +621,7 @@ func TestHolePunching(t *testing.T) {
 		require.Error(t, err, "didn't expect to accept any connections")
 	}()
 
-	t2, err := NewTransport(clientKey, nil, nil, nil)
+	t2, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer t2.(io.Closer).Close()
 	ln2, err := t2.Listen(laddr)
