@@ -802,7 +802,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		p1 := peerInfo{id: peer.ID("peer1")}
 		p2 := peerInfo{id: peer.ID("peer2"), temp: true}
 		pis := peerInfos{p1, p2}
-		pis.SortByValue()
+		pis.SortByValueAndStreams(false)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
@@ -810,31 +810,67 @@ func TestPeerInfoSorting(t *testing.T) {
 		p1 := peerInfo{id: peer.ID("peer1"), value: 40}
 		p2 := peerInfo{id: peer.ID("peer2"), value: 20}
 		pis := peerInfos{p1, p2}
-		pis.SortByValue()
+		pis.SortByValueAndStreams(false)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
-	t.Run("in a memory emergency, starts with incoming connections", func(t *testing.T) {
+	t.Run("prefer peers with no streams", func(t *testing.T) {
+		p1 := peerInfo{id: peer.ID("peer1"),
+			conns: map[network.Conn]time.Time{
+				&mockConn{stats: network.ConnStats{NumStreams: 0}}: time.Now(),
+			},
+		}
+		p2 := peerInfo{id: peer.ID("peer2"),
+			conns: map[network.Conn]time.Time{
+				&mockConn{stats: network.ConnStats{NumStreams: 1}}: time.Now(),
+			},
+		}
+		pis := peerInfos{p2, p1}
+		pis.SortByValueAndStreams(false)
+		require.Equal(t, pis, peerInfos{p1, p2})
+	})
+
+	t.Run("in a memory emergency, starts with incoming connections and higher streams", func(t *testing.T) {
 		incoming := network.ConnStats{}
 		incoming.Direction = network.DirInbound
 		outgoing := network.ConnStats{}
 		outgoing.Direction = network.DirOutbound
+
+		outgoingSomeStreams := network.ConnStats{Stats: network.Stats{Direction: network.DirOutbound}, NumStreams: 1}
+		outgoingMoreStreams := network.ConnStats{Stats: network.Stats{Direction: network.DirOutbound}, NumStreams: 2}
 		p1 := peerInfo{
 			id: peer.ID("peer1"),
 			conns: map[network.Conn]time.Time{
-				&mockConn{stats: outgoing}: time.Now(),
+				&mockConn{stats: outgoingSomeStreams}: time.Now(),
 			},
 		}
 		p2 := peerInfo{
 			id: peer.ID("peer2"),
 			conns: map[network.Conn]time.Time{
+				&mockConn{stats: outgoingSomeStreams}: time.Now(),
+				&mockConn{stats: incoming}:            time.Now(),
+			},
+		}
+		p3 := peerInfo{
+			id: peer.ID("peer3"),
+			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoing}: time.Now(),
 				&mockConn{stats: incoming}: time.Now(),
 			},
 		}
-		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams()
-		require.Equal(t, pis, peerInfos{p2, p1})
+		p4 := peerInfo{
+			id: peer.ID("peer4"),
+			conns: map[network.Conn]time.Time{
+				&mockConn{stats: outgoingMoreStreams}: time.Now(),
+				&mockConn{stats: incoming}:            time.Now(),
+			},
+		}
+		pis := peerInfos{p1, p2, p3, p4}
+		pis.SortByValueAndStreams(true)
+		// p3 is first because it is inactive (no streams).
+		// p4 is second because it has the most streams and we priortize killing
+		// connections with the higher number of streams.
+		require.Equal(t, pis, peerInfos{p3, p4, p2, p1})
 	})
 
 	t.Run("in a memory emergency, starts with connections that have many streams", func(t *testing.T) {
@@ -852,7 +888,7 @@ func TestPeerInfoSorting(t *testing.T) {
 			},
 		}
 		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams()
+		pis.SortByValueAndStreams(true)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 }
