@@ -18,12 +18,18 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 
+	golog "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// LibP2P code uses golog to log messages. They log with different
+	// string IDs (i.e. "swarm"). We can control the verbosity level for
+	// all loggers with:
+	golog.SetAllLoggers(golog.LevelInfo) // Change to INFO for extra info
 
 	// Parse options from the command line
 	listenF := flag.Int("l", 0, "wait for incoming connections")
