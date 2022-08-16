@@ -155,7 +155,7 @@ var BackoffMax = time.Minute * 5
 // Backoff is not exponential, it's quadratic and computed according to the
 // following formula:
 //
-//     BackoffBase + BakoffCoef * PriorBackoffs^2
+//	BackoffBase + BakoffCoef * PriorBackoffs^2
 //
 // Where PriorBackoffs is the number of previous backoffs.
 func (db *DialBackoff) AddBackoff(p peer.ID, addr ma.Multiaddr) {

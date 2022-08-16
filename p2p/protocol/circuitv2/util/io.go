@@ -22,10 +22,10 @@ type DelimitedReader struct {
 // it can take multiple single byte Reads to read the length and another Read
 // to read the message payload.
 // However, this is not critical performance degradation as
-// - the reader is utilized to read one (dialer, stop) or two messages (hop) during
-//   the handshake, so it's a drop in the water for the connection lifetime.
-// - messages are small (max 4k) and the length fits in a couple of bytes,
-//   so overall we have at most three reads per message.
+//   - the reader is utilized to read one (dialer, stop) or two messages (hop) during
+//     the handshake, so it's a drop in the water for the connection lifetime.
+//   - messages are small (max 4k) and the length fits in a couple of bytes,
+//     so overall we have at most three reads per message.
 func NewDelimitedReader(r io.Reader, maxSize int) *DelimitedReader {
 	return &DelimitedReader{r: r, buf: pool.Get(maxSize)}
 }

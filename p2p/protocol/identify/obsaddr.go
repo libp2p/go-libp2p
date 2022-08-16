@@ -51,9 +51,9 @@ type observation struct {
 
 // observedAddr is an entry for an address reported by our peers.
 // We only use addresses that:
-// - have been observed at least 4 times in last 40 minutes. (counter symmetric nats)
-// - have been observed at least once recently (10 minutes), because our position in the
-//   network, or network port mapppings, may have changed.
+//   - have been observed at least 4 times in last 40 minutes. (counter symmetric nats)
+//   - have been observed at least once recently (10 minutes), because our position in the
+//     network, or network port mapppings, may have changed.
 type observedAddr struct {
 	addr       ma.Multiaddr
 	seenBy     map[string]observation // peer(observer) address -> observation info

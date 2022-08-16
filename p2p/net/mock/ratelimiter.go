@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-//  A RateLimiter is used by a link to determine how long to wait before sending
-//  data given a bandwidth cap.
+// A RateLimiter is used by a link to determine how long to wait before sending
+// data given a bandwidth cap.
 type RateLimiter struct {
 	lock         sync.Mutex
 	bandwidth    float64       // bytes per nanosecond
@@ -17,7 +17,7 @@ type RateLimiter struct {
 	duration     time.Duration // total delay introduced due to rate limiting
 }
 
-//  Creates a new RateLimiter with bandwidth (in bytes/sec)
+// Creates a new RateLimiter with bandwidth (in bytes/sec)
 func NewRateLimiter(bandwidth float64) *RateLimiter {
 	//  convert bandwidth to bytes per nanosecond
 	b := bandwidth / float64(time.Second)
@@ -29,7 +29,7 @@ func NewRateLimiter(bandwidth float64) *RateLimiter {
 	}
 }
 
-//  Changes bandwidth of a RateLimiter and resets its allowance
+// Changes bandwidth of a RateLimiter and resets its allowance
 func (r *RateLimiter) UpdateBandwidth(bandwidth float64) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -42,7 +42,7 @@ func (r *RateLimiter) UpdateBandwidth(bandwidth float64) {
 	r.lastUpdate = time.Now()
 }
 
-//  Returns how long to wait before sending data with length 'dataSize' bytes
+// Returns how long to wait before sending data with length 'dataSize' bytes
 func (r *RateLimiter) Limit(dataSize int) time.Duration {
 	r.lock.Lock()
 	defer r.lock.Unlock()

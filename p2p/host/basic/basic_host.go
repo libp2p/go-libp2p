@@ -62,9 +62,9 @@ type AddrsFactory func([]ma.Multiaddr) []ma.Multiaddr
 
 // BasicHost is the basic implementation of the host.Host interface. This
 // particular host implementation:
-//  * uses a protocol muxer to mux per-protocol streams
-//  * uses an identity service to send + receive node information
-//  * uses a nat service to establish NAT port mappings
+//   - uses a protocol muxer to mux per-protocol streams
+//   - uses an identity service to send + receive node information
+//   - uses a nat service to establish NAT port mappings
 type BasicHost struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -559,7 +559,9 @@ func (h *BasicHost) EventBus() event.Bus {
 
 // SetStreamHandler sets the protocol handler on the Host's Mux.
 // This is equivalent to:
-//   host.Mux().SetHandler(proto, handler)
+//
+//	host.Mux().SetHandler(proto, handler)
+//
 // (Threadsafe)
 func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
 	h.Mux().AddHandler(string(pid), func(p string, rwc io.ReadWriteCloser) error {

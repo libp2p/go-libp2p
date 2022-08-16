@@ -104,8 +104,8 @@ func addrKeyAndPort(a ma.Multiaddr) (string, int) {
 
 // clean up addrsplosion
 // the following heuristic is used:
-// - for each base address/protocol combination, if there are multiple ports advertised then
-//   only accept the default port if present.
+//   - for each base address/protocol combination, if there are multiple ports advertised then
+//     only accept the default port if present.
 //   - If the default port is not present, we check for non-standard ports by tracking
 //     private port bindings if present.
 //   - If there is no default or private port binding, then we can't infer the correct

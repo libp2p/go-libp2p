@@ -34,9 +34,9 @@ func NewNATManager(net network.Network) NATManager {
 // natManager takes care of adding + removing port mappings to the nat.
 // Initialized with the host if it has a NATPortMap option enabled.
 // natManager receives signals from the network, and check on nat mappings:
-//  * natManager listens to the network and adds or closes port mappings
-//    as the network signals Listen() or ListenClose().
-//  * closing the natManager closes the nat and its mappings.
+//   - natManager listens to the network and adds or closes port mappings
+//     as the network signals Listen() or ListenClose().
+//   - closing the natManager closes the nat and its mappings.
 type natManager struct {
 	net   network.Network
 	natMx sync.RWMutex

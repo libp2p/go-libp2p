@@ -86,9 +86,9 @@ type IDService interface {
 // useful information about the local peer. A sort of hello.
 //
 // The idService sends:
-//  * Our IPFS Protocol Version
-//  * Our IPFS Agent Version
-//  * Our public Listen Addresses
+//   - Our IPFS Protocol Version
+//   - Our IPFS Agent Version
+//   - Our public Listen Addresses
 type idService struct {
 	Host      host.Host
 	UserAgent string
