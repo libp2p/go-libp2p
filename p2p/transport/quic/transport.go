@@ -406,6 +406,9 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	}
 	ln, err := newListener(conn, t, t.localPeer, t.privKey, t.identity, t.rcmgr)
 	if err != nil {
+		if !t.connManager.reuseportEnable {
+			conn.Close()
+		}
 		conn.DecreaseCount()
 		return nil, err
 	}

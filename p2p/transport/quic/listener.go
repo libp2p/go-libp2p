@@ -146,7 +146,17 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 // Close closes the listener.
 func (l *listener) Close() error {
 	defer l.conn.DecreaseCount()
-	return l.quicListener.Close()
+
+	if err := l.quicListener.Close(); err != nil {
+		return err
+	}
+
+	if _, ok := l.conn.(*noreuseConn); ok {
+		// if we use a `noreuseConn`, close the underlying connection
+		return l.conn.Close()
+	}
+
+	return nil
 }
 
 // Addr returns the address of this listener.
