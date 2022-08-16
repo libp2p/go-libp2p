@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"testing"
@@ -194,7 +193,7 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 	require.NoError(t, err)
 	defer str.Close()
 
-	out, err := ioutil.ReadAll(str)
+	out, err := io.ReadAll(str)
 	require.NoError(t, err)
 	require.Equal(t, out, msg, "got wrong message")
 }

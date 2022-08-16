@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"reflect"
 	"strings"
 	"sync"
@@ -490,7 +489,7 @@ func TestProtoDowngrade(t *testing.T) {
 	connectedOn := make(chan protocol.ID)
 	h2.SetStreamHandler("/testing/1.0.0", func(s network.Stream) {
 		defer s.Close()
-		result, err := ioutil.ReadAll(s)
+		result, err := io.ReadAll(s)
 		assert.NoError(t, err)
 		assert.Equal(t, string(result), "bar")
 		connectedOn <- s.Protocol()
@@ -511,7 +510,7 @@ func TestProtoDowngrade(t *testing.T) {
 	h2.RemoveStreamHandler("/testing/1.0.0")
 	h2.SetStreamHandler("/testing", func(s network.Stream) {
 		defer s.Close()
-		result, err := ioutil.ReadAll(s)
+		result, err := io.ReadAll(s)
 		assert.NoError(t, err)
 		assert.Equal(t, string(result), "foo")
 		connectedOn <- s.Protocol()

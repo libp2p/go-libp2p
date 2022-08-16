@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"strconv"
@@ -56,7 +55,7 @@ func fullClose(t *testing.T, s network.MuxedStream) {
 		s.Reset()
 		return
 	}
-	b, err := ioutil.ReadAll(s)
+	b, err := io.ReadAll(s)
 	if err != nil {
 		t.Error(err)
 	}

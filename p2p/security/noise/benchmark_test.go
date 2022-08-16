@@ -3,7 +3,6 @@ package noise
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"testing"
@@ -178,7 +177,7 @@ func benchDataTransfer(b *benchenv, dataSize int64, m testMode) {
 		case readBufferLtPlainText:
 			rbuf = make([]byte, len(plainTextBufs[i])-2)
 		}
-		writeTos[i] = &discardWithBuffer{rbuf, ioutil.Discard}
+		writeTos[i] = &discardWithBuffer{rbuf, io.Discard}
 	}
 
 	b.ResetTimer()

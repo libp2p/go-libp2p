@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	mrand "math/rand"
 
@@ -173,7 +172,7 @@ func runSender(ctx context.Context, ha host.Host, targetPeer string) {
 		return
 	}
 
-	out, err := ioutil.ReadAll(s)
+	out, err := io.ReadAll(s)
 	if err != nil {
 		log.Println(err)
 		return

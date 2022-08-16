@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -47,7 +47,7 @@ func getLocalPeerInfo() []peer.AddrInfo {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalln(err)
 	}

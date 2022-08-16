@@ -2,12 +2,10 @@ package main
 
 import (
 	"bufio"
-	"fmt"
-	"os"
-
 	"context"
-
-	"io/ioutil"
+	"fmt"
+	"io"
+	"os"
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -19,7 +17,7 @@ const chatProtocol = protocol.ID("/libp2p/chat/1.0.0")
 // TODO: Replace this handler with a function that handles message from a
 // pubsub Subscribe channel.
 func chatHandler(s network.Stream) {
-	data, err := ioutil.ReadAll(s)
+	data, err := io.ReadAll(s)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
@@ -42,7 +40,7 @@ func chatSend(msg string, s network.Stream) error {
 		return err
 	}
 	s.Close()
-	data, err := ioutil.ReadAll(s)
+	data, err := io.ReadAll(s)
 	if err != nil {
 		return err
 	}

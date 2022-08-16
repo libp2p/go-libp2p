@@ -3,7 +3,7 @@ package swarm_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 	"time"
 
@@ -115,7 +115,7 @@ func TestNetworkOpenStream(t *testing.T) {
 		defer close(done)
 		defer s.Close()
 
-		buf, err := ioutil.ReadAll(s)
+		buf, err := io.ReadAll(s)
 		if err != nil {
 			t.Error(err)
 			return

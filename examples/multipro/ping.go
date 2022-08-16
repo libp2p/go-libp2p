@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 
 	"github.com/libp2p/go-libp2p-core/host"
@@ -36,7 +36,7 @@ func (p *PingProtocol) onPingRequest(s network.Stream) {
 
 	// get request data
 	data := &p2p.PingRequest{}
-	buf, err := ioutil.ReadAll(s)
+	buf, err := io.ReadAll(s)
 	if err != nil {
 		s.Reset()
 		log.Println(err)
@@ -88,7 +88,7 @@ func (p *PingProtocol) onPingRequest(s network.Stream) {
 // remote ping response handler
 func (p *PingProtocol) onPingResponse(s network.Stream) {
 	data := &p2p.PingResponse{}
-	buf, err := ioutil.ReadAll(s)
+	buf, err := io.ReadAll(s)
 	if err != nil {
 		s.Reset()
 		log.Println(err)

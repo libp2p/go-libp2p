@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	mrand "math/rand"
 	"net"
 	"sync/atomic"
@@ -242,7 +241,7 @@ func TestStreams(t *testing.T) {
 	str.Close()
 	sstr, err := serverConn.AcceptStream()
 	require.NoError(t, err)
-	data, err := ioutil.ReadAll(sstr)
+	data, err := io.ReadAll(sstr)
 	require.NoError(t, err)
 	require.Equal(t, data, []byte("foobar"))
 }
@@ -415,7 +414,7 @@ func TestDialTwo(t *testing.T) {
 			str, err := conn.AcceptStream()
 			require.NoError(t, err)
 			str.CloseWrite()
-			d, err := ioutil.ReadAll(str)
+			d, err := io.ReadAll(str)
 			require.NoError(t, err)
 			require.Equal(t, d, data)
 			done <- struct{}{}

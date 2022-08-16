@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 
@@ -62,7 +62,7 @@ func run(raddr string, p string) error {
 	if err := str.CloseWrite(); err != nil {
 		return err
 	}
-	data, err := ioutil.ReadAll(str)
+	data, err := io.ReadAll(str)
 	if err != nil {
 		return err
 	}

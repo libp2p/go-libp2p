@@ -2,7 +2,7 @@ package libp2pquic
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -15,17 +15,19 @@ import (
 )
 
 func createLogDir(t *testing.T) string {
-	dir, err := ioutil.TempDir("", "libp2p-quic-transport-test")
+	dir, err := os.MkdirTemp("", "libp2p-quic-transport-test")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	return dir
 }
 
 func getFile(t *testing.T, dir string) os.FileInfo {
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
-	return files[0]
+	info, err := files[0].Info()
+	require.NoError(t, err)
+	return info
 }
 
 func TestSaveQlog(t *testing.T) {
@@ -63,12 +65,12 @@ func TestQlogCompression(t *testing.T) {
 	logger := newQlogger(qlogDir, logging.PerspectiveServer, []byte("connid"))
 	logger.Write([]byte("foobar"))
 	require.NoError(t, logger.Close())
-	compressed, err := ioutil.ReadFile(qlogDir + "/" + getFile(t, qlogDir).Name())
+	compressed, err := os.ReadFile(qlogDir + "/" + getFile(t, qlogDir).Name())
 	require.NoError(t, err)
 	require.NotEqual(t, compressed, "foobar")
 	c, err := zstd.NewReader(bytes.NewReader(compressed))
 	require.NoError(t, err)
-	data, err := ioutil.ReadAll(c)
+	data, err := io.ReadAll(c)
 	require.NoError(t, err)
 	require.Equal(t, data, []byte("foobar"))
 }

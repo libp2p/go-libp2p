@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 
@@ -67,7 +67,7 @@ func handleConn(conn tpt.CapableConn) error {
 	if err != nil {
 		return err
 	}
-	data, err := ioutil.ReadAll(str)
+	data, err := io.ReadAll(str)
 	if err != nil {
 		return err
 	}

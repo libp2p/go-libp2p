@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 
 	"github.com/gogo/protobuf/proto"
-	uuid "github.com/google/uuid"
+	"github.com/google/uuid"
 	pb "github.com/libp2p/go-libp2p/examples/multipro/pb"
 )
 
@@ -39,7 +39,7 @@ func (e *EchoProtocol) onEchoRequest(s network.Stream) {
 
 	// get request data
 	data := &pb.EchoRequest{}
-	buf, err := ioutil.ReadAll(s)
+	buf, err := io.ReadAll(s)
 	if err != nil {
 		s.Reset()
 		log.Println(err)
@@ -93,7 +93,7 @@ func (e *EchoProtocol) onEchoRequest(s network.Stream) {
 func (e *EchoProtocol) onEchoResponse(s network.Stream) {
 
 	data := &pb.EchoResponse{}
-	buf, err := ioutil.ReadAll(s)
+	buf, err := io.ReadAll(s)
 	if err != nil {
 		s.Reset()
 		log.Println(err)

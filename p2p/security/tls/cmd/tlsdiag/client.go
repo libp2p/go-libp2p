@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"time"
 
@@ -54,7 +54,7 @@ func StartClient() error {
 		return err
 	}
 	fmt.Printf("Authenticated server: %s\n", sconn.RemotePeer().Pretty())
-	data, err := ioutil.ReadAll(sconn)
+	data, err := io.ReadAll(sconn)
 	if err != nil {
 		return err
 	}

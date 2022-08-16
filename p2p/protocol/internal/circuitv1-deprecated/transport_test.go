@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 	"time"
 
@@ -87,7 +87,7 @@ func TestFullAddressTransportDial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := ioutil.ReadAll(s)
+	data, err := io.ReadAll(s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestSpecificRelayTransportDial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := ioutil.ReadAll(s)
+	data, err := io.ReadAll(s)
 	if err != nil {
 		t.Fatal(err)
 	}
