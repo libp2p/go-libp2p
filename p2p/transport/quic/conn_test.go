@@ -595,19 +595,13 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	require.Contains(t, rerr.Error(), "received a stateless reset")
 }
 
+// Hole punching is only expected to work with reuseport enabled.
+// We don't need to test `DisableReuseport` option.
 func TestHolePunching(t *testing.T) {
-	for _, tc := range connTestCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			testHolePunching(t, tc)
-		})
-	}
-}
-
-func testHolePunching(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	clientID, clientKey := createPeer(t)
 
-	t1, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
+	t1, err := NewTransport(serverKey, nil, nil, nil)
 	require.NoError(t, err)
 	defer t1.(io.Closer).Close()
 	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
@@ -621,7 +615,7 @@ func testHolePunching(t *testing.T, tc *connTestCase) {
 		require.Error(t, err, "didn't expect to accept any connections")
 	}()
 
-	t2, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
+	t2, err := NewTransport(clientKey, nil, nil, nil)
 	require.NoError(t, err)
 	defer t2.(io.Closer).Close()
 	ln2, err := t2.Listen(laddr)
