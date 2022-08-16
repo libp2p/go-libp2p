@@ -16,7 +16,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-go@v2
         with:
-          go-version: "1.18.x"
+          go-version: "1.19.x"
       - name: Run repo-specific setup
         uses: ./.github/actions/go-check-setup
         if: hashFiles('./.github/actions/go-check-setup') != ''
@@ -27,7 +27,7 @@ jobs:
             echo "RUNGOGENERATE=true" >> $GITHUB_ENV
           fi
       - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@d7e217c1ff411395475b2971c0824e1e7cc1af98 # 2022.1 (v0.3.0)
+        run: go install honnef.co/go/tools/cmd/staticcheck@376210a89477dedbe6fdc4484b233998650d7b3c # 2022.1.3 (v0.3.3)
       - name: Check that go.mod is tidy
         uses: protocol/multiple-go-modules@v1.2
         with:
