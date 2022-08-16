@@ -586,7 +586,7 @@ func (rf *relayFinder) usingRelay(p peer.ID) bool {
 // selectCandidates returns an ordered slice of relay candidates.
 // Callers should attempt to obtain reservations with the candidates in this order.
 func (rf *relayFinder) selectCandidates() []*candidate {
-	var candidates []*candidate
+	candidates := make([]*candidate, 0, len(rf.candidates))
 	for _, cand := range rf.candidates {
 		candidates = append(candidates, cand)
 	}

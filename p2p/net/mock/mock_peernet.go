@@ -271,7 +271,7 @@ func (pn *peernet) ClosePeer(p peer.ID) error {
 		return nil
 	}
 
-	var conns []*conn
+	conns := make([]*conn, 0, len(cs))
 	for c := range cs {
 		conns = append(conns, c)
 	}

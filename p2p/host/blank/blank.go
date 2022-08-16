@@ -159,9 +159,9 @@ func (bh *BlankHost) NewStream(ctx context.Context, p peer.ID, protos ...protoco
 		return nil, err
 	}
 
-	var protoStrs []string
-	for _, pid := range protos {
-		protoStrs = append(protoStrs, string(pid))
+	protoStrs := make([]string, len(protos))
+	for i, pid := range protos {
+		protoStrs[i] = string(pid)
 	}
 
 	selected, err := mstream.SelectOneOf(protoStrs, s)
