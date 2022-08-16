@@ -1,5 +1,4 @@
 //go:build !cgo || nowatchdog
-// +build !cgo nowatchdog
 
 package connmgr
 

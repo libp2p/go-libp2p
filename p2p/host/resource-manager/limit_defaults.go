@@ -257,7 +257,6 @@ func (cfg *LimitConfig) Apply(c LimitConfig) {
 // memory is the amount of memory that the stack is allowed to consume,
 // for a full it's recommended to use 1/8 of the installed system memory.
 // If memory is smaller than 128 MB, the base configuration will be used.
-//
 func (cfg *ScalingLimitConfig) Scale(memory int64, numFD int) LimitConfig {
 	var scaleFactor int
 	if memory > 128<<20 {
