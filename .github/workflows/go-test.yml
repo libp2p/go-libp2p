@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ "ubuntu", "windows", "macos" ]
-        go: [ "1.17.x", "1.18.x" ]
+        go: [ "1.18.x", "1.19.x" ]
     env:
       COVERAGES: ""
     runs-on: ${{ format('{0}-latest', matrix.os) }}
@@ -43,7 +43,7 @@ jobs:
           # Use -coverpkg=./..., so that we include cross-package coverage.
           # If package ./A imports ./B, and ./A's tests also cover ./B,
           # this means ./B's coverage will be significantly higher than 0%.
-          run: go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./...
+          run: go test -v -shuffle=on -coverprofile=module-coverage.txt -coverpkg=./... ./...
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
         uses: protocol/multiple-go-modules@v1.2
@@ -52,7 +52,7 @@ jobs:
         with:
           run: |
             export "PATH=${{ env.PATH_386 }}:$PATH"
-            go test -v ./...
+            go test -v -shuffle=on ./...
       - name: Run tests with race detector
         if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
         uses: protocol/multiple-go-modules@v1.2
@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@f32b3a3741e1053eb607407145bc9619351dc93b # v2.1.0
+        uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378 # v3.1.0
         with:
           files: '${{ env.COVERAGES }}'
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
