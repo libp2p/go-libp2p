@@ -42,6 +42,15 @@ func (c *tconn) RemotePeer() peer.ID {
 	return c.peer
 }
 
+func (c *tconn) Stat() network.ConnStats {
+	return network.ConnStats{
+		Stats: network.Stats{
+			Direction: network.DirOutbound,
+		},
+		NumStreams: 1,
+	}
+}
+
 func (c *tconn) RemoteMultiaddr() ma.Multiaddr {
 	addr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/1234")
 	if err != nil {
