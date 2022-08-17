@@ -1,0 +1,42 @@
+# Workflow to test different crypto backends
+# Don't test std go as this is already tested by the other testsuite
+
+on: [push, pull_request]
+name: Go Crypto
+
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ "ubuntu" ]
+        go: [ "1.19.x" ]
+        backend: [ "boringcrypto", "openssl" ]
+    env:
+      COVERAGES: ""
+    runs-on: ${{ format('{0}-latest', matrix.os) }}
+    name: ${{ matrix.os }} ${{ matrix.backend }} (go ${{ matrix.go }})
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Go information
+        run: |
+          go version
+          go env
+      - name: Run repo-specific setup
+        uses: ./.github/actions/go-test-setup
+        if: hashFiles('./.github/actions/go-test-setup') != ''
+      - name: Run tests
+        run: |
+          if [[ "$backend" == "boringcrypto" ]]; then export GOEXPERIMENT="boringcrypto"; fi
+          if [[ "$backend" == "openssl" ]]; then export GOTAGS="-tags=openssl"; fi
+          go test $GOTAGS -v -shuffle=on ./...
+          cd core/crypto
+          # ensure that the boringcrypto build do infact contains boringcrypto symbols
+          if [[ "$backend" == "boringcrypto" ]]; then go test -c . && objdump -x crypto.test | grep goboringcrypto -q; fi
+        env:
+          backend: ${{ matrix.backend }}

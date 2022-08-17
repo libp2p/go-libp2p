@@ -39,7 +39,7 @@ func RunBenchmarkSignEd25519(b *testing.B, numBytes int) {
 }
 
 func runBenchmarkSign(b *testing.B, numBytes int, t int) {
-	secret, _, err := GenerateKeyPair(t, 1024)
+	secret, _, err := GenerateKeyPair(t, 2048)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func RunBenchmarkVerifyEd25519(b *testing.B, numBytes int) {
 }
 
 func runBenchmarkVerify(b *testing.B, numBytes int, t int) {
-	secret, public, err := GenerateKeyPair(t, 1024)
+	secret, public, err := GenerateKeyPair(t, 2048)
 	if err != nil {
 		b.Fatal(err)
 	}

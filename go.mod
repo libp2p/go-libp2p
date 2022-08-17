@@ -27,7 +27,7 @@ require (
 	github.com/libp2p/go-msgio v0.2.0
 	github.com/libp2p/go-nat v0.1.0
 	github.com/libp2p/go-netroute v0.2.0
-	github.com/libp2p/go-openssl v0.0.7
+	github.com/libp2p/go-openssl v0.1.0
 	github.com/libp2p/go-reuseport v0.2.0
 	github.com/libp2p/go-yamux/v3 v3.1.2
 	github.com/libp2p/zeroconf/v2 v2.1.1
@@ -87,6 +87,7 @@ require (
 	github.com/marten-seemann/qtls-go1-18 v0.1.2 // indirect
 	github.com/marten-seemann/qtls-go1-19 v0.1.0-beta.1 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
+	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
