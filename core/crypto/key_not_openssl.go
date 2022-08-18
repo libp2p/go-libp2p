@@ -9,7 +9,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 
-	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 // KeyPairFromStdKey wraps standard library (and secp256k1) private keys in libp2p/go-libp2p/core/crypto keys
@@ -30,7 +30,7 @@ func KeyPairFromStdKey(priv crypto.PrivateKey) (PrivKey, PubKey, error) {
 		pub, _ := pubIfc.(ed25519.PublicKey)
 		return &Ed25519PrivateKey{*p}, &Ed25519PublicKey{pub}, nil
 
-	case *btcec.PrivateKey:
+	case *secp256k1.PrivateKey:
 		sPriv := Secp256k1PrivateKey(*p)
 		sPub := Secp256k1PublicKey(*p.PubKey())
 		return &sPriv, &sPub, nil

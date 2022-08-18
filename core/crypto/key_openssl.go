@@ -12,7 +12,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/internal/catch"
 
-	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/libp2p/go-openssl"
 )
 
@@ -40,7 +40,7 @@ func KeyPairFromStdKey(priv crypto.PrivateKey) (_priv PrivKey, _pub PubKey, err 
 		pub, _ := pubIfc.(ed25519.PublicKey)
 		return &Ed25519PrivateKey{*p}, &Ed25519PublicKey{pub}, nil
 
-	case *btcec.PrivateKey:
+	case *secp256k1.PrivateKey:
 		sPriv := Secp256k1PrivateKey(*p)
 		sPub := Secp256k1PublicKey(*p.PubKey())
 		return &sPriv, &sPub, nil
