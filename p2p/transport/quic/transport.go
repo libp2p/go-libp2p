@@ -37,17 +37,117 @@ var quicDialContext = quic.DialContext // so we can mock it in tests
 
 var HolePunchTimeout = 5 * time.Second
 
+const bufferCap = 5
+
+type bufferEntry struct {
+	handshakes, total uint
+	creationTime      time.Time
+}
+
+type accept struct {
+	history     []bufferEntry
+	mtx         sync.Mutex
+	duration    time.Duration
+	fraction    float64
+	minAttempts uint
+	checkRatio  bool
+}
+
+func newAccept(duration time.Duration, fraction float64, attempts uint) *accept {
+	a := new(accept)
+
+	if duration == 0 {
+		duration = 1 * time.Minute
+	}
+	if fraction == 0 {
+		fraction = 0.5
+	}
+	if attempts == 0 {
+		attempts = 256
+	}
+
+	a.duration = duration
+	a.fraction = fraction
+	a.minAttempts = attempts
+	a.history = make([]bufferEntry, 1, bufferCap)
+	a.history[0].creationTime = time.Now()
+	return a
+}
+
+func (a *accept) checkTime() {
+	now := time.Now()
+	lastEntry := a.history[len(a.history)-1]
+	sinceLast := now.Sub(lastEntry.creationTime)
+
+	nPosToAdd := sinceLast / a.duration
+	if nPosToAdd >= 1 {
+		a.history = append(a.history, make([]bufferEntry, nPosToAdd)...)
+		var numTotal uint
+
+		// Add the next to last 5 elements
+		// Last element is the next time slot just added
+		for i := range a.history[len(a.history)-1-bufferCap : len(a.history)-1] {
+			numTotal += a.history[i].total
+		}
+
+		a.checkRatio = numTotal >= a.minAttempts
+		a.history = a.history[len(a.history)-bufferCap:]
+	}
+}
+
+func (a *accept) newHandshake() {
+	a.mtx.Lock()
+	a.checkTime()
+	a.history[len(a.history)-1].handshakes += 1
+	a.mtx.Unlock()
+}
+
+func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
+	success := true
+	if token == nil {
+		a.mtx.Lock()
+		a.checkTime()
+		if a.checkRatio {
+			var numHandshakes, numTotal uint
+			for i := range a.history {
+				numHandshakes += a.history[i].handshakes
+				numTotal += a.history[i].total
+			}
+
+			// Check Retry fail ratio
+			if numTotal > 0 && float64(numHandshakes)/float64(numTotal) < a.fraction {
+				success = false
+			}
+		}
+		if success {
+			a.history[len(a.history)-1].total += 1
+		}
+		a.mtx.Unlock()
+	} else {
+		var sourceAddr string
+		if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
+			sourceAddr = udpAddr.IP.String()
+		} else {
+			sourceAddr = clientAddr.String()
+		}
+		success = sourceAddr == token.RemoteAddr
+		if !token.IsRetryToken {
+			a.mtx.Lock()
+			a.checkTime()
+			a.history[len(a.history)-1].total += 1
+			a.mtx.Unlock()
+		}
+	}
+	return success
+}
+
 var quicConfig = &quic.Config{
 	MaxIncomingStreams:         256,
 	MaxIncomingUniStreams:      -1,             // disable unidirectional streams
 	MaxStreamReceiveWindow:     10 * (1 << 20), // 10 MB
 	MaxConnectionReceiveWindow: 15 * (1 << 20), // 15 MB
-	AcceptToken: func(clientAddr net.Addr, _ *quic.Token) bool {
-		// TODO(#6): require source address validation when under load
-		return true
-	},
-	KeepAlivePeriod: 15 * time.Second,
-	Versions:        []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
+	KeepAlivePeriod:            15 * time.Second,
+	Versions:                   []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
 }
 
 const statelessResetKeyInfo = "libp2p quic stateless reset key"
@@ -102,6 +202,17 @@ func (c *connManager) Close() error {
 	return c.reuseUDP4.Close()
 }
 
+type Option func(*transport) error
+
+func WithRetry(fraction float64, period time.Duration, attempts uint) Option {
+	return func(tr *transport) error {
+		tr.fraction = fraction
+		tr.period = period
+		tr.attempts = attempts
+		return nil
+	}
+}
+
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
 	privKey      ic.PrivKey
@@ -118,6 +229,12 @@ type transport struct {
 
 	connMx sync.Mutex
 	conns  map[quic.Connection]*conn
+
+	fraction float64
+	period   time.Duration
+	attempts uint
+
+	acceptor *accept
 }
 
 var _ tpt.Transport = &transport{}
@@ -133,7 +250,7 @@ type activeHolePunch struct {
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
+func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
@@ -153,17 +270,6 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	if rcmgr == nil {
 		rcmgr = network.NullResourceManager
 	}
-	config := quicConfig.Clone()
-	keyBytes, err := key.Raw()
-	if err != nil {
-		return nil, err
-	}
-	keyReader := hkdf.New(sha256.New, keyBytes, nil, []byte(statelessResetKeyInfo))
-	config.StatelessResetKey = make([]byte, 32)
-	if _, err := io.ReadFull(keyReader, config.StatelessResetKey); err != nil {
-		return nil, err
-	}
-	config.Tracer = tracer
 
 	tr := &transport{
 		privKey:      key,
@@ -175,9 +281,32 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 		conns:        make(map[quic.Connection]*conn),
 		holePunching: make(map[holePunchKey]*activeHolePunch),
 	}
+
+	for _, o := range opts {
+		if err := o(tr); err != nil {
+			return nil, err
+		}
+	}
+
+	config := quicConfig.Clone()
+
+	keyBytes, err := key.Raw()
+	if err != nil {
+		return nil, err
+	}
+	keyReader := hkdf.New(sha256.New, keyBytes, nil, []byte(statelessResetKeyInfo))
+	config.StatelessResetKey = make([]byte, 32)
+	if _, err := io.ReadFull(keyReader, config.StatelessResetKey); err != nil {
+		return nil, err
+	}
+	config.Tracer = tracer
+
 	config.AllowConnectionWindowIncrease = tr.allowWindowIncrease
 	tr.serverConfig = config
 	tr.clientConfig = config.Clone()
+
+	tr.acceptor = newAccept(tr.period, tr.fraction, tr.attempts)
+	tr.serverConfig.AcceptToken = tr.acceptor.acceptFunction
 	return tr, nil
 }
 

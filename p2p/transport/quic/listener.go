@@ -76,6 +76,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 			qconn.CloseWithError(errorCodeConnectionGating, "connection gated")
 			continue
 		}
+		l.transport.acceptor.newHandshake()
 		l.transport.addConn(qconn, c)
 
 		// return through active hole punching if any
