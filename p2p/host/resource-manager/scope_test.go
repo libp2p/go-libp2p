@@ -1,9 +1,12 @@
 package rcmgr
 
 import (
+	"math"
 	"testing"
+	"testing/quick"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/stretchr/testify/require"
 )
 
 func checkResources(t *testing.T, rc *resources, st network.ScopeStat) {
@@ -27,6 +30,77 @@ func checkResources(t *testing.T, rc *resources, st network.ScopeStat) {
 	if rc.memory != st.Memory {
 		t.Fatalf("expected %d reserved bytes of memory, got %d", st.Memory, rc.memory)
 	}
+}
+
+func TestCheckMemory(t *testing.T) {
+	t.Run("overflows", func(t *testing.T) {
+		rc := resources{limit: &BaseLimit{
+			Memory:          math.MaxInt64 - 1,
+			StreamsInbound:  1,
+			StreamsOutbound: 1,
+			Streams:         1,
+			ConnsInbound:    1,
+			ConnsOutbound:   1,
+			Conns:           1,
+			FD:              1,
+		}}
+		rc.memory = math.MaxInt64 - 1
+		require.Error(t, rc.checkMemory(2, network.ReservationPriorityAlways))
+
+		rc.memory = 1024
+		require.NoError(t, rc.checkMemory(1, network.ReservationPriorityAlways))
+	})
+
+	t.Run("negative mem", func(t *testing.T) {
+		rc := resources{limit: &BaseLimit{
+			Memory:          math.MaxInt64,
+			StreamsInbound:  1,
+			StreamsOutbound: 1,
+			Streams:         1,
+			ConnsInbound:    1,
+			ConnsOutbound:   1,
+			Conns:           1,
+			FD:              1,
+		}}
+		rc.memory = math.MaxInt64
+
+		require.Error(t, rc.checkMemory(-1, network.ReservationPriorityAlways))
+	})
+
+	f := func(limit uint64, res uint64, currentMem uint64, priShift uint8) bool {
+		limit = (limit % math.MaxInt64) + 1
+		if limit < 1024 {
+			// We set the min to 1KiB
+			limit = 1024
+		}
+		currentMem = (currentMem % limit) // We can't have reserved more than our limit
+		res = (res >> 14)                 // We won't resonably ever have a reservation > 2^50
+		rc := resources{limit: &BaseLimit{
+			Memory:          int64(limit),
+			StreamsInbound:  1,
+			StreamsOutbound: 1,
+			Streams:         1,
+			ConnsInbound:    1,
+			ConnsOutbound:   1,
+			Conns:           1,
+			FD:              1,
+		}}
+		rc.memory = int64(currentMem)
+
+		priShift = (priShift % 9)
+		// Check different priorties at 2^0, 2^1,...2^8. This lets our math be correct in the check below (and avoid overflows).
+		pri := uint8((1 << priShift) - 1)
+
+		err := rc.checkMemory(int64(res), pri)
+		if limit == math.MaxInt64 && err == nil {
+			// Special case logic
+			return true
+		}
+
+		return (err != nil) == (uint64(res)+uint64(rc.memory) > (uint64(limit) >> uint64(8-priShift)))
+	}
+
+	require.NoError(t, quick.Check(f, nil))
 }
 
 func TestResources(t *testing.T) {

@@ -2,6 +2,8 @@ package rcmgr
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"strings"
 	"sync"
 
@@ -79,14 +81,55 @@ func IsSpan(name string) bool {
 	return strings.Contains(name, ".span-")
 }
 
+func addInt64WithOverflow(a int64, b int64) (c int64, ok bool) {
+	c = a + b
+	return c, (c > a) == (b > 0)
+}
+
+// mulInt64WithOverflow checks for overflow in multiplying two int64s. See
+// https://groups.google.com/g/golang-nuts/c/h5oSN5t3Au4/m/KaNQREhZh0QJ
+func mulInt64WithOverflow(a, b int64) (c int64, ok bool) {
+	const mostPositive = 1<<63 - 1
+	const mostNegative = -(mostPositive + 1)
+	c = a * b
+	if a == 0 || b == 0 || a == 1 || b == 1 {
+		return c, true
+	}
+	if a == mostNegative || b == mostNegative {
+		return c, false
+	}
+	return c, c/b == a
+}
+
 // Resources implementation
 func (rc *resources) checkMemory(rsvp int64, prio uint8) error {
-	// overflow check; this also has the side effect that we cannot reserve negative memory.
-	newmem := rc.memory + rsvp
-	limit := rc.limit.GetMemoryLimit()
-	threshold := (1 + int64(prio)) * limit / 256
+	if rsvp < 0 {
+		return fmt.Errorf("can't reserve negative memory. rsvp=%v", rsvp)
+	}
 
-	if newmem > threshold {
+	limit := rc.limit.GetMemoryLimit()
+	if limit == math.MaxInt64 {
+		// Special case where we've set max limits.
+		return nil
+	}
+
+	newmem, addOk := addInt64WithOverflow(rc.memory, rsvp)
+
+	threshold, mulOk := mulInt64WithOverflow(1+int64(prio), limit)
+	if !mulOk {
+		thresholdBig := big.NewInt(limit)
+		thresholdBig = thresholdBig.Mul(thresholdBig, big.NewInt(1+int64(prio)))
+		thresholdBig.Rsh(thresholdBig, 8) // Divide 256
+		if !thresholdBig.IsInt64() {
+			// Shouldn't happen since the threshold can only be <= limit
+			threshold = limit
+		}
+		threshold = thresholdBig.Int64()
+	} else {
+		threshold = threshold / 256
+	}
+
+	if !addOk || newmem > threshold {
 		return &errMemoryLimitExceeded{
 			current:   rc.memory,
 			attempted: rsvp,
