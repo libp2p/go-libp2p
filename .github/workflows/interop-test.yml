@@ -2,15 +2,22 @@ on: [push, pull_request]
 name: Interoperability Testing
 
 jobs:
+  # NOTE: during a pull request run, github creates a merge commit referenced in `github.sha`
+  # that merge commit is not a regular commit. You won't find it with a regular `git checkout SHA` and
+  # tools like `go get repo@SHA` won't find it.
+  #
+  # As a workaround, we generate a path to the actual pull request's commit, it looks like:
+  # `github.com/external-org/go-libp2p@latest-commit-on-their-branch`
   run-ping-interop-cross-version:
     uses: "libp2p/test-plans/.github/workflows/run-composition.yml@master"
     with:
       composition_file: "ping/_compositions/go-cross-versions.toml"
-      # NOTE: during a pull request run, github creates a merge commit referenced in `github.sha`
-      # that merge commit is not a regular commit. You won't find it with a regular `git checkout SHA` and
-      # tools like `go get repo@SHA` won't find it.
-      #
-      # As a workaround, we generate a path to the actual pull request's commit, it looks like:
-      # `github.com/external-org/go-libp2p@latest-commit-on-their-branch`
       custom_git_target: github.com/${{ github.event.pull_request.head.repo.full_name || github.event.repository.full_name }}
       custom_git_reference: ${{ github.event.pull_request.head.sha || github.sha }}
+  run-ping-interop-cross-implementation:
+    uses: "libp2p/test-plans/.github/workflows/run-composition.yml@master"
+    with:
+      composition_file: "ping/_compositions/go-rust-interop-latest.toml"
+      custom_git_target: github.com/${{ github.event.pull_request.head.repo.full_name || github.event.repository.full_name }}
+      custom_git_reference: ${{ github.event.pull_request.head.sha || github.sha }}
+      custom_interop_target: go
