@@ -64,6 +64,11 @@ type Config struct {
 	// Set it via the UserAgent option function.
 	UserAgent string
 
+	// ProtocolVersion is the protocol version that identifies the family
+	// of protocols used by the peer in the Identify protocol. It is set
+	// using the [ProtocolVersion] option.
+	ProtocolVersion string
+
 	PeerKey crypto.PrivKey
 
 	Transports         []TptC
@@ -223,6 +228,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		NATManager:          cfg.NATManager,
 		EnablePing:          !cfg.DisablePing,
 		UserAgent:           cfg.UserAgent,
+		ProtocolVersion:     cfg.ProtocolVersion,
 		MultiaddrResolver:   cfg.MultiaddrResolver,
 		EnableHolePunching:  cfg.EnableHolePunching,
 		HolePunchingOptions: cfg.HolePunchingOptions,

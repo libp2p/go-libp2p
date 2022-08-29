@@ -414,6 +414,15 @@ var NoTransports = func(cfg *Config) error {
 	return nil
 }
 
+// ProtocolVersion sets the protocolVersion string required by the 
+// libp2p Identify protocol.
+func ProtocolVersion(s string) Option {
+	return func(cfg *Config) error {
+		cfg.ProtocolVersion = s
+		return nil
+	}
+}
+
 // UserAgent sets the libp2p user-agent sent along with the identify protocol
 func UserAgent(userAgent string) Option {
 	return func(cfg *Config) error {

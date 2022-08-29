@@ -145,6 +145,9 @@ type HostOpts struct {
 	// UserAgent sets the user-agent for the host.
 	UserAgent string
 
+	// ProtocolVersion sets the protocol version for the host.
+	ProtocolVersion string
+
 	// DisableSignedPeerRecord disables the generation of Signed Peer Records on this host.
 	DisableSignedPeerRecord bool
 
@@ -226,9 +229,18 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	// we can't set this as a default above because it depends on the *BasicHost.
 	if h.disableSignedPeerRecord {
-		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
+		h.ids, err = identify.NewIDService(
+			h,
+			identify.UserAgent(opts.UserAgent),
+			identify.ProtocolVersion(opts.ProtocolVersion),
+			identify.DisableSignedPeerRecord(),
+		)
 	} else {
-		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+		h.ids, err = identify.NewIDService(
+			h,
+			identify.UserAgent(opts.UserAgent),
+			identify.ProtocolVersion(opts.ProtocolVersion),
+		)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Identify service: %s", err)
