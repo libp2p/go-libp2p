@@ -134,7 +134,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 
 	protocolVersion := DefaultProtocolVersion
 	if cfg.protocolVersion != "" {
-		protocolVersion = cfg.userAgent
+		protocolVersion = cfg.protocolVersion
 	}
 
 	s := &idService{
