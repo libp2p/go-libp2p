@@ -414,7 +414,7 @@ var NoTransports = func(cfg *Config) error {
 	return nil
 }
 
-// ProtocolVersion sets the protocolVersion string required by the 
+// ProtocolVersion sets the protocolVersion string required by the
 // libp2p Identify protocol.
 func ProtocolVersion(s string) Option {
 	return func(cfg *Config) error {
