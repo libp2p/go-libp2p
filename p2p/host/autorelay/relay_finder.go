@@ -59,7 +59,7 @@ type relayFinder struct {
 	ctxCancel   context.CancelFunc
 	ctxCancelMx sync.Mutex
 
-	peerSource func(int) <-chan peer.AddrInfo
+	peerSource func(context.Context, int) <-chan peer.AddrInfo
 
 	candidateFound             chan struct{} // receives every time we find a new relay candidate
 	candidateMx                sync.Mutex
@@ -82,7 +82,7 @@ type relayFinder struct {
 	cachedAddrsExpiry time.Time
 }
 
-func newRelayFinder(host *basic.BasicHost, peerSource func(int) <-chan peer.AddrInfo, conf *config) *relayFinder {
+func newRelayFinder(host *basic.BasicHost, peerSource func(context.Context, int) <-chan peer.AddrInfo, conf *config) *relayFinder {
 	return &relayFinder{
 		bootTime:                   conf.clock.Now(),
 		host:                       host,
@@ -206,7 +206,7 @@ func (rf *relayFinder) background(ctx context.Context) {
 // It garbage collects old entries, so that nodes doesn't overflow.
 // This makes sure that as soon as we need to find relay candidates, we have them available.
 func (rf *relayFinder) findNodes(ctx context.Context) {
-	peerChan := rf.peerSource(rf.conf.maxCandidates)
+	peerChan := rf.peerSource(ctx, rf.conf.maxCandidates)
 	var wg sync.WaitGroup
 	lastCallToPeerSource := rf.conf.clock.Now()
 
@@ -235,7 +235,7 @@ func (rf *relayFinder) findNodes(ctx context.Context) {
 				continue
 			}
 			lastCallToPeerSource = now
-			peerChan = rf.peerSource(rf.conf.maxCandidates)
+			peerChan = rf.peerSource(ctx, rf.conf.maxCandidates)
 		case pi, ok := <-peerChan:
 			if !ok {
 				wg.Wait()

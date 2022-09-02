@@ -1,6 +1,7 @@
 package autorelay
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -12,7 +13,7 @@ import (
 
 type config struct {
 	clock      clock.Clock
-	peerSource func(num int) <-chan peer.AddrInfo
+	peerSource func(ctx context.Context, num int) <-chan peer.AddrInfo
 	// minimum interval used to call the peerSource callback
 	minInterval  time.Duration
 	staticRelays []peer.AddrInfo
@@ -102,7 +103,9 @@ func WithDefaultStaticRelays() Option {
 // Implementations should send new peers, but may send peers they sent before. AutoRelay implements
 // a per-peer backoff (see WithBackoff).
 // minInterval is the minimum interval this callback is called with, even if AutoRelay needs new candidates.
-func WithPeerSource(f func(numPeers int) <-chan peer.AddrInfo, minInterval time.Duration) Option {
+// The context.Context passed MAY be canceled when AutoRelay feels satisfied, it will be canceled when the node is shutting down.
+// If the channel is canceled you MUST close the output channel at some point.
+func WithPeerSource(f func(ctx context.Context, numPeers int) <-chan peer.AddrInfo, minInterval time.Duration) Option {
 	return func(c *config) error {
 		if len(c.staticRelays) > 0 {
 			return errStaticRelaysPeerSource
