@@ -1,18 +1,18 @@
 package main
 
 import (
-  "bufio"
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"os"
-  "sync"
+	"sync"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
-  "github.com/libp2p/go-libp2p-core/host"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 )
@@ -29,7 +29,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-  go discoverPeers(ctx, h)
+	go discoverPeers(ctx, h)
 
 	ps, err := pubsub.NewGossipSub(ctx, h)
 	if err != nil {
@@ -37,15 +37,15 @@ func main() {
 	}
 	topic, err := ps.Join(*topicNameFlag)
 	if err != nil {
-    panic(err)
+		panic(err)
 	}
 	go streamConsoleTo(ctx, topic)
 
 	sub, err := topic.Subscribe()
 	if err != nil {
-    panic(err)
+		panic(err)
 	}
-  printMessagesFrom(ctx, sub)
+	printMessagesFrom(ctx, sub)
 }
 
 func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
@@ -67,17 +67,17 @@ func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
 		go func() {
 			defer wg.Done()
 			if err := h.Connect(ctx, *peerinfo); err != nil {
-        fmt.Println("Bootstrap warning: %s", err)
+				fmt.Println("Bootstrap warning: %s", err)
 			}
 		}()
 	}
 	wg.Wait()
 
-  return kademliaDHT
+	return kademliaDHT
 }
 
 func discoverPeers(ctx context.Context, h host.Host) {
-  kademliaDHT := initDHT(ctx, h)
+	kademliaDHT := initDHT(ctx, h)
 	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
 	dutil.Advertise(ctx, routingDiscovery, *topicNameFlag)
 
@@ -102,20 +102,20 @@ func discoverPeers(ctx context.Context, h host.Host) {
 			}
 		}
 	}
-  fmt.Println("Peer discovery complete")
+	fmt.Println("Peer discovery complete")
 }
 
 func streamConsoleTo(ctx context.Context, topic *pubsub.Topic) {
-    reader := bufio.NewReader(os.Stdin)
-    for {
-        s, err := reader.ReadString('\n')
-        if err != nil {
-            panic(err)
-        }
-        if err := topic.Publish(ctx, []byte(s)); err != nil {
-          fmt.Println("### Publish error: %s", err)
-        }
-    }
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		s, err := reader.ReadString('\n')
+		if err != nil {
+			panic(err)
+		}
+		if err := topic.Publish(ctx, []byte(s)); err != nil {
+			fmt.Println("### Publish error: %s", err)
+		}
+	}
 }
 
 func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription) {
@@ -124,6 +124,6 @@ func printMessagesFrom(ctx context.Context, sub *pubsub.Subscription) {
 		if err != nil {
 			panic(err)
 		}
-	  fmt.Println(m.ReceivedFrom, ": ", string(m.Message.Data))
+		fmt.Println(m.ReceivedFrom, ": ", string(m.Message.Data))
 	}
 }
