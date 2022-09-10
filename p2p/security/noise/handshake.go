@@ -122,8 +122,6 @@ func (s *secureSession) runHandshake(ctx context.Context) (err error) {
 			if err := s.earlyDataHandler.Received(ctx, s.insecureConn, initialPayload); err != nil {
 				return err
 			}
-		} else if len(initialPayload) > 0 {
-			return fmt.Errorf("received unexpected early data (%d bytes)", len(initialPayload))
 		}
 
 		// stage 1 //
