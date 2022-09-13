@@ -9,17 +9,17 @@ import (
 	"net/http"
 	"time"
 
+	pb "github.com/libp2p/go-libp2p/p2p/transport/webtransport/pb"
+
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/network"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	pb "github.com/libp2p/go-libp2p/p2p/transport/webtransport/pb"
 
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/marten-seemann/webtransport-go"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
-	"github.com/multiformats/go-multihash"
 )
 
 var errClosed = errors.New("closed")
@@ -197,7 +197,19 @@ func (l *listener) handshake(ctx context.Context, sess *webtransport.Session) (*
 	if err != nil {
 		return nil, err
 	}
-	n, err := l.noise.WithSessionOptions(noise.EarlyData(nil, newEarlyDataReceiver(l.checkEarlyData)))
+	var earlyData []byte
+	if l.isStaticTLSConf {
+		var msg pb.WebTransport
+		var err error
+		earlyData, err = msg.Marshal()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		earlyData = l.certManager.Protobuf()
+	}
+
+	n, err := l.noise.WithSessionOptions(noise.EarlyData(nil, newEarlyDataSender(earlyData)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Noise session: %w", err)
 	}
@@ -210,31 +222,6 @@ func (l *listener) handshake(ctx context.Context, sess *webtransport.Session) (*
 		ConnSecurity:   c,
 		ConnMultiaddrs: &connMultiaddrs{local: local, remote: remote},
 	}, nil
-}
-
-func (l *listener) checkEarlyData(b []byte) error {
-	var msg pb.WebTransport
-	if err := msg.Unmarshal(b); err != nil {
-		fmt.Println(1)
-		return fmt.Errorf("failed to unmarshal early data protobuf: %w", err)
-	}
-
-	if l.isStaticTLSConf {
-		if len(msg.CertHashes) > 0 {
-			return errors.New("using static TLS config, didn't expect any certificate hashes")
-		}
-		return nil
-	}
-
-	hashes := make([]multihash.DecodedMultihash, 0, len(msg.CertHashes))
-	for _, h := range msg.CertHashes {
-		dh, err := multihash.Decode(h)
-		if err != nil {
-			return fmt.Errorf("failed to decode hash: %w", err)
-		}
-		hashes = append(hashes, *dh)
-	}
-	return l.certManager.Verify(hashes)
 }
 
 func (l *listener) Addr() net.Addr {

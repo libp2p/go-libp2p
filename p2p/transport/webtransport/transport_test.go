@@ -162,11 +162,8 @@ func TestHashVerification(t *testing.T) {
 	})
 
 	t.Run("fails when adding a wrong hash", func(t *testing.T) {
-		conn, err := tr2.Dial(context.Background(), ln.Multiaddr().Encapsulate(foobarHash), serverID)
-		if err != nil {
-			_, err = conn.AcceptStream()
-			require.Error(t, err)
-		}
+		_, err := tr2.Dial(context.Background(), ln.Multiaddr().Encapsulate(foobarHash), serverID)
+		require.Error(t, err)
 	})
 
 	require.NoError(t, ln.Close())

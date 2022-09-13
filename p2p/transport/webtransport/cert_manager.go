@@ -1,13 +1,14 @@
 package libp2pwebtransport
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
+
+	pb "github.com/libp2p/go-libp2p/p2p/transport/webtransport/pb"
 
 	"github.com/benbjohnson/clock"
 	ma "github.com/multiformats/go-multiaddr"
@@ -54,6 +55,8 @@ type certManager struct {
 	currentConfig *certConfig
 	nextConfig    *certConfig // nil until we have passed half the certValidity of the current config
 	addrComp      ma.Multiaddr
+
+	protobuf []byte
 }
 
 func newCertManager(clock clock.Clock) (*certManager, error) {
@@ -88,6 +91,9 @@ func (m *certManager) rollConfig() error {
 	m.lastConfig = m.currentConfig
 	m.currentConfig = m.nextConfig
 	m.nextConfig = c
+	if err := m.cacheProtobuf(); err != nil {
+		return err
+	}
 	return m.cacheAddrComponent()
 }
 
@@ -131,17 +137,33 @@ func (m *certManager) AddrComponent() ma.Multiaddr {
 	return m.addrComp
 }
 
-func (m *certManager) Verify(hashes []multihash.DecodedMultihash) error {
-	for _, h := range hashes {
-		if h.Code != multihash.SHA2_256 {
-			return fmt.Errorf("expected SHA256 hash, got %d", h.Code)
-		}
-		if !bytes.Equal(h.Digest, m.currentConfig.sha256[:]) &&
-			(m.nextConfig == nil || !bytes.Equal(h.Digest, m.nextConfig.sha256[:])) &&
-			(m.lastConfig == nil || !bytes.Equal(h.Digest, m.lastConfig.sha256[:])) {
-			return fmt.Errorf("found unexpected hash: %+x", h.Digest)
-		}
+func (m *certManager) Protobuf() []byte {
+	return m.protobuf
+}
+
+func (m *certManager) cacheProtobuf() error {
+	hashes := make([][32]byte, 0, 3)
+	if m.lastConfig != nil {
+		hashes = append(hashes, m.lastConfig.sha256)
 	}
+	hashes = append(hashes, m.currentConfig.sha256)
+	if m.nextConfig != nil {
+		hashes = append(hashes, m.nextConfig.sha256)
+	}
+
+	msg := pb.WebTransport{CertHashes: make([][]byte, 0, len(hashes))}
+	for _, certHash := range hashes {
+		h, err := multihash.Encode(certHash[:], multihash.SHA2_256)
+		if err != nil {
+			return fmt.Errorf("failed to encode certificate hash: %w", err)
+		}
+		msg.CertHashes = append(msg.CertHashes, h)
+	}
+	msgBytes, err := msg.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal WebTransport protobuf: %w", err)
+	}
+	m.protobuf = msgBytes
 	return nil
 }
 
