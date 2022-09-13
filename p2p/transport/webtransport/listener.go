@@ -105,6 +105,11 @@ func newListener(laddr ma.Multiaddr, transport tpt.Transport, noise *noise.Trans
 }
 
 func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
+	typ, ok := r.URL.Query()["type"]
+	if !ok || len(typ) != 1 || typ[0] != "noise" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	remoteMultiaddr, err := stringToWebtransportMultiaddr(r.RemoteAddr)
 	if err != nil {
 		// This should never happen.
@@ -124,7 +129,6 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: check ?type=multistream URL param
 	sess, err := l.server.Upgrade(w, r)
 	if err != nil {
 		log.Debugw("upgrade failed", "error", err)

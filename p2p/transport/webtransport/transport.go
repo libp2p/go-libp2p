@@ -150,7 +150,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 }
 
 func (t *transport) dial(ctx context.Context, addr string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, error) {
-	url := fmt.Sprintf("https://%s%s", addr, webtransportHTTPEndpoint)
+	url := fmt.Sprintf("https://%s%s?type=noise", addr, webtransportHTTPEndpoint)
 	var tlsConf *tls.Config
 	if t.tlsClientConf != nil {
 		tlsConf = t.tlsClientConf.Clone()
