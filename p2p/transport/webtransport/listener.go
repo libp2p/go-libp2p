@@ -87,7 +87,10 @@ func newListener(laddr ma.Multiaddr, transport tpt.Transport, noise *noise.Trans
 		serverClosed:    make(chan struct{}),
 		addr:            udpConn.LocalAddr(),
 		multiaddr:       localMultiaddr,
-		server:          webtransport.Server{H3: http3.Server{TLSConfig: tlsConf}},
+		server: webtransport.Server{
+			H3:          http3.Server{TLSConfig: tlsConf},
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
 	}
 	ln.ctx, ln.ctxCancel = context.WithCancel(context.Background())
 	mux := http.NewServeMux()
