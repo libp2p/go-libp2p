@@ -439,7 +439,7 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 		}
 	}
 
-	return ma.FilterAddrs(addrs,
+	return maybeRemoveWebTransportAddrs(ma.FilterAddrs(addrs,
 		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
 		s.canDial,
 		// TODO: Consider allowing link-local addresses
@@ -447,7 +447,7 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 		func(addr ma.Multiaddr) bool {
 			return s.gater == nil || s.gater.InterceptAddrDial(p, addr)
 		},
-	)
+	))
 }
 
 // limitedDial will start a dial to the given peer when
@@ -529,4 +529,42 @@ func isExpensiveAddr(addr ma.Multiaddr) bool {
 func isRelayAddr(addr ma.Multiaddr) bool {
 	_, err := addr.ValueForProtocol(ma.P_CIRCUIT)
 	return err == nil
+}
+
+func isWebTransport(addr ma.Multiaddr) bool {
+	_, err := addr.ValueForProtocol(ma.P_WEBTRANSPORT)
+	return err == nil
+}
+
+func isQUIC(addr ma.Multiaddr) bool {
+	_, err := addr.ValueForProtocol(ma.P_QUIC)
+	return err == nil && !isWebTransport(addr)
+}
+
+// If we have QUIC addresses, we don't want to dial WebTransport addresses.
+// It's better to have a native QUIC connection.
+// Note that this is a hack. The correct solution would be a proper
+// Happy-Eyeballs-style dialing.
+func maybeRemoveWebTransportAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
+	var hasQuic, hasWebTransport bool
+	for _, addr := range addrs {
+		if isQUIC(addr) {
+			hasQuic = true
+		}
+		if isWebTransport(addr) {
+			hasWebTransport = true
+		}
+	}
+	if !hasWebTransport || !hasQuic {
+		return addrs
+	}
+	var c int
+	for _, addr := range addrs {
+		if isWebTransport(addr) {
+			continue
+		}
+		addrs[c] = addr
+		c++
+	}
+	return addrs[:c]
 }

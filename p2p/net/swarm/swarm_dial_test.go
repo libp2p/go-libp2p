@@ -15,7 +15,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
-	"github.com/multiformats/go-multiaddr"
+
+	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +55,7 @@ func TestAddrsForDial(t *testing.T) {
 
 	otherPeer := test.RandPeerIDFatal(t)
 
-	ps.AddAddr(otherPeer, multiaddr.StringCast("/dns4/example.com/tcp/1234/wss"), time.Hour)
+	ps.AddAddr(otherPeer, ma.StringCast("/dns4/example.com/tcp/1234/wss"), time.Hour)
 
 	ctx := context.Background()
 	mas, err := s.addrsForDial(ctx, otherPeer)
@@ -93,11 +94,11 @@ func TestAddrResolution(t *testing.T) {
 
 	p1 := test.RandPeerIDFatal(t)
 	p2 := test.RandPeerIDFatal(t)
-	addr1 := multiaddr.StringCast("/dnsaddr/example.com")
-	addr2 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123")
+	addr1 := ma.StringCast("/dnsaddr/example.com")
+	addr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123")
 
-	p2paddr2 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
-	p2paddr3 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p2.Pretty())
+	p2paddr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
+	p2paddr3 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p2.Pretty())
 
 	backend := &madns.MockResolver{
 		TXT: map[string][]string{"_dnsaddr.example.com": {
@@ -136,13 +137,13 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	addr1 := multiaddr.StringCast("/dnsaddr/example.com")
-	addr2 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123")
-	p2paddr1 := multiaddr.StringCast("/dnsaddr/example.com/p2p/" + p1.Pretty())
-	p2paddr2 := multiaddr.StringCast("/dnsaddr/example.com/p2p/" + p2.Pretty())
-	p2paddr1i := multiaddr.StringCast("/dnsaddr/foo.example.com/p2p/" + p1.Pretty())
-	p2paddr2i := multiaddr.StringCast("/dnsaddr/bar.example.com/p2p/" + p2.Pretty())
-	p2paddr1f := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
+	addr1 := ma.StringCast("/dnsaddr/example.com")
+	addr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123")
+	p2paddr1 := ma.StringCast("/dnsaddr/example.com/p2p/" + p1.Pretty())
+	p2paddr2 := ma.StringCast("/dnsaddr/example.com/p2p/" + p2.Pretty())
+	p2paddr1i := ma.StringCast("/dnsaddr/foo.example.com/p2p/" + p1.Pretty())
+	p2paddr2i := ma.StringCast("/dnsaddr/bar.example.com/p2p/" + p2.Pretty())
+	p2paddr1f := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
 
 	backend := &madns.MockResolver{
 		TXT: map[string][]string{
@@ -190,4 +191,16 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	addrs2 := s.Peerstore().Addrs(pi2.ID)
 	require.Len(t, addrs2, 1)
 	require.Contains(t, addrs2, addr1)
+}
+
+func TestRemoveWebTransportAddrs(t *testing.T) {
+	tcpAddr := ma.StringCast("/ip4/9.5.6.4/tcp/1234")
+	quicAddr := ma.StringCast("/ip4/1.2.3.4/udp/443/quic")
+	webtransportAddr := ma.StringCast("/ip4/1.2.3.4/udp/443/quic/webtransport")
+
+	require.Equal(t, []ma.Multiaddr{tcpAddr, quicAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{tcpAddr, quicAddr}))
+	require.Equal(t, []ma.Multiaddr{tcpAddr, webtransportAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{tcpAddr, webtransportAddr}))
+	require.Equal(t, []ma.Multiaddr{tcpAddr, quicAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{tcpAddr, webtransportAddr, quicAddr}))
+	require.Equal(t, []ma.Multiaddr{quicAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{quicAddr, webtransportAddr}))
+	require.Equal(t, []ma.Multiaddr{webtransportAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{webtransportAddr}))
 }
