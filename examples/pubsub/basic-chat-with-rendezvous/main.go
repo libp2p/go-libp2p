@@ -9,10 +9,10 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 )
@@ -67,7 +67,7 @@ func initDHT(ctx context.Context, h host.Host) *dht.IpfsDHT {
 		go func() {
 			defer wg.Done()
 			if err := h.Connect(ctx, *peerinfo); err != nil {
-				fmt.Println("Bootstrap warning: %s", err)
+				fmt.Println("Bootstrap warning:", err)
 			}
 		}()
 	}
@@ -113,7 +113,7 @@ func streamConsoleTo(ctx context.Context, topic *pubsub.Topic) {
 			panic(err)
 		}
 		if err := topic.Publish(ctx, []byte(s)); err != nil {
-			fmt.Println("### Publish error: %s", err)
+			fmt.Println("### Publish error:", err)
 		}
 	}
 }
