@@ -16,10 +16,10 @@ jobs:
     runs-on: ${{ format('{0}-latest', matrix.os) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: recursive
-      - uses: actions/setup-go@v2
+      - uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go }}
       - name: Go information
