@@ -46,12 +46,18 @@ func newConn(tr tpt.Transport, sess *webtransport.Session, sconn *connSecurityMu
 
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 	str, err := c.session.OpenStreamSync(ctx)
-	return &stream{str}, err
+	if err != nil {
+		return nil, err
+	}
+	return &stream{str}, nil
 }
 
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	str, err := c.session.AcceptStream(context.Background())
-	return &stream{str}, err
+	if err != nil {
+		return nil, err
+	}
+	return &stream{str}, nil
 }
 
 func (c *conn) Close() error             { return c.session.Close() }
