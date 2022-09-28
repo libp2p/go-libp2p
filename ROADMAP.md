@@ -4,7 +4,7 @@
 
 Why: For far too long, go-libp2p has been a black box. This has hurt us many times, by allowing trivial bugs to go undetected for a long time ([example](https://github.com/ipfs/kubo/pull/8750)). Having metrics will allow us to track the impact of performance improvements we make over time.
 
-Goal: go-libp2p ships with Grafana dashboards that allow node operators to monitor their nodes in production.
+Goal: Export a wider set of metrics across go-libp2p components and enable node operators to monitor their nodes in production. Optionally provide a sample Grafana dashboard similar to the resource manager dashboard.
 
 How: This will look similar to how we already expose resource manager metrics. Metrics can be added incrementally for libp2p’s components. First milestone is having metrics for the swarm.
 
