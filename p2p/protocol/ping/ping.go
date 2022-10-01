@@ -20,8 +20,8 @@ import (
 var log = logging.Logger("ping")
 
 const (
-	PingSize    = 32
-	pingTimeout = time.Second * 60
+	PingSize       = 32
+	defaultTimeout = 60 * time.Second
 
 	ID = "/ipfs/ping/1.0.0"
 
@@ -29,13 +29,36 @@ const (
 )
 
 type PingService struct {
-	Host host.Host
+	Host    host.Host
+	timeout time.Duration
+}
+
+type Option func(*PingService) error
+
+func Timeout(timeout time.Duration) Option {
+	return func(ps *PingService) error {
+		if timeout == 0 {
+			timeout = defaultTimeout
+		}
+		ps.timeout = timeout
+		return nil
+	}
 }
 
 func NewPingService(h host.Host) *PingService {
-	ps := &PingService{h}
+	ps := &PingService{h, defaultTimeout}
 	h.SetStreamHandler(ID, ps.PingHandler)
 	return ps
+}
+
+func NewPingServiceWithOptions(h host.Host, opts ...Option) (*PingService, error) {
+	ps := NewPingService(h)
+	for _, o := range opts {
+		if err := o(ps); err != nil {
+			return nil, err
+		}
+	}
+	return ps, nil
 }
 
 func (p *PingService) PingHandler(s network.Stream) {
@@ -57,13 +80,17 @@ func (p *PingService) PingHandler(s network.Stream) {
 
 	errCh := make(chan error, 1)
 	defer close(errCh)
-	timer := time.NewTimer(pingTimeout)
+	timer := time.NewTimer(p.timeout)
 	defer timer.Stop()
 
 	go func() {
 		select {
 		case <-timer.C:
-			log.Debug("ping timeout")
+			if p.timeout < time.Second {
+				log.Debug("ping timeout (hint: timeout too short)")
+			} else {
+				log.Debug("ping timeout")
+			}
 		case err, ok := <-errCh:
 			if ok {
 				log.Debug(err)
@@ -87,7 +114,7 @@ func (p *PingService) PingHandler(s network.Stream) {
 			return
 		}
 
-		timer.Reset(pingTimeout)
+		timer.Reset(p.timeout)
 	}
 }
 
