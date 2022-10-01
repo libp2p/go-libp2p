@@ -6,11 +6,11 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 
-	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
-
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
+	"github.com/libp2p/go-libp2p/core/network"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -20,68 +20,102 @@ func main() {
 }
 
 func run() {
-	// Create three libp2p hosts, enable relay client capabilities on all
-	// of them.
-
-	// Tell the host use relays
-	h1, err := libp2p.New(libp2p.EnableRelay())
+	// Create 2 "unreachable" libp2p hosts that want to communicate.
+	// We are configuring them with no listen addresses to mimic hosts
+	// that cannot be directly dialed due to problematic firewall/NAT
+	// configurations.
+	unreachable1, err := libp2p.New(
+		libp2p.NoListenAddrs,
+		// Usually EnableRelay() is not required as it is enabled by default
+		// but NoListenAddrs overrides this, so we're adding it in explictly again.
+		libp2p.EnableRelay(),
+	)
 	if err != nil {
-		log.Printf("Failed to create h1: %v", err)
+		log.Printf("Failed to create unreachable1: %v", err)
 		return
 	}
 
-	// Tell the host to relay connections for other peers (The ability to *use*
-	// a relay vs the ability to *be* a relay)
-	h2, err := libp2p.New(libp2p.DisableRelay())
+	unreachable2, err := libp2p.New(
+		libp2p.NoListenAddrs,
+		libp2p.EnableRelay(),
+	)
 	if err != nil {
-		log.Printf("Failed to create h2: %v", err)
+		log.Printf("Failed to create unreachable2: %v", err)
 		return
 	}
-	_, err = relayv1.NewRelay(h2)
+
+	log.Println("First let's attempt to directly connect")
+
+	// Attempt to connect the unreachable hosts directly
+	unreachable2info := peer.AddrInfo{
+		ID:    unreachable2.ID(),
+		Addrs: unreachable2.Addrs(),
+	}
+
+	err = unreachable1.Connect(context.Background(), unreachable2info)
+	if err == nil {
+		log.Printf("This actually should have failed. Did you make changes to the example...?")
+		return
+	}
+
+	log.Println("As suspected we cannot directly dial between the unreachable hosts")
+
+	// Create a host to act as a middleman to relay messages on our behalf
+	relay1, err := libp2p.New()
 	if err != nil {
-		log.Printf("Failed to instantiate h2 relay: %v", err)
+		log.Printf("Failed to create relay1: %v", err)
 		return
 	}
 
-	// Zero out the listen addresses for the host, so it can only communicate
-	// via p2p-circuit for our example
-	h3, err := libp2p.New(libp2p.ListenAddrs(), libp2p.EnableRelay())
+	// Configure the host to offer the ciruit relay service.
+	// Any host that is directly dialable in the network (or on the internet)
+	// can offer a circuit relay service, this isn't just the job of
+	// "dedicated" relay services.
+	// In circuit relay v2 (which we're using here!) it is rate limited so that
+	// any node can offer this service safely
+	_, err = relay.New(relay1)
 	if err != nil {
-		log.Printf("Failed to create h3: %v", err)
+		log.Printf("Failed to instantiate the relay: %v", err)
 		return
 	}
 
-	h2info := peer.AddrInfo{
-		ID:    h2.ID(),
-		Addrs: h2.Addrs(),
+	relay1info := peer.AddrInfo{
+		ID:    relay1.ID(),
+		Addrs: relay1.Addrs(),
 	}
 
-	// Connect both h1 and h3 to h2, but not to each other
-	if err := h1.Connect(context.Background(), h2info); err != nil {
-		log.Printf("Failed to connect h1 and h2: %v", err)
-		return
-	}
-	if err := h3.Connect(context.Background(), h2info); err != nil {
-		log.Printf("Failed to connect h3 and h2: %v", err)
+	// Connect both unreachable1 and unreachable2 to relay1
+	if err := unreachable1.Connect(context.Background(), relay1info); err != nil {
+		log.Printf("Failed to connect unreachable1 and relay1: %v", err)
 		return
 	}
 
-	// Now, to test things, let's set up a protocol handler on h3
-	h3.SetStreamHandler("/cats", func(s network.Stream) {
-		log.Println("Meow! It worked!")
+	if err := unreachable2.Connect(context.Background(), relay1info); err != nil {
+		log.Printf("Failed to connect unreachable2 and relay1: %v", err)
+		return
+	}
+
+	// Now, to test the communication, let's set up a protocol handler on unreachable2
+	unreachable2.SetStreamHandler("/customprotocol", func(s network.Stream) {
+		log.Println("Awesome! We're now communicating via the relay!")
+
+		// End the example
 		s.Close()
 	})
 
-	_, err = h1.NewStream(context.Background(), h3.ID(), "/cats")
-	if err == nil {
-		log.Println("Didnt actually expect to get a stream here. What happened?")
+	// Hosts that want to have messages relayed on their behalf need to reserve a slot
+	// with the circuit relay service host
+	// As we will open a stream to unreachable2, unreachable2 needs to make the
+	// reservation
+	_, err = client.Reserve(context.Background(), unreachable2, relay1info)
+	if err != nil {
+		log.Printf("unreachable2 failed to receive a relay reservation from relay1. %v", err)
 		return
 	}
-	log.Printf("Okay, no connection from h1 to h3: %v", err)
-	log.Println("Just as we suspected")
 
-	// Creates a relay address to h3 using h2 as the relay
-	relayaddr, err := ma.NewMultiaddr("/p2p/" + h2.ID().Pretty() + "/p2p-circuit/ipfs/" + h3.ID().Pretty())
+	// Now create a new address for unreachable2 that specifies to communicate via
+	// relay1 using a circuit relay
+	relayaddr, err := ma.NewMultiaddr("/p2p/" + relay1info.ID.String() + "/p2p-circuit/p2p/" + unreachable2.ID().String())
 	if err != nil {
 		log.Println(err)
 		return
@@ -91,21 +125,30 @@ func run() {
 	// prevent us from redialing again so quickly. Since we know what we're doing, we
 	// can use this ugly hack (it's on our TODO list to make it a little cleaner)
 	// to tell the dialer "no, its okay, let's try this again"
-	h1.Network().(*swarm.Swarm).Backoff().Clear(h3.ID())
+	unreachable1.Network().(*swarm.Swarm).Backoff().Clear(unreachable2.ID())
 
-	h3relayInfo := peer.AddrInfo{
-		ID:    h3.ID(),
+	log.Println("Now let's attempt to connect the hosts via the relay node")
+
+	// Open a connection to the previously unreachable host via the relay address
+	unreachable2relayinfo := peer.AddrInfo{
+		ID:    unreachable2.ID(),
 		Addrs: []ma.Multiaddr{relayaddr},
 	}
-	if err := h1.Connect(context.Background(), h3relayInfo); err != nil {
-		log.Printf("Failed to connect h1 and h3: %v", err)
+	if err := unreachable1.Connect(context.Background(), unreachable2relayinfo); err != nil {
+		log.Printf("Unexpected error here. Failed to connect unreachable1 and unreachable2: %v", err)
 		return
 	}
 
+	log.Println("Yep, that worked!")
+
+	// **** MIGHT BE WORTH ADDING A COMMENT ADDRESSING WHAT WithUseTransient() is here,
+	// and why it is needed ******************
+
 	// Woohoo! we're connected!
-	s, err := h1.NewStream(context.Background(), h3.ID(), "/cats")
+	// Let's start talking!
+	s, err := unreachable1.NewStream(network.WithUseTransient(context.Background(), "customprotocol"), unreachable2.ID(), "/customprotocol")
 	if err != nil {
-		log.Println("huh, this should have worked: ", err)
+		log.Println("Whoops, this should have worked...: ", err)
 		return
 	}
 
