@@ -144,6 +144,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 		// wait for sync to reach the other peer and then punch a hole for it in our NAT
 		// by attempting a connect to it.
 		timer := time.NewTimer(synTime)
+		defer timer.Stop()
 		select {
 		case start := <-timer.C:
 			pi := peer.AddrInfo{
@@ -160,7 +161,6 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 				return nil
 			}
 		case <-hp.ctx.Done():
-			timer.Stop()
 			return hp.ctx.Err()
 		}
 	}
