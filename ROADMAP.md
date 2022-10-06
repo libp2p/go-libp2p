@@ -24,14 +24,14 @@
 
 #### End of Q1 (March)
 -   F ⏱️ Future-proof benchmarking
--   A.3 ⚡ Handshakes at the Speed of Light - **0.5 RTT data optimization**
+-   A.3 ⚡ Handshakes at the Speed of Light - **0.5 RTT data optimization** (for QUIC)
     -   🎉 Estimated Project Completion
 
 #### Sometime Q2
 -   G 📢 Judicious Address Advertisements
 
 #### Yet to be planned/TBD
--   D.2 📺 Universal Browser Connectivity - **[WebTransport](https://github.com/libp2p/go-libp2p/issues/1717)**
+-   D.2 📺 Universal Browser Connectivity - **[WebTransport](https://github.com/libp2p/go-libp2p/issues/1717)** update to new draft versions
 	- Dependency on Chrome needs to support new draft version of WebTransport protocol (still under development by IETF and W3C)
 -   H 🧗 Clearing our tech debt
 	- Address technical debt around adding more comprehensive Testground tests for non-transport features
