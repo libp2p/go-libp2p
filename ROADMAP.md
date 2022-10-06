@@ -9,7 +9,7 @@
 #### End of Q4 (December)
 -   B.1 🧠 Smart Dialing - **Happy Eyeballs**
 -   C 📊 Comprehensive Metrics - **Swarm metrics**
--   D.1 📺 Universal Browser Connectivity - **[WebRTC](https://github.com/libp2p/go-libp2p/pull/1655)**
+-   D.1 📺 Universal Browser Connectivity - **[WebRTC Browser -> Server](https://github.com/libp2p/go-libp2p/pull/1655)**
 
 ### 2023
 
@@ -42,7 +42,7 @@
 
 **Why**: Historically, libp2p has been very wasteful when it comes to round trips spent during connection establishment. This is slowing down our users, especially their TTFB (time to first byte) metrics.
 
-**Goal**: go-libp2p optimizes its handshake latency up to the point where only increasing the speed of light would lead to further speedups. In particular, this means (in chronological order of a handshake):
+**Goal**: go-libp2p optimizes its handshake latency up to the point where only increasing the speed of light would lead to further speedups. In particular, this means:
 
 1. [Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426): cutting off the 1 RTT wasted on muxer negotiation
 3. [Adding security protocol](https://github.com/libp2p/specs/pull/353): cutting off the 1 RTT wasted on security protocol negotiation by including the security protocol in the multiaddr
