@@ -8,7 +8,7 @@
 
 #### End of Q4 (December)
 -   B.1 🧠 Smart Dialing - **Happy Eyeballs**
--   C.1 📊 Comprehensive Metrics - **Swarm metrics**
+-   C 📊 Comprehensive Metrics - **Swarm metrics**
 -   D.1 📺 Universal Browser Connectivity - **[WebRTC](https://github.com/libp2p/go-libp2p/pull/1655)**
 
 ### 2023
@@ -24,15 +24,17 @@
 
 #### End of Q1 (March)
 -   F ⏱️ Future-proof benchmarking
--   A.3 ⚡ Handshakes at the Speed of Light - **.5 RTT data optimization**
+-   A.3 ⚡ Handshakes at the Speed of Light - **0.5 RTT data optimization**
     -   🎉 Estimated Project Completion
 
 #### Sometime Q2
 -   G 📢 Judicious Address Advertisements
 
 #### Yet to be planned/TBD
--   D.2 📺 Universal Browser Connectivity - **WebTransport**
+-   D.2 📺 Universal Browser Connectivity - **[WebTransport](https://github.com/libp2p/go-libp2p/issues/1717)**
+	- Dependency on Chrome needs to support new draft version of WebTransport protocol (still under development by IETF and W3C)
 -   H 🧗 Clearing our tech debt
+	- Address technical debt around adding more comprehensive Testground tests for non-transport features
 
 # Roadmap Appendix
 ## A.⚡️Handshakes at the Speed of Light
@@ -44,7 +46,7 @@
 
 1. [Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426): cutting off the 1 RTT wasted on muxer negotiation
 3. [Adding security protocol](https://github.com/libp2p/specs/pull/353): cutting off the 1 RTT wasted on security protocol negotiation by including the security protocol in the multiaddr
-4. using 0.5-RTT data (for TLS) / a Noise Extension to ship the list of Identify protocols, cutting of 1 RTT that many protocols spend waiting on `IdentifyWait`
+4. 0.5 RTT data optimization: using 0.5-RTT data (for TLS) / a Noise Extension to ship the list of Identify protocols, cutting of 1 RTT that many protocols spend waiting on `IdentifyWait`
 
 ## B. 🧠 Smart Dialing
 <!--- TODO: Link to GitHub Epic -->
@@ -55,9 +57,9 @@
 
 How:
 
-1. implement some kind of “Happy-Eyeballs” style prioritization among all supported transports
-2. detection of blackholes, especially relevant to detect UDP (QUIC) blackholing
-3. estimation of the expected RTT of a connection based on two nodes’ IP addresses, so that Happy Eyeballs Timeouts can be set dynamically
+1. Happy Eyeballs: implement some kind of “Happy-Eyeballs” style prioritization among all supported transports
+2. Quic Blackhole detector: detection of blackholes, especially relevant to detect UDP (QUIC) blackholing
+3. RTT estimation: estimation of the expected RTT of a connection based on two nodes’ IP addresses, so that Happy Eyeballs Timeouts can be set dynamically
 
 ## C. 📊 [Comprehensive Metrics](https://github.com/libp2p/go-libp2p/issues/1356)
 
