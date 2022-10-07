@@ -23,7 +23,7 @@ https://github.com/libp2p/go-libp2p/issues/1806
 ### 2023
 
 #### Early Q1 (January)
--   B.2 🧠 Smart Dialing - **Quic Blackhole detector**
+-   B.2 🧠 Smart Dialing - **QUIC Blackhole detector**
 -   A.2 ⚡ Handshakes at the Speed of Light - **[Adding security protocol](https://github.com/libp2p/specs/pull/353)**
 
 #### Mid Q1 (February)
@@ -61,7 +61,7 @@ https://github.com/libp2p/go-libp2p/issues/1806
 How:
 
 1. Happy Eyeballs: implement some kind of “Happy-Eyeballs” style prioritization among all supported transports
-2. Quic Blackhole detector: detection of blackholes, especially relevant to detect UDP (QUIC) blackholing
+2. QUIC Blackhole detector: detection of blackholes, especially relevant to detect UDP (QUIC) blackholing
 3. RTT estimation: estimation of the expected RTT of a connection based on two nodes’ IP addresses, so that Happy Eyeballs Timeouts can be set dynamically
 
 ## [C. 📊 Comprehensive Metrics](https://github.com/libp2p/go-libp2p/issues/1356)
