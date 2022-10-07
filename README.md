@@ -15,7 +15,7 @@
 # Table of Contents
 
 - [Background](#background)
-- [Roadmap] (#roadmap)
+- [Roadmap](#roadmap)
 - [Usage](#usage)
   - [Examples](#examples)
 - [Development](#development)
