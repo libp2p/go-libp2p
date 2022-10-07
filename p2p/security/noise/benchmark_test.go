@@ -39,7 +39,7 @@ func makeTransport(b *testing.B) *Transport {
 	if err != nil {
 		b.Fatal(err)
 	}
-	tpt, err := New(priv)
+	tpt, err := New(priv, nil)
 	if err != nil {
 		b.Fatalf("error constructing transport: %v", err)
 	}

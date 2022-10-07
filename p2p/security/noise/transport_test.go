@@ -37,6 +37,12 @@ func newTestTransport(t *testing.T, typ, bits int) *Transport {
 	}
 }
 
+func newTestTransportWithMuxers(t *testing.T, typ, bits int, muxers []string) *Transport {
+	transport := newTestTransport(t, typ, bits)
+	transport.muxers = muxers
+	return transport
+}
+
 // Create a new pair of connected TCP sockets.
 func newConnPair(t *testing.T) (net.Conn, net.Conn) {
 	lstnr, err := net.Listen("tcp", "localhost:0")
@@ -584,5 +590,58 @@ func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 		t.Fatal("timeout")
 	case err := <-errChan:
 		require.NoError(t, err)
+	}
+}
+
+type noiseEarlyDataTestCase struct {
+	initProtos     []string
+	respProtos     []string
+	expectedResult string
+}
+
+func TestHandshakeWithTransportEarlyData(t *testing.T) {
+	tests := []noiseEarlyDataTestCase{
+		{initProtos: nil, respProtos: nil, expectedResult: ""},
+		{[]string{"muxer1"}, []string{"muxer1"}, "muxer1"},
+		{[]string{"muxer1"}, []string{}, ""},
+		{[]string{}, []string{"muxer2"}, ""},
+		{[]string{"muxer2"}, []string{"muxer1"}, ""},
+		{[]string{"muxer1/1.0.0", "muxer2/1.0.1"}, []string{"muxer2/1.0.1", "muxer1/1.0.0"}, "muxer1/1.0.0"},
+		{[]string{"muxer1/1.0.0", "muxer2/1.0.1", "muxer3/1.0.0"}, []string{"muxer2/1.0.1", "muxer1/1.0.1", "muxer3/1.0.0"}, "muxer2/1.0.1"},
+		{[]string{"muxer1/1.0.0", "muxer2/1.0.0"}, []string{"muxer3/1.0.0"}, ""},
+	}
+
+	noiseHandshake := func(t *testing.T, initProtos, respProtos []string, expectedProto string) {
+		initTransport := newTestTransportWithMuxers(t, crypto.Ed25519, 2048, initProtos)
+		respTransport := newTestTransportWithMuxers(t, crypto.Ed25519, 2048, respProtos)
+
+		initConn, respConn := connect(t, initTransport, respTransport)
+		defer initConn.Close()
+		defer respConn.Close()
+
+		require.Equal(t, expectedProto, initConn.connectionState.NextProto)
+		require.Equal(t, expectedProto, respConn.connectionState.NextProto)
+
+		initData := []byte("Test data for noise transport")
+		_, err := initConn.Write(initData)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		respData := make([]byte, len(initData))
+		_, err = respConn.Read(respData)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(initData, respData) {
+			t.Errorf("Data transmitted mismatch over noise session. %v != %v", initData, respData)
+		}
+	}
+
+	for _, test := range tests {
+		t.Run("Transport EarlyData Test", func(t *testing.T) {
+			noiseHandshake(t, test.initProtos, test.respProtos, test.expectedResult)
+		})
 	}
 }
