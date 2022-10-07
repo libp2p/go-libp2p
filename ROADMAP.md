@@ -1,5 +1,4 @@
 
-
 # go-libp2p roadmap Q4’22/Q1’23
 
 ```
@@ -8,6 +7,28 @@ Status: In Progress
 Notes: This document is still in review will may be heavily modified based on stakeholder feedback. Please add any feedback or questions in:
 https://github.com/libp2p/go-libp2p/issues/1806
 ```
+
+## About the Roadmap
+### Sections
+This document consists of two sections: [Milestones](#Milestones) and the [Roadmap Appendix](#Roadmap-Appendix)
+
+[Milestones](#Milestones) is our best educated guess (not a hard commitment) around when we plan to ship the key features.
+Where possible we've broken down a project into discrete sub-projects e.g. project "A" (⚡Handshakes at the Speed of Light) contains three sub-projects and consists of A.1, A.2, and A.3
+A project is signified as "complete" once all of it's sub-projects are shipped.
+
+The [Roadmap Appendix](#Roadmap-Appendix) section describes each project in detail and lists its sub-projects (if applicable.) Here you can find the motivation for each project and goals.
+
+We've deep-linked each section header to it's corresponding GitHub Epic. Latest information on the progress of each project there can be found in the Epics and their child issues (as we will make regular updates.)
+
+### Done criteria
+Our "Definition of Done" for projects/sub-projects that involve writing new protocols or modifications to existing ones will usually consist of the following:
+- [ ] Spec is merged and classified as "Candidate Recommendation"
+- [ ] (by virtue of the above) At least one major reference implementation exists
+- [ ] A well established testing criteria (defined at the outset of the project) is met (testing via Testground or otherwise)
+- [ ] Public documentation (on docs.libp2p) exists
+
+Others supporting projects (like testing or benchmarking) will have different criteria.
+
 
 ## 🛣️ Milestones
 ### 2022
