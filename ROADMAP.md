@@ -1,10 +1,19 @@
+
 # go-libp2p roadmap Q4’22/Q1’23
+
+```
+Date: 2022-10-07
+Status: In Progress
+Notes: This document is still in review will may be heavily modified based on stakeholder feedback. Please add any feedback or questions in:
+https://github.com/libp2p/go-libp2p/issues/1806
+```
 
 ## 🛣️ Milestones
 ### 2022
 
 #### Early Q4 (October)
 -   A.1⚡Handshakes at the Speed of Light - **[Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426)**
+- E.1 🧪 Future-proof testing - **RTT test for Early Muxer Negotiation**
 
 #### End of Q4 (December)
 -   B.1 🧠 Smart Dialing - **Happy Eyeballs**
@@ -15,7 +24,6 @@
 
 #### Early Q1 (January)
 -   B.2 🧠 Smart Dialing - **Quic Blackhole detector**
--   E 🧪 Future-proof testing
 -   A.2 ⚡ Handshakes at the Speed of Light - **[Adding security protocol](https://github.com/libp2p/specs/pull/353)**
 
 #### Mid Q1 (February)
@@ -27,29 +35,24 @@
 -   A.3 ⚡ Handshakes at the Speed of Light - **0.5 RTT data optimization** (for QUIC)
     -   🎉 Estimated Project Completion
 
-#### Sometime Q2
--   G 📢 Judicious Address Advertisements
-
-#### Yet to be planned/TBD
+#### Up Next
 -   D.2 📺 Universal Browser Connectivity - **[WebTransport](https://github.com/libp2p/go-libp2p/issues/1717)** update to new draft versions
 	- Dependency on Chrome needs to support new draft version of WebTransport protocol (still under development by IETF and W3C)
--   H 🧗 Clearing our tech debt
-	- Address technical debt around adding more comprehensive Testground tests for non-transport features
+-  E.2 🧪 Future-proof testing - **Comprehensive testing for non-transport features**
+-  G 📢 Judicious Address Advertisements
 
 # Roadmap Appendix
-## A.⚡️Handshakes at the Speed of Light
-<!--- TODO: Link to GitHub Epic -->
+## [A.⚡️Handshakes at the Speed of Light](https://github.com/libp2p/go-libp2p/issues/1807)
 
 **Why**: Historically, libp2p has been very wasteful when it comes to round trips spent during connection establishment. This is slowing down our users, especially their TTFB (time to first byte) metrics.
 
 **Goal**: go-libp2p optimizes its handshake latency up to the point where only increasing the speed of light would lead to further speedups. In particular, this means:
 
 1. [Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426): cutting off the 1 RTT wasted on muxer negotiation
-3. [Adding security protocol](https://github.com/libp2p/specs/pull/353): cutting off the 1 RTT wasted on security protocol negotiation by including the security protocol in the multiaddr
-4. 0.5 RTT data optimization: using 0.5-RTT data (for TLS) / a Noise Extension to ship the list of Identify protocols, cutting of 1 RTT that many protocols spend waiting on `IdentifyWait`
+2. [Adding security protocol](https://github.com/libp2p/specs/pull/353): cutting off the 1 RTT wasted on security protocol negotiation by including the security protocol in the multiaddr
+3. 0.5 RTT data optimization: using 0.5-RTT data (for TLS) / a Noise Extension to ship the list of Identify protocols, cutting of 1 RTT that many protocols spend waiting on `IdentifyWait`
 
-## B. 🧠 Smart Dialing
-<!--- TODO: Link to GitHub Epic -->
+## [B. 🧠 Smart Dialing](https://github.com/libp2p/go-libp2p/issues/1808)
 
 **Why**: Having a large list of transports to pick from is great. Having an advanced stack that can dial all of them is even greater. But dialing all of them at the same time wastes our, the network’s and the peer’s resources. 
 
@@ -61,7 +64,7 @@ How:
 2. Quic Blackhole detector: detection of blackholes, especially relevant to detect UDP (QUIC) blackholing
 3. RTT estimation: estimation of the expected RTT of a connection based on two nodes’ IP addresses, so that Happy Eyeballs Timeouts can be set dynamically
 
-## C. 📊 [Comprehensive Metrics](https://github.com/libp2p/go-libp2p/issues/1356)
+## [C. 📊 Comprehensive Metrics](https://github.com/libp2p/go-libp2p/issues/1356)
 
 **Why**: For far too long, go-libp2p has been a black box. This has hurt us many times, by allowing trivial bugs to go undetected for a long time ([example](https://github.com/ipfs/kubo/pull/8750)). Having metrics will allow us to track the impact of performance improvements we make over time.
 
@@ -69,8 +72,7 @@ How:
 
 **How**: This will look similar to how we already expose resource manager metrics. Metrics can be added incrementally for libp2p’s components. First milestone is having metrics for the swarm.
 
-## D. 📺 Universal Browser Connectivity
-<!--- TODO: Link to GitHub Epic -->
+## [D. 📺 Universal Browser Connectivity](https://github.com/libp2p/go-libp2p/issues/1811)
 
 **Why**: A huge part of “the Web” is happening inside the browser. As a universal p2p networking stack, libp2p needs to be able to offer solutions for browser users.
 
@@ -79,22 +81,22 @@ How:
 1. [WebRTC](https://github.com/libp2p/go-libp2p/pull/1655): while browser to public node is getting close to finalized, there’ll be a push to make the other combinations work as well
 2. [WebTransport](https://github.com/libp2p/go-libp2p/issues/1717): as the protocol is still under development by IETF and W3C, our implementation needs to follow. To stay up to date, we will have to move as soon as Chrome ships support for a new draft version
 
-## E. 🧪 Future-proof Testing
-<!--- TODO: Link to GitHub Epic -->
+## [E. 🧪 Future-proof Testing](https://github.com/libp2p/go-libp2p/issues/1809)
 
 **Why**: Having lots of transports is great, and shaving off RTTs is awesome. We need to stay backwards-compatible with legacy go-libp2p implementations, and less advanced libp2p stacks.
 
 **Goal**: We have cross-version and cross-implementation Testground coverage that makes sure that we are able to establish a libp2p connection between two nodes, in the expected number of RTTs. This makes sure that the optimizations don’t break compatibility, actually have the performance impact we expect them to have, and serves as a regression test in the future.
 
-## F. ⏱ Future-proof Benchmarking
-<!--- TODO: Link to GitHub Epic -->
+1. RTT test for Early Muxer Negotiation (A.1)
+2. Comprehensive testing for non-transport features (AutoNat, Hole punching, etc.)
+
+## [F. ⏱ Future-proof Benchmarking](https://github.com/libp2p/go-libp2p/issues/1810)
 
 **Why**: For libp2p to be competitive, it needs to delivers comparable performance to widely used protocols on the internet, namely HTTP/2 and HTTP/3.
 
 **Goal**: We have a test suite that runs libp2p transfers between nodes located at different locations all over the world, proving that libp2p is able to achieve performance on par with HTTP. The test suite is run on a continuous basis and results are published to a public performance dashboard.
 
-## G. 📢 Judicious Address Advertisements
-<!--- TODO: Link to GitHub Epic -->
+## [G. 📢 Judicious Address Advertisements](https://github.com/libp2p/go-libp2p/issues/1812)
 
 **Why**: A node that advertises lots of addresses hurts itself. Other nodes will have to try dialing a lot of addresses before they find one that actually works, dramatically increasing handshake latencies.
 
