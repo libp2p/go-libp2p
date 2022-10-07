@@ -15,6 +15,7 @@
 # Table of Contents
 
 - [Background](#background)
+- [Roadmap](#roadmap)
 - [Usage](#usage)
   - [Examples](#examples)
 - [Development](#development)
@@ -36,6 +37,11 @@ To learn more, check out the following resources:
 - [**The libp2p Specification**](https://github.com/libp2p/specs)
 - [**js-libp2p implementation**](https://github.com/libp2p/js-libp2p)
 - [**rust-libp2p implementation**](https://github.com/libp2p/rust-libp2p)
+
+## Roadmap
+
+Our roadmap for go-libp2p can be found here: https://github.com/libp2p/go-libp2p/blob/master/ROADMAP.md
+This document represents current projects the go-libp2p team is focused on and provides an estimation of completion targets. It is a completementary roadmap to the overarching libp2p project roadmap: https://github.com/libp2p/specs/blob/master/ROADMAP.md
 
 ## Usage
 
