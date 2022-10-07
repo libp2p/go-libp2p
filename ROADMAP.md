@@ -15,7 +15,9 @@ https://github.com/libp2p/go-libp2p/issues/1806
 #### Early Q4 (October)
 -   A.1⚡Handshakes at the Speed of Light - **[Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426)**
 - E.1 🧪 Future-proof testing - **RTT test for Early Muxer Negotiation**
-- F.1 ⏱ Future-proof Benchmarking - **Using nix-builders**
+
+### Mid Q4 (November)
+-   F.1 ⏱ Future-proof Benchmarking - **Using nix-builders**
 
 #### End of Q4 (December)
 -   B.1 🧠 Smart Dialing - **Happy Eyeballs**
