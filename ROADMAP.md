@@ -17,7 +17,7 @@ https://github.com/libp2p/go-libp2p/issues/1806
 - E.1 🧪 Future-proof testing - **RTT test for Early Muxer Negotiation**
 
 ### Mid Q4 (November)
--   F.1 ⏱ Future-proof Benchmarking - **Using nix-builders**
+-   F.1 ⏱ Future-proof Benchmarking - **[Using nix-builders](https://github.com/testground/testground/pull/1425)**
 
 #### End of Q4 (December)
 -   B.1 🧠 Smart Dialing - **Happy Eyeballs**
@@ -100,7 +100,7 @@ How:
 
 **Goal**: We have a test suite that runs libp2p transfers between nodes located at different locations all over the world, proving that libp2p is able to achieve performance on par with HTTP. The test suite is run on a continuous basis and results are published to a public performance dashboard.
 
-1. Benchmarking using nix-builders
+1. [Benchmarking using nix-builders](https://github.com/testground/testground/pull/1425)
     - (Dependency: remote machines need Nix installed)
 2. Benchmarking using first class support for remote runners (using `remote:exec`) in Testground
 
