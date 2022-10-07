@@ -1,4 +1,5 @@
 
+
 # go-libp2p roadmap Q4’22/Q1’23
 
 ```
@@ -14,6 +15,7 @@ https://github.com/libp2p/go-libp2p/issues/1806
 #### Early Q4 (October)
 -   A.1⚡Handshakes at the Speed of Light - **[Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426)**
 - E.1 🧪 Future-proof testing - **RTT test for Early Muxer Negotiation**
+- F.1 ⏱ Future-proof Benchmarking - **Using nix-builders**
 
 #### End of Q4 (December)
 -   B.1 🧠 Smart Dialing - **Happy Eyeballs**
@@ -31,13 +33,13 @@ https://github.com/libp2p/go-libp2p/issues/1806
     -   🎉 Estimated Project Completion
 
 #### End of Q1 (March)
--   F ⏱️ Future-proof benchmarking
+-   F.2 ⏱️ Future-proof benchmarking - **Using first class support for remote runners in Testground**
 -   A.3 ⚡ Handshakes at the Speed of Light - **0.5 RTT data optimization** (for QUIC)
     -   🎉 Estimated Project Completion
 
 #### Up Next
 -   D.2 📺 Universal Browser Connectivity - **[WebTransport](https://github.com/libp2p/go-libp2p/issues/1717)** update to new draft versions
-	- Dependency on Chrome needs to support new draft version of WebTransport protocol (still under development by IETF and W3C)
+    - Dependency on Chrome needs to support new draft version of WebTransport protocol (still under development by IETF and W3C)
 -  E.2 🧪 Future-proof testing - **Comprehensive testing for non-transport features**
 -  G 📢 Judicious Address Advertisements
 
@@ -95,6 +97,10 @@ How:
 **Why**: For libp2p to be competitive, it needs to delivers comparable performance to widely used protocols on the internet, namely HTTP/2 and HTTP/3.
 
 **Goal**: We have a test suite that runs libp2p transfers between nodes located at different locations all over the world, proving that libp2p is able to achieve performance on par with HTTP. The test suite is run on a continuous basis and results are published to a public performance dashboard.
+
+1. Benchmarking using nix-builders
+    - (Dependency: remote machines need Nix installed)
+2. Benchmarking using first class support for remote runners (using `remote:exec`) in Testground
 
 ## [G. 📢 Judicious Address Advertisements](https://github.com/libp2p/go-libp2p/issues/1812)
 
