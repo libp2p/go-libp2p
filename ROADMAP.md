@@ -108,7 +108,7 @@ How:
 
 ## [E. 🧪 Future-proof Testing](https://github.com/libp2p/go-libp2p/issues/1809)
 
-**Why**: Having lots of transports is great, and shaving off RTTs is awesome. We need to stay backwards-compatible with legacy go-libp2p implementations, and less advanced libp2p stacks.
+**Why**: Having lots of transports, encryption mechanism, and stream muxers is great, and shaving off RTTs is awesome. We need to stay backwards-compatible with legacy go-libp2p release, other libp2p implementations, and less advanced libp2p stacks.
 
 **Goal**: We have cross-version and cross-implementation Testground coverage that makes sure that we are able to establish a libp2p connection between two nodes, in the expected number of RTTs. This makes sure that the optimizations don’t break compatibility, actually have the performance impact we expect them to have, and serves as a regression test in the future.
 
