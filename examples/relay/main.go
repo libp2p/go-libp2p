@@ -20,7 +20,7 @@ func main() {
 }
 
 func run() {
-	// Create 2 "unreachable" libp2p hosts that want to communicate.
+	// Create two "unreachable" libp2p hosts that want to communicate.
 	// We are configuring them with no listen addresses to mimic hosts
 	// that cannot be directly dialed due to problematic firewall/NAT
 	// configurations.
@@ -54,7 +54,7 @@ func run() {
 
 	err = unreachable1.Connect(context.Background(), unreachable2info)
 	if err == nil {
-		log.Printf("This actually should have failed. Did you make changes to the example...?")
+		log.Printf("This actually should have failed.")
 		return
 	}
 
@@ -141,11 +141,15 @@ func run() {
 
 	log.Println("Yep, that worked!")
 
-	// **** MIGHT BE WORTH ADDING A COMMENT ADDRESSING WHAT WithUseTransient() is here,
-	// and why it is needed ******************
-
 	// Woohoo! we're connected!
 	// Let's start talking!
+
+	// Because we don't have a direct connection to the destination node - we have a relayed connection -
+	// the connection is marked as transient. Since the relay limits the amount of data that can be
+	// exchanged over the relayed connection, the application needs to explicitly opt-in into using a
+	// the relayed connection. In general, we should only do this if we have low bandwidth requirements,
+	// and we're happy for the connection to be killed when the relayed connection is replaced with a
+	// direct (holepunched) connection.
 	s, err := unreachable1.NewStream(network.WithUseTransient(context.Background(), "customprotocol"), unreachable2.ID(), "/customprotocol")
 	if err != nil {
 		log.Println("Whoops, this should have worked...: ", err)
