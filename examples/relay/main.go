@@ -147,7 +147,7 @@ func run() {
 	// Because we don't have a direct connection to the destination node - we have a relayed connection -
 	// the connection is marked as transient. Since the relay limits the amount of data that can be
 	// exchanged over the relayed connection, the application needs to explicitly opt-in into using a
-	// the relayed connection. In general, we should only do this if we have low bandwidth requirements,
+	// relayed connection. In general, we should only do this if we have low bandwidth requirements,
 	// and we're happy for the connection to be killed when the relayed connection is replaced with a
 	// direct (holepunched) connection.
 	s, err := unreachable1.NewStream(network.WithUseTransient(context.Background(), "customprotocol"), unreachable2.ID(), "/customprotocol")
