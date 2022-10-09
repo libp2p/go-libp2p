@@ -11,7 +11,9 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/canonicallog"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -26,10 +28,11 @@ type Transport struct {
 
 	localPeer peer.ID
 	privKey   ci.PrivKey
+	muxers    []protocol.ID
 }
 
 // New creates a TLS encrypted transport
-func New(key ci.PrivKey) (*Transport, error) {
+func New(key ci.PrivKey, muxers []protocol.ID) (*Transport, error) {
 	id, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
@@ -37,6 +40,7 @@ func New(key ci.PrivKey) (*Transport, error) {
 	t := &Transport{
 		localPeer: id,
 		privKey:   key,
+		muxers:    muxers,
 	}
 
 	identity, err := NewIdentity(key)
@@ -53,6 +57,12 @@ var _ sec.SecureTransport = &Transport{}
 // If p is empty, connections from any peer are accepted.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
+	muxers := make([]string, 0, len(t.muxers))
+	for _, muxer := range t.muxers {
+		muxers = append(muxers, string(muxer))
+	}
+	// Prepend the prefered muxers list to TLS config.
+	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Server(insecure, config), keyCh)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
@@ -73,6 +83,12 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 // notice this after 1 RTT when calling Read.
 func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
+	muxers := make([]string, 0, len(t.muxers))
+	for _, muxer := range t.muxers {
+		muxers = append(muxers, (string)(muxer))
+	}
+	// Prepend the prefered muxers list to TLS config.
+	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {
 		insecure.Close()
@@ -89,6 +105,7 @@ func (t *Transport) handshake(ctx context.Context, tlsConn *tls.Conn, keyCh <-ch
 		}
 	}()
 
+	// handshaking...
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
@@ -111,11 +128,23 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 	if err != nil {
 		return nil, err
 	}
+
+	nextProto := tlsConn.ConnectionState().NegotiatedProtocol
+	// The special ALPN extension value "libp2p" is used by libp2p versions
+	// that don't support early muxer negotiation. If we see this sepcial
+	// value selected, that means we are handshaking with a version that does
+	// not support early muxer negotiation. In this case return empty nextProto
+	// to indicate no muxer is selected.
+	if nextProto == "libp2p" {
+		nextProto = ""
+	}
+
 	return &conn{
-		Conn:         tlsConn,
-		localPeer:    t.localPeer,
-		privKey:      t.privKey,
-		remotePeer:   remotePeerID,
-		remotePubKey: remotePubKey,
+		Conn:            tlsConn,
+		localPeer:       t.localPeer,
+		privKey:         t.privKey,
+		remotePeer:      remotePeerID,
+		remotePubKey:    remotePubKey,
+		connectionState: network.ConnectionState{NextProto: nextProto},
 	}, nil
 }

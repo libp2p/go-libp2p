@@ -173,7 +173,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 		secure = makeInsecureTransport(h.ID(), cfg.PeerKey)
 	} else {
 		var err error
-		secure, err = makeSecurityMuxer(h, cfg.SecurityTransports)
+		secure, err = makeSecurityMuxer(h, cfg.SecurityTransports, cfg.Muxers)
 		if err != nil {
 			return err
 		}

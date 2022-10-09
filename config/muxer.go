@@ -35,7 +35,7 @@ func MuxerConstructor(m interface{}) (MuxC, error) {
 		return nil, err
 	}
 	return func(h host.Host) (network.Multiplexer, error) {
-		t, err := ctor(h, nil, nil, nil, nil, nil)
+		t, err := ctor(h, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}

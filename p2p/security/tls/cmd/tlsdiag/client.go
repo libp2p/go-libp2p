@@ -34,7 +34,7 @@ func StartClient() error {
 		return err
 	}
 	fmt.Printf(" Peer ID: %s\n", id.Pretty())
-	tp, err := libp2ptls.New(priv)
+	tp, err := libp2ptls.New(priv, nil)
 	if err != nil {
 		return err
 	}

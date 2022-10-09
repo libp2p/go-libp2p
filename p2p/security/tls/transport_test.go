@@ -22,6 +22,7 @@ import (
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 
 	"github.com/stretchr/testify/assert"
@@ -125,9 +126,9 @@ func TestHandshakeSucceeds(t *testing.T) {
 	}
 
 	// Use standard transports with default TLS configuration
-	clientTransport, err := New(clientKey)
+	clientTransport, err := New(clientKey, nil)
 	require.NoError(t, err)
-	serverTransport, err := New(serverKey)
+	serverTransport, err := New(serverKey, nil)
 	require.NoError(t, err)
 
 	t.Run("standard TLS with extension not critical", func(t *testing.T) {
@@ -175,6 +176,81 @@ func TestHandshakeSucceeds(t *testing.T) {
 	})
 }
 
+type testcase struct {
+	clientProtos   []protocol.ID
+	serverProtos   []protocol.ID
+	expectedResult string
+}
+
+func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
+
+	tests := []testcase{
+		{clientProtos: nil, serverProtos: nil, expectedResult: ""},
+		{[]protocol.ID{"muxer1/1.0.0", "muxer2/1.0.1"}, []protocol.ID{"muxer2/1.0.1", "muxer1/1.0.0"}, "muxer2/1.0.1"},
+		{[]protocol.ID{"muxer1/1.0.0", "muxer2/1.0.1", "libp2p"}, []protocol.ID{"muxer2/1.0.1", "muxer1/1.0.0", "libp2p"}, "muxer2/1.0.1"},
+		{[]protocol.ID{"muxer1/1.0.0", "libp2p"}, []protocol.ID{"libp2p"}, ""},
+		{[]protocol.ID{"libp2p"}, []protocol.ID{"libp2p"}, ""},
+		{[]protocol.ID{"muxer1"}, []protocol.ID{}, ""},
+		{[]protocol.ID{}, []protocol.ID{"muxer1"}, ""},
+		{[]protocol.ID{"muxer2"}, []protocol.ID{"muxer1"}, ""},
+	}
+
+	clientID, clientKey := createPeer(t)
+	serverID, serverKey := createPeer(t)
+
+	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport, expectedMuxer string) {
+		clientInsecureConn, serverInsecureConn := connect(t)
+
+		serverConnChan := make(chan sec.SecureConn)
+		go func() {
+			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+			require.NoError(t, err)
+			serverConnChan <- serverConn
+		}()
+
+		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		var serverConn sec.SecureConn
+		select {
+		case serverConn = <-serverConnChan:
+		case <-time.After(250 * time.Millisecond):
+			t.Fatal("expected the server to accept a connection")
+		}
+		defer serverConn.Close()
+
+		require.Equal(t, clientConn.LocalPeer(), clientID)
+		require.Equal(t, serverConn.LocalPeer(), serverID)
+		require.True(t, clientConn.LocalPrivateKey().Equals(clientKey), "client private key mismatch")
+		require.True(t, serverConn.LocalPrivateKey().Equals(serverKey), "server private key mismatch")
+		require.Equal(t, clientConn.RemotePeer(), serverID)
+		require.Equal(t, serverConn.RemotePeer(), clientID)
+		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")
+		require.True(t, serverConn.RemotePublicKey().Equals(clientKey.GetPublic()), "client public key mismatch")
+		require.Equal(t, clientConn.ConnState().NextProto, expectedMuxer)
+		// exchange some data
+		_, err = serverConn.Write([]byte("foobar"))
+		require.NoError(t, err)
+		b := make([]byte, 6)
+		_, err = clientConn.Read(b)
+		require.NoError(t, err)
+		require.Equal(t, string(b), "foobar")
+	}
+
+	// Iterate through the NextProto combinations.
+	for _, test := range tests {
+		clientTransport, err := New(clientKey, test.clientProtos)
+		require.NoError(t, err)
+		serverTransport, err := New(serverKey, test.serverProtos)
+		require.NoError(t, err)
+
+		t.Run("TLS handshake with ALPN extension", func(t *testing.T) {
+			handshake(t, clientTransport, serverTransport, test.expectedResult)
+		})
+	}
+}
+
 // crypto/tls' cancellation logic works by spinning up a separate Go routine that watches the ctx.
 // If the ctx is canceled, it kills the handshake.
 // We need to make sure that the handshake doesn't complete before that Go routine picks up the cancellation.
@@ -192,9 +268,9 @@ func TestHandshakeConnectionCancellations(t *testing.T) {
 	_, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 
-	clientTransport, err := New(clientKey)
+	clientTransport, err := New(clientKey, nil)
 	require.NoError(t, err)
-	serverTransport, err := New(serverKey)
+	serverTransport, err := New(serverKey, nil)
 	require.NoError(t, err)
 
 	t.Run("cancel outgoing connection", func(t *testing.T) {
@@ -244,9 +320,9 @@ func TestPeerIDMismatch(t *testing.T) {
 	_, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 
-	serverTransport, err := New(serverKey)
+	serverTransport, err := New(serverKey, nil)
 	require.NoError(t, err)
-	clientTransport, err := New(clientKey)
+	clientTransport, err := New(clientKey, nil)
 	require.NoError(t, err)
 
 	t.Run("for outgoing connections", func(t *testing.T) {
@@ -521,9 +597,9 @@ func TestInvalidCerts(t *testing.T) {
 		tr := transforms[i]
 
 		t.Run(fmt.Sprintf("client offending: %s", tr.name), func(t *testing.T) {
-			serverTransport, err := New(serverKey)
+			serverTransport, err := New(serverKey, nil)
 			require.NoError(t, err)
-			clientTransport, err := New(clientKey)
+			clientTransport, err := New(clientKey, nil)
 			require.NoError(t, err)
 			tr.apply(clientTransport.identity)
 
@@ -564,10 +640,10 @@ func TestInvalidCerts(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("server offending: %s", tr.name), func(t *testing.T) {
-			serverTransport, err := New(serverKey)
+			serverTransport, err := New(serverKey, nil)
 			require.NoError(t, err)
 			tr.apply(serverTransport.identity)
-			clientTransport, err := New(clientKey)
+			clientTransport, err := New(clientKey, nil)
 			require.NoError(t, err)
 
 			clientInsecureConn, serverInsecureConn := connect(t)

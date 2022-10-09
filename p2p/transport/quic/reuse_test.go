@@ -3,6 +3,7 @@ package libp2pquic
 import (
 	"bytes"
 	"net"
+	"os"
 	"runtime/pprof"
 	"strings"
 	"testing"
@@ -144,6 +145,11 @@ func TestReuseGarbageCollect(t *testing.T) {
 	})
 	garbageCollectInterval = 50 * time.Millisecond
 	maxUnusedDuration = 100 * time.Millisecond
+	if os.Getenv("CI") != "" {
+		// Increase these timeouts if in CI
+		garbageCollectInterval = 10 * garbageCollectInterval
+		maxUnusedDuration = 10 * maxUnusedDuration
+	}
 
 	reuse := newReuse()
 	cleanup(t, reuse)

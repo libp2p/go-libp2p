@@ -203,8 +203,8 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 		return nil, err
 	}
 
-	// Now run a Noise handshake (using early data) and send all the certificate hashes that we would have accepted.
-	// The server will verify that it advertised all of these certificate hashes.
+	// Now run a Noise handshake (using early data) and get all the certificate hashes from the server.
+	// We will verify that the certhashes we used to dial is a subset of the certhashes we received from the server.
 	var verified bool
 	n, err := t.noise.WithSessionOptions(noise.EarlyData(newEarlyDataReceiver(func(b *pb.NoiseExtensions) error {
 		decodedCertHashes, err := decodeCertHashesFromProtobuf(b.WebtransportCerthashes)

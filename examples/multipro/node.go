@@ -5,10 +5,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
 
 	ggio "github.com/gogo/protobuf/io"
@@ -128,7 +128,7 @@ func (n *Node) NewMessageData(messageId string, gossip bool) *p2p.MessageData {
 	}
 
 	return &p2p.MessageData{ClientVersion: clientVersion,
-		NodeId:     peer.Encode(n.ID()),
+		NodeId:     n.ID().String(),
 		NodePubKey: nodePubKey,
 		Timestamp:  time.Now().Unix(),
 		Id:         messageId,

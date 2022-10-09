@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 
 	ci "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
 )
@@ -14,8 +15,9 @@ type conn struct {
 	localPeer peer.ID
 	privKey   ci.PrivKey
 
-	remotePeer   peer.ID
-	remotePubKey ci.PubKey
+	remotePeer      peer.ID
+	remotePubKey    ci.PubKey
+	connectionState network.ConnectionState
 }
 
 var _ sec.SecureConn = &conn{}
@@ -34,4 +36,8 @@ func (c *conn) RemotePeer() peer.ID {
 
 func (c *conn) RemotePublicKey() ci.PubKey {
 	return c.remotePubKey
+}
+
+func (c *conn) ConnState() network.ConnectionState {
+	return c.connectionState
 }

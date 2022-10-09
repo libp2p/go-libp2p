@@ -89,7 +89,7 @@ func TestReservationFailures(t *testing.T) {
 				host.SetStreamHandler(proto.ProtoIDv2Hop, tc.streamHandler)
 			}
 
-			cl, err := libp2p.New()
+			cl, err := libp2p.New(libp2p.ResourceManager(network.NullResourceManager))
 			require.NoError(t, err)
 			defer cl.Close()
 			_, err = client.Reserve(context.Background(), cl, peer.AddrInfo{ID: host.ID(), Addrs: host.Addrs()})

@@ -13,6 +13,7 @@ import (
 	ipnet "github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/transport"
+	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
 
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -194,12 +195,24 @@ func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, 
 	return u.secure.SecureOutbound(ctx, conn, p)
 }
 
-func (u *upgrader) setupMuxer(ctx context.Context, conn net.Conn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
-	// TODO: The muxer should take a context.
+func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
+	msmuxer, ok := u.muxer.(*msmux.Transport)
+	muxerSelected := conn.ConnState().NextProto
+	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
+	if ok && len(muxerSelected) > 0 {
+		tpt, ok := msmuxer.GetTransportByKey(muxerSelected)
+		if !ok {
+			return nil, fmt.Errorf("selected a muxer we don't know: %s", muxerSelected)
+		}
+
+		return tpt.NewConn(conn, server, scope)
+	}
+
 	done := make(chan struct{})
 
 	var smconn network.MuxedConn
 	var err error
+	// TODO: The muxer should take a context.
 	go func() {
 		defer close(done)
 		smconn, err = u.muxer.NewConn(conn, server, scope)

@@ -90,6 +90,12 @@ func (c *conn) RemotePublicKey() ic.PubKey {
 	return c.remotePubKey
 }
 
+// ConnState is the state of security connection.
+// It is empty if not supported.
+func (c *conn) ConnState() network.ConnectionState {
+	return network.ConnectionState{}
+}
+
 // LocalMultiaddr returns the local Multiaddr associated
 func (c *conn) LocalMultiaddr() ma.Multiaddr {
 	return c.localMultiaddr

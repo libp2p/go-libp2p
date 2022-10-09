@@ -50,7 +50,7 @@ func TransportConstructor(tpt interface{}, opts ...interface{}) (TptC, error) {
 		return nil, err
 	}
 	return func(h host.Host, u transport.Upgrader, psk pnet.PSK, cg connmgr.ConnectionGater, rcmgr network.ResourceManager, resolver *madns.Resolver) (transport.Transport, error) {
-		t, err := ctor(h, u, psk, cg, rcmgr, resolver)
+		t, err := ctor(h, u, psk, cg, rcmgr, resolver, nil)
 		if err != nil {
 			return nil, err
 		}

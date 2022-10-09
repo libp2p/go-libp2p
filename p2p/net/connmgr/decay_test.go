@@ -1,6 +1,7 @@
 package connmgr
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -142,13 +143,25 @@ func TestMultiplePeers(t *testing.T) {
 	_ = tag3.Bump(ids[2], 100)
 
 	// allow the background goroutine to process bumps.
+	waitFor := 100 * time.Millisecond
+	tick := 10 * time.Millisecond
+	if os.Getenv("CI") != "" {
+		waitFor *= 10
+		tick *= 10
+	}
+
 	require.Eventually(t, func() bool {
 		return mgr.GetTagInfo(ids[0]) != nil && mgr.GetTagInfo(ids[1]) != nil && mgr.GetTagInfo(ids[2]) != nil
-	}, 100*time.Millisecond, 10*time.Millisecond)
+	}, waitFor, tick)
 
 	mockClock.Add(3 * time.Second)
 
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(ids[0]).Value == 2670 }, 500*time.Millisecond, 10*time.Millisecond)
+	waitFor = 500 * time.Millisecond
+	if os.Getenv("CI") != "" {
+		waitFor *= 10
+	}
+
+	require.Eventually(t, func() bool { return mgr.GetTagInfo(ids[0]).Value == 2670 }, waitFor, tick)
 	require.Equal(t, 1170, mgr.GetTagInfo(ids[1]).Value)
 	require.Equal(t, 40, mgr.GetTagInfo(ids[2]).Value)
 }

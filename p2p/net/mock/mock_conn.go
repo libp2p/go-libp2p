@@ -178,6 +178,11 @@ func (c *conn) RemotePublicKey() ic.PubKey {
 	return c.remotePubKey
 }
 
+// ConnState of security connection. Empty if not supported.
+func (c *conn) ConnState() network.ConnectionState {
+	return network.ConnectionState{}
+}
+
 // Stat returns metadata about the connection
 func (c *conn) Stat() network.ConnStats {
 	return c.stat

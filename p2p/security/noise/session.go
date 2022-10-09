@@ -10,6 +10,7 @@ import (
 	"github.com/flynn/noise"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -106,6 +107,10 @@ func (s *secureSession) RemotePeer() peer.ID {
 
 func (s *secureSession) RemotePublicKey() crypto.PubKey {
 	return s.remoteKey
+}
+
+func (s *secureSession) ConnState() network.ConnectionState {
+	return network.ConnectionState{}
 }
 
 func (s *secureSession) SetDeadline(t time.Time) error {

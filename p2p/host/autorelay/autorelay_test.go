@@ -2,6 +2,7 @@ package autorelay_test
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -400,11 +401,18 @@ func TestMaxAge(t *testing.T) {
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
+
+	waitFor := 500 * time.Millisecond
+	tick := 100 * time.Millisecond
+	if os.Getenv("CI") != "" {
+		// Only increase the waitFor since we are increasing the mock clock every tick.
+		waitFor *= 10
+	}
 	require.Eventually(t, func() bool {
 		// we don't know exactly when the timer is reset, just advance our timer multiple times if necessary
 		cl.Add(time.Second)
 		return len(peerChans) == 0
-	}, 500*time.Millisecond, 100*time.Millisecond)
+	}, waitFor, tick)
 
 	cl.Add(10 * time.Minute)
 	for _, r := range relays2 {
