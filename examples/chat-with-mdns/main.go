@@ -120,6 +120,7 @@ func main() {
 
 		if err := host.Connect(ctx, peer); err != nil {
 			fmt.Println("Connection failed:", err)
+			continue
 		}
 
 		// open a stream, this stream will be handled by handleStream other end
