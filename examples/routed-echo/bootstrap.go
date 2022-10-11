@@ -43,7 +43,7 @@ type IdOutput struct {
 
 // quick and dirty function to get the local ipfs daemons address for bootstrapping
 func getLocalPeerInfo() []peer.AddrInfo {
-	resp, err := http.Get(LOCAL_PEER_ENDPOINT)
+	resp, err := http.PostForm(LOCAL_PEER_ENDPOINT, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
