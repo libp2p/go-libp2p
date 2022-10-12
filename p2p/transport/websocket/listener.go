@@ -20,18 +20,6 @@ type listener struct {
 	incoming chan *Conn
 }
 
-func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
-	if !pwma.isWSS {
-		return pwma.restMultiaddr.Encapsulate(wsComponent)
-	}
-
-	if pwma.sni == nil {
-		return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(wsComponent)
-	}
-
-	return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(pwma.sni).Encapsulate(wsComponent)
-}
-
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
 func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {

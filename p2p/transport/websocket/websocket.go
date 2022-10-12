@@ -4,6 +4,7 @@ package websocket
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"net/http"
 	"time"
 
@@ -125,11 +126,6 @@ func (t *WebsocketTransport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([
 		return nil, err
 	}
 
-	if !parsed.isWSS {
-		// No /tls/ws component, this isn't a secure websocket multiaddr. We can just return it here
-		return []ma.Multiaddr{maddr}, nil
-	}
-
 	if parsed.sni == nil {
 		var err error
 		// We don't have an sni component, we'll use dns/dnsaddr
@@ -174,14 +170,30 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 		return nil, err
 	}
 	isWss := wsurl.Scheme == "wss"
-	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
-	if isWss {
-		sni := ""
-		sni, err = raddr.ValueForProtocol(ma.P_SNI)
-		if err != nil {
-			sni = ""
-		}
 
+	sni := ""
+	sni, err = raddr.ValueForProtocol(ma.P_SNI)
+	if err != nil {
+		sni = ""
+	}
+
+	host := wsurl.Host
+
+	var dialer ws.Dialer
+	if sni == "" {
+		dialer = ws.Dialer{HandshakeTimeout: 30 * time.Second}
+	} else {
+		dialer = ws.Dialer{
+			HandshakeTimeout: 30 * time.Second,
+			NetDial: func(network, address string) (net.Conn, error) {
+				tcpAddr, _ := net.ResolveTCPAddr(network, host)
+				return net.DialTCP("tcp", nil, tcpAddr)
+			},
+		}
+		wsurl.Host = sni + ":" + wsurl.Port()
+	}
+
+	if isWss {
 		if sni != "" {
 			copytlsClientConf := t.tlsClientConf.Clone()
 			copytlsClientConf.ServerName = sni

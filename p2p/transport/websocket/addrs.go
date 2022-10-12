@@ -132,10 +132,25 @@ func parseMultiaddr(maddr ma.Multiaddr) (*url.URL, error) {
 
 type parsedWebsocketMultiaddr struct {
 	isWSS bool
-	// sni is the SNI value for the TLS handshake
+	// sni is the SNI value for the TLS handshake, and for setting HTTP Host header
 	sni *ma.Component
 	// the rest of the multiaddr before the /tls/sni/example.com/ws or /ws or /wss
 	restMultiaddr ma.Multiaddr
+}
+
+func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
+	if !pwma.isWSS {
+		if pwma.sni == nil {
+			return pwma.restMultiaddr.Encapsulate(wsComponent)
+		}
+		return pwma.restMultiaddr.Encapsulate(pwma.sni).Encapsulate(wsComponent)
+	}
+
+	if pwma.sni == nil {
+		return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(wsComponent)
+	}
+
+	return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(pwma.sni).Encapsulate(wsComponent)
 }
 
 func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {

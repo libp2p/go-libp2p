@@ -479,6 +479,8 @@ func TestWriteZero(t *testing.T) {
 func TestResolveMultiaddr(t *testing.T) {
 	// map[unresolved]resolved
 	testCases := map[string]string{
+		"/ip4/1.2.3.4/tcp/1234/ws":             "/ip4/1.2.3.4/tcp/1234/ws",
+		"/dns4/example.com/tcp/1234/ws":        "/dns4/example.com/tcp/1234/sni/example.com/ws",
 		"/dns4/example.com/tcp/1234/wss":       "/dns4/example.com/tcp/1234/tls/sni/example.com/ws",
 		"/dns6/example.com/tcp/1234/wss":       "/dns6/example.com/tcp/1234/tls/sni/example.com/ws",
 		"/dnsaddr/example.com/tcp/1234/wss":    "/dnsaddr/example.com/tcp/1234/tls/sni/example.com/ws",
