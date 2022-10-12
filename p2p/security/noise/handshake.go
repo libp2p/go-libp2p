@@ -273,9 +273,8 @@ func (s *secureSession) handleRemoteHandshakePayload(payload []byte, remoteStati
 	}
 
 	// check the peer ID for:
-	// * all outbound connection
-	// * inbound connections, if we know which peer we want to connect to (SecureInbound called with a peer ID)
-	if (s.initiator && s.remoteID != id) || (!s.initiator && s.remoteID != "" && s.remoteID != id) {
+	// * all connections, if we know the peer ID to which we want to connect.
+	if s.remoteID != "" && s.remoteID != id {
 		// use Pretty() as it produces the full b58-encoded string, rather than abbreviated forms.
 		return nil, fmt.Errorf("peer id mismatch: expected %s, but remote key matches %s", s.remoteID.Pretty(), id.Pretty())
 	}
