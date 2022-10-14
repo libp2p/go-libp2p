@@ -16,9 +16,8 @@ import (
 
 // ID is the protocol ID for noise
 const (
-	ID               = "/noise"
-	MaxExtensionSize = 2048
-	MaxProtoNum      = 100
+	ID          = "/noise"
+	maxProtoNum = 100
 )
 
 var _ sec.SecureTransport = &Transport{}
@@ -54,7 +53,7 @@ func New(privkey crypto.PrivKey, muxers []protocol.ID) (*Transport, error) {
 // SecureInbound runs the Noise handshake as the responder.
 // If p is empty, connections from any peer are accepted.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	responderEDH := NewTransportEDH(t)
+	responderEDH := newTransportEDH(t)
 	c, err := newSecureSession(t, ctx, insecure, p, nil, nil, responderEDH, false)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
@@ -67,7 +66,7 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 
 // SecureOutbound runs the Noise handshake as the initiator.
 func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	initiatorEDH := NewTransportEDH(t)
+	initiatorEDH := newTransportEDH(t)
 	c, err := newSecureSession(t, ctx, insecure, p, nil, initiatorEDH, nil, true)
 	if err != nil {
 		return c, err
@@ -106,7 +105,9 @@ type transportEarlyDataHandler struct {
 	receivedMuxers []string
 }
 
-func NewTransportEDH(t *Transport) *transportEarlyDataHandler {
+var _ EarlyDataHandler = &transportEarlyDataHandler{}
+
+func newTransportEDH(t *Transport) *transportEarlyDataHandler {
 	return &transportEarlyDataHandler{transport: t}
 }
 
@@ -119,7 +120,7 @@ func (i *transportEarlyDataHandler) Send(context.Context, net.Conn, peer.ID) *pb
 
 func (i *transportEarlyDataHandler) Received(_ context.Context, _ net.Conn, extension *pb.NoiseExtensions) error {
 	// Discard messages with size or the number of protocols exceeding extension limit for security.
-	if extension != nil && extension.XXX_Size() <= MaxExtensionSize && len(extension.StreamMuxers) <= MaxProtoNum {
+	if extension != nil && len(extension.StreamMuxers) <= maxProtoNum {
 		i.receivedMuxers = extension.GetStreamMuxers()
 	}
 	return nil
