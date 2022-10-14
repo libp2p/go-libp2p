@@ -15,7 +15,8 @@ import (
 )
 
 type secureSession struct {
-	initiator bool
+	initiator   bool
+	checkPeerID bool
 
 	localID   peer.ID
 	localKey  crypto.PrivKey
@@ -47,7 +48,7 @@ type secureSession struct {
 
 // newSecureSession creates a Noise session over the given insecureConn Conn, using
 // the libp2p identity keypair from the given Transport.
-func newSecureSession(tpt *Transport, ctx context.Context, insecure net.Conn, remote peer.ID, prologue []byte, initiatorEDH, responderEDH EarlyDataHandler, initiator bool) (*secureSession, error) {
+func newSecureSession(tpt *Transport, ctx context.Context, insecure net.Conn, remote peer.ID, prologue []byte, initiatorEDH, responderEDH EarlyDataHandler, initiator, checkPeerID bool) (*secureSession, error) {
 	s := &secureSession{
 		insecureConn:              insecure,
 		insecureReader:            bufio.NewReader(insecure),
@@ -58,6 +59,7 @@ func newSecureSession(tpt *Transport, ctx context.Context, insecure net.Conn, re
 		prologue:                  prologue,
 		initiatorEarlyDataHandler: initiatorEDH,
 		responderEarlyDataHandler: responderEDH,
+		checkPeerID:               checkPeerID,
 	}
 
 	// the go-routine we create to run the handshake will

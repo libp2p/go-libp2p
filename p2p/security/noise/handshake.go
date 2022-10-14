@@ -272,12 +272,14 @@ func (s *secureSession) handleRemoteHandshakePayload(payload []byte, remoteStati
 		return nil, err
 	}
 
-	// check the peer ID for:
-	// * all connections, if we know the peer ID to which we want to connect.
-	if s.remoteID != "" && s.remoteID != id {
-		// use Pretty() as it produces the full b58-encoded string, rather than abbreviated forms.
+	// check the peer ID if enabled
+	if s.checkPeerID && s.remoteID != id {
 		return nil, fmt.Errorf("peer id mismatch: expected %s, but remote key matches %s", s.remoteID.Pretty(), id.Pretty())
 	}
+	// if (s.initiator && s.remoteID != id) || (!s.initiator && s.remoteID != "" && s.remoteID != id) {
+	// 	// use Pretty() as it produces the full b58-encoded string, rather than abbreviated forms.
+	// 	return nil, fmt.Errorf("peer id mismatch: expected %s, but remote key matches %s", s.remoteID.Pretty(), id.Pretty())
+	// }
 
 	// verify payload is signed by asserted remote libp2p key.
 	sig := nhp.GetIdentitySig()
