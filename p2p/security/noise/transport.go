@@ -86,9 +86,9 @@ func (t *Transport) WithSessionOptions(opts ...SessionOption) (sec.SecureTranspo
 
 func matchMuxers(initiatorMuxers, responderMuxers []string) string {
 	selectedMuxer := ""
-	for _, muxer := range initiatorMuxers {
-		for _, respMuxer := range responderMuxers {
-			if respMuxer == muxer {
+	for _, muxer := range responderMuxers {
+		for _, initMuxer := range initiatorMuxers {
+			if initMuxer == muxer {
 				selectedMuxer = muxer
 				break
 			}

@@ -606,7 +606,7 @@ func TestHandshakeWithTransportEarlyData(t *testing.T) {
 		{[]string{"muxer1"}, []string{}, ""},
 		{[]string{}, []string{"muxer2"}, ""},
 		{[]string{"muxer2"}, []string{"muxer1"}, ""},
-		{[]string{"muxer1/1.0.0", "muxer2/1.0.1"}, []string{"muxer2/1.0.1", "muxer1/1.0.0"}, "muxer1/1.0.0"},
+		{[]string{"muxer1/1.0.0", "muxer2/1.0.1"}, []string{"muxer2/1.0.1", "muxer1/1.0.0"}, "muxer2/1.0.1"},
 		{[]string{"muxer1/1.0.0", "muxer2/1.0.1", "muxer3/1.0.0"}, []string{"muxer2/1.0.1", "muxer1/1.0.1", "muxer3/1.0.0"}, "muxer2/1.0.1"},
 		{[]string{"muxer1/1.0.0", "muxer2/1.0.0"}, []string{"muxer3/1.0.0"}, ""},
 	}
