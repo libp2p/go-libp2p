@@ -233,6 +233,24 @@ func TestPeerIDMismatchInboundFailsHandshake(t *testing.T) {
 	<-done
 }
 
+func TestPeerIDOutboundNoCheck(t *testing.T) {
+	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(CheckPeerID(false))
+	require.NoError(t, err, "could not initiate session transport")
+	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
+	init, resp := newConnPair(t)
+
+	errChan := make(chan error)
+	go func() {
+		_, err := initTransport.SecureOutbound(context.Background(), init, "")
+		errChan <- err
+	}()
+
+	_, err = respTransport.SecureInbound(context.Background(), resp, "")
+	require.NoError(t, err)
+	initErr := <-errChan
+	require.NoError(t, initErr)
+}
+
 func makeLargePlaintext(size int) []byte {
 	buf := make([]byte, size)
 	rand.Read(buf)
