@@ -50,13 +50,6 @@ func EarlyData(initiator, responder EarlyDataHandler) SessionOption {
 	}
 }
 
-func CheckPeerID(enable bool) SessionOption {
-	return func(s *SessionTransport) error {
-		s.checkPeerID = enable
-		return nil
-	}
-}
-
 var _ sec.SecureTransport = &SessionTransport{}
 
 // SessionTransport can be used
@@ -64,8 +57,7 @@ var _ sec.SecureTransport = &SessionTransport{}
 type SessionTransport struct {
 	t *Transport
 	// options
-	prologue    []byte
-	checkPeerID bool
+	prologue []byte
 
 	initiatorEarlyDataHandler, responderEarlyDataHandler EarlyDataHandler
 }
@@ -73,7 +65,7 @@ type SessionTransport struct {
 // SecureInbound runs the Noise handshake as the responder.
 // If p is empty, connections from any peer are accepted.
 func (i *SessionTransport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	c, err := newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, false, i.checkPeerID)
+	c, err := newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, false, p != "")
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
 		if maErr == nil {
@@ -85,5 +77,12 @@ func (i *SessionTransport) SecureInbound(ctx context.Context, insecure net.Conn,
 
 // SecureOutbound runs the Noise handshake as the initiator.
 func (i *SessionTransport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	return newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, true, i.checkPeerID)
+	return newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, true, true)
+}
+
+// SecureOutboundForAnyPeerID runs the Noise handshake as the initiator but does not check
+// the remote's peer ID. This is the outbound equivalent of calling `SecureInbound` with an empty
+// peer ID.
+func (i *SessionTransport) SecureOutboundForAnyPeerID(ctx context.Context, insecure net.Conn) (sec.SecureConn, error) {
+	return newSecureSession(i.t, ctx, insecure, "", i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, true, false)
 }

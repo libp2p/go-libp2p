@@ -88,8 +88,7 @@ func connect(t *testing.T, initTransport, respTransport *Transport) (*secureSess
 		initConn, initErr = initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
 	}()
 
-	receiverTpt, _ := respTransport.WithSessionOptions(CheckPeerID(false))
-	respConn, respErr := receiverTpt.SecureInbound(context.Background(), resp, "")
+	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, "")
 	<-done
 
 	if initErr != nil {
@@ -197,7 +196,7 @@ func TestPeerIDMatch(t *testing.T) {
 
 func TestPeerIDMismatchOutboundFailsHandshake(t *testing.T) {
 	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
-	respTransport, _ := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(CheckPeerID(false))
+	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
 	init, resp := newConnPair(t)
 
 	errChan := make(chan error)
@@ -234,18 +233,17 @@ func TestPeerIDMismatchInboundFailsHandshake(t *testing.T) {
 }
 
 func TestPeerIDOutboundNoCheck(t *testing.T) {
-	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(CheckPeerID(false))
-	require.NoError(t, err, "could not initiate session transport")
+	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
 	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
 	init, resp := newConnPair(t)
 
 	errChan := make(chan error)
 	go func() {
-		_, err := initTransport.SecureOutbound(context.Background(), init, "")
+		_, err := initTransport.SecureOutboundForAnyPeerID(context.Background(), init)
 		errChan <- err
 	}()
 
-	_, err = respTransport.SecureInbound(context.Background(), resp, "")
+	_, err := respTransport.SecureInbound(context.Background(), resp, "")
 	require.NoError(t, err)
 	initErr := <-errChan
 	require.NoError(t, initErr)
@@ -590,7 +588,7 @@ func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 	}
 	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(clientEDH, nil))
 	require.NoError(t, err)
-	respTransport, _ := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(CheckPeerID(false))
+	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
 
 	initConn, respConn := newConnPair(t)
 
@@ -600,7 +598,7 @@ func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 		errChan <- err
 	}()
 
-	conn, err := initTransport.SecureOutbound(context.Background(), respConn, respTransport.t.localID)
+	conn, err := initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID)
 	require.NoError(t, err)
 	defer conn.Close()
 
