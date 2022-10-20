@@ -107,7 +107,39 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// if we're here, we got some addrs. let's use our wrapped host to connect.
 	pi.Addrs = addrs
-	return rh.host.Connect(ctx, pi)
+	err := rh.host.Connect(ctx, pi)
+	if err != nil {
+		// We couldn't connect. Let's check if we have the most
+		// up-to-date addresses for the given peer. If there
+		// are addresses we didn't know about previously, we
+		// try to connect again.
+		newAddrs, addrErr := rh.findPeerAddrs(ctx, pi.ID)
+		if addrErr != nil {
+			return err // return outer error
+		}
+
+		// Build lookup map
+		lookup := make(map[ma.Multiaddr]struct{}, len(addrs))
+		for _, addr := range addrs {
+			lookup[addr] = struct{}{}
+		}
+
+		// if there's any address that's not in the previous set
+		// of addresses, try to connect again. If all addresses
+		// where known previously we return the original error.
+		for _, newAddr := range newAddrs {
+			if _, found := lookup[newAddr]; found {
+				continue
+			}
+
+			pi.Addrs = newAddrs
+			return rh.host.Connect(ctx, pi)
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (rh *RoutedHost) findPeerAddrs(ctx context.Context, id peer.ID) ([]ma.Multiaddr, error) {
