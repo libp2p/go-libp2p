@@ -25,11 +25,6 @@ var (
 	// TempAddrTTL is the ttl used for a short lived address.
 	TempAddrTTL = time.Minute * 2
 
-	// ProviderAddrTTL is the TTL of an address we've received from a provider.
-	// This is also a temporary address, but lasts longer. After this expires,
-	// the records we return will require an extra lookup.
-	ProviderAddrTTL = time.Minute * 30
-
 	// RecentlyConnectedAddrTTL is used when we recently connected to a peer.
 	// It means that we are reasonably certain of the peer's address.
 	RecentlyConnectedAddrTTL = time.Minute * 30
