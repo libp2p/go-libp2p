@@ -85,19 +85,14 @@ func (t *Transport) WithSessionOptions(opts ...SessionOption) (sec.SecureTranspo
 }
 
 func matchMuxers(initiatorMuxers, responderMuxers []string) string {
-	selectedMuxer := ""
 	for _, muxer := range responderMuxers {
 		for _, initMuxer := range initiatorMuxers {
 			if initMuxer == muxer {
-				selectedMuxer = muxer
-				break
+				return muxer
 			}
 		}
-		if selectedMuxer != "" {
-			break
-		}
 	}
-	return selectedMuxer
+	return ""
 }
 
 type transportEarlyDataHandler struct {
@@ -113,8 +108,7 @@ func newTransportEDH(t *Transport) *transportEarlyDataHandler {
 
 func (i *transportEarlyDataHandler) Send(context.Context, net.Conn, peer.ID) *pb.NoiseExtensions {
 	return &pb.NoiseExtensions{
-		WebtransportCerthashes: [][]byte{},
-		StreamMuxers:           i.transport.muxers,
+		StreamMuxers: i.transport.muxers,
 	}
 }
 
