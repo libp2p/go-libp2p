@@ -6,7 +6,9 @@ package pb
 import (
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
+	io "io"
 	math "math"
+	math_bits "math/bits"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -23,9 +25,6 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 type NoiseExtensions struct {
 	WebtransportCerthashes [][]byte `protobuf:"bytes,1,rep,name=webtransport_certhashes,json=webtransportCerthashes" json:"webtransport_certhashes,omitempty"`
 	StreamMuxers           []string `protobuf:"bytes,2,rep,name=stream_muxers,json=streamMuxers" json:"stream_muxers,omitempty"`
-	XXX_NoUnkeyedLiteral   struct{} `json:"-"`
-	XXX_unrecognized       []byte   `json:"-"`
-	XXX_sizecache          int32    `json:"-"`
 }
 
 func (m *NoiseExtensions) Reset()         { *m = NoiseExtensions{} }
@@ -35,16 +34,25 @@ func (*NoiseExtensions) Descriptor() ([]byte, []int) {
 	return fileDescriptor_678c914f1bee6d56, []int{0}
 }
 func (m *NoiseExtensions) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_NoiseExtensions.Unmarshal(m, b)
+	return m.Unmarshal(b)
 }
 func (m *NoiseExtensions) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_NoiseExtensions.Marshal(b, m, deterministic)
+	if deterministic {
+		return xxx_messageInfo_NoiseExtensions.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
 }
 func (m *NoiseExtensions) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_NoiseExtensions.Merge(m, src)
 }
 func (m *NoiseExtensions) XXX_Size() int {
-	return xxx_messageInfo_NoiseExtensions.Size(m)
+	return m.Size()
 }
 func (m *NoiseExtensions) XXX_DiscardUnknown() {
 	xxx_messageInfo_NoiseExtensions.DiscardUnknown(m)
@@ -67,12 +75,9 @@ func (m *NoiseExtensions) GetStreamMuxers() []string {
 }
 
 type NoiseHandshakePayload struct {
-	IdentityKey          []byte           `protobuf:"bytes,1,opt,name=identity_key,json=identityKey" json:"identity_key,omitempty"`
-	IdentitySig          []byte           `protobuf:"bytes,2,opt,name=identity_sig,json=identitySig" json:"identity_sig,omitempty"`
-	Extensions           *NoiseExtensions `protobuf:"bytes,4,opt,name=extensions" json:"extensions,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
-	XXX_unrecognized     []byte           `json:"-"`
-	XXX_sizecache        int32            `json:"-"`
+	IdentityKey []byte           `protobuf:"bytes,1,opt,name=identity_key,json=identityKey" json:"identity_key"`
+	IdentitySig []byte           `protobuf:"bytes,2,opt,name=identity_sig,json=identitySig" json:"identity_sig"`
+	Extensions  *NoiseExtensions `protobuf:"bytes,4,opt,name=extensions" json:"extensions,omitempty"`
 }
 
 func (m *NoiseHandshakePayload) Reset()         { *m = NoiseHandshakePayload{} }
@@ -82,16 +87,25 @@ func (*NoiseHandshakePayload) Descriptor() ([]byte, []int) {
 	return fileDescriptor_678c914f1bee6d56, []int{1}
 }
 func (m *NoiseHandshakePayload) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_NoiseHandshakePayload.Unmarshal(m, b)
+	return m.Unmarshal(b)
 }
 func (m *NoiseHandshakePayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_NoiseHandshakePayload.Marshal(b, m, deterministic)
+	if deterministic {
+		return xxx_messageInfo_NoiseHandshakePayload.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
 }
 func (m *NoiseHandshakePayload) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_NoiseHandshakePayload.Merge(m, src)
 }
 func (m *NoiseHandshakePayload) XXX_Size() int {
-	return xxx_messageInfo_NoiseHandshakePayload.Size(m)
+	return m.Size()
 }
 func (m *NoiseHandshakePayload) XXX_DiscardUnknown() {
 	xxx_messageInfo_NoiseHandshakePayload.DiscardUnknown(m)
@@ -128,19 +142,523 @@ func init() {
 func init() { proto.RegisterFile("payload.proto", fileDescriptor_678c914f1bee6d56) }
 
 var fileDescriptor_678c914f1bee6d56 = []byte{
-	// 213 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x8f, 0xc1, 0x4a, 0x03, 0x31,
-	0x10, 0x86, 0xc9, 0xd6, 0x8b, 0xd3, 0x14, 0x21, 0xa2, 0xe6, 0x18, 0xeb, 0x25, 0xa7, 0x3d, 0xe8,
-	0xc1, 0x07, 0x10, 0x41, 0x10, 0x45, 0xe2, 0x03, 0x2c, 0x59, 0x77, 0xe8, 0x86, 0xda, 0x24, 0x64,
-	0x46, 0x6c, 0x5e, 0xc3, 0x27, 0x16, 0x5a, 0x2c, 0x5d, 0xaf, 0xdf, 0xff, 0xc1, 0xcc, 0x07, 0x8b,
-	0xec, 0xeb, 0x67, 0xf2, 0x43, 0x9b, 0x4b, 0xe2, 0xa4, 0x9a, 0xdc, 0x2f, 0x13, 0x9c, 0xbd, 0xa6,
-	0x40, 0xf8, 0xb8, 0x65, 0x8c, 0x14, 0x52, 0x24, 0x75, 0x0f, 0x57, 0xdf, 0xd8, 0x73, 0xf1, 0x91,
-	0x72, 0x2a, 0xdc, 0x7d, 0x60, 0xe1, 0xd1, 0xd3, 0x88, 0xa4, 0x85, 0x99, 0x59, 0xe9, 0x2e, 0x8f,
-	0xe7, 0x87, 0xc3, 0xaa, 0x6e, 0x60, 0x41, 0x5c, 0xd0, 0x6f, 0xba, 0xcd, 0xd7, 0x16, 0x0b, 0xe9,
-	0xc6, 0xcc, 0xec, 0xa9, 0x93, 0x7b, 0xf8, 0xb2, 0x63, 0xcb, 0x1f, 0x01, 0x17, 0xbb, 0x8b, 0x4f,
-	0x3e, 0x0e, 0x34, 0xfa, 0x35, 0xbe, 0xed, 0x9f, 0x52, 0xd7, 0x20, 0xc3, 0x80, 0x91, 0x03, 0xd7,
-	0x6e, 0x8d, 0x55, 0x0b, 0x23, 0xac, 0x74, 0xf3, 0x3f, 0xf6, 0x8c, 0x75, 0xa2, 0x50, 0x58, 0xe9,
-	0x66, 0xaa, 0xbc, 0x87, 0x95, 0xba, 0x03, 0xc0, 0x43, 0x8b, 0x3e, 0x31, 0xc2, 0xce, 0x6f, 0xcf,
-	0xdb, 0xdc, 0xb7, 0xff, 0x32, 0xdd, 0x91, 0xf6, 0x1b, 0x00, 0x00, 0xff, 0xff, 0x9a, 0x51, 0xda,
-	0x51, 0x19, 0x01, 0x00, 0x00,
+	// 251 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x2d, 0x48, 0xac, 0xcc,
+	0xc9, 0x4f, 0x4c, 0xd1, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x2a, 0x48, 0x52, 0xca, 0xe7,
+	0xe2, 0xf7, 0xcb, 0xcf, 0x2c, 0x4e, 0x75, 0xad, 0x28, 0x49, 0xcd, 0x2b, 0xce, 0xcc, 0xcf, 0x2b,
+	0x16, 0x32, 0xe7, 0x12, 0x2f, 0x4f, 0x4d, 0x2a, 0x29, 0x4a, 0xcc, 0x2b, 0x2e, 0xc8, 0x2f, 0x2a,
+	0x89, 0x4f, 0x4e, 0x2d, 0x2a, 0xc9, 0x48, 0x2c, 0xce, 0x48, 0x2d, 0x96, 0x60, 0x54, 0x60, 0xd6,
+	0xe0, 0x09, 0x12, 0x43, 0x96, 0x76, 0x86, 0xcb, 0x0a, 0x29, 0x73, 0xf1, 0x16, 0x97, 0x14, 0xa5,
+	0x26, 0xe6, 0xc6, 0xe7, 0x96, 0x56, 0xa4, 0x16, 0x15, 0x4b, 0x30, 0x29, 0x30, 0x6b, 0x70, 0x06,
+	0xf1, 0x40, 0x04, 0x7d, 0xc1, 0x62, 0x4a, 0xf3, 0x18, 0xb9, 0x44, 0xc1, 0x36, 0x7a, 0x24, 0xe6,
+	0xa5, 0x14, 0x67, 0x24, 0x66, 0xa7, 0x06, 0x40, 0x1c, 0x25, 0xa4, 0xce, 0xc5, 0x93, 0x99, 0x92,
+	0x9a, 0x57, 0x92, 0x59, 0x52, 0x19, 0x9f, 0x9d, 0x5a, 0x29, 0xc1, 0xa8, 0xc0, 0xa8, 0xc1, 0xe3,
+	0xc4, 0x72, 0xe2, 0x9e, 0x3c, 0x43, 0x10, 0x37, 0x4c, 0xc6, 0x3b, 0xb5, 0x12, 0x45, 0x61, 0x71,
+	0x66, 0xba, 0x04, 0x13, 0x36, 0x85, 0xc1, 0x99, 0xe9, 0x42, 0xc6, 0x5c, 0x5c, 0xa9, 0x70, 0x7f,
+	0x49, 0xb0, 0x28, 0x30, 0x6a, 0x70, 0x1b, 0x09, 0xeb, 0x15, 0x24, 0xe9, 0xa1, 0x79, 0x39, 0x08,
+	0x49, 0x99, 0x93, 0xc4, 0x89, 0x47, 0x72, 0x8c, 0x17, 0x1e, 0xc9, 0x31, 0x3e, 0x78, 0x24, 0xc7,
+	0x38, 0xe1, 0xb1, 0x1c, 0xc3, 0x85, 0xc7, 0x72, 0x0c, 0x37, 0x1e, 0xcb, 0x31, 0x00, 0x02, 0x00,
+	0x00, 0xff, 0xff, 0x02, 0xdb, 0x23, 0xb3, 0x3f, 0x01, 0x00, 0x00,
 }
+
+func (m *NoiseExtensions) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NoiseExtensions) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *NoiseExtensions) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.StreamMuxers) > 0 {
+		for iNdEx := len(m.StreamMuxers) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.StreamMuxers[iNdEx])
+			copy(dAtA[i:], m.StreamMuxers[iNdEx])
+			i = encodeVarintPayload(dAtA, i, uint64(len(m.StreamMuxers[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.WebtransportCerthashes) > 0 {
+		for iNdEx := len(m.WebtransportCerthashes) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.WebtransportCerthashes[iNdEx])
+			copy(dAtA[i:], m.WebtransportCerthashes[iNdEx])
+			i = encodeVarintPayload(dAtA, i, uint64(len(m.WebtransportCerthashes[iNdEx])))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NoiseHandshakePayload) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NoiseHandshakePayload) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *NoiseHandshakePayload) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Extensions != nil {
+		{
+			size, err := m.Extensions.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPayload(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.IdentitySig != nil {
+		i -= len(m.IdentitySig)
+		copy(dAtA[i:], m.IdentitySig)
+		i = encodeVarintPayload(dAtA, i, uint64(len(m.IdentitySig)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.IdentityKey != nil {
+		i -= len(m.IdentityKey)
+		copy(dAtA[i:], m.IdentityKey)
+		i = encodeVarintPayload(dAtA, i, uint64(len(m.IdentityKey)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func encodeVarintPayload(dAtA []byte, offset int, v uint64) int {
+	offset -= sovPayload(v)
+	base := offset
+	for v >= 1<<7 {
+		dAtA[offset] = uint8(v&0x7f | 0x80)
+		v >>= 7
+		offset++
+	}
+	dAtA[offset] = uint8(v)
+	return base
+}
+func (m *NoiseExtensions) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.WebtransportCerthashes) > 0 {
+		for _, b := range m.WebtransportCerthashes {
+			l = len(b)
+			n += 1 + l + sovPayload(uint64(l))
+		}
+	}
+	if len(m.StreamMuxers) > 0 {
+		for _, s := range m.StreamMuxers {
+			l = len(s)
+			n += 1 + l + sovPayload(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *NoiseHandshakePayload) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.IdentityKey != nil {
+		l = len(m.IdentityKey)
+		n += 1 + l + sovPayload(uint64(l))
+	}
+	if m.IdentitySig != nil {
+		l = len(m.IdentitySig)
+		n += 1 + l + sovPayload(uint64(l))
+	}
+	if m.Extensions != nil {
+		l = m.Extensions.Size()
+		n += 1 + l + sovPayload(uint64(l))
+	}
+	return n
+}
+
+func sovPayload(x uint64) (n int) {
+	return (math_bits.Len64(x|1) + 6) / 7
+}
+func sozPayload(x uint64) (n int) {
+	return sovPayload(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (m *NoiseExtensions) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPayload
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NoiseExtensions: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NoiseExtensions: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WebtransportCerthashes", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPayload
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthPayload
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPayload
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.WebtransportCerthashes = append(m.WebtransportCerthashes, make([]byte, postIndex-iNdEx))
+			copy(m.WebtransportCerthashes[len(m.WebtransportCerthashes)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StreamMuxers", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPayload
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPayload
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPayload
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.StreamMuxers = append(m.StreamMuxers, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPayload(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthPayload
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NoiseHandshakePayload) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPayload
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NoiseHandshakePayload: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NoiseHandshakePayload: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdentityKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPayload
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthPayload
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPayload
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdentityKey = append(m.IdentityKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.IdentityKey == nil {
+				m.IdentityKey = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdentitySig", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPayload
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthPayload
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPayload
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdentitySig = append(m.IdentitySig[:0], dAtA[iNdEx:postIndex]...)
+			if m.IdentitySig == nil {
+				m.IdentitySig = []byte{}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Extensions", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPayload
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPayload
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPayload
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Extensions == nil {
+				m.Extensions = &NoiseExtensions{}
+			}
+			if err := m.Extensions.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPayload(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthPayload
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func skipPayload(dAtA []byte) (n int, err error) {
+	l := len(dAtA)
+	iNdEx := 0
+	depth := 0
+	for iNdEx < l {
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return 0, ErrIntOverflowPayload
+			}
+			if iNdEx >= l {
+				return 0, io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		wireType := int(wire & 0x7)
+		switch wireType {
+		case 0:
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return 0, ErrIntOverflowPayload
+				}
+				if iNdEx >= l {
+					return 0, io.ErrUnexpectedEOF
+				}
+				iNdEx++
+				if dAtA[iNdEx-1] < 0x80 {
+					break
+				}
+			}
+		case 1:
+			iNdEx += 8
+		case 2:
+			var length int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return 0, ErrIntOverflowPayload
+				}
+				if iNdEx >= l {
+					return 0, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				length |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if length < 0 {
+				return 0, ErrInvalidLengthPayload
+			}
+			iNdEx += length
+		case 3:
+			depth++
+		case 4:
+			if depth == 0 {
+				return 0, ErrUnexpectedEndOfGroupPayload
+			}
+			depth--
+		case 5:
+			iNdEx += 4
+		default:
+			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
+		}
+		if iNdEx < 0 {
+			return 0, ErrInvalidLengthPayload
+		}
+		if depth == 0 {
+			return iNdEx, nil
+		}
+	}
+	return 0, io.ErrUnexpectedEOF
+}
+
+var (
+	ErrInvalidLengthPayload        = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowPayload          = fmt.Errorf("proto: integer overflow")
+	ErrUnexpectedEndOfGroupPayload = fmt.Errorf("proto: unexpected end of group")
+)
