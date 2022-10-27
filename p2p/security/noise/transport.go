@@ -51,7 +51,7 @@ func New(privkey crypto.PrivKey, muxers []protocol.ID) (*Transport, error) {
 }
 
 // SecureInbound runs the Noise handshake as the responder.
-// if p is empty accept any peer ID.
+// If p is empty, connections from any peer are accepted.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	responderEDH := newTransportEDH(t)
 	checkPeerID := true
