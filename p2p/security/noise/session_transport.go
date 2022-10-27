@@ -82,7 +82,8 @@ func (i *SessionTransport) SecureOutbound(ctx context.Context, insecure net.Conn
 
 // SecureOutboundForAnyPeerID runs the Noise handshake as the initiator but does not check
 // the remote's peer ID. This is the outbound equivalent of calling `SecureInbound` with an empty
-// peer ID.
+// peer ID. This is susceptible to MITM attacks since we do not verify the identity of the remote
+// peer.
 func (i *SessionTransport) SecureOutboundForAnyPeerID(ctx context.Context, insecure net.Conn) (sec.SecureConn, error) {
 	return newSecureSession(i.t, ctx, insecure, "", i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, true, false)
 }
