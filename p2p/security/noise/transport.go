@@ -54,11 +54,7 @@ func New(privkey crypto.PrivKey, muxers []protocol.ID) (*Transport, error) {
 // If p is empty, connections from any peer are accepted.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	responderEDH := newTransportEDH(t)
-	checkPeerID := true
-	if p == "" {
-		checkPeerID = false
-	}
-	c, err := newSecureSession(t, ctx, insecure, p, nil, nil, responderEDH, checkPeerID)
+	c, err := newSecureSession(t, ctx, insecure, p, nil, nil, responderEDH, false, p != "")
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
 		if maErr == nil {
@@ -71,7 +67,7 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 // SecureOutbound runs the Noise handshake as the initiator.
 func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	initiatorEDH := newTransportEDH(t)
-	c, err := newSecureSession(t, ctx, insecure, p, nil, initiatorEDH, nil, true)
+	c, err := newSecureSession(t, ctx, insecure, p, nil, initiatorEDH, nil, true, true)
 	if err != nil {
 		return c, err
 	}
