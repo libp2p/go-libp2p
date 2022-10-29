@@ -20,11 +20,11 @@ type mockRouting struct {
 }
 
 func (m *mockRouting) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInfo, error) {
-	m.callCount += 1
+	m.callCount++
 	return m.findPeerFn(ctx, pid)
 }
 
-func TestRoutedHost_Connect_obsoleteAddresses(t *testing.T) {
+func TestRoutedHostConnectToObsoleteAddresses(t *testing.T) {
 	ctx := context.Background()
 
 	h1, err := basic.NewHost(swarmt.GenSwarm(t), nil)
