@@ -14,13 +14,13 @@ var log = logging.Logger("discovery-util")
 
 // FindPeers is a utility function that synchronously collects peers from a Discoverer.
 func FindPeers(ctx context.Context, d discovery.Discoverer, ns string, opts ...discovery.Option) ([]peer.AddrInfo, error) {
-	var res []peer.AddrInfo
 
 	ch, err := d.FindPeers(ctx, ns, opts...)
 	if err != nil {
 		return nil, err
 	}
 
+	res := make([]peer.AddrInfo, 0, len(ch))
 	for pi := range ch {
 		res = append(res, pi)
 	}

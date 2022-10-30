@@ -135,7 +135,7 @@ func TestDiscoveryRouting(t *testing.T) {
 
 	pch := r2.FindProvidersAsync(ctx, c, 20)
 
-	var allAIs []peer.AddrInfo
+	allAIs := make([]peer.AddrInfo, 0, len(pch))
 	for ai := range pch {
 		allAIs = append(allAIs, ai)
 	}

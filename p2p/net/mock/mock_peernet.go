@@ -255,7 +255,7 @@ func (pn *peernet) ConnsToPeer(p peer.ID) []network.Conn {
 		return nil
 	}
 
-	var cs2 []network.Conn
+	cs2 := make([]network.Conn, 0, len(cs))
 	for c := range cs {
 		cs2 = append(cs2, c)
 	}

@@ -231,21 +231,21 @@ func (r *PeerRecord) ToProtobuf() (*pb.PeerRecord, error) {
 }
 
 func addrsFromProtobuf(addrs []*pb.PeerRecord_AddressInfo) []ma.Multiaddr {
-	var out []ma.Multiaddr
-	for _, addr := range addrs {
+	out := make([]ma.Multiaddr, len(addrs))
+	for i, addr := range addrs {
 		a, err := ma.NewMultiaddrBytes(addr.Multiaddr)
 		if err != nil {
 			continue
 		}
-		out = append(out, a)
+		out[i] = a
 	}
 	return out
 }
 
 func addrsToProtobuf(addrs []ma.Multiaddr) []*pb.PeerRecord_AddressInfo {
-	var out []*pb.PeerRecord_AddressInfo
-	for _, addr := range addrs {
-		out = append(out, &pb.PeerRecord_AddressInfo{Multiaddr: addr.Bytes()})
+	out := make([]*pb.PeerRecord_AddressInfo, len(addrs))
+	for i, addr := range addrs {
+		out[i] = &pb.PeerRecord_AddressInfo{Multiaddr: addr.Bytes()}
 	}
 	return out
 }
