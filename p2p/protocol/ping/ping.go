@@ -71,7 +71,7 @@ func (p *PingService) PingHandler(s network.Stream) {
 				log.Error("ping loop failed without error")
 			}
 		}
-		s.Reset()
+		s.Close()
 	}()
 
 	for {
