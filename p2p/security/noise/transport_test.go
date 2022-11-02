@@ -237,13 +237,16 @@ func TestPeerIDOutboundNoCheck(t *testing.T) {
 	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
 	init, resp := newConnPair(t)
 
+	initSessionTransport, err := initTransport.WithSessionOptions(DisablePeerIDCheck())
+	require.NoError(t, err)
+
 	errChan := make(chan error)
 	go func() {
-		_, err := initTransport.SecureOutboundForAnyPeerID(context.Background(), init)
+		_, err := initSessionTransport.SecureOutbound(context.Background(), init, "test")
 		errChan <- err
 	}()
 
-	_, err := respTransport.SecureInbound(context.Background(), resp, "")
+	_, err = respTransport.SecureInbound(context.Background(), resp, "")
 	require.NoError(t, err)
 	initErr := <-errChan
 	require.NoError(t, initErr)
