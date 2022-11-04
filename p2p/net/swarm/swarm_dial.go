@@ -334,7 +334,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 
 	s.peers.AddAddrs(p, goodAddrs, peerstore.TempAddrTTL)
 
-	return resolved, nil
+	return goodAddrs, nil
 }
 
 func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) ([]ma.Multiaddr, error) {
