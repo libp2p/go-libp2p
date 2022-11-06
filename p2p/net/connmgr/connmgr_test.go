@@ -520,7 +520,7 @@ func TestPeerProtectionSingleTag(t *testing.T) {
 	}
 
 	// protect the first 5 peers.
-	protected := make([]network.Conn, 0, len(conns[0:5]))
+	var protected []network.Conn
 	for _, c := range conns[0:5] {
 		cm.Protect(c.RemotePeer(), "global")
 		protected = append(protected, c)
@@ -599,7 +599,7 @@ func TestPeerProtectionMultipleTags(t *testing.T) {
 	}
 
 	// protect the first 5 peers under two tags.
-	protected := make([]network.Conn, 0, len(conns[0:5]))
+	var protected []network.Conn
 	for _, c := range conns[0:5] {
 		cm.Protect(c.RemotePeer(), "tag1")
 		cm.Protect(c.RemotePeer(), "tag2")
