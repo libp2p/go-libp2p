@@ -492,14 +492,14 @@ func (r *Relay) writeResponse(s network.Stream, status pbv2.Status, rsvp *pbv2.R
 func (r *Relay) makeReservationMsg(p peer.ID, expire time.Time) *pbv2.Reservation {
 	expireUnix := uint64(expire.Unix())
 
-	addrBytes := make([][]byte, len(r.host.Addrs()))
-	for i, addr := range r.host.Addrs() {
+	addrBytes := make([][]byte, 0, len(r.host.Addrs()))
+	for _, addr := range r.host.Addrs() {
 		if !manet.IsPublicAddr(addr) {
 			continue
 		}
 
 		addr = addr.Encapsulate(r.selfAddr)
-		addrBytes[i] = addr.Bytes()
+		addrBytes = append(addrBytes, addr.Bytes())
 	}
 
 	rsvp := &pbv2.Reservation{

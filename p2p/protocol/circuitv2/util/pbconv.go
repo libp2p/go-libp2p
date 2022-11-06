@@ -36,10 +36,10 @@ func PeerToPeerInfoV1(p *pbv1.CircuitRelay_Peer) (peer.AddrInfo, error) {
 }
 
 func PeerInfoToPeerV1(pi peer.AddrInfo) *pbv1.CircuitRelay_Peer {
-	addrs := make([][]byte, len(pi.Addrs))
+	addrs := make([][]byte, 0, len(pi.Addrs))
 
-	for i, addr := range pi.Addrs {
-		addrs[i] = addr.Bytes()
+	for _, addr := range pi.Addrs {
+		addrs = append(addrs, addr.Bytes())
 	}
 
 	p := new(pbv1.CircuitRelay_Peer)
@@ -59,12 +59,12 @@ func PeerToPeerInfoV2(p *pbv2.Peer) (peer.AddrInfo, error) {
 		return peer.AddrInfo{}, err
 	}
 
-	addrs := make([]ma.Multiaddr, len(p.Addrs))
+	addrs := make([]ma.Multiaddr, 0, len(p.Addrs))
 
-	for i, addrBytes := range p.Addrs {
+	for _, addrBytes := range p.Addrs {
 		a, err := ma.NewMultiaddrBytes(addrBytes)
 		if err == nil {
-			addrs[i] = a
+			addrs = append(addrs, a)
 		}
 	}
 
@@ -72,10 +72,10 @@ func PeerToPeerInfoV2(p *pbv2.Peer) (peer.AddrInfo, error) {
 }
 
 func PeerInfoToPeerV2(pi peer.AddrInfo) *pbv2.Peer {
-	addrs := make([][]byte, len(pi.Addrs))
+	addrs := make([][]byte, 0, len(pi.Addrs))
 
-	for i, addr := range pi.Addrs {
-		addrs[i] = addr.Bytes()
+	for _, addr := range pi.Addrs {
+		addrs = append(addrs, addr.Bytes())
 	}
 
 	p := new(pbv2.Peer)
