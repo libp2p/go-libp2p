@@ -39,7 +39,7 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 
 // ListenClose stop and delete listeners for all of the given addresses.
 func (s *Swarm) ListenClose(addrs ...ma.Multiaddr) {
-	listenersToClose := make([]transport.Listener, 0, len(s.listeners.m))
+	var listenersToClose []transport.Listener
 
 	s.listeners.Lock()
 	for l := range s.listeners.m {
