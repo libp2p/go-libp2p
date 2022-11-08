@@ -809,11 +809,14 @@ func (m mockConn) Scope() network.ConnScope                              { panic
 func (m mockConn) ConnState() network.ConnectionState                    { return network.ConnectionState{} }
 
 func TestPeerInfoSorting(t *testing.T) {
+	cm, err := NewConnManager(1, 1, WithGracePeriod(10*time.Minute))
+	require.NoError(t, err)
+	defer cm.Close()
 	t.Run("starts with temporary connections", func(t *testing.T) {
 		p1 := peerInfo{id: peer.ID("peer1")}
 		p2 := peerInfo{id: peer.ID("peer2"), temp: true}
 		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams(false)
+		pis.SortByValueAndStreams(false, cm.segments)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
@@ -821,7 +824,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		p1 := peerInfo{id: peer.ID("peer1"), value: 40}
 		p2 := peerInfo{id: peer.ID("peer2"), value: 20}
 		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams(false)
+		pis.SortByValueAndStreams(false, cm.segments)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
@@ -837,7 +840,7 @@ func TestPeerInfoSorting(t *testing.T) {
 			},
 		}
 		pis := peerInfos{p2, p1}
-		pis.SortByValueAndStreams(false)
+		pis.SortByValueAndStreams(false, cm.segments)
 		require.Equal(t, pis, peerInfos{p1, p2})
 	})
 
@@ -877,7 +880,7 @@ func TestPeerInfoSorting(t *testing.T) {
 			},
 		}
 		pis := peerInfos{p1, p2, p3, p4}
-		pis.SortByValueAndStreams(true)
+		pis.SortByValueAndStreams(true, cm.segments)
 		// p3 is first because it is inactive (no streams).
 		// p4 is second because it has the most streams and we priortize killing
 		// connections with the higher number of streams.
@@ -899,7 +902,7 @@ func TestPeerInfoSorting(t *testing.T) {
 			},
 		}
 		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams(true)
+		pis.SortByValueAndStreams(true, cm.segments)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 }

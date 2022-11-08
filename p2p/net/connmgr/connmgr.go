@@ -252,7 +252,7 @@ type peerInfos []peerInfo
 // will sort peers with no streams before those with streams (all else being
 // equal). If `sortByMoreStreams` is true it will sort peers with more streams
 // before those with fewer streams. This is useful to prioritize freeing memory.
-func (p peerInfos) SortByValueAndStreams(sortByMoreStreams bool) {
+func (p peerInfos) SortByValueAndStreams(sortByMoreStreams bool, segments segments) {
 	sort.Slice(p, func(i, j int) bool {
 		left, right := p[i], p[j]
 		// temporary peers are preferred for pruning.
@@ -273,8 +273,17 @@ func (p peerInfos) SortByValueAndStreams(sortByMoreStreams bool) {
 			}
 			return
 		}
+
+		s := segments.get(left.id)
+		s.Lock()
 		leftIncoming, leftStreams := incomingAndStreams(left.conns)
+		s.Unlock()
+
+		s = segments.get(right.id)
+		s.Lock()
 		rightIncoming, rightStreams := incomingAndStreams(right.conns)
+		s.Unlock()
+
 		// prefer closing inactive connections (no streams open)
 		if rightStreams != leftStreams && (leftStreams == 0 || rightStreams == 0) {
 			return leftStreams < rightStreams
@@ -374,7 +383,7 @@ func (cm *BasicConnMgr) getConnsToCloseEmergency(target int) []network.Conn {
 	cm.plk.RUnlock()
 
 	// Sort peers according to their value.
-	candidates.SortByValueAndStreams(true)
+	candidates.SortByValueAndStreams(true, cm.segments)
 
 	selected := make([]network.Conn, 0, target+10)
 	for _, inf := range candidates {
@@ -404,7 +413,7 @@ func (cm *BasicConnMgr) getConnsToCloseEmergency(target int) []network.Conn {
 	}
 	cm.plk.RUnlock()
 
-	candidates.SortByValueAndStreams(true)
+	candidates.SortByValueAndStreams(true, cm.segments)
 	for _, inf := range candidates {
 		if target <= 0 {
 			break
@@ -465,7 +474,7 @@ func (cm *BasicConnMgr) getConnsToClose() []network.Conn {
 	}
 
 	// Sort peers according to their value.
-	candidates.SortByValueAndStreams(false)
+	candidates.SortByValueAndStreams(false, cm.segments)
 
 	target := ncandidates - cm.cfg.lowWater
 
