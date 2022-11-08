@@ -245,7 +245,9 @@ func EnableRelayService(opts ...relayv2.Option) Option {
 //
 // Dependencies:
 //   - Relay (enabled by default)
-//   - Routing (to find relays), or StaticRelays/DefaultStaticRelays.
+//   - Either:
+//     1. A list of static relays
+//     2. A PeerSource function that provides a chan of relays. See `autorelay.WithPeerSource`
 //
 // This subsystem performs automatic address rewriting to advertise relay addresses when it
 // detects that the node is publicly unreachable (e.g. behind a NAT).

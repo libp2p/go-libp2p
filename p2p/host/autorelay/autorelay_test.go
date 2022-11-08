@@ -444,3 +444,15 @@ func TestMaxAge(t *testing.T) {
 	}
 	require.Contains(t, ids, relays[0])
 }
+
+func TestIncorrectInit(t *testing.T) {
+	// Check if we panic if we do not correctly initialize the autorelay system.
+	// Common since it's easy to initialize without passing in the correct options: https://github.com/libp2p/go-libp2p/issues/1852
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected to panic")
+		}
+	}()
+	_ = newPrivateNode(t)
+}

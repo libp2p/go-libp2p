@@ -83,6 +83,10 @@ type relayFinder struct {
 }
 
 func newRelayFinder(host *basic.BasicHost, peerSource func(context.Context, int) <-chan peer.AddrInfo, conf *config) *relayFinder {
+	if peerSource == nil && len(conf.staticRelays) == 0 {
+		panic("Can not create a new relayFinder. Need a Peer Source fn or a list of static relays. Refer to the documentation around `libp2p.EnableAutoRelay`")
+	}
+
 	return &relayFinder{
 		bootTime:                   conf.clock.Now(),
 		host:                       host,
