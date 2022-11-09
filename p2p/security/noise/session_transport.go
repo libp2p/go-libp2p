@@ -56,7 +56,7 @@ func EarlyData(initiator, responder EarlyDataHandler) SessionOption {
 // peer.
 func DisablePeerIDCheck() SessionOption {
 	return func(s *SessionTransport) error {
-		s.disablePeerIdCheck = true
+		s.disablePeerIDCheck = true
 		return nil
 	}
 }
@@ -69,7 +69,7 @@ type SessionTransport struct {
 	t *Transport
 	// options
 	prologue           []byte
-	disablePeerIdCheck bool
+	disablePeerIDCheck bool
 
 	initiatorEarlyDataHandler, responderEarlyDataHandler EarlyDataHandler
 }
@@ -77,7 +77,7 @@ type SessionTransport struct {
 // SecureInbound runs the Noise handshake as the responder.
 // If p is empty, connections from any peer are accepted.
 func (i *SessionTransport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	c, err := newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, false, p != "" || i.disablePeerIdCheck)
+	c, err := newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, false, p != "" || i.disablePeerIDCheck)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
 		if maErr == nil {
@@ -89,5 +89,5 @@ func (i *SessionTransport) SecureInbound(ctx context.Context, insecure net.Conn,
 
 // SecureOutbound runs the Noise handshake as the initiator.
 func (i *SessionTransport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	return newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, true, !i.disablePeerIdCheck)
+	return newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, true, !i.disablePeerIDCheck)
 }

@@ -75,7 +75,7 @@ func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p pee
 }
 
 func (t *Transport) WithSessionOptions(opts ...SessionOption) (*SessionTransport, error) {
-	st := &SessionTransport{t: t, disablePeerIdCheck: false}
+	st := &SessionTransport{t: t}
 	for _, opt := range opts {
 		if err := opt(st); err != nil {
 			return nil, err
