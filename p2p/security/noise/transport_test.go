@@ -232,6 +232,24 @@ func TestPeerIDMismatchInboundFailsHandshake(t *testing.T) {
 	<-done
 }
 
+func TestPeerIDInboundCheckDisabled(t *testing.T) {
+	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
+	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
+	init, resp := newConnPair(t)
+
+	initSessionTransport, err := initTransport.WithSessionOptions(DisablePeerIDCheck())
+	require.NoError(t, err)
+	errChan := make(chan error)
+	go func() {
+		_, err := initSessionTransport.SecureInbound(context.Background(), init, "test")
+		errChan <- err
+	}()
+	_, err = respTransport.SecureOutbound(context.Background(), resp, initTransport.localID)
+	require.NoError(t, err)
+	initErr := <-errChan
+	require.NoError(t, initErr)
+}
+
 func TestPeerIDOutboundNoCheck(t *testing.T) {
 	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
 	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
