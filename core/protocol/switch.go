@@ -51,17 +51,6 @@ type Router interface {
 // Negotiator is a component capable of reaching agreement over what protocols
 // to use for inbound streams of communication.
 type Negotiator interface {
-	// NegotiateLazy will return the registered protocol handler to use
-	// for a given inbound stream, returning as soon as the protocol has been
-	// determined. Returns an error if negotiation fails.
-	//
-	// NegotiateLazy may return before all protocol negotiation responses have been
-	// written to the stream. This is in contrast to Negotiate, which will block until
-	// the Negotiator is finished with the stream.
-	//
-	// Deprecated: use Negotiate instead.
-	NegotiateLazy(rwc io.ReadWriteCloser) (io.ReadWriteCloser, string, HandlerFunc, error)
-
 	// Negotiate will return the registered protocol handler to use for a given
 	// inbound stream, returning after the protocol has been determined and the
 	// Negotiator has finished using the stream for negotiation. Returns an
