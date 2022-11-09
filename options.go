@@ -270,20 +270,6 @@ func StaticRelays(relays []peer.AddrInfo) Option {
 	}
 }
 
-// DefaultStaticRelays configures the static relays to use the known PL-operated relays.
-// Deprecated: pass autorelay.WithDefaultStaticRelays to EnableAutoRelay.
-func DefaultStaticRelays() Option {
-	relays := make([]peer.AddrInfo, 0, len(autorelay.DefaultRelays))
-	for _, addr := range autorelay.DefaultRelays {
-		pi, err := peer.AddrInfoFromString(addr)
-		if err != nil {
-			panic(fmt.Sprintf("failed to initialize default static relays: %s", err))
-		}
-		relays = append(relays, *pi)
-	}
-	return StaticRelays(relays)
-}
-
 // ForceReachabilityPublic overrides automatic reachability detection in the AutoNAT subsystem,
 // forcing the local node to believe it is reachable externally.
 func ForceReachabilityPublic() Option {
