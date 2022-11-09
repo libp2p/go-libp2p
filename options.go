@@ -16,7 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/metrics"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -299,17 +298,6 @@ func EnableAutoRelay(opts ...autorelay.Option) Option {
 	return func(cfg *Config) error {
 		cfg.EnableAutoRelay = true
 		cfg.AutoRelayOpts = opts
-		return nil
-	}
-}
-
-// StaticRelays configures known relays for autorelay; when this option is enabled
-// then the system will use the configured relays instead of querying the DHT to
-// discover relays.
-// Deprecated: pass an autorelay.WithStaticRelays option to EnableAutoRelay.
-func StaticRelays(relays []peer.AddrInfo) Option {
-	return func(cfg *Config) error {
-		cfg.AutoRelayOpts = append(cfg.AutoRelayOpts, autorelay.WithStaticRelays(relays))
 		return nil
 	}
 }
