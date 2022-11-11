@@ -89,8 +89,9 @@ func WithStaticRelays(static []peer.AddrInfo) Option {
 			}
 			return c
 		}, 30*time.Second)(c)
-		WithMinCandidates(len(static))
-		WithNumRelays(len(static))
+		WithMinCandidates(len(static))(c)
+		WithMaxCandidates(len(static))(c)
+		WithNumRelays(len(static))(c)
 
 		return nil
 	}

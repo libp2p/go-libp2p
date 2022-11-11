@@ -471,7 +471,6 @@ func TestReconnectToStaticRelays(t *testing.T) {
 
 	h := newPrivateNode(t,
 		autorelay.WithStaticRelays(staticRelays),
-		autorelay.WithMinCandidates(1),
 		autorelay.WithClock(cl),
 	)
 
