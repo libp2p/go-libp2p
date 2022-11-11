@@ -15,8 +15,7 @@ type config struct {
 	clock      clock.Clock
 	peerSource func(ctx context.Context, num int) <-chan peer.AddrInfo
 	// minimum interval used to call the peerSource callback
-	minInterval  time.Duration
-	staticRelays []peer.AddrInfo
+	minInterval time.Duration
 	// see WithMinCandidates
 	minCandidates int
 	// see WithMaxCandidates
@@ -45,8 +44,7 @@ var defaultConfig = config{
 }
 
 var (
-	errStaticRelaysMinCandidates = errors.New("cannot use WithMinCandidates and WithStaticRelays")
-	errStaticRelaysPeerSource    = errors.New("cannot use WithPeerSource and WithStaticRelays")
+	errAlreadyHavePeerSource = errors.New("can only use a single WithPeerSource or WithStaticRelays")
 )
 
 // DefaultRelays are the known PL-operated v1 relays; will be decommissioned in 2022.
@@ -75,17 +73,25 @@ type Option func(*config) error
 
 func WithStaticRelays(static []peer.AddrInfo) Option {
 	return func(c *config) error {
-		if c.setMinCandidates {
-			return errStaticRelaysMinCandidates
-		}
 		if c.peerSource != nil {
-			return errStaticRelaysPeerSource
+			return errAlreadyHavePeerSource
 		}
-		if len(c.staticRelays) > 0 {
-			return errors.New("can't set static relays, static relays already configured")
-		}
-		c.minCandidates = len(static)
-		c.staticRelays = static
+
+		WithPeerSource(func(ctx context.Context, numPeers int) <-chan peer.AddrInfo {
+			if len(static) < numPeers {
+				numPeers = len(static)
+			}
+			c := make(chan peer.AddrInfo, numPeers)
+			defer close(c)
+
+			for i := 0; i < numPeers; i++ {
+				c <- static[i]
+			}
+			return c
+		}, 30*time.Second)(c)
+		WithMinCandidates(len(static))
+		WithNumRelays(len(static))
+
 		return nil
 	}
 }
@@ -107,8 +113,8 @@ func WithDefaultStaticRelays() Option {
 // If the channel is canceled you MUST close the output channel at some point.
 func WithPeerSource(f func(ctx context.Context, numPeers int) <-chan peer.AddrInfo, minInterval time.Duration) Option {
 	return func(c *config) error {
-		if len(c.staticRelays) > 0 {
-			return errStaticRelaysPeerSource
+		if c.peerSource != nil {
+			return errAlreadyHavePeerSource
 		}
 		c.peerSource = f
 		c.minInterval = minInterval
@@ -140,9 +146,6 @@ func WithMaxCandidates(n int) Option {
 // This is to make sure that we don't just randomly connect to the first candidate that we discover.
 func WithMinCandidates(n int) Option {
 	return func(c *config) error {
-		if len(c.staticRelays) > 0 {
-			return errStaticRelaysMinCandidates
-		}
 		if n > c.maxCandidates {
 			n = c.maxCandidates
 		}
