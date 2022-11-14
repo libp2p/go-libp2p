@@ -160,6 +160,7 @@ func (cfg *LimitConfig) Apply(c LimitConfig) {
 	cfg.AllowlistedSystem.Apply(c.AllowlistedSystem)
 	cfg.AllowlistedTransient.Apply(c.AllowlistedTransient)
 	cfg.ServiceDefault.Apply(c.ServiceDefault)
+	cfg.ServicePeerDefault.Apply(c.ServicePeerDefault)
 	cfg.ProtocolDefault.Apply(c.ProtocolDefault)
 	cfg.ProtocolPeerDefault.Apply(c.ProtocolPeerDefault)
 	cfg.PeerDefault.Apply(c.PeerDefault)
