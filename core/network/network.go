@@ -174,10 +174,10 @@ type Dialer interface {
 	// Peers returns the peers connected
 	Peers() []peer.ID
 
-	// Conns returns the connections in this Netowrk
+	// Conns returns the connections in this Network
 	Conns() []Conn
 
-	// ConnsToPeer returns the connections in this Netowrk for given peer.
+	// ConnsToPeer returns the connections in this Network for given peer.
 	ConnsToPeer(p peer.ID) []Conn
 
 	// Notify/StopNotify register and unregister a notifiee for signals
