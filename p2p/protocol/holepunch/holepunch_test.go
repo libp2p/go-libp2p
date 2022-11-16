@@ -223,6 +223,11 @@ func TestFailuresOnInitiator(t *testing.T) {
 			}
 
 			hps := addHolePunchService(t, h2, opts...)
+			// wait until the hole punching protocol has actually started
+			require.Eventually(t, func() bool {
+				protos, _ := h2.Peerstore().SupportsProtocols(h1.ID(), string(holepunch.Protocol))
+				return len(protos) > 0
+			}, 200*time.Millisecond, 10*time.Millisecond)
 
 			if tc.rhandler != nil {
 				h1.SetStreamHandler(holepunch.Protocol, tc.rhandler)
