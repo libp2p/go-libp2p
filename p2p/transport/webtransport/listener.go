@@ -137,7 +137,7 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		cancel()
 		log.Debugw("handshake failed", "error", err)
-		sess.Close()
+		sess.CloseWithError(1, "")
 		connScope.Done()
 		return
 	}
@@ -145,14 +145,14 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 
 	if l.transport.gater != nil && !l.transport.gater.InterceptSecured(network.DirInbound, sconn.RemotePeer(), sconn) {
 		// TODO: can we close with a specific error here?
-		sess.Close()
+		sess.CloseWithError(errorCodeConnectionGating, "")
 		connScope.Done()
 		return
 	}
 
 	if err := connScope.SetPeer(sconn.RemotePeer()); err != nil {
 		log.Debugw("resource manager blocked incoming connection for peer", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
-		sess.Close()
+		sess.CloseWithError(1, "")
 		connScope.Done()
 		return
 	}
@@ -163,7 +163,7 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 	case l.queue <- conn:
 	default:
 		log.Debugw("accept queue full, dropping incoming connection", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
-		sess.Close()
+		sess.CloseWithError(1, "")
 		connScope.Done()
 	}
 }

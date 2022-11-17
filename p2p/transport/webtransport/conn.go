@@ -69,7 +69,7 @@ func (c *conn) allowWindowIncrease(size uint64) bool {
 // garbage collection to properly work in this package.
 func (c *conn) Close() error {
 	c.transport.removeConn(c.session)
-	return c.session.Close()
+	return c.session.CloseWithError(0, "")
 }
 
 func (c *conn) IsClosed() bool           { return c.session.Context().Err() != nil }

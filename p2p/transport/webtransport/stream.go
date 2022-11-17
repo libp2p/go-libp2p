@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	reset webtransport.ErrorCode = 0
+	reset webtransport.StreamErrorCode = 0
 )
 
 type webtransportStream struct {

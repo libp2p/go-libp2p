@@ -34,6 +34,8 @@ var log = logging.Logger("webtransport")
 
 const webtransportHTTPEndpoint = "/.well-known/libp2p-webtransport"
 
+const errorCodeConnectionGating = 0x47415445 // GATE in ASCII
+
 const certValidity = 14 * 24 * time.Hour
 
 type Option func(*transport) error
@@ -153,13 +155,12 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 	}
 	sconn, err := t.upgrade(ctx, sess, p, certHashes)
 	if err != nil {
-		sess.Close()
+		sess.CloseWithError(1, "")
 		scope.Done()
 		return nil, err
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, sconn) {
-		// TODO: can we close with a specific error here?
-		sess.Close()
+		sess.CloseWithError(errorCodeConnectionGating, "")
 		scope.Done()
 		return nil, fmt.Errorf("secured connection gated")
 	}
