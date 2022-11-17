@@ -20,8 +20,8 @@ func WithAddrFilter(f AddrFilter) Option {
 
 // AddrFilter defines the interface for the multi address filtering.
 type AddrFilter interface {
-	// FilterLocal is a function that filters the multi addresses that we send to the remote peer.
+	// FilterLocal filters the multi addresses that are sent to the remote peer.
 	FilterLocal(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
-	// FilterRemote is a function that filters the multi addresses which we received from the remote peer.
+	// FilterRemote filters the multi addresses received from the remote peer.
 	FilterRemote(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
 }
