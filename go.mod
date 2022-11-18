@@ -26,7 +26,7 @@ require (
 	github.com/libp2p/go-mplex v0.7.0
 	github.com/libp2p/go-msgio v0.2.0
 	github.com/libp2p/go-nat v0.1.0
-	github.com/libp2p/go-netroute v0.2.0
+	github.com/libp2p/go-netroute v0.2.1
 	github.com/libp2p/go-openssl v0.1.0
 	github.com/libp2p/go-reuseport v0.2.0
 	github.com/libp2p/go-yamux/v4 v4.0.0
@@ -111,7 +111,7 @@ require (
 	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/exp v0.0.0-20220916125017-b168a2c6b86b // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/net v0.0.0-20220920183852-bf014ff85ad5 // indirect
+	golang.org/x/net v0.0.0-20220923203811-8be639271d50 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/tools v0.1.12 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
