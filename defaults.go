@@ -45,6 +45,15 @@ var DefaultTransports = ChainOptions(
 	Transport(ws.New),
 )
 
+// DefaultPrivateTransports are the default libp2p transports when a PSK is supplied.
+//
+// Use this option when you want to *extend* the set of transports used by
+// libp2p instead of replacing them.
+var DefaultPrivateTransports = ChainOptions(
+	Transport(tcp.NewTCPTransport),
+	Transport(ws.New),
+)
+
 // DefaultPeerstore configures libp2p to use the default peerstore.
 var DefaultPeerstore Option = func(cfg *Config) error {
 	ps, err := pstoremem.NewPeerstore()
@@ -135,8 +144,12 @@ var defaults = []struct {
 		opt:      DefaultListenAddrs,
 	},
 	{
-		fallback: func(cfg *Config) bool { return cfg.Transports == nil },
+		fallback: func(cfg *Config) bool { return cfg.Transports == nil && cfg.PSK == nil },
 		opt:      DefaultTransports,
+	},
+	{
+		fallback: func(cfg *Config) bool { return cfg.Transports == nil && cfg.PSK != nil },
+		opt:      DefaultPrivateTransports,
 	},
 	{
 		fallback: func(cfg *Config) bool { return cfg.Muxers == nil },
