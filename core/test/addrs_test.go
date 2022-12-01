@@ -13,12 +13,12 @@ func TestGenerateTestAddrs(t *testing.T) {
 		expectedOutput []string
 	}{
 		{
-			description:    "generate 0 test ips",
+			description:    "generate 0 results",
 			inputInt:       0,
 			expectedOutput: []string{},
 		},
 		{
-			description: "generate a few test ips",
+			description: "generate a few results",
 			inputInt:    3,
 			expectedOutput: []string{
 				"/ip4/1.2.3.4/tcp/0",
