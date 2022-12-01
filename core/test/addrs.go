@@ -7,6 +7,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+// GenerateTestAddrs generates a slice of ma.Multiaddr
 func GenerateTestAddrs(n int) []ma.Multiaddr {
 	out := make([]ma.Multiaddr, n)
 	for i := 0; i < n; i++ {
@@ -19,6 +20,7 @@ func GenerateTestAddrs(n int) []ma.Multiaddr {
 	return out
 }
 
+// AssertAddressesEqual checks that two slices of ma.Multiaddr are same length
 func AssertAddressesEqual(t *testing.T, exp, act []ma.Multiaddr) {
 	t.Helper()
 	if len(exp) != len(act) {
