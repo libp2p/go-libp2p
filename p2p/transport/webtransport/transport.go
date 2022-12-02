@@ -15,6 +15,7 @@ import (
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/pnet"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
@@ -93,7 +94,11 @@ var _ tpt.Transport = &transport{}
 var _ tpt.Resolver = &transport{}
 var _ io.Closer = &transport{}
 
-func New(key ic.PrivKey, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+	if len(psk) > 0 {
+		log.Error("WebTransport doesn't support private networks yet.")
+		return nil, errors.New("WebTransport doesn't support private networks yet")
+	}
 	id, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err

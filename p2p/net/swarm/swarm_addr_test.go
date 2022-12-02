@@ -86,7 +86,7 @@ func TestDialAddressSelection(t *testing.T) {
 	quicTr, err := quic.NewTransport(priv, reuse, nil, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.AddTransport(quicTr))
-	webtransportTr, err := webtransport.New(priv, reuse, nil, nil)
+	webtransportTr, err := webtransport.New(priv, nil, reuse, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.AddTransport(webtransportTr))
 	h := sha256.Sum256([]byte("foo"))
