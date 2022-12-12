@@ -493,5 +493,14 @@ func mkHostWithHolePunchSvc(t *testing.T, opts ...holepunch.Option) (host.Host, 
 	require.NoError(t, err)
 	hps, err := holepunch.NewService(h, newMockIDService(t, h), opts...)
 	require.NoError(t, err)
+	// wait until the holepunching protocol is set
+	require.Eventually(t, func() bool {
+		for _, p := range h.Mux().Protocols() {
+			if p == string(holepunch.Protocol) {
+				return true
+			}
+		}
+		return false
+	}, 3*time.Second, 20*time.Millisecond)
 	return h, hps
 }
