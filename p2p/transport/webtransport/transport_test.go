@@ -107,7 +107,7 @@ func newConnManager(t *testing.T, opts ...quicreuse.Option) *quicreuse.ConnManag
 
 func TestTransport(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
-	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, &network.NullResourceManager{})
+	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, nil)
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
@@ -117,7 +117,7 @@ func TestTransport(t *testing.T) {
 	addrChan := make(chan ma.Multiaddr)
 	go func() {
 		_, clientKey := newIdentity(t)
-		tr2, err := libp2pwebtransport.New(clientKey, nil, newConnManager(t), nil, &network.NullResourceManager{})
+		tr2, err := libp2pwebtransport.New(clientKey, nil, newConnManager(t), nil, nil)
 		require.NoError(t, err)
 		defer tr2.(io.Closer).Close()
 

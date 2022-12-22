@@ -89,6 +89,9 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 		log.Error("WebTransport doesn't support private networks yet.")
 		return nil, errors.New("WebTransport doesn't support private networks yet")
 	}
+	if rcmgr == nil {
+		rcmgr = &network.NullResourceManager{}
+	}
 	id, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
