@@ -33,7 +33,7 @@ require (
 	github.com/libp2p/zeroconf/v2 v2.2.0
 	github.com/lucas-clemente/quic-go v0.31.1
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd
-	github.com/marten-seemann/webtransport-go v0.4.2
+	github.com/marten-seemann/webtransport-go v0.4.3
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b
 	github.com/minio/sha256-simd v1.0.0
 	github.com/mr-tron/base58 v1.2.0
