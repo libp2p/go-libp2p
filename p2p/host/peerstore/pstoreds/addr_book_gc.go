@@ -210,8 +210,7 @@ func (gc *dsAddrBookGc) purgeLookahead() {
 		}
 
 		// if the record is in cache, we clean it and flush it if necessary.
-		if e, ok := gc.ab.cache.Peek(id); ok {
-			cached := e.(*addrsRecord)
+		if cached, ok := gc.ab.cache.Peek(id); ok {
 			cached.Lock()
 			if cached.clean(gc.ab.clock.Now()) {
 				if err = cached.flush(batch); err != nil {
@@ -345,8 +344,7 @@ func (gc *dsAddrBookGc) populateLookahead() {
 		}
 
 		// if the record is in cache, use the cached version.
-		if e, ok := gc.ab.cache.Peek(id); ok {
-			cached := e.(*addrsRecord)
+		if cached, ok := gc.ab.cache.Peek(id); ok {
 			cached.RLock()
 			if len(cached.Addrs) == 0 || cached.Addrs[0].Expiry > until {
 				cached.RUnlock()

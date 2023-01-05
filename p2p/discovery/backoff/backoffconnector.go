@@ -8,12 +8,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 // BackoffConnector is a utility to connect to peers, but only if we have not recently tried connecting to them already
 type BackoffConnector struct {
-	cache      *lru.TwoQueueCache
+	cache      *lru.TwoQueueCache[peer.ID, *connCacheData]
 	host       host.Host
 	connTryDur time.Duration
 	backoff    BackoffFactory
@@ -25,7 +25,7 @@ type BackoffConnector struct {
 // connectionTryDuration is how long we attempt to connect to a peer before giving up
 // backoff describes the strategy used to decide how long to backoff after previously attempting to connect to a peer
 func NewBackoffConnector(h host.Host, cacheSize int, connectionTryDuration time.Duration, backoff BackoffFactory) (*BackoffConnector, error) {
-	cache, err := lru.New2Q(cacheSize)
+	cache, err := lru.New2Q[peer.ID, *connCacheData](cacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -59,10 +59,8 @@ func (c *BackoffConnector) Connect(ctx context.Context, peerCh <-chan peer.AddrI
 			}
 
 			c.mux.Lock()
-			val, ok := c.cache.Get(pi.ID)
 			var cachedPeer *connCacheData
-			if ok {
-				tv := val.(*connCacheData)
+			if tv, ok := c.cache.Get(pi.ID); ok {
 				now := time.Now()
 				if now.Before(tv.nextTry) {
 					c.mux.Unlock()

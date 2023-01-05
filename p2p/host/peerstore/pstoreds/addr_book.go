@@ -13,7 +13,7 @@ import (
 	pb "github.com/libp2p/go-libp2p/p2p/host/peerstore/pb"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	logging "github.com/ipfs/go-log/v2"
@@ -135,7 +135,7 @@ type dsAddrBook struct {
 	ctx  context.Context
 	opts Options
 
-	cache       cache
+	cache       cache[peer.ID, *addrsRecord]
 	ds          ds.Batching
 	gc          *dsAddrBookGc
 	subsManager *pstoremem.AddrSubManager
@@ -200,11 +200,11 @@ func NewAddrBook(ctx context.Context, store ds.Batching, opts Options) (ab *dsAd
 	}
 
 	if opts.CacheSize > 0 {
-		if ab.cache, err = lru.NewARC(int(opts.CacheSize)); err != nil {
+		if ab.cache, err = lru.NewARC[peer.ID, *addrsRecord](int(opts.CacheSize)); err != nil {
 			return nil, err
 		}
 	} else {
-		ab.cache = new(noopCache)
+		ab.cache = new(noopCache[peer.ID, *addrsRecord])
 	}
 
 	if ab.gc, err = newAddressBookGc(ctx, ab); err != nil {
@@ -228,8 +228,7 @@ func (ab *dsAddrBook) Close() error {
 //
 // If the cache argument is true, the record is inserted in the cache when loaded from the datastore.
 func (ab *dsAddrBook) loadRecord(id peer.ID, cache bool, update bool) (pr *addrsRecord, err error) {
-	if e, ok := ab.cache.Get(id); ok {
-		pr = e.(*addrsRecord)
+	if pr, ok := ab.cache.Get(id); ok {
 		pr.Lock()
 		defer pr.Unlock()
 
