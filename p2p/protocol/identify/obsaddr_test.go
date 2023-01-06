@@ -1,120 +1,76 @@
 package identify_test
 
 import (
+	"context"
 	"crypto/rand"
+	"fmt"
+	"net"
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
-type harness struct {
-	t *testing.T
-
-	mocknet mocknet.Mocknet
-	host    host.Host
-
-	oas *identify.ObservedAddrManager
+type mockConn struct {
+	local, remote ma.Multiaddr
+	peer          peer.ID
+	direction     network.Direction
 }
 
-func (h *harness) add(observer ma.Multiaddr) peer.ID {
-	// create a new fake peer.
-	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
-	if err != nil {
-		h.t.Fatal(err)
+var _ network.Conn = &mockConn{}
+
+func newMockConn(dir network.Direction, peer peer.ID, local, remote ma.Multiaddr) network.Conn {
+	return &mockConn{
+		direction: dir,
+		peer:      peer,
+		local:     local,
+		remote:    remote,
 	}
-	h2, err := h.mocknet.AddPeer(sk, observer)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	_, err = h.mocknet.LinkPeers(h.host.ID(), h2.ID())
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	return h2.ID()
 }
 
-func (h *harness) conn(observer peer.ID) network.Conn {
-	c, err := h.mocknet.ConnectPeers(h.host.ID(), observer)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	if c.Stat().Direction != network.DirOutbound {
-		h.t.Fatal("expected conn direction to be outbound")
-	}
-	return c
+func (m *mockConn) Close() error                  { panic("implement me") }
+func (m *mockConn) LocalPeer() peer.ID            { panic("implement me") }
+func (m *mockConn) LocalPrivateKey() ic.PrivKey   { panic("implement me") }
+func (m *mockConn) RemotePeer() peer.ID           { return m.peer }
+func (m *mockConn) RemotePublicKey() ic.PubKey    { panic("implement me") }
+func (m *mockConn) LocalMultiaddr() ma.Multiaddr  { return m.local }
+func (m *mockConn) RemoteMultiaddr() ma.Multiaddr { return m.remote }
+func (m *mockConn) Stat() network.ConnStats {
+	return network.ConnStats{Stats: network.Stats{Direction: m.direction}}
 }
+func (m *mockConn) Scope() network.ConnScope                              { panic("implement me") }
+func (m *mockConn) ID() string                                            { panic("implement me") }
+func (m *mockConn) NewStream(ctx context.Context) (network.Stream, error) { panic("implement me") }
+func (m *mockConn) GetStreams() []network.Stream                          { panic("implement me") }
+func (m *mockConn) ConnState() network.ConnectionState                    { panic("implement me") }
 
-func (h *harness) connInbound(observer peer.ID) network.Conn {
-	c, err := h.mocknet.ConnectPeers(observer, h.host.ID())
-	if err != nil {
-		h.t.Fatal(err)
-	}
-
-	c = mocknet.ConnComplement(c)
-	if c.Stat().Direction != network.DirInbound {
-		h.t.Fatal("expected conn direction to be inbound")
-	}
-	return c
-}
-
-func (h *harness) observe(observed ma.Multiaddr, observer peer.ID) network.Conn {
-	c := h.conn(observer)
-	h.oas.Record(c, observed)
-	time.Sleep(50 * time.Millisecond) // let the worker run
-	return c
-}
-
-func (h *harness) observeInbound(observed ma.Multiaddr, observer peer.ID) network.Conn {
-	c := h.connInbound(observer)
-	h.oas.Record(c, observed)
-	time.Sleep(50 * time.Millisecond) // let the worker run
-	return c
-}
-
-func newHarness(t *testing.T) harness {
-	mn := mocknet.New()
+func newPeer(t *testing.T) peer.ID {
+	t.Helper()
 	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
 	require.NoError(t, err)
-	h, err := mn.AddPeer(sk, ma.StringCast("/ip4/127.0.0.1/tcp/10086"))
+	id, err := peer.IDFromPrivateKey(sk)
 	require.NoError(t, err)
-	oas, err := identify.NewObservedAddrManager(h)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		mn.Close()
-		oas.Close()
-	})
-	return harness{
-		oas:     oas,
-		mocknet: mn,
-		host:    h,
-		t:       t,
-	}
+	return id
 }
 
-// TestObsAddrSet
 func TestObsAddrSet(t *testing.T) {
-	addrsMatch := func(a, b []ma.Multiaddr) bool {
-		if len(a) != len(b) {
-			return false
-		}
-		for _, aa := range a {
-			if !ma.Contains(b, aa) {
-				return false
-			}
-		}
-		return true
-	}
+	local := ma.StringCast("/ip4/127.0.0.1/tcp/10086")
+	h, err := libp2p.New(libp2p.ListenAddrs(local))
+	require.NoError(t, err)
+	defer h.Close()
+
+	oam, err := identify.NewObservedAddrManager(h)
+	require.NoError(t, err)
 
 	a1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
 	a2 := ma.StringCast("/ip4/1.2.3.4/tcp/1232")
@@ -127,107 +83,132 @@ func TestObsAddrSet(t *testing.T) {
 	b3 := ma.StringCast("/ip4/1.2.3.8/tcp/1237")
 	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
 	b5 := ma.StringCast("/ip4/1.2.3.10/tcp/1237")
+	require.Empty(t, oam.Addrs())
 
-	harness := newHarness(t)
-	if !addrsMatch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should be empty")
-	}
-
-	pa4 := harness.add(a4)
-	pa5 := harness.add(a5)
-
-	pb1 := harness.add(b1)
-	pb2 := harness.add(b2)
-	pb3 := harness.add(b3)
-	pb4 := harness.add(b4)
-	pb5 := harness.add(b5)
-
-	harness.observe(a1, pa4)
-	harness.observe(a2, pa4)
-	harness.observe(a3, pa4)
-
+	p1 := newPeer(t)
+	oam.Record(newMockConn(network.DirOutbound, p1, local, a4), a1)
+	oam.Record(newMockConn(network.DirOutbound, p1, local, a4), a2)
+	oam.Record(newMockConn(network.DirOutbound, p1, local, a4), a3)
 	// these are all different so we should not yet get them.
-	if !addrsMatch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should _still_ be empty (once)")
-	}
+	time.Sleep(50 * time.Millisecond)
+	require.Empty(t, oam.Addrs())
 
 	// same observer, so should not yet get them.
-	harness.observe(a1, pa4)
-	harness.observe(a2, pa4)
-	harness.observe(a3, pa4)
-	if !addrsMatch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should _still_ be empty (same obs)")
-	}
+	oam.Record(newMockConn(network.DirOutbound, p1, local, a4), a1)
+	oam.Record(newMockConn(network.DirOutbound, p1, local, a4), a2)
+	oam.Record(newMockConn(network.DirOutbound, p1, local, a4), a3)
+	time.Sleep(50 * time.Millisecond)
+	require.Empty(t, oam.Addrs())
 
 	// different observer, but same observer group.
-	harness.observe(a1, pa5)
-	harness.observe(a2, pa5)
-	harness.observe(a3, pa5)
-	if !addrsMatch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should _still_ be empty (same obs group)")
+	p2 := newPeer(t)
+	oam.Record(newMockConn(network.DirOutbound, p2, local, a5), a1)
+	oam.Record(newMockConn(network.DirOutbound, p2, local, a5), a2)
+	oam.Record(newMockConn(network.DirOutbound, p2, local, a5), a3)
+	time.Sleep(50 * time.Millisecond)
+	require.Empty(t, oam.Addrs())
+
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b1), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b2), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b3), a1)
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, []ma.Multiaddr{a1}, oam.Addrs())
+
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, a5), a2)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, a5), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, a5), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b1), a2)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b1), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b1), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b2), a2)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b2), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b2), a1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b4), a2)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b5), a2)
+	time.Sleep(50 * time.Millisecond)
+	require.ElementsMatch(t, []ma.Multiaddr{a1, a2}, oam.Addrs())
+}
+
+type wrappedNetwork struct {
+	network.Network
+	conns map[peer.ID][]network.Conn
+}
+
+func (n *wrappedNetwork) ConnsToPeer(p peer.ID) []network.Conn {
+	return n.conns[p]
+}
+
+type wrappedHost struct {
+	conns map[peer.ID][]network.Conn
+	host.Host
+}
+
+func (h *wrappedHost) AddConn(p peer.ID, c network.Conn) {
+	if h.conns == nil {
+		h.conns = make(map[peer.ID][]network.Conn)
+	}
+	h.conns[p] = append(h.conns[p], c)
+}
+
+func (h *wrappedHost) Network() network.Network {
+	return &wrappedNetwork{
+		Network: h.Host.Network(),
+		conns:   h.conns,
+	}
+}
+
+func TestObsAddrSetExpiration(t *testing.T) {
+	local := ma.StringCast("/ip4/127.0.0.1/tcp/10086")
+	h, err := libp2p.New(libp2p.ListenAddrs(local))
+	require.NoError(t, err)
+	defer h.Close()
+	host := &wrappedHost{Host: h}
+	oam, err := identify.NewObservedAddrManager(host)
+	require.NoError(t, err)
+	defer oam.Close()
+	notif := (*identify.ObsAddrNotifiee)(oam)
+
+	require.Empty(t, oam.Addrs())
+
+	a1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
+	a2 := ma.StringCast("/ip4/1.2.3.4/tcp/1232")
+
+	record := func(c network.Conn, observed ma.Multiaddr) {
+		host.AddConn(c.RemotePeer(), c)
+		oam.Record(c, observed)
 	}
 
-	harness.observe(a1, pb1)
-	harness.observe(a1, pb2)
-	harness.observe(a1, pb3)
-	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1}) {
-		t.Error("addrs should only have a1")
+	var conns1 []network.Conn
+	for i := 0; i < 5; i++ {
+		ip := net.IP(make([]byte, 4))
+		rand.Read(ip)
+		conn1 := newMockConn(network.DirOutbound, newPeer(t), local, ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/1234", ip.String())))
+		conns1 = append(conns1, conn1)
+		record(conn1, a1)
+		record(newMockConn(network.DirOutbound, newPeer(t), local, ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/1234", ip.String()))), a2)
 	}
+	time.Sleep(50 * time.Millisecond)
+	require.ElementsMatch(t, []ma.Multiaddr{a1, a2}, oam.Addrs())
 
-	harness.observe(a2, pa5)
-	harness.observe(a1, pa5)
-	harness.observe(a1, pa5)
-	harness.observe(a2, pb1)
-	harness.observe(a1, pb1)
-	harness.observe(a1, pb1)
-	harness.observe(a2, pb2)
-	harness.observe(a1, pb2)
-	harness.observe(a1, pb2)
-	harness.observe(a2, pb4)
-	harness.observe(a2, pb5)
-	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
-		t.Error("addrs should only have a1, a2")
+	oam.SetTTL(200 * time.Millisecond)
+	// disconnect all addresses that gave us a1
+	for _, c := range conns1 {
+		notif.Disconnected(h.Network(), c)
 	}
-
-	// force a refresh.
-	harness.oas.SetTTL(time.Millisecond * 200)
-	require.Eventuallyf(t,
-		func() bool { return addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) },
-		time.Second,
-		50*time.Millisecond,
-		"addrs should only have %s, %s; have %s", a1, a2, harness.oas.Addrs(),
-	)
-
-	// disconnect from all but b5.
-	for _, p := range harness.host.Network().Peers() {
-		if p == pb5 {
-			continue
-		}
-		harness.host.Network().ClosePeer(p)
-	}
-
-	// Wait for all other addresses to time out.
-	// After that, we hould still have a2.
-	require.Eventuallyf(t,
-		func() bool { return addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a2}) },
-		time.Second,
-		50*time.Millisecond,
-		"should only have a2 (%s), have: %v", a2, harness.oas.Addrs(),
-	)
-	harness.host.Network().ClosePeer(pb5)
-
-	// wait for all addresses to timeout
-	require.Eventually(t,
-		func() bool { return len(harness.oas.Addrs()) == 0 },
-		400*time.Millisecond,
-		20*time.Millisecond,
-		"addrs should have timed out",
-	)
+	require.Eventually(t, func() bool { return len(oam.Addrs()) < 2 }, time.Second, 10*time.Millisecond)
+	require.Equal(t, []ma.Multiaddr{a2}, oam.Addrs())
+	time.Sleep(time.Second)
 }
 
 func TestObservedAddrFiltering(t *testing.T) {
-	harness := newHarness(t)
-	require.Empty(t, harness.oas.Addrs())
+	local := ma.StringCast("/ip4/127.0.0.1/tcp/10086")
+	h, err := libp2p.New(libp2p.ListenAddrs(local))
+	require.NoError(t, err)
+	defer h.Close()
+
+	oam, err := identify.NewObservedAddrManager(h)
+	require.NoError(t, err)
+	require.Empty(t, oam.Addrs())
 
 	// IP4/TCP
 	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
@@ -244,7 +225,6 @@ func TestObservedAddrFiltering(t *testing.T) {
 	b3 := ma.StringCast("/ip4/1.2.3.8/tcp/1237")
 	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
 	b5 := ma.StringCast("/ip4/1.2.3.10/tcp/1237")
-
 	b6 := ma.StringCast("/ip4/1.2.3.11/tcp/1237")
 	b7 := ma.StringCast("/ip4/1.2.3.12/tcp/1237")
 
@@ -252,82 +232,73 @@ func TestObservedAddrFiltering(t *testing.T) {
 	b8 := ma.StringCast("/ip4/1.2.3.13/tcp/1237")
 	b9 := ma.StringCast("/ip4/1.2.3.13/tcp/1238")
 	b10 := ma.StringCast("/ip4/1.2.3.13/tcp/1239")
+	observers := []ma.Multiaddr{b1, b2, b3, b4, b5, b6, b7, b8, b9, b10}
 
-	peers := []peer.ID{
-		harness.add(b1),
-		harness.add(b2),
-		harness.add(b3),
-		harness.add(b4),
-		harness.add(b5),
-
-		harness.add(b6),
-		harness.add(b7),
-
-		harness.add(b8),
-		harness.add(b9),
-		harness.add(b10),
+	var peers []peer.ID
+	for i := 0; i < 10; i++ {
+		peers = append(peers, newPeer(t))
 	}
 	for i := 0; i < 4; i++ {
-		harness.observe(it1, peers[i])
-		harness.observe(it2, peers[i])
-		harness.observe(it3, peers[i])
-		harness.observe(it4, peers[i])
-		harness.observe(it5, peers[i])
-		harness.observe(it6, peers[i])
-		harness.observe(it7, peers[i])
+		oam.Record(newMockConn(network.DirOutbound, peers[i], local, observers[i]), it1)
+		oam.Record(newMockConn(network.DirOutbound, peers[i], local, observers[i]), it2)
+		oam.Record(newMockConn(network.DirOutbound, peers[i], local, observers[i]), it3)
+		oam.Record(newMockConn(network.DirOutbound, peers[i], local, observers[i]), it4)
+		oam.Record(newMockConn(network.DirOutbound, peers[i], local, observers[i]), it5)
+		oam.Record(newMockConn(network.DirOutbound, peers[i], local, observers[i]), it6)
+		oam.Record(newMockConn(network.DirOutbound, peers[i], local, observers[i]), it7)
+		time.Sleep(10 * time.Millisecond) // give the loop some time to process the entries
 	}
+	oam.Record(newMockConn(network.DirOutbound, peers[4], local, observers[4]), it1)
+	oam.Record(newMockConn(network.DirOutbound, peers[4], local, observers[4]), it7)
 
-	harness.observe(it1, peers[4])
-	harness.observe(it7, peers[4])
-
-	addrs := harness.oas.Addrs()
-	require.Len(t, addrs, 2)
-	require.Contains(t, addrs, it1)
-	require.Contains(t, addrs, it7)
+	time.Sleep(50 * time.Millisecond)
+	require.ElementsMatch(t, oam.Addrs(), []ma.Multiaddr{it1, it7})
 
 	// Bump the number of observations so 1 & 7 have 7 observations.
-	harness.observe(it1, peers[5])
-	harness.observe(it1, peers[6])
-	harness.observe(it7, peers[5])
-	harness.observe(it7, peers[6])
+	oam.Record(newMockConn(network.DirOutbound, peers[5], local, observers[5]), it1)
+	oam.Record(newMockConn(network.DirOutbound, peers[6], local, observers[6]), it1)
+	oam.Record(newMockConn(network.DirOutbound, peers[5], local, observers[5]), it7)
+	oam.Record(newMockConn(network.DirOutbound, peers[6], local, observers[6]), it7)
 
 	// Add an observation from IP 1.2.3.13
 	// 2 & 3 now have 5 observations
-	harness.observe(it2, peers[7])
-	harness.observe(it3, peers[7])
+	oam.Record(newMockConn(network.DirOutbound, peers[7], local, observers[7]), it2)
+	oam.Record(newMockConn(network.DirOutbound, peers[7], local, observers[7]), it3)
 
-	addrs = harness.oas.Addrs()
-	require.Len(t, addrs, 2)
-	require.Contains(t, addrs, it1)
-	require.Contains(t, addrs, it7)
+	time.Sleep(50 * time.Millisecond)
+	require.ElementsMatch(t, oam.Addrs(), []ma.Multiaddr{it1, it7})
 
 	// Add an inbound observation from IP 1.2.3.13, it should override the
 	// existing observation and it should make these addresses win even
 	// though we have fewer observations.
 	//
 	// 2 & 3 now have 6 observations.
-	harness.observeInbound(it2, peers[8])
-	harness.observeInbound(it3, peers[8])
-	addrs = harness.oas.Addrs()
-	require.Len(t, addrs, 2)
-	require.Contains(t, addrs, it2)
-	require.Contains(t, addrs, it3)
+	oam.Record(newMockConn(network.DirInbound, peers[8], local, observers[8]), it2)
+	oam.Record(newMockConn(network.DirInbound, peers[8], local, observers[8]), it3)
+
+	time.Sleep(50 * time.Millisecond)
+	require.ElementsMatch(t, oam.Addrs(), []ma.Multiaddr{it2, it3})
 
 	// Adding an outbound observation shouldn't "downgrade" it.
 	//
 	// 2 & 3 now have 7 observations.
-	harness.observe(it2, peers[9])
-	harness.observe(it3, peers[9])
-	addrs = harness.oas.Addrs()
-	require.Len(t, addrs, 2)
-	require.Contains(t, addrs, it2)
-	require.Contains(t, addrs, it3)
+	oam.Record(newMockConn(network.DirInbound, peers[9], local, observers[9]), it2)
+	oam.Record(newMockConn(network.DirInbound, peers[9], local, observers[9]), it3)
+	time.Sleep(50 * time.Millisecond)
+	require.ElementsMatch(t, oam.Addrs(), []ma.Multiaddr{it2, it3})
 }
 
 func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
-	harness := newHarness(t)
-	require.Empty(t, harness.oas.Addrs())
-	emitter, err := harness.host.EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	local := ma.StringCast("/ip4/127.0.0.1/tcp/10086")
+	h, err := libp2p.New(libp2p.ListenAddrs(local))
+	require.NoError(t, err)
+	defer h.Close()
+
+	oam, err := identify.NewObservedAddrManager(h)
+	require.NoError(t, err)
+	require.Empty(t, oam.Addrs())
+
+	emitter, err := h.EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 	require.NoError(t, err)
 	require.NoError(t, emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate}))
 
@@ -343,19 +314,12 @@ func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 	b3 := ma.StringCast("/ip4/1.2.3.8/tcp/1237")
 	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
 
-	peers := []peer.ID{
-		harness.add(b1),
-		harness.add(b2),
-		harness.add(b3),
-		harness.add(b4),
-	}
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b1), it1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b2), it2)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b3), it3)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b4), it4)
 
-	harness.observe(it1, peers[0])
-	harness.observe(it2, peers[1])
-	harness.observe(it3, peers[2])
-	harness.observe(it4, peers[3])
-
-	sub, err := harness.host.EventBus().Subscribe(new(event.EvtNATDeviceTypeChanged))
+	sub, err := h.EventBus().Subscribe(new(event.EvtNATDeviceTypeChanged))
 	require.NoError(t, err)
 	select {
 	case ev := <-sub.Out():
@@ -365,13 +329,19 @@ func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("did not get Symmetric NAT event")
 	}
-
 }
 
 func TestEmitNATDeviceTypeCone(t *testing.T) {
-	harness := newHarness(t)
-	require.Empty(t, harness.oas.Addrs())
-	emitter, err := harness.host.EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	local := ma.StringCast("/ip4/127.0.0.1/tcp/10086")
+	h, err := libp2p.New(libp2p.ListenAddrs(local))
+	require.NoError(t, err)
+	defer h.Close()
+
+	oam, err := identify.NewObservedAddrManager(h)
+	require.NoError(t, err)
+	require.Empty(t, oam.Addrs())
+
+	emitter, err := h.EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 	require.NoError(t, err)
 	require.NoError(t, emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate}))
 
@@ -386,19 +356,12 @@ func TestEmitNATDeviceTypeCone(t *testing.T) {
 	b3 := ma.StringCast("/ip4/1.2.3.8/tcp/1237")
 	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
 
-	peers := []peer.ID{
-		harness.add(b1),
-		harness.add(b2),
-		harness.add(b3),
-		harness.add(b4),
-	}
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b1), it1)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b2), it2)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b3), it3)
+	oam.Record(newMockConn(network.DirOutbound, newPeer(t), local, b4), it4)
 
-	harness.observe(it1, peers[0])
-	harness.observe(it2, peers[1])
-	harness.observe(it3, peers[2])
-	harness.observe(it4, peers[3])
-
-	sub, err := harness.host.EventBus().Subscribe(new(event.EvtNATDeviceTypeChanged))
+	sub, err := h.EventBus().Subscribe(new(event.EvtNATDeviceTypeChanged))
 	require.NoError(t, err)
 	select {
 	case ev := <-sub.Out():

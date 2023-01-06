@@ -18,11 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
-	coretest "github.com/libp2p/go-libp2p/core/test"
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -263,100 +260,6 @@ func TestProtoMatching(t *testing.T) {
 
 	if identify.HasConsistentTransport(utp, []ma.Multiaddr{tcp2, tcp3}) {
 		t.Fatal("expected mismatch")
-	}
-}
-
-func TestLocalhostAddrFiltering(t *testing.T) {
-	t.Skip("need to fix this test")
-	mn := mocknet.New()
-	defer mn.Close()
-	id1 := coretest.RandPeerIDFatal(t)
-	ps1, err := pstoremem.NewPeerstore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	p1addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
-	p1addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/2345")
-	ps1.AddAddrs(id1, []ma.Multiaddr{p1addr1, p1addr2}, peerstore.PermanentAddrTTL)
-	p1, err := mn.AddPeerWithPeerstore(id1, ps1)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	id2 := coretest.RandPeerIDFatal(t)
-	ps2, err := pstoremem.NewPeerstore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	p2addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.5/tcp/1234")
-	p2addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/3456")
-	p2addrs := []ma.Multiaddr{p2addr1, p2addr2}
-	ps2.AddAddrs(id2, p2addrs, peerstore.PermanentAddrTTL)
-	p2, err := mn.AddPeerWithPeerstore(id2, ps2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	id3 := coretest.RandPeerIDFatal(t)
-	ps3, err := pstoremem.NewPeerstore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	p3addr1, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/4567")
-	ps3.AddAddrs(id3, []ma.Multiaddr{p3addr1}, peerstore.PermanentAddrTTL)
-	p3, err := mn.AddPeerWithPeerstore(id3, ps3)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = mn.LinkAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-	p1.Connect(context.Background(), peer.AddrInfo{
-		ID:    id2,
-		Addrs: p2addrs[0:1],
-	})
-	p3.Connect(context.Background(), peer.AddrInfo{
-		ID:    id2,
-		Addrs: p2addrs[1:],
-	})
-
-	ids1, err := identify.NewIDService(p1)
-	require.NoError(t, err)
-
-	ids2, err := identify.NewIDService(p2)
-	require.NoError(t, err)
-
-	ids3, err := identify.NewIDService(p3)
-	require.NoError(t, err)
-
-	defer func() {
-		ids1.Close()
-		ids2.Close()
-		ids3.Close()
-	}()
-
-	conns := p2.Network().ConnsToPeer(id1)
-	if len(conns) == 0 {
-		t.Fatal("no conns")
-	}
-	conn := conns[0]
-	ids2.IdentifyConn(conn)
-	addrs := p2.Peerstore().Addrs(id1)
-	if len(addrs) != 1 {
-		t.Fatalf("expected one addr, found %s", addrs)
-	}
-
-	conns = p3.Network().ConnsToPeer(id2)
-	if len(conns) == 0 {
-		t.Fatal("no conns")
-	}
-	conn = conns[0]
-	ids3.IdentifyConn(conn)
-	addrs = p3.Peerstore().Addrs(id2)
-	if len(addrs) != 2 {
-		t.Fatalf("expected 2 addrs for %s, found %d: %s", id2, len(addrs), addrs)
 	}
 }
 

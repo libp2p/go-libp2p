@@ -62,7 +62,6 @@ type observedAddr struct {
 }
 
 func (oa *observedAddr) activated() bool {
-
 	// We only activate if other peers observed the same address
 	// of ours at least 4 times. SeenBy peers are removed by GC if
 	// they say the address more than ttl*ActivationThresh
@@ -153,7 +152,7 @@ func NewObservedAddrManager(host host.Host) (*ObservedAddrManager, error) {
 	}
 	oas.emitNATDeviceTypeChanged = emitter
 
-	oas.host.Network().Notify((*obsAddrNotifiee)(oas))
+	oas.host.Network().Notify((*ObsAddrNotifiee)(oas))
 	oas.refCount.Add(1)
 	go oas.worker()
 	return oas, nil
@@ -197,13 +196,11 @@ func (oas *ObservedAddrManager) filter(observedAddrs []*observedAddr) []ma.Multi
 	pmap := make(map[string][]*observedAddr)
 	now := time.Now()
 
-	for i := range observedAddrs {
-		a := observedAddrs[i]
+	for _, a := range observedAddrs {
 		if now.Sub(a.lastSeen) <= oas.ttl && a.activated() {
 			// group addresses by their IPX/Transport Protocol(TCP or UDP) pattern.
 			pat := a.groupKey()
 			pmap[pat] = append(pmap[pat], a)
-
 		}
 	}
 
@@ -371,7 +368,7 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 	// the same as the listen addr.
 	ifaceaddrs, err := oas.host.Network().InterfaceListenAddresses()
 	if err != nil {
-		log.Infof("failed to get interface listen addrs", err)
+		log.Infof("failed to get interface listen addrs: %s", err)
 		return
 	}
 
@@ -540,7 +537,7 @@ func (oas *ObservedAddrManager) Close() error {
 
 		oas.refCount.Wait()
 		oas.reachabilitySub.Close()
-		oas.host.Network().StopNotify((*obsAddrNotifiee)(oas))
+		oas.host.Network().StopNotify((*ObsAddrNotifiee)(oas))
 	})
 	return nil
 }
@@ -580,11 +577,12 @@ func (oas *ObservedAddrManager) TTL() time.Duration {
 	return oas.ttl
 }
 
-type obsAddrNotifiee ObservedAddrManager
+// ObsAddrNotifiee is only exported for tests.
+type ObsAddrNotifiee ObservedAddrManager
 
-func (on *obsAddrNotifiee) Listen(n network.Network, a ma.Multiaddr)      {}
-func (on *obsAddrNotifiee) ListenClose(n network.Network, a ma.Multiaddr) {}
-func (on *obsAddrNotifiee) Connected(n network.Network, v network.Conn)   {}
-func (on *obsAddrNotifiee) Disconnected(n network.Network, v network.Conn) {
+func (on *ObsAddrNotifiee) Listen(n network.Network, a ma.Multiaddr)      {}
+func (on *ObsAddrNotifiee) ListenClose(n network.Network, a ma.Multiaddr) {}
+func (on *ObsAddrNotifiee) Connected(n network.Network, v network.Conn)   {}
+func (on *ObsAddrNotifiee) Disconnected(n network.Network, v network.Conn) {
 	(*ObservedAddrManager)(on).removeConn(v)
 }
