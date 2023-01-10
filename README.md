@@ -85,7 +85,7 @@ informed by Go's own [security policy](https://go.dev/security).
 
 # Notable Users
 Some notable users of go-libp2p are:
-- [Kubo](https://github.com/ipfs/kubo) - The Go implementation of IPFS
+- [Kubo](https://github.com/ipfs/kubo) - The original Go implementation of IPFS
 - [Lotus](https://github.com/filecoin-project/lotus) - An implementation of the Filecoin Network
 - [Drand](https://github.com/drand/drand) - A distributed random beacon daemon
 - [Prysm](https://github.com/prysmaticlabs/prysm) - An Ethereum Beacon Chain consensus client built by [Prysmatic Labs](https://prysmaticlabs.com/)
