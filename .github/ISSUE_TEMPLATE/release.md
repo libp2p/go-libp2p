@@ -26,6 +26,5 @@ about: 'Start a new libp2p release.'
 - [ ] **Stage 2 - Update Upstream**
   - [ ] Update the examples to the final release
   - [ ] Update the upstream dependencies to the final release and create PRs.
-    - [ ] [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
     - [ ] [ipfs/kubo](https://github.com/ipfs/kubo)
 - [ ] Make required changes to the release process.
