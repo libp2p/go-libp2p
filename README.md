@@ -89,6 +89,7 @@ Some notable users of go-libp2p are:
 - [Lotus](https://github.com/filecoin-project/lotus) - An implementation of the Filecoin protocol
 - [Drand](https://github.com/drand/drand) - A distributed random beacon daemon
 - [Prysm](https://github.com/prysmaticlabs/prysm) - An Ethereum Beacon Chain consensus client built by [Prysmatic Labs](https://prysmaticlabs.com/)
+- [Berty](https://github.com/berty/berty) - An open, secure, offline-first, peer-to-peer and zero trust messaging app.
 - [Wasp](https://github.com/iotaledger/wasp) - A node that runs IOTA Smart Contracts built by the [IOTA Foundation](https://www.iota.org/)
 - [Mina](https://github.com/minaprotocol/mina) - A lightweight, constant-sized blockchain that runs zero-knowledge smart contracts
 - [Polygon Edge](https://github.com/0xPolygon/polygon-edge) - A modular, extensible framework for building Ethereum compatible networks
