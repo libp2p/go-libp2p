@@ -1,6 +1,7 @@
 package rcmgr
 
 import (
+	"encoding/json"
 	"runtime"
 	"testing"
 
@@ -140,4 +141,22 @@ func TestReadmeExample(t *testing.T) {
 
 	require.Equal(t, 384, limitConf.System.Conns)
 	require.Equal(t, 1000, limitConf.System.FD)
+}
+
+func TestSerializeJSON(t *testing.T) {
+	bl := BaseLimit{
+		Streams: 10,
+	}
+
+	out, err := json.Marshal(bl)
+	require.NoError(t, err)
+	require.Equal(t, "{\"Streams\":10}", string(out))
+
+	bli := BaseLimitIncrease{
+		Streams: 10,
+	}
+
+	out, err = json.Marshal(bli)
+	require.NoError(t, err)
+	require.Equal(t, "{\"Streams\":10}", string(out))
 }

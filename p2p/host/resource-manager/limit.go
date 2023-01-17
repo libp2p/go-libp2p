@@ -87,14 +87,14 @@ func NewFixedLimiter(conf LimitConfig) Limiter {
 
 // BaseLimit is a mixin type for basic resource limits.
 type BaseLimit struct {
-	Streams         int
-	StreamsInbound  int
-	StreamsOutbound int
-	Conns           int
-	ConnsInbound    int
-	ConnsOutbound   int
-	FD              int
-	Memory          int64
+	Streams         int   `json:",omitempty"`
+	StreamsInbound  int   `json:",omitempty"`
+	StreamsOutbound int   `json:",omitempty"`
+	Conns           int   `json:",omitempty"`
+	ConnsInbound    int   `json:",omitempty"`
+	ConnsOutbound   int   `json:",omitempty"`
+	FD              int   `json:",omitempty"`
+	Memory          int64 `json:",omitempty"`
 }
 
 // Apply overwrites all zero-valued limits with the values of l2
@@ -128,16 +128,16 @@ func (l *BaseLimit) Apply(l2 BaseLimit) {
 
 // BaseLimitIncrease is the increase per GiB of allowed memory.
 type BaseLimitIncrease struct {
-	Streams         int
-	StreamsInbound  int
-	StreamsOutbound int
-	Conns           int
-	ConnsInbound    int
-	ConnsOutbound   int
+	Streams         int `json:",omitempty"`
+	StreamsInbound  int `json:",omitempty"`
+	StreamsOutbound int `json:",omitempty"`
+	Conns           int `json:",omitempty"`
+	ConnsInbound    int `json:",omitempty"`
+	ConnsOutbound   int `json:",omitempty"`
 	// Memory is in bytes. Values over 1>>30 (1GiB) don't make sense.
-	Memory int64
+	Memory int64 `json:",omitempty"`
 	// FDFraction is expected to be >= 0 and <= 1.
-	FDFraction float64
+	FDFraction float64 `json:",omitempty"`
 }
 
 // Apply overwrites all zero-valued limits with the values of l2
