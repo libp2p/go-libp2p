@@ -130,7 +130,7 @@ func (rc *resources) checkMemory(rsvp int64, prio uint8) error {
 	}
 
 	if !addOk || newmem > threshold {
-		return &errMemoryLimitExceeded{
+		return &ErrMemoryLimitExceeded{
 			current:   rc.memory,
 			attempted: rsvp,
 			limit:     limit,
@@ -171,7 +171,7 @@ func (rc *resources) addStreams(incount, outcount int) error {
 	if incount > 0 {
 		limit := rc.limit.GetStreamLimit(network.DirInbound)
 		if rc.nstreamsIn+incount > limit {
-			return &errStreamOrConnLimitExceeded{
+			return &ErrStreamOrConnLimitExceeded{
 				current:   rc.nstreamsIn,
 				attempted: incount,
 				limit:     limit,
@@ -182,7 +182,7 @@ func (rc *resources) addStreams(incount, outcount int) error {
 	if outcount > 0 {
 		limit := rc.limit.GetStreamLimit(network.DirOutbound)
 		if rc.nstreamsOut+outcount > limit {
-			return &errStreamOrConnLimitExceeded{
+			return &ErrStreamOrConnLimitExceeded{
 				current:   rc.nstreamsOut,
 				attempted: outcount,
 				limit:     limit,
@@ -192,7 +192,7 @@ func (rc *resources) addStreams(incount, outcount int) error {
 	}
 
 	if limit := rc.limit.GetStreamTotalLimit(); rc.nstreamsIn+incount+rc.nstreamsOut+outcount > limit {
-		return &errStreamOrConnLimitExceeded{
+		return &ErrStreamOrConnLimitExceeded{
 			current:   rc.nstreamsIn + rc.nstreamsOut,
 			attempted: incount + outcount,
 			limit:     limit,
@@ -244,7 +244,7 @@ func (rc *resources) addConns(incount, outcount, fdcount int) error {
 	if incount > 0 {
 		limit := rc.limit.GetConnLimit(network.DirInbound)
 		if rc.nconnsIn+incount > limit {
-			return &errStreamOrConnLimitExceeded{
+			return &ErrStreamOrConnLimitExceeded{
 				current:   rc.nconnsIn,
 				attempted: incount,
 				limit:     limit,
@@ -255,7 +255,7 @@ func (rc *resources) addConns(incount, outcount, fdcount int) error {
 	if outcount > 0 {
 		limit := rc.limit.GetConnLimit(network.DirOutbound)
 		if rc.nconnsOut+outcount > limit {
-			return &errStreamOrConnLimitExceeded{
+			return &ErrStreamOrConnLimitExceeded{
 				current:   rc.nconnsOut,
 				attempted: outcount,
 				limit:     limit,
@@ -265,7 +265,7 @@ func (rc *resources) addConns(incount, outcount, fdcount int) error {
 	}
 
 	if connLimit := rc.limit.GetConnTotalLimit(); rc.nconnsIn+incount+rc.nconnsOut+outcount > connLimit {
-		return &errStreamOrConnLimitExceeded{
+		return &ErrStreamOrConnLimitExceeded{
 			current:   rc.nconnsIn + rc.nconnsOut,
 			attempted: incount + outcount,
 			limit:     connLimit,
@@ -275,7 +275,7 @@ func (rc *resources) addConns(incount, outcount, fdcount int) error {
 	if fdcount > 0 {
 		limit := rc.limit.GetFDLimit()
 		if rc.nfd+fdcount > limit {
-			return &errStreamOrConnLimitExceeded{
+			return &ErrStreamOrConnLimitExceeded{
 				current:   rc.nfd,
 				attempted: fdcount,
 				limit:     limit,

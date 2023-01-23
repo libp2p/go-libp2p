@@ -6,13 +6,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 )
 
-type errStreamOrConnLimitExceeded struct {
+type ErrStreamOrConnLimitExceeded struct {
 	current, attempted, limit int
 	err                       error
 }
 
-func (e *errStreamOrConnLimitExceeded) Error() string { return e.err.Error() }
-func (e *errStreamOrConnLimitExceeded) Unwrap() error { return e.err }
+func (e *ErrStreamOrConnLimitExceeded) Error() string { return e.err.Error() }
+func (e *ErrStreamOrConnLimitExceeded) Unwrap() error { return e.err }
 
 // edge may be "" if this is not an edge error
 func logValuesStreamLimit(scope, edge string, dir network.Direction, stat network.ScopeStat, err error) []interface{} {
@@ -22,7 +22,7 @@ func logValuesStreamLimit(scope, edge string, dir network.Direction, stat networ
 		logValues = append(logValues, "edge", edge)
 	}
 	logValues = append(logValues, "direction", dir)
-	var e *errStreamOrConnLimitExceeded
+	var e *ErrStreamOrConnLimitExceeded
 	if errors.As(err, &e) {
 		logValues = append(logValues,
 			"current", e.current,
@@ -41,7 +41,7 @@ func logValuesConnLimit(scope, edge string, dir network.Direction, usefd bool, s
 		logValues = append(logValues, "edge", edge)
 	}
 	logValues = append(logValues, "direction", dir, "usefd", usefd)
-	var e *errStreamOrConnLimitExceeded
+	var e *ErrStreamOrConnLimitExceeded
 	if errors.As(err, &e) {
 		logValues = append(logValues,
 			"current", e.current,
@@ -52,14 +52,14 @@ func logValuesConnLimit(scope, edge string, dir network.Direction, usefd bool, s
 	return append(logValues, "stat", stat, "error", err)
 }
 
-type errMemoryLimitExceeded struct {
+type ErrMemoryLimitExceeded struct {
 	current, attempted, limit int64
 	priority                  uint8
 	err                       error
 }
 
-func (e *errMemoryLimitExceeded) Error() string { return e.err.Error() }
-func (e *errMemoryLimitExceeded) Unwrap() error { return e.err }
+func (e *ErrMemoryLimitExceeded) Error() string { return e.err.Error() }
+func (e *ErrMemoryLimitExceeded) Unwrap() error { return e.err }
 
 // edge may be "" if this is not an edge error
 func logValuesMemoryLimit(scope, edge string, stat network.ScopeStat, err error) []interface{} {
@@ -68,7 +68,7 @@ func logValuesMemoryLimit(scope, edge string, stat network.ScopeStat, err error)
 	if edge != "" {
 		logValues = append(logValues, "edge", edge)
 	}
-	var e *errMemoryLimitExceeded
+	var e *ErrMemoryLimitExceeded
 	if errors.As(err, &e) {
 		logValues = append(logValues,
 			"current", e.current,
