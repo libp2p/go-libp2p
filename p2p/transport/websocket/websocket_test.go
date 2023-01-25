@@ -38,7 +38,7 @@ import (
 func newUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 	t.Helper()
 	id, m := newInsecureMuxer(t)
-	u, err := tptu.New(m, []tptu.StreamMuxer{{ID: "/yamux", Muxer: yamux.DefaultTransport}}, nil, nil, nil)
+	u, err := tptu.New(m, []tptu.StreamMuxer{{ID: "/yamux", Muxer: yamux.DefaultTransport}}, nil, &network.NullResourceManager{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func newUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 func newSecureUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 	t.Helper()
 	id, m := newSecureMuxer(t)
-	u, err := tptu.New(m, []tptu.StreamMuxer{{ID: "/yamux", Muxer: yamux.DefaultTransport}}, nil, nil, nil)
+	u, err := tptu.New(m, []tptu.StreamMuxer{{ID: "/yamux", Muxer: yamux.DefaultTransport}}, nil, &network.NullResourceManager{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -87,9 +87,6 @@ func New(security []sec.SecureTransport, muxers []StreamMuxer, psk ipnet.PSK, rc
 			return nil, err
 		}
 	}
-	if u.rcmgr == nil {
-		u.rcmgr = &network.NullResourceManager{}
-	}
 	u.muxerIDs = make([]string, 0, len(muxers))
 	for _, m := range muxers {
 		u.muxerMuxer.AddHandler(string(m.ID), nil)

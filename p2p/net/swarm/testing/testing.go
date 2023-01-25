@@ -105,7 +105,14 @@ func GenUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater
 	pk := n.Peerstore().PrivKey(id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
 
-	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: "/yamux/1.0.0", Muxer: yamux.DefaultTransport}}, nil, nil, connGater, opts...)
+	u, err := tptu.New(
+		[]sec.SecureTransport{st},
+		[]tptu.StreamMuxer{{ID: "/yamux/1.0.0", Muxer: yamux.DefaultTransport}},
+		nil,
+		&network.NullResourceManager{},
+		connGater,
+		opts...,
+	)
 	require.NoError(t, err)
 	return u
 }
@@ -150,7 +157,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		if cfg.disableReuseport {
 			tcpOpts = append(tcpOpts, tcp.DisableReuseport())
 		}
-		tcpTransport, err := tcp.NewTCPTransport(upgrader, nil, tcpOpts...)
+		tcpTransport, err := tcp.NewTCPTransport(upgrader, &network.NullResourceManager{}, tcpOpts...)
 		require.NoError(t, err)
 		if err := s.AddTransport(tcpTransport); err != nil {
 			t.Fatal(err)
@@ -166,7 +173,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		if err != nil {
 			t.Fatal(err)
 		}
-		quicTransport, err := quic.NewTransport(priv, reuse, nil, cfg.connectionGater, nil)
+		quicTransport, err := quic.NewTransport(priv, reuse, nil, cfg.connectionGater, &network.NullResourceManager{})
 		if err != nil {
 			t.Fatal(err)
 		}

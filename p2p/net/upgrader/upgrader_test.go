@@ -25,11 +25,11 @@ import (
 )
 
 func createUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, nil, nil)
+	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, &network.NullResourceManager{}, nil)
 }
 
 func createUpgraderWithConnGater(t *testing.T, connGater connmgr.ConnectionGater) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, nil, connGater)
+	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, &network.NullResourceManager{}, connGater)
 }
 
 func createUpgraderWithResourceManager(t *testing.T, rcmgr network.ResourceManager) (peer.ID, transport.Upgrader) {
@@ -37,7 +37,7 @@ func createUpgraderWithResourceManager(t *testing.T, rcmgr network.ResourceManag
 }
 
 func createUpgraderWithOpts(t *testing.T, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, nil, nil, opts...)
+	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, &network.NullResourceManager{}, nil, opts...)
 }
 
 func newPeer(t *testing.T) (peer.ID, crypto.PrivKey) {

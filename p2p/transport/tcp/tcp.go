@@ -135,9 +135,6 @@ var _ transport.Transport = &TcpTransport{}
 // NewTCPTransport creates a tcp transport object that tracks dialers and listeners
 // created. It represents an entire TCP stack (though it might not necessarily be).
 func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*TcpTransport, error) {
-	if rcmgr == nil {
-		rcmgr = &network.NullResourceManager{}
-	}
 	tr := &TcpTransport{
 		upgrader:       upgrader,
 		connectTimeout: defaultConnectTimeout, // can be set by using the WithConnectionTimeout option

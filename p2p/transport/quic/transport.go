@@ -83,10 +83,6 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		return nil, err
 	}
 
-	if rcmgr == nil {
-		rcmgr = &network.NullResourceManager{}
-	}
-
 	return &transport{
 		privKey:      key,
 		localPeer:    localPeer,

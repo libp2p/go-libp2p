@@ -187,8 +187,12 @@ func (cfg *Config) addTransports(h host.Host) error {
 		fx.Provide(func() crypto.PrivKey { return h.Peerstore().PrivKey(h.ID()) }),
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
-		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),
 		fx.Provide(func() *madns.Resolver { return cfg.MultiaddrResolver }),
+	}
+	if cfg.ResourceManager != nil {
+		fxopts = append(fxopts, fx.Supply(cfg.ResourceManager))
+	} else {
+		fxopts = append(fxopts, fx.Supply(&network.NullResourceManager{}))
 	}
 	fxopts = append(fxopts, cfg.Transports...)
 	if cfg.Insecure {

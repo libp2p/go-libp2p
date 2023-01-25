@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/sec"
@@ -50,7 +51,7 @@ func makeSwarm(t *testing.T) *Swarm {
 
 	var tcpOpts []tcp.Option
 	tcpOpts = append(tcpOpts, tcp.DisableReuseport())
-	tcpTransport, err := tcp.NewTCPTransport(upgrader, nil, tcpOpts...)
+	tcpTransport, err := tcp.NewTCPTransport(upgrader, &network.NullResourceManager{}, tcpOpts...)
 	require.NoError(t, err)
 	if err := s.AddTransport(tcpTransport); err != nil {
 		t.Fatal(err)
@@ -63,7 +64,7 @@ func makeSwarm(t *testing.T) *Swarm {
 	if err != nil {
 		t.Fatal(err)
 	}
-	quicTransport, err := quic.NewTransport(priv, reuse, nil, nil, nil)
+	quicTransport, err := quic.NewTransport(priv, reuse, nil, nil, &network.NullResourceManager{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func makeUpgrader(t *testing.T, n *Swarm) transport.Upgrader {
 	pk := n.Peerstore().PrivKey(id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
 
-	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: "/yamux/1.0.0", Muxer: yamux.DefaultTransport}}, nil, nil, nil)
+	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: "/yamux/1.0.0", Muxer: yamux.DefaultTransport}}, nil, &network.NullResourceManager{}, nil)
 	require.NoError(t, err)
 	return u
 }

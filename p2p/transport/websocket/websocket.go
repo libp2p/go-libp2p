@@ -92,9 +92,6 @@ type WebsocketTransport struct {
 var _ transport.Transport = (*WebsocketTransport)(nil)
 
 func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*WebsocketTransport, error) {
-	if rcmgr == nil {
-		rcmgr = &network.NullResourceManager{}
-	}
 	t := &WebsocketTransport{
 		upgrader:      u,
 		rcmgr:         rcmgr,
