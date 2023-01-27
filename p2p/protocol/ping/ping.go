@@ -200,3 +200,53 @@ func ping(s network.Stream, randReader io.Reader) (time.Duration, error) {
 
 	return time.Since(before), nil
 }
+
+// PingWithStream is the same as above, but returns the stream
+func PingWithStream(ctx context.Context, h host.Host, p peer.ID) (network.Stream, <-chan Result) {
+	s, err := h.NewStream(network.WithUseTransient(ctx, "ping"), p, ID)
+	if err != nil {
+		return s, pingError(err)
+	}
+
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		log.Debugf("error attaching stream to ping service: %s", err)
+		s.Reset()
+		return s, pingError(err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	out := make(chan Result)
+	go func() {
+		defer close(out)
+		defer cancel()
+
+		for ctx.Err() == nil {
+			var res Result
+			res.RTT, res.Error = ping(s)
+
+			// canceled, ignore everything.
+			if ctx.Err() != nil {
+				return
+			}
+
+			// No error, record the RTT.
+			if res.Error == nil {
+				h.Peerstore().RecordLatency(p, res.RTT)
+			}
+
+			select {
+			case out <- res:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	go func() {
+		// forces the ping to abort.
+		<-ctx.Done()
+		s.Reset()
+	}()
+
+	return s, out
+}

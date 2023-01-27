@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/protocol/streammigration"
 
 	"github.com/libp2p/go-netroute"
 
@@ -70,7 +71,7 @@ type BasicHost struct {
 
 	network      network.Network
 	psManager    *pstoremanager.PeerstoreManager
-	mux          *msmux.MultistreamMuxer
+	mux          protocol.Switch
 	ids          identify.IDService
 	hps          *holepunch.Service
 	pings        *ping.PingService
@@ -79,6 +80,8 @@ type BasicHost struct {
 	cmgr         connmgr.ConnManager
 	eventbus     event.Bus
 	relayManager *relaysvc.RelayManager
+
+	streamMigrator *streammigration.StreamMigrator
 
 	AddrsFactory AddrsFactory
 
@@ -151,6 +154,8 @@ type HostOpts struct {
 	EnableHolePunching bool
 	// HolePunchingOptions are options for the hole punching service
 	HolePunchingOptions []holepunch.Option
+
+	EnableStreamMigration bool
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -223,6 +228,10 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		h.mux = opts.MultistreamMuxer
 	}
 
+	if opts.EnableStreamMigration {
+		h.streamMigrator = streammigration.New(h.mux)
+	}
+
 	// we can't set this as a default above because it depends on the *BasicHost.
 	if h.disableSignedPeerRecord {
 		h.ids, err = identify.NewIDService(
@@ -291,6 +300,10 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ListenF:      listenHandler,
 		ListenCloseF: listenHandler,
 	})
+
+	if h.streamMigrator != nil {
+		h.SetStreamHandler(streammigration.ID, h.streamMigrator.Handle)
+	}
 
 	return h, nil
 }
@@ -608,7 +621,7 @@ func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
 // header with given protocol.ID. If there is no connection to p, attempts
 // to create one. If ProtocolID is "", writes no header.
 // (Threadsafe)
-func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error) {
+func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (stream network.Stream, err error) {
 	// Ensure we have a connection, with peer addresses resolved by the routing system (#207)
 	// It is not sufficient to let the underlying host connect, it will most likely not have
 	// any addresses for the peer without any prior connections.
@@ -635,6 +648,25 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	case <-ctx.Done():
 		_ = s.Reset()
 		return nil, ctx.Err()
+	}
+
+	if h.streamMigrator != nil {
+		s.SetProtocol(streammigration.ID)
+		lzcon := msmux.NewMSSelect(s, string(streammigration.ID))
+		s = &streamWrapper{
+			Stream: s,
+			rw:     lzcon,
+		}
+
+		streamID, err := h.streamMigrator.LabelStream(s)
+		if err != nil {
+			_ = s.Reset()
+			return nil, err
+		}
+
+		defer func() {
+			stream = streammigration.NewMigratableStream(stream, streamID, true)
+		}()
 	}
 
 	pidStrings := protocol.ConvertToStrings(pids)
@@ -966,6 +998,15 @@ func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
 	h.addrMu.Lock()
 	defer h.addrMu.Unlock()
 	return h.autoNat
+}
+
+func (h *BasicHost) MigrateStream(old, new network.Stream) bool {
+	if ms, ok := old.(*streammigration.MigratableStream); ok {
+		h.streamMigrator.Migrate(ms, new)
+		return true
+	}
+
+	return false
 }
 
 // Close shuts down the Host's services (network, etc).
