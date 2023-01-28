@@ -6,9 +6,13 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
 )
+
+var log = logging.Logger("eventbus")
 
 // /////////////////////
 // BUS
@@ -347,7 +351,27 @@ func (n *node) emit(evt interface{}) {
 	}
 
 	for _, ch := range n.sinks {
-		ch <- evt
+		select {
+		case ch <- evt:
+		default:
+			n.emitWithWarn(evt, ch)
+		}
 	}
 	n.lk.Unlock()
+}
+
+func (n *node) emitWithWarn(evt any, sink chan any) {
+	// warn periodically, otherwise a single log may get lost
+	t := time.NewTicker(time.Millisecond * 100)
+	defer t.Stop()
+
+	for {
+		select {
+		case sink <- evt:
+			return
+		case <-t.C:
+			// warn node operator or dev about slow event consumption by application
+			log.Warn("SLOW EVENT CONSUMER OF TYPE %s", n.typ)
+		}
+	}
 }
