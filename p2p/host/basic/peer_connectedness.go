@@ -31,7 +31,7 @@ func (w *peerConnectWatcher) ListenClose(network.Network, ma.Multiaddr) {}
 
 func (w *peerConnectWatcher) Connected(n network.Network, conn network.Conn) {
 	p := conn.RemotePeer()
-	w.handleTransition(p, n.Connectedness(p))
+	go w.handleTransition(p, n.Connectedness(p))
 }
 
 func (w *peerConnectWatcher) Disconnected(n network.Network, conn network.Conn) {
