@@ -19,7 +19,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	maddrPeer = ma.StringCast("/p2p/" + Encode(testID))
+	maddrPeer = ma.StringCast("/p2p/" + testID.String())
 	maddrTpt = ma.StringCast("/ip4/127.0.0.1/tcp/1234")
 	maddrFull = maddrTpt.Encapsulate(maddrPeer)
 }

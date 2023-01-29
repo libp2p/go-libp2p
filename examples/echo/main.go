@@ -88,7 +88,7 @@ func makeBasicHost(listenPort int, insecure bool, randseed int64) (host.Host, er
 
 func getHostAddress(ha host.Host) string {
 	// Build host multiaddress
-	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
+	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID().String()))
 
 	// Now we can build a full multiaddress to reach this host
 	// by encapsulating both addresses:

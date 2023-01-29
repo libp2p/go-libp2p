@@ -111,7 +111,7 @@ func main() {
 	// This function is called when a peer initiates a connection and starts a stream with this peer.
 	host.SetStreamHandler(protocol.ID(cfg.ProtocolID), handleStream)
 
-	fmt.Printf("\n[*] Your Multiaddress Is: /ip4/%s/tcp/%v/p2p/%s\n", cfg.listenHost, cfg.listenPort, host.ID().Pretty())
+	fmt.Printf("\n[*] Your Multiaddress Is: /ip4/%s/tcp/%v/p2p/%s\n", cfg.listenHost, cfg.listenPort, host.ID().String())
 
 	peerChan := initMDNS(host, cfg.RendezvousString)
 	for { // allows multiple peers to join
