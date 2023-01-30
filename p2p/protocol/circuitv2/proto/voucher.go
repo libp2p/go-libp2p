@@ -43,7 +43,7 @@ func (rv *ReservationVoucher) MarshalRecord() ([]byte, error) {
 	return proto.Marshal(&pbv2.ReservationVoucher{
 		Relay:      []byte(rv.Relay),
 		Peer:       []byte(rv.Peer),
-		Expiration: &expiration,
+		Expiration: expiration,
 	})
 }
 

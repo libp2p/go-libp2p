@@ -55,7 +55,7 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 	defer rd.Close()
 
 	var msg pbv2.HopMessage
-	msg.Type = pbv2.HopMessage_RESERVE.Enum()
+	msg.Type = pbv2.HopMessage_RESERVE
 
 	s.SetDeadline(time.Now().Add(ReserveTimeout))
 

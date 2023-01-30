@@ -1,9 +1,9 @@
-syntax = "proto2";
+syntax = "proto3";
 
 package circuit.pb;
 
 message ReservationVoucher {
-  required bytes relay = 1;
-  required bytes peer = 2;
-  required uint64 expiration = 3;
+  bytes relay = 1;
+  bytes peer = 2;
+  uint64 expiration = 3;
 }

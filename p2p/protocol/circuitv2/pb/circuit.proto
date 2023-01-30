@@ -1,4 +1,4 @@
-syntax = "proto2";
+syntax = "proto3";
 
 package circuit.pb;
 
@@ -9,7 +9,7 @@ message HopMessage {
     STATUS = 2;
   }
 
-  required Type type = 1;
+  Type type = 1;
 
   optional Peer peer = 2;
   optional Reservation reservation = 3;
@@ -24,7 +24,7 @@ message StopMessage {
     STATUS = 1;
   }
 
-  required Type type = 1;
+  Type type = 1;
 
   optional Peer peer = 2;
   optional Limit limit = 3;
@@ -33,12 +33,12 @@ message StopMessage {
 }
 
 message Peer {
-  required bytes id = 1;
+  bytes id = 1;
   repeated bytes addrs = 2;
 }
 
 message Reservation {
-  required uint64 expire = 1; // Unix expiration time (UTC)
+  uint64 expire = 1; // Unix expiration time (UTC)
   repeated bytes addrs = 2;   // relay addrs for reserving peer
   optional bytes voucher = 3; // reservation voucher
 }
@@ -49,6 +49,7 @@ message Limit {
 }
 
 enum Status {
+  UNUSED                  = 0;
   OK                      = 100;
   RESERVATION_REFUSED     = 200;
   RESOURCE_LIMIT_EXCEEDED = 201;

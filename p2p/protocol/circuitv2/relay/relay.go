@@ -323,7 +323,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	defer rd.Close()
 
 	var stopmsg pbv2.StopMessage
-	stopmsg.Type = pbv2.StopMessage_CONNECT.Enum()
+	stopmsg.Type = pbv2.StopMessage_CONNECT
 	stopmsg.Peer = util.PeerInfoToPeerV2(peer.AddrInfo{ID: src})
 	stopmsg.Limit = r.makeLimitMsg(dest.ID)
 
@@ -358,7 +358,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	}
 
 	var response pbv2.HopMessage
-	response.Type = pbv2.HopMessage_STATUS.Enum()
+	response.Type = pbv2.HopMessage_STATUS
 	response.Status = pbv2.Status_OK.Enum()
 	response.Limit = r.makeLimitMsg(dest.ID)
 
@@ -481,7 +481,7 @@ func (r *Relay) writeResponse(s network.Stream, status pbv2.Status, rsvp *pbv2.R
 	wr := util.NewDelimitedWriter(s)
 
 	var msg pbv2.HopMessage
-	msg.Type = pbv2.HopMessage_STATUS.Enum()
+	msg.Type = pbv2.HopMessage_STATUS
 	msg.Status = status.Enum()
 	msg.Reservation = rsvp
 	msg.Limit = limit
@@ -503,7 +503,7 @@ func (r *Relay) makeReservationMsg(p peer.ID, expire time.Time) *pbv2.Reservatio
 	}
 
 	rsvp := &pbv2.Reservation{
-		Expire: &expireUnix,
+		Expire: expireUnix,
 		Addrs:  addrBytes,
 	}
 

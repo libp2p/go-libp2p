@@ -33,7 +33,7 @@ func TestReservationFailures(t *testing.T) {
 			name: "wrong message type",
 			streamHandler: func(s network.Stream) {
 				util.NewDelimitedWriter(s).WriteMsg(&pbv2.HopMessage{
-					Type: pbv2.HopMessage_RESERVE.Enum(),
+					Type: pbv2.HopMessage_RESERVE,
 				})
 			},
 			err: "unexpected relay response: not a status message",
@@ -43,7 +43,7 @@ func TestReservationFailures(t *testing.T) {
 			streamHandler: func(s network.Stream) {
 				status := pbv2.Status(1337)
 				util.NewDelimitedWriter(s).WriteMsg(&pbv2.HopMessage{
-					Type:   pbv2.HopMessage_STATUS.Enum(),
+					Type:   pbv2.HopMessage_STATUS,
 					Status: &status,
 				})
 			},
@@ -55,9 +55,9 @@ func TestReservationFailures(t *testing.T) {
 				status := pbv2.Status_OK
 				expire := uint64(math.MaxUint64)
 				util.NewDelimitedWriter(s).WriteMsg(&pbv2.HopMessage{
-					Type:        pbv2.HopMessage_STATUS.Enum(),
+					Type:        pbv2.HopMessage_STATUS,
 					Status:      &status,
-					Reservation: &pbv2.Reservation{Expire: &expire},
+					Reservation: &pbv2.Reservation{Expire: expire},
 				})
 			},
 			err: "received reservation with expiration date in the past",
@@ -68,10 +68,10 @@ func TestReservationFailures(t *testing.T) {
 				status := pbv2.Status_OK
 				expire := uint64(time.Now().Add(time.Hour).UnixNano())
 				util.NewDelimitedWriter(s).WriteMsg(&pbv2.HopMessage{
-					Type:   pbv2.HopMessage_STATUS.Enum(),
+					Type:   pbv2.HopMessage_STATUS,
 					Status: &status,
 					Reservation: &pbv2.Reservation{
-						Expire:  &expire,
+						Expire:  expire,
 						Voucher: []byte("foobar"),
 					},
 				})

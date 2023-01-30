@@ -26,7 +26,7 @@ func (c *Client) handleStreamV2(s network.Stream) {
 		wr := util.NewDelimitedWriter(s)
 
 		var msg pbv2.StopMessage
-		msg.Type = pbv2.StopMessage_STATUS.Enum()
+		msg.Type = pbv2.StopMessage_STATUS
 		msg.Status = status.Enum()
 
 		return wr.WriteMsg(&msg)

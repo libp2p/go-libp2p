@@ -155,7 +155,7 @@ func (c *Client) connectV2(s network.Stream, dest peer.AddrInfo) (*Conn, error) 
 
 	var msg pbv2.HopMessage
 
-	msg.Type = pbv2.HopMessage_CONNECT.Enum()
+	msg.Type = pbv2.HopMessage_CONNECT
 	msg.Peer = util.PeerInfoToPeerV2(dest)
 
 	s.SetDeadline(time.Now().Add(DialTimeout))
