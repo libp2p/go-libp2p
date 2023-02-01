@@ -25,14 +25,13 @@ of these nodes with the other version's interop test.
 
 To run this test against all released libp2p versions you'll need to have the
 (libp2p/test-plans)[https://github.com/libp2p/test-plans] checked out. Then do
-the following:
+the following (from the root directory of this repository):
 
-1. Build the image: `make`.
+1. Build the image: `docker build -t go-libp2p-head -f test-plans/PingDockerfile .`.
 2. Build the images for all released versions in `libp2p/test-plans`: `(cd <path
    to >/libp2p/test-plans/multidim-interop/ && make)`.
-3. Make a folder for the specified extra versions: `mkdir extra-versions && mv ping-versions.json extra-versions`
-4. Run the test:
+3. Run the test:
 ```
-GO_LIBP2P_TEST_PLANS="$PWD"; (cd <path to >/libp2p/test-plans/multidim-interop/ && npm run test -- --extra-versions-dir=$GO_LIBP2P_TEST_PLANS/extra-versions --name-filter="go-libp2p-head")
+GO_LIBP2P="$PWD"; (cd <path to >/libp2p/test-plans/multidim-interop/ && npm run test -- --extra-version=$GO_LIBP2P/test-plans/ping-version.json --name-filter="go-libp2p-head")
 
 ```
