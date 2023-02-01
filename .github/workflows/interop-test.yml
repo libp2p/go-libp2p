@@ -6,31 +6,14 @@ on:
       - "master"
 
 jobs:
-  build-ping-container:
-    name: Build Ping interop container
-    runs-on: ubuntu-latest
+  run-multidim-interop:
+    name: Run multidimensional interoperability tests
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-        with:
-          submodules: recursive
       - name: Build image
-        working-directory: ./test-plans
-        run: make
-      - name: Upload ping versions info
-        uses: actions/upload-artifact@v3
+        run: docker build -t go-libp2p-head -f test-plans/PingDockerfile .
+      - uses: libp2p/test-plans/.github/actions/run-interop-ping-test@c9130e425d266e5b222636d61348c0f8d6b978e4
         with:
-          name: ping-versions
-          path: ./test-plans/ping-versions.json
-      - name: Upload image tar
-        uses: actions/upload-artifact@v3
-        with:
-          name: ping-image
-          path: ./test-plans/ping-image.tar
-  run-multidim-interop:
-    needs: build-ping-container
-    uses: "libp2p/test-plans/.github/workflows/run-testplans.yml@master"
-    with:
-      dir: "multidim-interop"
-      extra-versions: ping-versions
-      image-tar: ping-image
-      test-filter: "go-libp2p-head"
+          test-filter: go-libp2p-head
+          extra-versions: ${{ github.workspace }}/test-plans/ping-version.json

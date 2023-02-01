@@ -1,0 +1,19 @@
+{
+    "id": "go-libp2p-head",
+    "containerImageID": "go-libp2p-head",
+    "transports": [
+        "tcp",
+        "ws",
+        "quic",
+        "quic-v1",
+        "webtransport"
+    ],
+    "secureChannels": [
+        "tls",
+        "noise"
+    ],
+    "muxers": [
+        "mplex",
+        "yamux"
+    ]
+}
