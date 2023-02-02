@@ -114,7 +114,8 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		// try to connect again.
 		newAddrs, err := rh.findPeerAddrs(ctx, pi.ID)
 		if err != nil {
-			return fmt.Errorf("failed to find peers: %w", err)
+			log.Debugf("failed to find more peer addresses %s: %s", pi.ID, err)
+			return cerr
 		}
 
 		// Build lookup map
