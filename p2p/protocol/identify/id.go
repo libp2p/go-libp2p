@@ -68,8 +68,8 @@ type IDService interface {
 	IdentifyConn(network.Conn)
 	// IdentifyWait triggers an identify (if the connection has not already been
 	// identified) and returns a channel that is closed when the identify protocol
-	// completes.
-	IdentifyWait(network.Conn) <-chan struct{}
+	// completes. Returns any error encountered in the channel.
+	IdentifyWait(network.Conn) <-chan error
 	// OwnObservedAddrs returns the addresses peers have reported we've dialed from
 	OwnObservedAddrs() []ma.Multiaddr
 	// ObservedAddrsFor returns the addresses peers have reported we've dialed from,
@@ -100,7 +100,7 @@ type idService struct {
 
 	// Identified connections (finished and in progress).
 	connsMu sync.RWMutex
-	conns   map[network.Conn]chan struct{}
+	conns   map[network.Conn]chan error
 
 	addrMu sync.Mutex
 
@@ -144,7 +144,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		UserAgent:       userAgent,
 		ProtocolVersion: protocolVersion,
 
-		conns: make(map[network.Conn]chan struct{}),
+		conns: make(map[network.Conn]chan error),
 
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
 
@@ -305,7 +305,7 @@ func (ids *idService) IdentifyConn(c network.Conn) {
 	<-ids.IdentifyWait(c)
 }
 
-func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
+func (ids *idService) IdentifyWait(c network.Conn) <-chan error {
 	ids.connsMu.RLock()
 	wait, found := ids.conns[c]
 	ids.connsMu.RUnlock()
@@ -319,19 +319,21 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 
 	wait, found = ids.conns[c]
 	if !found {
-		wait = make(chan struct{})
+		// Buffered chan so we don't keep a goroutine around longer than needed
+		wait = make(chan error, 1)
 		ids.conns[c] = wait
 
 		// Spawn an identify. The connection may actually be closed
 		// already, but that doesn't really matter. We'll fail to open a
 		// stream then forget the connection.
 		go func() {
-			defer close(wait)
 			if err := ids.identifyConn(c); err != nil {
 				log.Warnf("failed to identify %s: %s", c.RemotePeer(), err)
 				ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
+				wait <- err
 				return
 			}
+			wait <- nil
 			ids.emitters.evtPeerIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: c.RemotePeer()})
 		}()
 	}

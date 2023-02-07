@@ -457,7 +457,8 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 
 	// h2 should now see the connection and we should wait for h1 to Identify itself to h2.
 	require.NotEmpty(t, h2.Network().ConnsToPeer(h1p))
-	ids2.IdentifyConn(h2.Network().ConnsToPeer(h1p)[0])
+	err = <-ids2.IdentifyWait(h2.Network().ConnsToPeer(h1p)[0])
+	require.NoError(t, err)
 
 	testKnowsAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
 	testKnowsAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
