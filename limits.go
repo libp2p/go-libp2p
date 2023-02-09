@@ -4,7 +4,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
 	circuit "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -76,18 +75,6 @@ func SetDefaultServiceLimits(config *rcmgr.ScalingLimitConfig) {
 		rcmgr.BaseLimitIncrease{},
 	)
 
-	// relay/v1
-	config.AddServiceLimit(
-		relayv1.ServiceName,
-		rcmgr.BaseLimit{StreamsInbound: 256, StreamsOutbound: 256, Streams: 256, Memory: 16 << 20},
-		rcmgr.BaseLimitIncrease{StreamsInbound: 256, StreamsOutbound: 256, Streams: 256, Memory: 16 << 20},
-	)
-	config.AddServicePeerLimit(
-		relayv1.ServiceName,
-		rcmgr.BaseLimit{StreamsInbound: 64, StreamsOutbound: 64, Streams: 64, Memory: 1 << 20},
-		rcmgr.BaseLimitIncrease{},
-	)
-
 	// relay/v2
 	config.AddServiceLimit(
 		relayv2.ServiceName,
@@ -101,7 +88,7 @@ func SetDefaultServiceLimits(config *rcmgr.ScalingLimitConfig) {
 	)
 
 	// circuit protocols, both client and service
-	for _, proto := range [...]protocol.ID{circuit.ProtoIDv1, circuit.ProtoIDv2Hop, circuit.ProtoIDv2Stop} {
+	for _, proto := range [...]protocol.ID{circuit.ProtoIDv2Hop, circuit.ProtoIDv2Stop} {
 		config.AddProtocolLimit(
 			proto,
 			rcmgr.BaseLimit{StreamsInbound: 640, StreamsOutbound: 640, Streams: 640, Memory: 16 << 20},

@@ -14,7 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
 	"github.com/benbjohnson/clock"
@@ -102,29 +101,6 @@ func newRelay(t *testing.T) host.Host {
 	return h
 }
 
-func newRelayV1(t *testing.T) host.Host {
-	t.Helper()
-	h, err := libp2p.New(
-		libp2p.DisableRelay(),
-		libp2p.ForceReachabilityPublic(),
-		libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			for i, addr := range addrs {
-				saddr := addr.String()
-				if strings.HasPrefix(saddr, "/ip4/127.0.0.1/") {
-					addrNoIP := strings.TrimPrefix(saddr, "/ip4/127.0.0.1")
-					addrs[i] = ma.StringCast("/dns4/localhost" + addrNoIP)
-				}
-			}
-			return addrs
-		}),
-	)
-	require.NoError(t, err)
-	r, err := relayv1.NewRelay(h)
-	require.NoError(t, err)
-	t.Cleanup(func() { r.Close() })
-	return h
-}
-
 func TestSingleCandidate(t *testing.T) {
 	var counter int
 	h := newPrivateNode(t,
@@ -183,12 +159,6 @@ func TestSingleRelay(t *testing.T) {
 func TestPreferRelayV2(t *testing.T) {
 	r := newRelay(t)
 	defer r.Close()
-	// The relay supports both v1 and v2. The v1 stream handler should never be called,
-	// if we prefer v2 relays.
-	r.SetStreamHandler(relayv1.ProtoID, func(str network.Stream) {
-		str.Reset()
-		t.Fatal("used relay v1")
-	})
 
 	h := newPrivateNode(t,
 		func(context.Context, int) <-chan peer.AddrInfo {
@@ -303,46 +273,6 @@ func TestStaticRelays(t *testing.T) {
 	defer h.Close()
 
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 2*time.Second, 50*time.Millisecond)
-}
-
-func TestRelayV1(t *testing.T) {
-	t.Run("relay v1 support disabled", func(t *testing.T) {
-		peerChan := make(chan peer.AddrInfo, 1)
-		r := newRelayV1(t)
-		t.Cleanup(func() { r.Close() })
-		peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
-		close(peerChan)
-
-		h := newPrivateNode(t,
-			func(context.Context, int) <-chan peer.AddrInfo { return peerChan },
-			autorelay.WithBootDelay(0),
-			autorelay.WithMinInterval(time.Hour),
-		)
-		defer h.Close()
-
-		require.Never(t, func() bool { return numRelays(h) > 0 }, 250*time.Millisecond, 100*time.Millisecond)
-	})
-
-	t.Run("relay v1 support enabled", func(t *testing.T) {
-		peerChan := make(chan peer.AddrInfo, 1)
-		r := newRelayV1(t)
-		t.Cleanup(func() { r.Close() })
-		peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
-		close(peerChan)
-
-		h := newPrivateNode(t,
-			func(context.Context, int) <-chan peer.AddrInfo { return peerChan },
-			autorelay.WithBootDelay(0),
-			autorelay.WithCircuitV1Support(),
-			autorelay.WithMinInterval(time.Hour),
-		)
-		defer h.Close()
-
-		addrUpdated, err := h.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
-		require.NoError(t, err)
-
-		expectDeltaInAddrUpdated(t, addrUpdated, 1)
-	})
 }
 
 func TestConnectOnDisconnect(t *testing.T) {

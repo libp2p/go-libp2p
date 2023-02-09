@@ -8,7 +8,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	pbv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/pb"
 	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/util"
@@ -124,7 +123,7 @@ func (c *Client) dialPeer(ctx context.Context, relay, dest peer.AddrInfo) (*Conn
 
 	dialCtx, cancel := context.WithTimeout(ctx, DialRelayTimeout)
 	defer cancel()
-	s, err := c.host.NewStream(dialCtx, relay.ID, proto.ProtoIDv2Hop, proto.ProtoIDv1)
+	s, err := c.host.NewStream(dialCtx, relay.ID, proto.ProtoIDv2Hop)
 	if err != nil {
 		return nil, fmt.Errorf("error opening hop stream to relay: %w", err)
 	}
@@ -132,9 +131,6 @@ func (c *Client) dialPeer(ctx context.Context, relay, dest peer.AddrInfo) (*Conn
 	switch s.Protocol() {
 	case proto.ProtoIDv2Hop:
 		return c.connectV2(s, dest)
-
-	case proto.ProtoIDv1:
-		return c.connectV1(s, dest)
 
 	default:
 		s.Reset()
@@ -198,53 +194,4 @@ func (c *Client) connectV2(s network.Stream, dest peer.AddrInfo) (*Conn, error) 
 	}
 
 	return &Conn{stream: s, remote: dest, stat: stat, client: c}, nil
-}
-
-func (c *Client) connectV1(s network.Stream, dest peer.AddrInfo) (*Conn, error) {
-	if err := s.Scope().ReserveMemory(maxMessageSize, network.ReservationPriorityAlways); err != nil {
-		s.Reset()
-		return nil, err
-	}
-	defer s.Scope().ReleaseMemory(maxMessageSize)
-
-	rd := util.NewDelimitedReader(s, maxMessageSize)
-	wr := util.NewDelimitedWriter(s)
-	defer rd.Close()
-
-	var msg pbv1.CircuitRelay
-
-	msg.Type = pbv1.CircuitRelay_HOP.Enum()
-	msg.SrcPeer = util.PeerInfoToPeerV1(c.host.Peerstore().PeerInfo(c.host.ID()))
-	msg.DstPeer = util.PeerInfoToPeerV1(dest)
-
-	s.SetDeadline(time.Now().Add(DialTimeout))
-
-	err := wr.WriteMsg(&msg)
-	if err != nil {
-		s.Reset()
-		return nil, err
-	}
-
-	msg.Reset()
-
-	err = rd.ReadMsg(&msg)
-	if err != nil {
-		s.Reset()
-		return nil, err
-	}
-
-	s.SetDeadline(time.Time{})
-
-	if msg.GetType() != pbv1.CircuitRelay_STATUS {
-		s.Reset()
-		return nil, newRelayError("unexpected relay response; not a status message (%d)", msg.GetType())
-	}
-
-	status := msg.GetCode()
-	if status != pbv1.CircuitRelay_SUCCESS {
-		s.Reset()
-		return nil, newRelayError("error opening relay circuit: %s (%d)", pbv1.CircuitRelay_Status_name[int32(status)], status)
-	}
-
-	return &Conn{stream: s, remote: dest, client: c}, nil
 }

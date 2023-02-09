@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
@@ -24,7 +23,6 @@ import (
 )
 
 const (
-	protoIDv1 = relayv1.ProtoID
 	protoIDv2 = circuitv2_proto.ProtoIDv2Hop
 )
 
@@ -357,17 +355,15 @@ func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsR
 		return false, ctx.Err()
 	}
 
-	protos, err := rf.host.Peerstore().SupportsProtocols(pi.ID, protoIDv1, protoIDv2)
+	protos, err := rf.host.Peerstore().SupportsProtocols(pi.ID, protoIDv2)
 	if err != nil {
 		return false, fmt.Errorf("error checking relay protocol support for peer %s: %w", pi.ID, err)
 	}
 
 	// If the node speaks both, prefer circuit v2
-	var maybeSupportsV1, supportsV2 bool
+	var supportsV2 bool
 	for _, proto := range protos {
 		switch proto {
-		case protoIDv1:
-			maybeSupportsV1 = true
 		case protoIDv2:
 			supportsV2 = true
 		}
@@ -380,18 +376,7 @@ func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsR
 	if !rf.conf.enableCircuitV1 && !supportsV2 {
 		return false, errors.New("doesn't speak circuit v2")
 	}
-	if !maybeSupportsV1 && !supportsV2 {
-		return false, errors.New("doesn't speak circuit v1 or v2")
-	}
 
-	// The node *may* support circuit v1.
-	supportsV1, err := relayv1.CanHop(ctx, rf.host, pi.ID)
-	if err != nil {
-		return false, fmt.Errorf("CanHop failed: %w", err)
-	}
-	if !supportsV1 {
-		return false, errors.New("doesn't speak circuit v1 or v2")
-	}
 	return false, nil
 }
 

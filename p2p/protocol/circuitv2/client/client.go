@@ -66,13 +66,11 @@ func New(h host.Host, upgrader transport.Upgrader) (*Client, error) {
 
 // Start registers the circuit (client) protocol stream handlers
 func (c *Client) Start() {
-	c.host.SetStreamHandler(proto.ProtoIDv1, c.handleStreamV1)
 	c.host.SetStreamHandler(proto.ProtoIDv2Stop, c.handleStreamV2)
 }
 
 func (c *Client) Close() error {
 	c.ctxCancel()
-	c.host.RemoveStreamHandler(proto.ProtoIDv1)
 	c.host.RemoveStreamHandler(proto.ProtoIDv2Stop)
 	return nil
 }

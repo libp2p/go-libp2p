@@ -18,7 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
+	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	holepunch_pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -338,7 +338,7 @@ func TestFailuresOnResponder(t *testing.T) {
 			defer h2.Close()
 			defer relay.Close()
 
-			s, err := h2.NewStream(context.Background(), h1.ID(), holepunch.Protocol)
+			s, err := h2.NewStream(network.WithUseTransient(context.Background(), "test"), h1.ID(), holepunch.Protocol)
 			require.NoError(t, err)
 
 			go tc.initiator(s)
@@ -454,7 +454,10 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePunc
 		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
 	require.NoError(t, err)
-	_, err = relayv1.NewRelay(relay)
+	r, err := relayv2.New(relay)
+	defer func() {
+		require.NoError(t, r.Close())
+	}()
 	require.NoError(t, err)
 
 	// make sure the relay service is started and advertised by Identify
@@ -467,7 +470,7 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePunc
 	defer h.Close()
 	require.NoError(t, h.Connect(context.Background(), peer.AddrInfo{ID: relay.ID(), Addrs: relay.Addrs()}))
 	require.Eventually(t, func() bool {
-		supported, err := h.Peerstore().SupportsProtocols(relay.ID(), proto.ProtoIDv2Hop, relayv1.ProtoID)
+		supported, err := h.Peerstore().SupportsProtocols(relay.ID(), proto.ProtoIDv2Hop)
 		return err == nil && len(supported) > 0
 	}, 3*time.Second, 100*time.Millisecond)
 
