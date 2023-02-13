@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v3
       - name: Build image
         run: docker build -t go-libp2p-head -f test-plans/PingDockerfile .
-      - uses: libp2p/test-plans/.github/actions/run-interop-ping-test@482e8ac2e5d91c69d7f432d325337e2ddca39cf9
+      - uses: libp2p/test-plans/.github/actions/run-interop-ping-test@master
         with:
           test-filter: go-libp2p-head
           extra-versions: ${{ github.workspace }}/test-plans/ping-version.json
