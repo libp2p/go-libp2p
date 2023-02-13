@@ -27,5 +27,7 @@ about: 'Start a new libp2p release.'
   - [ ] Update the examples to the final release
   - [ ] Update the upstream dependencies to the final release and create PRs.
     - [ ] [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
+    - [ ] [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht/)
+    - [ ] [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) (In case of breaking changes.)
     - [ ] [ipfs/kubo](https://github.com/ipfs/kubo)
 - [ ] Make required changes to the release process.
