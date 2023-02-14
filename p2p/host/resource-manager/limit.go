@@ -233,65 +233,65 @@ func (l BaseLimit) GetMemoryLimit() int64 {
 }
 
 func (l *fixedLimiter) GetSystemLimits() Limit {
-	return &l.system
+	return &l.System
 }
 
 func (l *fixedLimiter) GetTransientLimits() Limit {
-	return &l.transient
+	return &l.Transient
 }
 
 func (l *fixedLimiter) GetAllowlistedSystemLimits() Limit {
-	return &l.allowlistedSystem
+	return &l.AllowlistedSystem
 }
 
 func (l *fixedLimiter) GetAllowlistedTransientLimits() Limit {
-	return &l.allowlistedTransient
+	return &l.AllowlistedTransient
 }
 
 func (l *fixedLimiter) GetServiceLimits(svc string) Limit {
-	sl, ok := l.service[svc]
+	sl, ok := l.Service[svc]
 	if !ok {
-		return &l.serviceDefault
+		return &l.ServiceDefault
 	}
 	return &sl
 }
 
 func (l *fixedLimiter) GetServicePeerLimits(svc string) Limit {
-	pl, ok := l.servicePeer[svc]
+	pl, ok := l.ServicePeer[svc]
 	if !ok {
-		return &l.servicePeerDefault
+		return &l.ServicePeerDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetProtocolLimits(proto protocol.ID) Limit {
-	pl, ok := l.protocol[proto]
+	pl, ok := l.Protocol[proto]
 	if !ok {
-		return &l.protocolDefault
+		return &l.ProtocolDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetProtocolPeerLimits(proto protocol.ID) Limit {
-	pl, ok := l.protocolPeer[proto]
+	pl, ok := l.ProtocolPeer[proto]
 	if !ok {
-		return &l.protocolPeerDefault
+		return &l.ProtocolPeerDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetPeerLimits(p peer.ID) Limit {
-	pl, ok := l.peer[p]
+	pl, ok := l.Peer[p]
 	if !ok {
-		return &l.peerDefault
+		return &l.PeerDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetStreamLimits(_ peer.ID) Limit {
-	return &l.stream
+	return &l.Stream
 }
 
 func (l *fixedLimiter) GetConnLimits() Limit {
-	return &l.conn
+	return &l.Conn
 }

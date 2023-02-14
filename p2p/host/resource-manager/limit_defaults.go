@@ -466,23 +466,23 @@ func (cfg *PartialLimitConfig) Apply(c PartialLimitConfig) {
 func (cfg PartialLimitConfig) Build(defaults ConcreteLimitConfig) ConcreteLimitConfig {
 	out := defaults
 
-	out.system = cfg.System.Build(defaults.system)
-	out.transient = cfg.Transient.Build(defaults.transient)
-	out.allowlistedSystem = cfg.AllowlistedSystem.Build(defaults.allowlistedSystem)
-	out.allowlistedTransient = cfg.AllowlistedTransient.Build(defaults.allowlistedTransient)
-	out.serviceDefault = cfg.ServiceDefault.Build(defaults.serviceDefault)
-	out.servicePeerDefault = cfg.ServicePeerDefault.Build(defaults.servicePeerDefault)
-	out.protocolDefault = cfg.ProtocolDefault.Build(defaults.protocolDefault)
-	out.protocolPeerDefault = cfg.ProtocolPeerDefault.Build(defaults.protocolPeerDefault)
-	out.peerDefault = cfg.PeerDefault.Build(defaults.peerDefault)
-	out.conn = cfg.Conn.Build(defaults.conn)
-	out.stream = cfg.Stream.Build(defaults.stream)
+	out.System = cfg.System.Build(defaults.System)
+	out.Transient = cfg.Transient.Build(defaults.Transient)
+	out.AllowlistedSystem = cfg.AllowlistedSystem.Build(defaults.AllowlistedSystem)
+	out.AllowlistedTransient = cfg.AllowlistedTransient.Build(defaults.AllowlistedTransient)
+	out.ServiceDefault = cfg.ServiceDefault.Build(defaults.ServiceDefault)
+	out.ServicePeerDefault = cfg.ServicePeerDefault.Build(defaults.ServicePeerDefault)
+	out.ProtocolDefault = cfg.ProtocolDefault.Build(defaults.ProtocolDefault)
+	out.ProtocolPeerDefault = cfg.ProtocolPeerDefault.Build(defaults.ProtocolPeerDefault)
+	out.PeerDefault = cfg.PeerDefault.Build(defaults.PeerDefault)
+	out.Conn = cfg.Conn.Build(defaults.Conn)
+	out.Stream = cfg.Stream.Build(defaults.Stream)
 
-	out.service = buildMapWithDefault(cfg.Service, defaults.service, out.serviceDefault)
-	out.servicePeer = buildMapWithDefault(cfg.ServicePeer, defaults.servicePeer, out.servicePeerDefault)
-	out.protocol = buildMapWithDefault(cfg.Protocol, defaults.protocol, out.protocolDefault)
-	out.protocolPeer = buildMapWithDefault(cfg.ProtocolPeer, defaults.protocolPeer, out.protocolPeerDefault)
-	out.peer = buildMapWithDefault(cfg.Peer, defaults.peer, out.peerDefault)
+	out.Service = buildMapWithDefault(cfg.Service, defaults.Service, out.ServiceDefault)
+	out.ServicePeer = buildMapWithDefault(cfg.ServicePeer, defaults.ServicePeer, out.ServicePeerDefault)
+	out.Protocol = buildMapWithDefault(cfg.Protocol, defaults.Protocol, out.ProtocolDefault)
+	out.ProtocolPeer = buildMapWithDefault(cfg.ProtocolPeer, defaults.ProtocolPeer, out.ProtocolPeerDefault)
+	out.Peer = buildMapWithDefault(cfg.Peer, defaults.Peer, out.PeerDefault)
 
 	return out
 }
@@ -512,32 +512,32 @@ func buildMapWithDefault[K comparable](definedLimits map[K]ResourceLimits, defau
 // There is no unset "default" value. Commonly constructed by calling
 // PartialLimitConfig.Build(rcmgr.DefaultLimits.AutoScale())
 type ConcreteLimitConfig struct {
-	system    BaseLimit
-	transient BaseLimit
+	System    BaseLimit
+	Transient BaseLimit
 
 	// Limits that are applied to resources with an allowlisted multiaddr.
 	// These will only be used if the normal System & Transient limits are
 	// reached.
-	allowlistedSystem    BaseLimit
-	allowlistedTransient BaseLimit
+	AllowlistedSystem    BaseLimit
+	AllowlistedTransient BaseLimit
 
-	serviceDefault BaseLimit
-	service        map[string]BaseLimit
+	ServiceDefault BaseLimit
+	Service        map[string]BaseLimit
 
-	servicePeerDefault BaseLimit
-	servicePeer        map[string]BaseLimit
+	ServicePeerDefault BaseLimit
+	ServicePeer        map[string]BaseLimit
 
-	protocolDefault BaseLimit
-	protocol        map[protocol.ID]BaseLimit
+	ProtocolDefault BaseLimit
+	Protocol        map[protocol.ID]BaseLimit
 
-	protocolPeerDefault BaseLimit
-	protocolPeer        map[protocol.ID]BaseLimit
+	ProtocolPeerDefault BaseLimit
+	ProtocolPeer        map[protocol.ID]BaseLimit
 
-	peerDefault BaseLimit
-	peer        map[peer.ID]BaseLimit
+	PeerDefault BaseLimit
+	Peer        map[peer.ID]BaseLimit
 
-	conn   BaseLimit
-	stream BaseLimit
+	Conn   BaseLimit
+	Stream BaseLimit
 }
 
 func resourceLimitsMapFromBaseLimitMap[K comparable](baseLimitMap map[K]BaseLimit) map[K]ResourceLimits {
@@ -557,22 +557,22 @@ func resourceLimitsMapFromBaseLimitMap[K comparable](baseLimitMap map[K]BaseLimi
 // The returned PartialLimitConfig will have no default values.
 func (cfg ConcreteLimitConfig) ToPartialLimitConfig() PartialLimitConfig {
 	return PartialLimitConfig{
-		System:               cfg.system.ToResourceLimits(),
-		Transient:            cfg.transient.ToResourceLimits(),
-		AllowlistedSystem:    cfg.allowlistedSystem.ToResourceLimits(),
-		AllowlistedTransient: cfg.allowlistedTransient.ToResourceLimits(),
-		ServiceDefault:       cfg.serviceDefault.ToResourceLimits(),
-		Service:              resourceLimitsMapFromBaseLimitMap(cfg.service),
-		ServicePeerDefault:   cfg.servicePeerDefault.ToResourceLimits(),
-		ServicePeer:          resourceLimitsMapFromBaseLimitMap(cfg.servicePeer),
-		ProtocolDefault:      cfg.protocolDefault.ToResourceLimits(),
-		Protocol:             resourceLimitsMapFromBaseLimitMap(cfg.protocol),
-		ProtocolPeerDefault:  cfg.protocolPeerDefault.ToResourceLimits(),
-		ProtocolPeer:         resourceLimitsMapFromBaseLimitMap(cfg.protocolPeer),
-		PeerDefault:          cfg.peerDefault.ToResourceLimits(),
-		Peer:                 resourceLimitsMapFromBaseLimitMap(cfg.peer),
-		Conn:                 cfg.conn.ToResourceLimits(),
-		Stream:               cfg.stream.ToResourceLimits(),
+		System:               cfg.System.ToResourceLimits(),
+		Transient:            cfg.Transient.ToResourceLimits(),
+		AllowlistedSystem:    cfg.AllowlistedSystem.ToResourceLimits(),
+		AllowlistedTransient: cfg.AllowlistedTransient.ToResourceLimits(),
+		ServiceDefault:       cfg.ServiceDefault.ToResourceLimits(),
+		Service:              resourceLimitsMapFromBaseLimitMap(cfg.Service),
+		ServicePeerDefault:   cfg.ServicePeerDefault.ToResourceLimits(),
+		ServicePeer:          resourceLimitsMapFromBaseLimitMap(cfg.ServicePeer),
+		ProtocolDefault:      cfg.ProtocolDefault.ToResourceLimits(),
+		Protocol:             resourceLimitsMapFromBaseLimitMap(cfg.Protocol),
+		ProtocolPeerDefault:  cfg.ProtocolPeerDefault.ToResourceLimits(),
+		ProtocolPeer:         resourceLimitsMapFromBaseLimitMap(cfg.ProtocolPeer),
+		PeerDefault:          cfg.PeerDefault.ToResourceLimits(),
+		Peer:                 resourceLimitsMapFromBaseLimitMap(cfg.Peer),
+		Conn:                 cfg.Conn.ToResourceLimits(),
+		Stream:               cfg.Stream.ToResourceLimits(),
 	}
 }
 
@@ -582,46 +582,46 @@ func (cfg ConcreteLimitConfig) ToPartialLimitConfig() PartialLimitConfig {
 // If memory is smaller than 128 MB, the base configuration will be used.
 func (cfg *ScalingLimitConfig) Scale(memory int64, numFD int) ConcreteLimitConfig {
 	lc := ConcreteLimitConfig{
-		system:               scale(cfg.SystemBaseLimit, cfg.SystemLimitIncrease, memory, numFD),
-		transient:            scale(cfg.TransientBaseLimit, cfg.TransientLimitIncrease, memory, numFD),
-		allowlistedSystem:    scale(cfg.AllowlistedSystemBaseLimit, cfg.AllowlistedSystemLimitIncrease, memory, numFD),
-		allowlistedTransient: scale(cfg.AllowlistedTransientBaseLimit, cfg.AllowlistedTransientLimitIncrease, memory, numFD),
-		serviceDefault:       scale(cfg.ServiceBaseLimit, cfg.ServiceLimitIncrease, memory, numFD),
-		servicePeerDefault:   scale(cfg.ServicePeerBaseLimit, cfg.ServicePeerLimitIncrease, memory, numFD),
-		protocolDefault:      scale(cfg.ProtocolBaseLimit, cfg.ProtocolLimitIncrease, memory, numFD),
-		protocolPeerDefault:  scale(cfg.ProtocolPeerBaseLimit, cfg.ProtocolPeerLimitIncrease, memory, numFD),
-		peerDefault:          scale(cfg.PeerBaseLimit, cfg.PeerLimitIncrease, memory, numFD),
-		conn:                 scale(cfg.ConnBaseLimit, cfg.ConnLimitIncrease, memory, numFD),
-		stream:               scale(cfg.StreamBaseLimit, cfg.ConnLimitIncrease, memory, numFD),
+		System:               scale(cfg.SystemBaseLimit, cfg.SystemLimitIncrease, memory, numFD),
+		Transient:            scale(cfg.TransientBaseLimit, cfg.TransientLimitIncrease, memory, numFD),
+		AllowlistedSystem:    scale(cfg.AllowlistedSystemBaseLimit, cfg.AllowlistedSystemLimitIncrease, memory, numFD),
+		AllowlistedTransient: scale(cfg.AllowlistedTransientBaseLimit, cfg.AllowlistedTransientLimitIncrease, memory, numFD),
+		ServiceDefault:       scale(cfg.ServiceBaseLimit, cfg.ServiceLimitIncrease, memory, numFD),
+		ServicePeerDefault:   scale(cfg.ServicePeerBaseLimit, cfg.ServicePeerLimitIncrease, memory, numFD),
+		ProtocolDefault:      scale(cfg.ProtocolBaseLimit, cfg.ProtocolLimitIncrease, memory, numFD),
+		ProtocolPeerDefault:  scale(cfg.ProtocolPeerBaseLimit, cfg.ProtocolPeerLimitIncrease, memory, numFD),
+		PeerDefault:          scale(cfg.PeerBaseLimit, cfg.PeerLimitIncrease, memory, numFD),
+		Conn:                 scale(cfg.ConnBaseLimit, cfg.ConnLimitIncrease, memory, numFD),
+		Stream:               scale(cfg.StreamBaseLimit, cfg.ConnLimitIncrease, memory, numFD),
 	}
 	if cfg.ServiceLimits != nil {
-		lc.service = make(map[string]BaseLimit)
+		lc.Service = make(map[string]BaseLimit)
 		for svc, l := range cfg.ServiceLimits {
-			lc.service[svc] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
+			lc.Service[svc] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
 		}
 	}
 	if cfg.ProtocolLimits != nil {
-		lc.protocol = make(map[protocol.ID]BaseLimit)
+		lc.Protocol = make(map[protocol.ID]BaseLimit)
 		for proto, l := range cfg.ProtocolLimits {
-			lc.protocol[proto] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
+			lc.Protocol[proto] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
 		}
 	}
 	if cfg.PeerLimits != nil {
-		lc.peer = make(map[peer.ID]BaseLimit)
+		lc.Peer = make(map[peer.ID]BaseLimit)
 		for p, l := range cfg.PeerLimits {
-			lc.peer[p] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
+			lc.Peer[p] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
 		}
 	}
 	if cfg.ServicePeerLimits != nil {
-		lc.servicePeer = make(map[string]BaseLimit)
+		lc.ServicePeer = make(map[string]BaseLimit)
 		for svc, l := range cfg.ServicePeerLimits {
-			lc.servicePeer[svc] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
+			lc.ServicePeer[svc] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
 		}
 	}
 	if cfg.ProtocolPeerLimits != nil {
-		lc.protocolPeer = make(map[protocol.ID]BaseLimit)
+		lc.ProtocolPeer = make(map[protocol.ID]BaseLimit)
 		for p, l := range cfg.ProtocolPeerLimits {
-			lc.protocolPeer[p] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
+			lc.ProtocolPeer[p] = scale(l.BaseLimit, l.BaseLimitIncrease, memory, numFD)
 		}
 	}
 	return lc
@@ -865,15 +865,15 @@ var infiniteBaseLimit = BaseLimit{
 // InfiniteLimits are a limiter configuration that uses unlimited limits, thus effectively not limiting anything.
 // Keep in mind that the operating system limits the number of file descriptors that an application can use.
 var InfiniteLimits = ConcreteLimitConfig{
-	system:               infiniteBaseLimit,
-	transient:            infiniteBaseLimit,
-	allowlistedSystem:    infiniteBaseLimit,
-	allowlistedTransient: infiniteBaseLimit,
-	serviceDefault:       infiniteBaseLimit,
-	servicePeerDefault:   infiniteBaseLimit,
-	protocolDefault:      infiniteBaseLimit,
-	protocolPeerDefault:  infiniteBaseLimit,
-	peerDefault:          infiniteBaseLimit,
-	conn:                 infiniteBaseLimit,
-	stream:               infiniteBaseLimit,
+	System:               infiniteBaseLimit,
+	Transient:            infiniteBaseLimit,
+	AllowlistedSystem:    infiniteBaseLimit,
+	AllowlistedTransient: infiniteBaseLimit,
+	ServiceDefault:       infiniteBaseLimit,
+	ServicePeerDefault:   infiniteBaseLimit,
+	ProtocolDefault:      infiniteBaseLimit,
+	ProtocolPeerDefault:  infiniteBaseLimit,
+	PeerDefault:          infiniteBaseLimit,
+	Conn:                 infiniteBaseLimit,
+	Stream:               infiniteBaseLimit,
 }

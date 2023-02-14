@@ -33,7 +33,7 @@ func TestScaling(t *testing.T) {
 	t.Run("no scaling if no increase is defined", func(t *testing.T) {
 		cfg := ScalingLimitConfig{ServiceBaseLimit: base}
 		scaled := cfg.Scale(8<<30, 100)
-		require.Equal(t, base, scaled.serviceDefault)
+		require.Equal(t, base, scaled.ServiceDefault)
 	})
 
 	t.Run("scaling", func(t *testing.T) {
@@ -51,14 +51,14 @@ func TestScaling(t *testing.T) {
 			},
 		}
 		scaled := cfg.Scale(128<<20+4<<30, 1000)
-		require.Equal(t, 500, scaled.transient.FD)
-		require.Equal(t, base.Streams+4, scaled.transient.Streams)
-		require.Equal(t, base.StreamsInbound+4*2, scaled.transient.StreamsInbound)
-		require.Equal(t, base.StreamsOutbound+4*3, scaled.transient.StreamsOutbound)
-		require.Equal(t, base.Conns+4*4, scaled.transient.Conns)
-		require.Equal(t, base.ConnsInbound+4*5, scaled.transient.ConnsInbound)
-		require.Equal(t, base.ConnsOutbound+4*6, scaled.transient.ConnsOutbound)
-		require.Equal(t, base.Memory+4*7, scaled.transient.Memory)
+		require.Equal(t, 500, scaled.Transient.FD)
+		require.Equal(t, base.Streams+4, scaled.Transient.Streams)
+		require.Equal(t, base.StreamsInbound+4*2, scaled.Transient.StreamsInbound)
+		require.Equal(t, base.StreamsOutbound+4*3, scaled.Transient.StreamsOutbound)
+		require.Equal(t, base.Conns+4*4, scaled.Transient.Conns)
+		require.Equal(t, base.ConnsInbound+4*5, scaled.Transient.ConnsInbound)
+		require.Equal(t, base.ConnsOutbound+4*6, scaled.Transient.ConnsOutbound)
+		require.Equal(t, base.Memory+4*7, scaled.Transient.Memory)
 	})
 
 	t.Run("scaling and using the base amounts", func(t *testing.T) {
@@ -76,14 +76,14 @@ func TestScaling(t *testing.T) {
 			},
 		}
 		scaled := cfg.Scale(1, 10)
-		require.Equal(t, 1, scaled.transient.FD)
-		require.Equal(t, base.Streams, scaled.transient.Streams)
-		require.Equal(t, base.StreamsInbound, scaled.transient.StreamsInbound)
-		require.Equal(t, base.StreamsOutbound, scaled.transient.StreamsOutbound)
-		require.Equal(t, base.Conns, scaled.transient.Conns)
-		require.Equal(t, base.ConnsInbound, scaled.transient.ConnsInbound)
-		require.Equal(t, base.ConnsOutbound, scaled.transient.ConnsOutbound)
-		require.Equal(t, base.Memory, scaled.transient.Memory)
+		require.Equal(t, 1, scaled.Transient.FD)
+		require.Equal(t, base.Streams, scaled.Transient.Streams)
+		require.Equal(t, base.StreamsInbound, scaled.Transient.StreamsInbound)
+		require.Equal(t, base.StreamsOutbound, scaled.Transient.StreamsOutbound)
+		require.Equal(t, base.Conns, scaled.Transient.Conns)
+		require.Equal(t, base.ConnsInbound, scaled.Transient.ConnsInbound)
+		require.Equal(t, base.ConnsOutbound, scaled.Transient.ConnsOutbound)
+		require.Equal(t, base.Memory, scaled.Transient.Memory)
 	})
 
 	t.Run("scaling limits in maps", func(t *testing.T) {
@@ -100,16 +100,16 @@ func TestScaling(t *testing.T) {
 		}
 		scaled := cfg.Scale(128<<20+4<<30, 1000)
 
-		require.Len(t, scaled.service, 2)
-		require.Contains(t, scaled.service, "A")
-		require.Equal(t, 10, scaled.service["A"].Streams)
-		require.Equal(t, int64(100), scaled.service["A"].Memory)
-		require.Equal(t, 9, scaled.service["A"].FD)
+		require.Len(t, scaled.Service, 2)
+		require.Contains(t, scaled.Service, "A")
+		require.Equal(t, 10, scaled.Service["A"].Streams)
+		require.Equal(t, int64(100), scaled.Service["A"].Memory)
+		require.Equal(t, 9, scaled.Service["A"].FD)
 
-		require.Contains(t, scaled.service, "B")
-		require.Equal(t, 20+4*2, scaled.service["B"].Streams)
-		require.Equal(t, int64(200+4*3), scaled.service["B"].Memory)
-		require.Equal(t, 400, scaled.service["B"].FD)
+		require.Contains(t, scaled.Service, "B")
+		require.Equal(t, 20+4*2, scaled.Service["B"].Streams)
+		require.Equal(t, int64(200+4*3), scaled.Service["B"].Memory)
+		require.Equal(t, 400, scaled.Service["B"].FD)
 
 	})
 }
@@ -140,8 +140,8 @@ func TestReadmeExample(t *testing.T) {
 
 	limitConf := scalingLimits.Scale(4<<30, 1000)
 
-	require.Equal(t, 384, limitConf.system.Conns)
-	require.Equal(t, 1000, limitConf.system.FD)
+	require.Equal(t, 384, limitConf.System.Conns)
+	require.Equal(t, 1000, limitConf.System.FD)
 }
 
 func TestJSONMarshalling(t *testing.T) {

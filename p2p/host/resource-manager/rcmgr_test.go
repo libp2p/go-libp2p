@@ -22,7 +22,7 @@ func TestResourceManager(t *testing.T) {
 	svcB := "B.svc"
 	nmgr, err := NewResourceManager(
 		NewFixedLimiter(ConcreteLimitConfig{
-			system: BaseLimit{
+			System: BaseLimit{
 				Memory:          16384,
 				StreamsInbound:  3,
 				StreamsOutbound: 3,
@@ -32,7 +32,7 @@ func TestResourceManager(t *testing.T) {
 				Conns:           6,
 				FD:              2,
 			},
-			transient: BaseLimit{
+			Transient: BaseLimit{
 				Memory:          4096,
 				StreamsInbound:  1,
 				StreamsOutbound: 1,
@@ -42,7 +42,7 @@ func TestResourceManager(t *testing.T) {
 				Conns:           2,
 				FD:              1,
 			},
-			serviceDefault: BaseLimit{
+			ServiceDefault: BaseLimit{
 				Memory:          4096,
 				StreamsInbound:  1,
 				StreamsOutbound: 1,
@@ -52,13 +52,13 @@ func TestResourceManager(t *testing.T) {
 				Conns:           2,
 				FD:              1,
 			},
-			servicePeerDefault: BaseLimit{
+			ServicePeerDefault: BaseLimit{
 				Memory:          4096,
 				StreamsInbound:  5,
 				StreamsOutbound: 5,
 				Streams:         10,
 			},
-			service: map[string]BaseLimit{
+			Service: map[string]BaseLimit{
 				svcA: {
 					Memory:          8192,
 					StreamsInbound:  2,
@@ -80,7 +80,7 @@ func TestResourceManager(t *testing.T) {
 					FD:              1,
 				},
 			},
-			servicePeer: map[string]BaseLimit{
+			ServicePeer: map[string]BaseLimit{
 				svcB: {
 					Memory:          8192,
 					StreamsInbound:  1,
@@ -88,13 +88,13 @@ func TestResourceManager(t *testing.T) {
 					Streams:         2,
 				},
 			},
-			protocolDefault: BaseLimit{
+			ProtocolDefault: BaseLimit{
 				Memory:          4096,
 				StreamsInbound:  1,
 				StreamsOutbound: 1,
 				Streams:         2,
 			},
-			protocol: map[protocol.ID]BaseLimit{
+			Protocol: map[protocol.ID]BaseLimit{
 				protoA: {
 					Memory:          8192,
 					StreamsInbound:  2,
@@ -102,7 +102,7 @@ func TestResourceManager(t *testing.T) {
 					Streams:         2,
 				},
 			},
-			protocolPeer: map[protocol.ID]BaseLimit{
+			ProtocolPeer: map[protocol.ID]BaseLimit{
 				protoB: {
 					Memory:          8192,
 					StreamsInbound:  1,
@@ -110,7 +110,7 @@ func TestResourceManager(t *testing.T) {
 					Streams:         2,
 				},
 			},
-			peerDefault: BaseLimit{
+			PeerDefault: BaseLimit{
 				Memory:          4096,
 				StreamsInbound:  1,
 				StreamsOutbound: 1,
@@ -120,13 +120,13 @@ func TestResourceManager(t *testing.T) {
 				Conns:           2,
 				FD:              1,
 			},
-			protocolPeerDefault: BaseLimit{
+			ProtocolPeerDefault: BaseLimit{
 				Memory:          4096,
 				StreamsInbound:  5,
 				StreamsOutbound: 5,
 				Streams:         10,
 			},
-			peer: map[peer.ID]BaseLimit{
+			Peer: map[peer.ID]BaseLimit{
 				peerA: {
 					Memory:          8192,
 					StreamsInbound:  2,
@@ -138,14 +138,14 @@ func TestResourceManager(t *testing.T) {
 					FD:              1,
 				},
 			},
-			conn: BaseLimit{
+			Conn: BaseLimit{
 				Memory:        4096,
 				ConnsInbound:  1,
 				ConnsOutbound: 1,
 				Conns:         1,
 				FD:            1,
 			},
-			stream: BaseLimit{
+			Stream: BaseLimit{
 				Memory:          4096,
 				StreamsInbound:  1,
 				StreamsOutbound: 1,
@@ -979,24 +979,24 @@ func TestResourceManagerWithAllowlist(t *testing.T) {
 	peerA := test.RandPeerIDFatal(t)
 
 	limits := DefaultLimits.AutoScale()
-	limits.system.Conns = 0
-	limits.transient.Conns = 0
+	limits.System.Conns = 0
+	limits.Transient.Conns = 0
 
 	baseLimit := BaseLimit{
 		Conns:         2,
 		ConnsInbound:  2,
 		ConnsOutbound: 1,
 	}
-	baseLimit.Apply(limits.allowlistedSystem)
-	limits.allowlistedSystem = baseLimit
+	baseLimit.Apply(limits.AllowlistedSystem)
+	limits.AllowlistedSystem = baseLimit
 
 	baseLimit = BaseLimit{
 		Conns:         1,
 		ConnsInbound:  1,
 		ConnsOutbound: 1,
 	}
-	baseLimit.Apply(limits.allowlistedTransient)
-	limits.allowlistedTransient = baseLimit
+	baseLimit.Apply(limits.AllowlistedTransient)
+	limits.AllowlistedTransient = baseLimit
 
 	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithAllowlistedMultiaddrs([]multiaddr.Multiaddr{
 		multiaddr.StringCast("/ip4/1.2.3.4"),
