@@ -1,31 +1,30 @@
 # Table Of Contents <!-- omit in toc -->
+- [v0.26.0](#v0260)
 - [v0.25.1](#v0251)
 - [v0.25.0](#v0250)
-  - [🔦 Highlights](#-highlights)
-    - [Metrics](#metrics)
-    - [Switching to Google's official Protobuf compiler](#switching-to-googles-official-protobuf-compiler)
-    - [Removal of OpenSSL](#removal-of-openssl)
-    - [New Resource Manager types](#new-resource-manager-types)
-    - [Other Breaking Changes](#other-breaking-changes)
-  - [What's Changed](#whats-changed)
-  - [New Contributors](#new-contributors)
 
-# v0.25.1
+# [v0.26.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.0)
+
+## 🔦 Highlights <!-- omit in toc -->
+
+## 🐞 Bugfixes <!-- omit in toc -->
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.25.1...v0.26.0
+
+# [v0.25.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.25.1)
 
 Fix some test-utils used by https://github.com/libp2p/go-libp2p-kad-dht
 
 * mocknet: Start host in mocknet by @MarcoPolo in https://github.com/libp2p/go-libp2p/pull/2078
 * chore: update go-multistream by @MarcoPolo in https://github.com/libp2p/go-libp2p/pull/2081
 
-
 **Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.25.0...v0.25.1
 
+# [v0.25.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.25.0)
 
-# v0.25.0
+## 🔦 Highlights <!-- omit in toc -->
 
-## 🔦 Highlights
-
-### Metrics
+### Metrics <!-- omit in toc -->
 
 We've started instrumenting the entire stack. In this release, we're adding metrics for:
 * the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in sue: (https://github.com/libp2p/go-libp2p/blob/master/p2p/net/swarm/grafana-dashboards/swarm.json)
@@ -33,11 +32,11 @@ We've started instrumenting the entire stack. In this release, we're adding metr
 
 Our metrics effort is still ongoing, see https://github.com/libp2p/go-libp2p/issues/1356 for progress. We'll add metrics and dashboards for more libp2p components in a future release.
 
-### Switching to Google's official Protobuf compiler
+### Switching to Google's official Protobuf compiler <!-- omit in toc -->
 
 So far, we were using GoGo Protobuf to compile our Protobuf definitions to Go code. However, this library was deprecated in October last year: https://twitter.com/awalterschulze/status/1584553056100057088. We [benchmarked](https://github.com/libp2p/go-libp2p/issues/1976#issuecomment-1371527732) serialization and deserialization, and found that it's (only) 20% slower than GoGo. Since the vast majority of go-libp2p's CPU time is spent in code paths other than Protobuf handling, switching to the official compiler seemed like a worthwhile tradeoff.
 
-### Removal of OpenSSL
+### Removal of OpenSSL <!-- omit in toc -->
 
 Before this release, go-libp2p had an option to use OpenSSL bindings for certain cryptographic primitives, mostly to speed up the generation of signatures and their verification. When building go-libp2p using `go build`, we'd use the standard library crypto packages. OpenSSL was only used when passing in a build tag: `go build -tags openssl`.
 Maintaining our own fork of the long unmaintained [go-openssl package](https://github.com/libp2p/go-openssl) has proven to place a larger than expected maintenance burden on the libp2p stewards, and when we recently discovered a range of new bugs ([this](https://github.com/libp2p/go-openssl/issues/38) and [this](https://github.com/libp2p/go-libp2p/issues/1892) and [this](https://github.com/libp2p/go-libp2p/issues/1951)), we decided to re-evaluate if this code path is really worth it. The results surprised us, it turns out that:
@@ -49,7 +48,7 @@ Now the good news is, that if your node is not using an RSA key, it will never c
 
 We therefore concluded that it's safe to drop this code path altogether, and thereby reduce our maintenance burden.
 
-### New Resource Manager types
+### New Resource Manager types <!-- omit in toc -->
 
 * Introduces a new type `LimitVal` which can explicitly specify "use default", "unlimited", "block all", as well as any positive number. The zero value of `LimitVal` (the value when you create the object in Go) is "Use default".
   * The JSON marshalling of this is straightforward.
@@ -61,11 +60,11 @@ In general, you can go from a resource config with defaults to a concrete one wi
 
 If you're using the defaults for the resource manager, there should be no changes needed.
 
-### Other Breaking Changes
+### Other Breaking Changes <!-- omit in toc -->
 
 We've cleaned up our API to consistently use `protocol.ID` for libp2p and application protocols. Specifically, this means that the peer store now uses `protocol.ID`s, and the host's `SetStreamHandler` as well.
 
-## What's Changed
+## What's Changed <!-- omit in toc -->
 * chore: use generic LRU cache by @muXxer in https://github.com/libp2p/go-libp2p/pull/1980
 * core/crypto: drop all OpenSSL code paths by @marten-seemann in https://github.com/libp2p/go-libp2p/pull/1953
 * add WebTransport to the list of default transports by @marten-seemann in https://github.com/libp2p/go-libp2p/pull/1915
@@ -117,7 +116,7 @@ We've cleaned up our API to consistently use `protocol.ID` for libp2p and applic
 * identify: add some basic metrics by @marten-seemann in https://github.com/libp2p/go-libp2p/pull/2069
 * chore: Release v0.25.0 by @MarcoPolo in https://github.com/libp2p/go-libp2p/pull/2077
 
-## New Contributors
+## New Contributors <!-- omit in toc -->
 * @muXxer made their first contribution in https://github.com/libp2p/go-libp2p/pull/1980
 * @ajnavarro made their first contribution in https://github.com/libp2p/go-libp2p/pull/1998
 * @sukunrt made their first contribution in https://github.com/libp2p/go-libp2p/pull/2007
