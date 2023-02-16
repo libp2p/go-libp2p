@@ -7,6 +7,12 @@
 
 ## 🔦 Highlights <!-- omit in toc -->
 
+### Additional metrics <!-- omit in toc -->
+
+Since the last release, we've added additional metrics to different components.
+Metrics were added to:
+* [AutoNat](https://github.com/libp2p/go-libp2p/pull/2086): Current Reachability Status and Confidence, Client and Server DialResponses, Server DialRejections. The dashboard is [avialable here](https://github.com/sukunrt/go-libp2p/blob/master/p2p/host/autonat/grafana-dashboards/autonat.json).
+
 ## 🐞 Bugfixes <!-- omit in toc -->
 
 **Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.25.1...v0.26.0
@@ -27,7 +33,7 @@ Fix some test-utils used by https://github.com/libp2p/go-libp2p-kad-dht
 ### Metrics <!-- omit in toc -->
 
 We've started instrumenting the entire stack. In this release, we're adding metrics for:
-* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in sue: (https://github.com/libp2p/go-libp2p/blob/master/p2p/net/swarm/grafana-dashboards/swarm.json)
+* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in use: (https://github.com/libp2p/go-libp2p/blob/master/p2p/net/swarm/grafana-dashboards/swarm.json)
 * the event bus: tracking how different events are propagated through the stack and to external consumers (https://github.com/libp2p/go-libp2p/blob/master/p2p/host/eventbus/grafana-dashboards/eventbus.json)
 
 Our metrics effort is still ongoing, see https://github.com/libp2p/go-libp2p/issues/1356 for progress. We'll add metrics and dashboards for more libp2p components in a future release.
