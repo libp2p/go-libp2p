@@ -9,7 +9,7 @@ message HopMessage {
     STATUS = 2;
   }
 
-  Type type = 1;
+  optional Type type = 1;
 
   optional Peer peer = 2;
   optional Reservation reservation = 3;
@@ -24,7 +24,7 @@ message StopMessage {
     STATUS = 1;
   }
 
-  Type type = 1;
+  optional Type type = 1;
 
   optional Peer peer = 2;
   optional Limit limit = 3;
@@ -33,12 +33,12 @@ message StopMessage {
 }
 
 message Peer {
-  bytes id = 1;
+  optional bytes id = 1;
   repeated bytes addrs = 2;
 }
 
 message Reservation {
-  uint64 expire = 1; // Unix expiration time (UTC)
+  optional uint64 expire = 1; // Unix expiration time (UTC)
   repeated bytes addrs = 2;   // relay addrs for reserving peer
   optional bytes voucher = 3; // reservation voucher
 }
