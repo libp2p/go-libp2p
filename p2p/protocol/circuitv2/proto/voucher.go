@@ -40,15 +40,15 @@ func (rv *ReservationVoucher) Codec() []byte {
 
 func (rv *ReservationVoucher) MarshalRecord() ([]byte, error) {
 	expiration := uint64(rv.Expiration.Unix())
-	return proto.Marshal(&pbv2.ReservationVoucher{
+	return proto.Marshal(&pbv2.Voucher{
 		Relay:      []byte(rv.Relay),
 		Peer:       []byte(rv.Peer),
-		Expiration: expiration,
+		Expiration: &expiration,
 	})
 }
 
 func (rv *ReservationVoucher) UnmarshalRecord(blob []byte) error {
-	pbrv := pbv2.ReservationVoucher{}
+	pbrv := pbv2.Voucher{}
 	err := proto.Unmarshal(blob, &pbrv)
 	if err != nil {
 		return err

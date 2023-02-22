@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package circuit.pb;
 
-message ReservationVoucher {
-  bytes relay = 1;
-  bytes peer = 2;
-  uint64 expiration = 3;
+message Voucher {
+  optional bytes relay = 1;
+  optional bytes peer = 2;
+  optional uint64 expiration = 3;
 }
