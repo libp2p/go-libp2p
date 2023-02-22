@@ -7,6 +7,20 @@
 
 ## 🔦 Highlights <!-- omit in toc -->
 
+### Circuit Relay Changes <!-- omit in toc -->
+
+#### [Removed Circuit Relay v1](https://github.com/libp2p/go-libp2p/pull/2107) <!-- omit in toc -->
+
+We're decided to remove support for Circut Relay v1 in this release. v1 Relays have been retired a few months ago. Notably, running the Relay v1 protocol was expensive and resulted in only a small number of nodes in the network. Users had to either manually configure these nodes as static relays, or discover them from the DHT.
+Furthermore, rust-libp2p [has dropped support](https://github.com/libp2p/rust-libp2p/pull/2549) and js-libp2p [is dropping support](https://github.com/libp2p/js-libp2p/pull/1533) for Relay v1.
+
+Support for Relay v2 was first added in [late 2021 in v0.16.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.16.0). With Circuit Relay v2 it became cheap to run (limited) relays. Public nodes also started the relay service by default. There's now a massive number of Relay v2 nodes on the IPFS network, and they don't advertise their service to the DHT any more. Because there's now so many of these nodes, connecting to just a small number of nodes (e.g. by joining the DHT), a node is statistically guaranteed to connect to some relays.
+
+#### [Unlimited Relay v2](https://github.com/libp2p/go-libp2p/pull/2125) <!-- omit in toc -->
+
+In conjunction with removing relay v1, we also added an option to Circuit Relay v2 to disable limits.
+This done by enabling 'WithInfiniteLimits'. When enabled this allows for users to have a drop in replacement for Relay v1 with Relay v2.
+
 ### Additional metrics <!-- omit in toc -->
 
 Since the last release, we've added additional metrics to different components.
