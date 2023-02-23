@@ -30,7 +30,25 @@ Metrics were added to:
   - [Early Muxer Selection](https://github.com/libp2p/go-libp2p/pull/2119): Added early_muxer label indicating whether a connection was established using early muxer selection. 
   - [IP Version](https://github.com/libp2p/go-libp2p/pull/2114): Added ip_version label to connection metrics
 
+We also migrated the metric dashboards to a top-level [dashboards](https://github.com/libp2p/go-libp2p/tree/master/dashboards) directory.
+
 ## 🐞 Bugfixes <!-- omit in toc -->
+
+### AutoNat <!-- omit in toc -->
+* [Fixed a bug](https://github.com/libp2p/go-libp2p/issues/2091) where AutoNat would emit events when the observed address has changed even though the node reachability hadn't changed.
+
+### Relay Manager <!-- omit in toc -->
+* [Fixed a bug](https://github.com/libp2p/go-libp2p/pull/2093) where the Relay Manager started a new relay even though the previous reachability was `Public` or if a relay already existed.
+
+### [Stop sending detailed error messages on closing QUIC connections](https://github.com/libp2p/go-libp2p/pull/2112) <!-- omit in toc -->
+
+Users reported seeing confusing error messages and could not determine the root cause or if the error was from a local or remote peer:
+
+```{12D... Application error 0x0: conn-27571160: system: cannot reserve inbound connection: resource limit exceeded}```
+
+This error occurred when a connection had been made with a remote peer but the remote peer dropped the connection (due to it exceeding limits).
+This was actually an `Application error` emitted by `quic-go` and it was a bug in go-libp2p that we sent the whole message.
+For now, we decided to stop sending this confusing error message. In the future, we will report such errors via [error codes](https://github.com/libp2p/specs/issues/479).
 
 **Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.25.1...v0.26.0
 
