@@ -482,6 +482,11 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	if s.local == p {
 		return nil, ErrDialToSelf
 	}
+	// Check before we start work
+	if err := ctx.Err(); err != nil {
+		log.Debugf("%s swarm not dialing. Context cancelled: %v. %s %s", s.local, err, p, addr)
+		return nil, err
+	}
 	log.Debugf("%s swarm dialing %s %s", s.local, p, addr)
 
 	tpt := s.TransportForDialing(addr)
