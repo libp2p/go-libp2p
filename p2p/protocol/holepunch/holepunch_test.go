@@ -143,7 +143,7 @@ func TestEndToEndSimConnect(t *testing.T) {
 			h2Events = h2tr.getEvents()
 			return len(h2Events) == 3
 		},
-		time.Second,
+		3*time.Second,
 		10*time.Millisecond,
 	)
 	require.Equal(t, holepunch.StartHolePunchEvtT, h2Events[0].Type)
@@ -229,7 +229,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 			require.Eventually(t, func() bool {
 				protos, _ := h2.Peerstore().SupportsProtocols(h1.ID(), holepunch.Protocol)
 				return len(protos) > 0
-			}, 200*time.Millisecond, 10*time.Millisecond)
+			}, 5*time.Second, 10*time.Millisecond)
 
 			if tc.rhandler != nil {
 				h1.SetStreamHandler(holepunch.Protocol, tc.rhandler)

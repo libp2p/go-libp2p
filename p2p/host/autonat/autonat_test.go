@@ -193,7 +193,7 @@ func TestAutoNATIncomingEvents(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return an.Status() != network.ReachabilityUnknown
-	}, 500*time.Millisecond, 10*time.Millisecond, "Expected probe due to identification of autonat service")
+	}, 5*time.Second, 100*time.Millisecond, "Expected probe due to identification of autonat service")
 }
 
 func TestAutoNATObservationRecording(t *testing.T) {

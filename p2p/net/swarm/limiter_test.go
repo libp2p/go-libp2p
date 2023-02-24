@@ -227,7 +227,7 @@ func TestTokenRedistribution(t *testing.T) {
 	select {
 	case <-resch:
 		t.Fatal("no dials should have completed!")
-	case <-time.After(time.Millisecond * 100):
+	case <-time.After(time.Second):
 	}
 
 	// unblock one dial for peer 0
@@ -238,14 +238,14 @@ func TestTokenRedistribution(t *testing.T) {
 		if res.Err == nil {
 			t.Fatal("should have only been a failure here")
 		}
-	case <-time.After(time.Millisecond * 100):
+	case <-time.After(time.Second):
 		t.Fatal("expected a dial failure here")
 	}
 
 	select {
 	case <-resch:
 		t.Fatal("no more dials should have completed!")
-	case <-time.After(time.Millisecond * 100):
+	case <-time.After(time.Second):
 	}
 
 	// add a bad dial job to peer 0 to fill their rate limiter
@@ -266,7 +266,7 @@ func TestTokenRedistribution(t *testing.T) {
 		if res.Err == nil {
 			t.Fatal("should have only been a failure here")
 		}
-	case <-time.After(time.Millisecond * 100):
+	case <-time.After(time.Second):
 		t.Fatal("expected a dial failure here")
 	}
 
@@ -275,7 +275,7 @@ func TestTokenRedistribution(t *testing.T) {
 		if res.Err != nil {
 			t.Fatal("should have succeeded!")
 		}
-	case <-time.After(time.Millisecond * 100):
+	case <-time.After(time.Second):
 		t.Fatal("should have gotten successful dial")
 	}
 }

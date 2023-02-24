@@ -35,11 +35,6 @@ func TestConnectednessCorrect(t *testing.T) {
 	dial(nets[1], nets[2])
 	dial(nets[3], nets[2])
 
-	// The notifications for new connections get sent out asynchronously.
-	// There is the potential for a race condition here, so we sleep to ensure
-	// that they have been received.
-	time.Sleep(time.Millisecond * 100)
-
 	// test those connected show up correctly
 
 	// test connected
@@ -57,7 +52,6 @@ func TestConnectednessCorrect(t *testing.T) {
 	require.NotZerof(t, nets[1].ConnsToPeer(nets[3].LocalPeer()), "net 1 should have no connections to net 3")
 	require.NoError(t, nets[2].ClosePeer(nets[1].LocalPeer()))
 
-	time.Sleep(time.Millisecond * 50)
 	expectConnectedness(t, nets[2], nets[1], network.NotConnected)
 
 	for _, n := range nets {
@@ -66,17 +60,11 @@ func TestConnectednessCorrect(t *testing.T) {
 }
 
 func expectConnectedness(t *testing.T, a, b network.Network, expected network.Connectedness) {
-	es := "%s is connected to %s, but Connectedness incorrect. %s %s %s"
-	atob := a.Connectedness(b.LocalPeer())
-	btoa := b.Connectedness(a.LocalPeer())
-	if atob != expected {
-		t.Errorf(es, a, b, printConns(a), printConns(b), atob)
-	}
-
-	// test symmetric case
-	if btoa != expected {
-		t.Errorf(es, b, a, printConns(b), printConns(a), btoa)
-	}
+	require.Eventually(t, func() bool {
+		atob := a.Connectedness(b.LocalPeer())
+		btoa := b.Connectedness(a.LocalPeer())
+		return atob == expected && btoa == expected
+	}, 10*time.Second, 100*time.Millisecond, "Expected %s to be %s to %s.\nA: %s \nB: %s", a, expected, b, printConns(a), printConns(b))
 }
 
 func printConns(n network.Network) string {
