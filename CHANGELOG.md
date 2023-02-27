@@ -1,7 +1,19 @@
 # Table Of Contents <!-- omit in toc -->
+- [v0.27.0 (unreleased)](#v0270-unreleased)
+- [v0.26.1](#v0261)
 - [v0.26.0](#v0260)
 - [v0.25.1](#v0251)
 - [v0.25.0](#v0250)
+
+# [v0.27.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.27.0) (unreleased)
+
+# [v0.26.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.1)
+
+This patch release fixes two bugs:
+* A panic in WebTransport: https://github.com/quic-go/webtransport-go/releases/tag/v0.5.2
+* Incorrect accounting of accepted connections in the swarm metrics: [#2147](https://github.com/libp2p/go-libp2p/pull/2147)
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.26.0...v0.26.1
 
 # [v0.26.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.0)
 
