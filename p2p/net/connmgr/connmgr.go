@@ -375,7 +375,7 @@ func (cm *BasicConnMgr) doTrim() {
 func (cm *BasicConnMgr) trim() {
 	// do the actual trim.
 	for _, c := range cm.getConnsToClose() {
-		log.Infow("closing conn", "peer", c.RemotePeer())
+		log.Debugw("closing conn", "peer", c.RemotePeer())
 		c.Close()
 	}
 }
