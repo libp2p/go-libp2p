@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package webrtc_w3c.pb;
+
+message Message {
+    // Specifies type in `data` field.
+    enum Type {
+        // String of `RTCSessionDescription.sdp`
+        SDP_OFFER = 0;
+        // String of `RTCSessionDescription.sdp`
+        SDP_ANSWER = 1;
+        // String of `RTCIceCandidate.toJSON()`
+        ICE_CANDIDATE = 2;
+    }
+    optional Type type = 1;
+    optional string data = 2;
+}
