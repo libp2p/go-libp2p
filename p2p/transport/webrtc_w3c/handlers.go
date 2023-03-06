@@ -101,10 +101,12 @@ func handleIncoming(ctx context.Context, config webrtc.Configuration, stream net
 		log.Warn("failed to read SDP offer: %v", err)
 		return nil, err
 	}
-	if msg.Type != pb.Message_SDP_OFFER.Enum() {
+	if msg.Type == nil || msg.GetType() != pb.Message_SDP_OFFER {
+		log.Warn("expected SDP offer, instead got: %v", msg.GetType())
 		return nil, errExpectedOffer
 	}
 	if msg.Data == nil {
+		log.Warn("message is empty")
 		return nil, errEmptyData
 	}
 	offer := webrtc.SessionDescription{
@@ -154,7 +156,7 @@ func handleIncoming(ctx context.Context, config webrtc.Configuration, stream net
 				readErr <- err
 				return
 			}
-			if msg.Type != pb.Message_ICE_CANDIDATE.Enum() {
+			if msg.Type == nil || msg.GetType() != pb.Message_ICE_CANDIDATE {
 				readErr <- errors.New("got non-candidate message")
 				return
 			}
@@ -162,16 +164,19 @@ func handleIncoming(ctx context.Context, config webrtc.Configuration, stream net
 				readErr <- errEmptyData
 				return
 			}
+			if *msg.Data == "" {
+				return
+			}
 
 			// unmarshal IceCandidateInit
 			var init webrtc.ICECandidateInit
 			if err := json.Unmarshal([]byte(*msg.Data), &init); err != nil {
-				log.Warn("could not unmarshal candidate: %v", err)
+				log.Debugf("could not unmarshal candidate: %v, %s", err, *msg.Data)
 				readErr <- err
 				return
 			}
 			if err := pc.AddICECandidate(init); err != nil {
-				log.Warn("bad candidate: %v", err)
+				log.Debugf("bad candidate: %v", err)
 				readErr <- err
 				return
 			}
@@ -189,8 +194,9 @@ func handleIncoming(ctx context.Context, config webrtc.Configuration, stream net
 		}
 		break
 	case err := <-readErr:
-		if err != nil {
-			panic("nil error should never be written to this channel")
+		if err == nil {
+			log.Error("err: %v", err)
+			panic("nil error should never be written to this channel %v")
 		}
 		_ = pc.Close()
 		return nil, err
@@ -301,14 +307,14 @@ func connect(ctx context.Context, config webrtc.Configuration, stream network.St
 		log.Warn("failed to read SDP answer: %v", err)
 		return nil, err
 	}
-	if msg.Type != pb.Message_SDP_ANSWER.Enum() {
+	if msg.Type == nil || msg.GetType() != pb.Message_SDP_ANSWER {
 		return nil, errExpectedAnswer
 	}
 	if msg.Data == nil {
 		return nil, errEmptyData
 	}
 	answer := webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
+		Type: webrtc.SDPTypeAnswer,
 		SDP:  *msg.Data,
 	}
 	if err := pc.SetRemoteDescription(answer); err != nil {
@@ -334,7 +340,7 @@ func connect(ctx context.Context, config webrtc.Configuration, stream network.St
 				readErr <- err
 				return
 			}
-			if msg.Type != pb.Message_ICE_CANDIDATE.Enum() {
+			if msg.Type == nil || msg.GetType() != pb.Message_ICE_CANDIDATE {
 				readErr <- errors.New("got non-candidate message")
 				return
 			}
@@ -345,13 +351,14 @@ func connect(ctx context.Context, config webrtc.Configuration, stream network.St
 
 			// unmarshal IceCandidateInit
 			var init webrtc.ICECandidateInit
+			if *msg.Data == "" {
+				return
+			}
 			if err := json.Unmarshal([]byte(*msg.Data), &init); err != nil {
-				log.Warn("could not unmarshal candidate: %v", err)
 				readErr <- err
 				return
 			}
 			if err := pc.AddICECandidate(init); err != nil {
-				log.Warn("bad candidate: %v", err)
 				readErr <- err
 				return
 			}
@@ -369,9 +376,10 @@ func connect(ctx context.Context, config webrtc.Configuration, stream network.St
 		}
 		break
 	case err := <-readErr:
-		if err != nil {
+		if err == nil {
 			panic("nil error should never be written to this channel")
 		}
+		log.Warn("error: %v", err)
 		_ = pc.Close()
 		return nil, err
 	}
