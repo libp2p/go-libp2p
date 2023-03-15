@@ -2,6 +2,7 @@ package autorelay_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -330,7 +331,7 @@ func TestMaxAge(t *testing.T) {
 		autorelay.WithBootDelay(0),
 		autorelay.WithMaxCandidateAge(20*time.Minute),
 		autorelay.WithClock(cl),
-		autorelay.WithMinInterval(time.Second),
+		autorelay.WithMinInterval(time.Minute),
 	)
 	defer h.Close()
 
@@ -340,9 +341,8 @@ func TestMaxAge(t *testing.T) {
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
 
+	cl.Add(time.Minute)
 	require.Eventually(t, func() bool {
-		// we don't know exactly when the timer is reset, just advance our timer multiple times if necessary
-		cl.Add(30 * time.Second)
 		return len(peerChans) == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -371,8 +371,10 @@ func TestMaxAge(t *testing.T) {
 	require.Eventually(t, func() bool {
 		relays = usedRelays(h)
 		if len(relays) != 1 {
+			fmt.Println("not 1 relay", relays)
 			return false
 		}
+		fmt.Println("old relay is", oldRelay, "new relay is", relays[0])
 		return relays[0] != oldRelay
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -382,6 +384,8 @@ func TestMaxAge(t *testing.T) {
 		ids = append(ids, r.ID())
 	}
 	require.Contains(t, ids, relays[0])
+	cl.Add(11 * time.Minute)
+	time.Sleep(time.Second)
 }
 
 func TestReconnectToStaticRelays(t *testing.T) {

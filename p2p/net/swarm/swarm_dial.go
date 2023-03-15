@@ -476,6 +476,24 @@ func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp
 	})
 }
 
+const pace = 10 * time.Millisecond
+
+var pacer = map[peer.ID]int{}
+var pacerMu *sync.Mutex = &sync.Mutex{}
+
+// dialAddrForCI same as dialAddr but adds some sleep between dials so that we
+// don't do concurrent dials at the same time. Note that the
+// DefaultPerPeerRateLimit doesn't solve this for us since it's possible that
+// the second (serial) dial finishes before the context is cancelled
+func (s *Swarm) dialAddrForCI(ctx context.Context, p peer.ID, addr ma.Multiaddr) (transport.CapableConn, error) {
+	pacerMu.Lock()
+	val := pacer[p]
+	pacer[p] = (val + 1) % DefaultPerPeerRateLimit
+	pacerMu.Unlock()
+	time.Sleep(time.Duration(val) * pace)
+	return s.dialAddr(ctx, p, addr)
+}
+
 // dialAddr is the actual dial for an addr, indirectly invoked through the limiter
 func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (transport.CapableConn, error) {
 	// Just to double check. Costs nothing.
