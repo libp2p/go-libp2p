@@ -22,7 +22,6 @@ const MULTIADDR_PROTOCOL = "/webrtc-w3c"
 const SIGNALING_PROTOCOL = "/webrtc-signaling"
 
 type Client struct {
-	ctx    context.Context
 	host   host.Host
 	config webrtc.Configuration
 }
@@ -34,11 +33,12 @@ func (*Client) CanDial(addr ma.Multiaddr) bool {
 
 // Dial implements transport.Transport
 func (c *Client) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
-	scope, err := c.host.Network().ResourceManager().OpenConnection(network.DirOutbound, false, raddr)
+	baseAddr, err := getBaseMultiaddr(raddr)
 	if err != nil {
 		return nil, err
 	}
-	baseAddr, err := getBaseMultiaddr(raddr)
+
+	scope, err := c.host.Network().ResourceManager().OpenConnection(network.DirOutbound, false, raddr)
 	if err != nil {
 		return nil, err
 	}
@@ -54,11 +54,18 @@ func (c *Client) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.C
 	// create a new stream to the remote
 	stream, err := c.host.NewStream(ctx, p, SIGNALING_PROTOCOL)
 	if err != nil {
+		defer scope.Done()
 		return nil, err
 	}
+	// close the stream after connection is established
+	defer stream.Close()
 	// attempt webrtc connection
 	peerConnection, err := connect(ctx, c.config, stream)
-	return wrtc.NewWebRTCConnection(
+	if err != nil {
+		defer scope.Done()
+		return nil, err
+	}
+	conn, err := wrtc.NewWebRTCConnection(
 		network.DirOutbound,
 		peerConnection,
 		c,
@@ -69,6 +76,11 @@ func (c *Client) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.C
 		remotePubKey,
 		raddr,
 	)
+	if err != nil {
+		defer scope.Done()
+		return nil, err
+	}
+	return conn, nil
 }
 
 // Listen implements transport.Transport
@@ -85,5 +97,3 @@ func (*Client) Protocols() []int {
 func (*Client) Proxy() bool {
 	return false
 }
-
-func handleIncomingConnections(stream network.Stream) {}
