@@ -6,7 +6,6 @@ import (
 	"errors"
 	"sync"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc_w3c/pb"
 	"github.com/libp2p/go-msgio/pbio"
@@ -14,8 +13,6 @@ import (
 )
 
 const maxMessageSize = 4096
-
-var log = logging.Logger("webrtc_w3c")
 
 var (
 	errExpectedOffer    = errors.New("expected an SDP offer")

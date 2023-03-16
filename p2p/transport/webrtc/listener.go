@@ -267,7 +267,7 @@ func (l *listener) setupConnection(
 	// The connection is instantiated before performing the Noise handshake. This is
 	// to handle the case where the remote is faster and attempts to initiate a stream
 	// before the ondatachannel callback can be set.
-	conn, err := newConnection(
+	conn, err := NewWebRTCConnection(
 		network.DirInbound,
 		pc,
 		l.transport,

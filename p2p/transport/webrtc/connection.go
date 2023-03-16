@@ -37,7 +37,7 @@ type connection struct {
 	// debug identifier for the connection
 	dbgId     int
 	pc        *webrtc.PeerConnection
-	transport *WebRTCTransport
+	transport tpt.Transport
 	scope     network.ConnManagementScope
 
 	localPeer      peer.ID
@@ -57,10 +57,10 @@ type connection struct {
 	cancel context.CancelFunc
 }
 
-func newConnection(
+func NewWebRTCConnection(
 	direction network.Direction,
 	pc *webrtc.PeerConnection,
-	transport *WebRTCTransport,
+	transport tpt.Transport,
 	scope network.ConnManagementScope,
 
 	localPeer peer.ID,

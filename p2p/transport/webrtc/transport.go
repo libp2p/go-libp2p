@@ -379,7 +379,7 @@ func (t *WebRTCTransport) dial(
 
 	// we can only know the remote public key after the noise handshake,
 	// but need to set up the callbacks on the peerconnection
-	conn, err := newConnection(
+	conn, err := NewWebRTCConnection(
 		network.DirOutbound,
 		pc,
 		t,
