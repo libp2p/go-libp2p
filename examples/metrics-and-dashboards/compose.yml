@@ -1,0 +1,41 @@
+services:
+
+  prometheus-server:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - 9090:9090
+    expose:
+      - 9090
+
+  grafana:
+    # image: sha256:b4cfd1a8f2d221019265ca75b20e066b5ddd34631210441d5877914a0af2fd67
+    build:
+      dockerfile: examples/metrics-and-dashboards/grafana.Dockerfile
+      context: ../../
+    environment:
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./grafana-config/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana-config/provisioning:/etc/grafana/provisioning
+    ports:
+      - 3000:3000
+
+  go-libp2p-node:
+    build:
+      context: .
+      dockerfile: go-libp2p-node.Dockerfile
+    ports:
+      - 2112:2112
+    expose:
+      - 2112

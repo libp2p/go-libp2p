@@ -1,0 +1,15 @@
+# config file version
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # Access mode - proxy (server in the UI) or direct (browser in the UI).
+    access: proxy
+    uid: "prometheusuid"
+    url: http://prometheus-server:9090
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.43.0

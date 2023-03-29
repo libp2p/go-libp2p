@@ -10,6 +10,7 @@ require (
 	github.com/libp2p/go-libp2p v0.28.0
 	github.com/libp2p/go-libp2p-kad-dht v0.20.1-0.20230209220319-6c2045abad23
 	github.com/multiformats/go-multiaddr v0.9.0
+	github.com/prometheus/client_golang v1.14.0
 )
 
 require (
@@ -81,7 +82,6 @@ require (
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/polydawn/refmt v0.0.0-20201211092308-30ac6d18308e // indirect
-	github.com/prometheus/client_golang v1.14.0 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
