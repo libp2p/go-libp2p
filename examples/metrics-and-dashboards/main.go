@@ -72,7 +72,7 @@ func main() {
 
 func newClient(serverInfo peer.AddrInfo, pings int) {
 	client, err := libp2p.New(
-		// We just want metrics from h2
+		// We just want metrics from the server
 		libp2p.DisableMetrics(),
 		libp2p.NoListenAddrs,
 	)
@@ -94,5 +94,4 @@ func newClient(serverInfo peer.AddrInfo, pings int) {
 		}
 		time.Sleep(time.Second)
 	}
-
 }
