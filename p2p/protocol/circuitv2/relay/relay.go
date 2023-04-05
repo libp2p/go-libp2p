@@ -169,7 +169,7 @@ func (r *Relay) handleStream(s network.Stream) {
 	case pbv2.HopMessage_CONNECT:
 		status := r.handleConnect(s, &msg)
 		if r.metricsTracer != nil {
-			r.metricsTracer.ConnectionRequestHandled(status)
+			r.metricsTracer.ConnectionRequestHandled(msg.GetPeer(), status)
 		}
 	default:
 		r.handleError(s, pbv2.Status_MALFORMED_MESSAGE)
@@ -219,7 +219,7 @@ func (r *Relay) handleReserve(s network.Stream) pbv2.Status {
 	r.host.ConnManager().TagPeer(p, "relay-reservation", ReservationTagWeight)
 	r.mx.Unlock()
 	if r.metricsTracer != nil {
-		r.metricsTracer.ReservationAllowed(exists)
+		r.metricsTracer.ReservationAllowed(p, exists)
 	}
 
 	log.Debugf("reserving relay slot for %s", p)
@@ -641,7 +641,6 @@ func (r *Relay) background() {
 
 func (r *Relay) gc() {
 	r.mx.Lock()
-	defer r.mx.Unlock()
 
 	now := time.Now()
 	cnt := 0
@@ -652,14 +651,15 @@ func (r *Relay) gc() {
 			cnt++
 		}
 	}
-	if r.metricsTracer != nil {
-		r.metricsTracer.ReservationClosed(cnt)
-	}
-
 	for p, count := range r.conns {
 		if count == 0 {
 			delete(r.conns, p)
 		}
+	}
+	r.mx.Unlock()
+	if r.metricsTracer != nil {
+		r.metricsTracer.ReservationExpired(cnt)
+		r.metricsTracer.GC()
 	}
 }
 
@@ -670,14 +670,14 @@ func (r *Relay) disconnected(n network.Network, c network.Conn) {
 	}
 
 	r.mx.Lock()
-	_, ok := r.rsvp[p]
+	expiry, ok := r.rsvp[p]
 	if ok {
 		delete(r.rsvp, p)
 	}
 	r.mx.Unlock()
 
 	if ok && r.metricsTracer != nil {
-		r.metricsTracer.ReservationClosed(1)
+		r.metricsTracer.PeerDisconnected(p, expiry)
 	}
 }
 

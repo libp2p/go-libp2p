@@ -1,10 +1,13 @@
 package relay
 
 import (
+	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/metricshelper"
 	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/util"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -113,20 +116,28 @@ type MetricsTracer interface {
 	// ConnectionClosed tracks metrics on closing a relay connection
 	ConnectionClosed(d time.Duration)
 	// ConnectionRequestHandled tracks metrics on handling a relay connection request
-	ConnectionRequestHandled(status pbv2.Status)
+	ConnectionRequestHandled(dstPeer *pbv2.Peer, status pbv2.Status)
 
 	// ReservationAllowed tracks metrics on opening or renewing a relay reservation
-	ReservationAllowed(isRenewal bool)
-	// ReservationRequestClosed tracks metrics on closing a relay reservation
-	ReservationClosed(cnt int)
+	ReservationAllowed(p peer.ID, isRenewal bool)
+	// PeerDisconnected tracks metrics on peer disconnection
+	PeerDisconnected(p peer.ID, expiry time.Time)
+	// ReservationExpired tracks metrics on reservation expiry
+	ReservationExpired(cnt int)
 	// ReservationRequestHandled tracks metrics on handling a relay reservation request
 	ReservationRequestHandled(status pbv2.Status)
 
 	// BytesTransferred tracks the total bytes transferred by the relay service
 	BytesTransferred(cnt int)
+
+	// GC performs cleanup of the tracers resources
+	GC()
 }
 
-type metricsTracer struct{}
+type metricsTracer struct {
+	mu                sync.Mutex
+	disconnectedPeers map[peer.ID]time.Time
+}
 
 var _ MetricsTracer = &metricsTracer{}
 
@@ -150,7 +161,7 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 		opt(setting)
 	}
 	metricshelper.RegisterCollectors(setting.reg, collectors...)
-	return &metricsTracer{}
+	return &metricsTracer{disconnectedPeers: make(map[peer.ID]time.Time)}
 }
 
 func (mt *metricsTracer) RelayStatus(enabled bool) {
@@ -178,7 +189,7 @@ func (mt *metricsTracer) ConnectionClosed(d time.Duration) {
 	connectionDurationSeconds.Observe(d.Seconds())
 }
 
-func (mt *metricsTracer) ConnectionRequestHandled(status pbv2.Status) {
+func (mt *metricsTracer) ConnectionRequestHandled(dstId *pbv2.Peer, status pbv2.Status) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
@@ -188,12 +199,12 @@ func (mt *metricsTracer) ConnectionRequestHandled(status pbv2.Status) {
 	connectionRequestResponseStatusTotal.WithLabelValues(*tags...).Add(1)
 	if respStatus == requestStatusRejected {
 		*tags = (*tags)[:0]
-		*tags = append(*tags, getRejectionReason(status))
+		*tags = append(*tags, mt.getConnectionRejectionReason(dstId, status))
 		connectionRejectionsTotal.WithLabelValues(*tags...).Add(1)
 	}
 }
 
-func (mt *metricsTracer) ReservationAllowed(isRenewal bool) {
+func (mt *metricsTracer) ReservationAllowed(p peer.ID, isRenewal bool) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 	if isRenewal {
@@ -203,9 +214,24 @@ func (mt *metricsTracer) ReservationAllowed(isRenewal bool) {
 	}
 
 	reservationsTotal.WithLabelValues(*tags...).Add(1)
+
+	mt.mu.Lock()
+	delete(mt.disconnectedPeers, p)
+	mt.mu.Unlock()
 }
 
-func (mt *metricsTracer) ReservationClosed(cnt int) {
+func (mt *metricsTracer) PeerDisconnected(p peer.ID, expiry time.Time) {
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+	*tags = append(*tags, "closed")
+
+	reservationsTotal.WithLabelValues(*tags...).Add(1)
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
+	mt.disconnectedPeers[p] = expiry
+}
+
+func (mt *metricsTracer) ReservationExpired(cnt int) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 	*tags = append(*tags, "closed")
@@ -230,6 +256,35 @@ func (mt *metricsTracer) ReservationRequestHandled(status pbv2.Status) {
 
 func (mt *metricsTracer) BytesTransferred(cnt int) {
 	dataTransferredBytesTotal.Add(float64(cnt))
+}
+
+func (mt *metricsTracer) GC() {
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
+	now := time.Now()
+	for p, expiry := range mt.disconnectedPeers {
+		if expiry.Before(now) {
+			delete(mt.disconnectedPeers, p)
+		}
+	}
+}
+
+func (mt *metricsTracer) getConnectionRejectionReason(dstPeer *pbv2.Peer, status pbv2.Status) string {
+	if status == pbv2.Status_NO_RESERVATION {
+		dstPeerInfo, err := util.PeerToPeerInfoV2(dstPeer)
+		if err != nil {
+			return "malformed message"
+		}
+
+		mt.mu.Lock()
+		defer mt.mu.Unlock()
+		if _, ok := mt.disconnectedPeers[dstPeerInfo.ID]; ok {
+			return "client disconnected"
+		}
+
+		return "no reservation"
+	}
+	return getRejectionReason(status)
 }
 
 func getResponseStatus(status pbv2.Status) string {
@@ -259,8 +314,6 @@ func getRejectionReason(status pbv2.Status) string {
 		reason = "resource limit exceeded"
 	case pbv2.Status_PERMISSION_DENIED:
 		reason = "permission denied"
-	case pbv2.Status_NO_RESERVATION:
-		reason = "no reservation"
 	case pbv2.Status_MALFORMED_MESSAGE:
 		reason = "malformed message"
 	}
