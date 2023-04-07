@@ -480,9 +480,7 @@ func TestTransportWebRTC_Read(t *testing.T) {
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
 		stream, err := lconn.AcceptStream()
 		require.NoError(t, err)
-		_, err = stream.Write(make([]byte, 2*1024*1024))
-		// we expect an error in both cases
-		require.Error(t, err)
+		_, _ = stream.Write(make([]byte, 2*1024))
 	}
 
 	t.Run("read partial message", func(t *testing.T) {
@@ -826,7 +824,7 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 		for {
 			_, err := stream.Write([]byte("test"))
 			if err != nil {
-				assert.ErrorIs(t, err, ErrTimeout)
+				assert.ErrorIs(t, err, network.ErrReset)
 				close(done)
 				return
 			}

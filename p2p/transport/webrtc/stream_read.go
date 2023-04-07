@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
@@ -26,7 +27,10 @@ func (s *webRTCStream) Read(b []byte) (int, error) {
 	)
 	for read == 0 && readErr == nil {
 		if s.isClosed() {
-			return 0, io.ErrClosedPipe
+			if s.stateHandler.IsReset() {
+				return 0, network.ErrReset
+			}
+			return 0, io.EOF
 		}
 		read, readErr = s.readMessage(b)
 	}
@@ -59,9 +63,16 @@ func (s *webRTCStream) readMessage(b []byte) (int, error) {
 	if err != nil {
 		// This case occurs when the remote node goes away
 		// without writing a FIN message
-		if errors.Is(err, io.EOF) && read == 0 {
-			s.Reset()
-			return 0, io.EOF
+		if errors.Is(err, io.EOF) {
+			// if the channel was properly closed, return EOF
+			if !s.stateHandler.AllowRead() && !s.stateHandler.IsReset() {
+				return 0, io.EOF
+			}
+			return 0, network.ErrReset
+		}
+
+		if errors.Is(err, os.ErrDeadlineExceeded) && s.stateHandler.IsReset() {
+			return 0, network.ErrReset
 		}
 		return read, err
 	}
