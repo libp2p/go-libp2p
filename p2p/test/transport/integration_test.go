@@ -265,7 +265,7 @@ func TestManyStreams(t *testing.T) {
 					b, err := io.ReadAll(s)
 					if err == nil {
 						if !bytes.Equal(b, []byte("hello")) {
-							err = fmt.Errorf("received data does not match sent data")
+							err = fmt.Errorf("received data b'%v' does not match sent data b'hello'", b)
 						}
 					}
 					if err != nil {
