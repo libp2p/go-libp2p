@@ -38,7 +38,6 @@ func (ss *webRTCStreamState) HandleInboundFlag(flag pb.Message_Flag) (channelSta
 
 	case pb.Message_RESET:
 		ss.closeInner(true)
-
 	default:
 		// ignore values that are invalid for flags
 	}
@@ -114,6 +113,19 @@ func (ss *webRTCStreamState) Close() {
 	defer ss.mu.Unlock()
 	ss.state = stateClosed
 	ss.reset = false
+}
+
+func (ss *webRTCStreamState) Reset() {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.state = stateClosed
+	ss.reset = true
+}
+
+func (ss *webRTCStreamState) IsReset() bool {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	return ss.reset
 }
 
 func (ss *webRTCStreamState) closeInner(reset bool) {

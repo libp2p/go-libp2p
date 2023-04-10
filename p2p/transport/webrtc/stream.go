@@ -161,19 +161,22 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	var err error
 	s.closeOnce.Do(func() {
 		log.Debugf("closing stream %d: reset: %t, notify: %t", s.id, isReset, notifyConnection)
-		s.stateHandler.Close()
-		// force close reads
-		s.SetReadDeadline(time.Now()) // pion ignores zero times
 		if isReset {
+			s.stateHandler.Reset()
 			// write the RESET message. The error is explicitly ignored
 			// because we do not know if the remote is still connected
-			s.writeMessage(&pb.Message{Flag: pb.Message_RESET.Enum()})
+			s.writeMessageToWriter(&pb.Message{Flag: pb.Message_RESET.Enum()})
 		} else {
+			s.stateHandler.Close()
 			// write a FIN message for standard stream closure
-			s.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
+			// we write directly to the underlying writer since we do not care about
+			// cancelled contexts or deadlines for this.
+			s.writeMessageToWriter(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		}
 		// close the context
 		s.cancel()
+		// force close reads
+		s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
 		// close the channel. We do not care about the error message in
 		// this case
 		err = s.dataChannel.Close()

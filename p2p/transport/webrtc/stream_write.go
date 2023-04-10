@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -94,11 +95,18 @@ func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 
 		writeDeadline, hasWriteDeadline := s.getWriteDeadline()
 		if !hasWriteDeadline {
-			writeDeadline = time.Unix(math.MaxInt64, 0)
+			// writeDeadline = time.Unix(999999999999999999, 0)
+			// Does this cause the timer to overflow ? https://cs.opensource.google/go/go/+/master:src/time/sleep.go;l=32?q=runtimeTimer&ss=go%2Fgo
+			// this could be causing an overflow above https://cs.opensource.google/go/go/+/master:src/time/time.go;l=1123?q=unixTim&ss=go%2Fgo
+			// Go adds 62135596800 to the seconds parameter of `time.Unix`
+			writeDeadline = time.Unix(math.MaxInt64-62135596801, 0)
 		}
 		if writeDeadlineTimer == nil {
 			writeDeadlineTimer = time.NewTimer(time.Until(writeDeadline))
 		} else {
+			if !writeDeadlineTimer.Stop() {
+				<-writeDeadlineTimer.C
+			}
 			writeDeadlineTimer.Reset(time.Until(writeDeadline))
 		}
 
@@ -111,6 +119,9 @@ func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 			case <-s.writeAvailable:
 				return s.writeMessageToWriter(msg)
 			case <-s.ctx.Done():
+				if s.stateHandler.IsReset() {
+					return network.ErrReset
+				}
 				return io.ErrClosedPipe
 			case <-s.writerDeadlineUpdated:
 			}
