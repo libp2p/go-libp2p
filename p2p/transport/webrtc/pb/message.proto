@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package webrtc.pb;
+option go_package = "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb";
 
 message Message {
   enum Flag {
