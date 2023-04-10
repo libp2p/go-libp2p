@@ -397,7 +397,6 @@ func TestHostProtoPreknowledge(t *testing.T) {
 		protos, err := h1.Peerstore().GetProtocols(h2.ID())
 		require.NoError(t, err)
 		for _, p := range protos {
-			fmt.Println("proto: ", p)
 			if p == "/foo" {
 				return true
 			}
@@ -815,4 +814,12 @@ func peerRecordFromEnvelope(t *testing.T, ev *record.Envelope) *peer.PeerRecord 
 		return nil
 	}
 	return peerRec
+}
+
+func TestNormalizeMultiaddr(t *testing.T) {
+	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	require.NoError(t, err)
+	defer h1.Close()
+
+	require.Equal(t, "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport", h1.NormalizeMultiaddr(ma.StringCast("/ip4/1.2.3.4/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")).String())
 }

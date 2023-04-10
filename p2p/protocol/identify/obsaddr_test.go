@@ -83,10 +83,14 @@ func (h *harness) observeInbound(observed ma.Multiaddr, observer peer.ID) networ
 }
 
 func newHarness(t *testing.T) harness {
+	return newHarnessWithMa(t, ma.StringCast("/ip4/127.0.0.1/tcp/10086"))
+}
+
+func newHarnessWithMa(t *testing.T, listenAddr ma.Multiaddr) harness {
 	mn := mocknet.New()
 	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
 	require.NoError(t, err)
-	h, err := mn.AddPeer(sk, ma.StringCast("/ip4/127.0.0.1/tcp/10086"))
+	h, err := mn.AddPeer(sk, listenAddr)
 	require.NoError(t, err)
 	oas, err := identify.NewObservedAddrManager(h)
 	require.NoError(t, err)
@@ -407,4 +411,26 @@ func TestEmitNATDeviceTypeCone(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("did not get Cone NAT event")
 	}
+}
+
+func TestObserveWebtransport(t *testing.T) {
+	listenAddr := ma.StringCast("/ip4/1.2.3.4/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")
+	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/webtransport")
+
+	harness := newHarnessWithMa(t, listenAddr)
+
+	pb1 := harness.add(ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/webtransport"))
+	pb2 := harness.add(ma.StringCast("/ip4/1.2.3.7/udp/1237/quic-v1/webtransport"))
+	pb3 := harness.add(ma.StringCast("/ip4/1.2.3.8/udp/1237/quic-v1/webtransport"))
+	pb4 := harness.add(ma.StringCast("/ip4/1.2.3.9/udp/1237/quic-v1/webtransport"))
+	pb5 := harness.add(ma.StringCast("/ip4/1.2.3.10/udp/1237/quic-v1/webtransport"))
+
+	harness.observe(observedAddr, pb1)
+	harness.observe(observedAddr, pb2)
+	harness.observe(observedAddr, pb3)
+	harness.observe(observedAddr, pb4)
+	harness.observe(observedAddr, pb5)
+
+	require.Equal(t, 1, len(harness.oas.Addrs()))
+	require.Equal(t, "/ip4/1.2.3.4/udp/1231/quic-v1/webtransport", harness.oas.Addrs()[0].String())
 }

@@ -7,15 +7,12 @@ import (
 	"strconv"
 
 	ma "github.com/multiformats/go-multiaddr"
-	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
 )
 
 var webtransportMA = ma.StringCast("/quic-v1/webtransport")
-
-var webtransportMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_QUIC_V1), mafmt.Base(ma.P_WEBTRANSPORT))
 
 func toWebtransportMultiaddr(na net.Addr) (ma.Multiaddr, error) {
 	addr, err := manet.FromNetAddr(na)
@@ -77,4 +74,34 @@ func addrComponentForCert(hash []byte) (ma.Multiaddr, error) {
 		return nil, err
 	}
 	return ma.NewComponent(ma.ProtocolWithCode(ma.P_CERTHASH).Name, certStr)
+}
+
+// IsWebtransportMultiaddr returns true if the given multiaddr is a well formed
+// webtransport multiaddr. Returns the number of certhashes found.
+func IsWebtransportMultiaddr(multiaddr ma.Multiaddr) (bool, int) {
+	const (
+		init = iota
+		foundUDP
+		foundQuicV1
+		foundWebTransport
+	)
+	state := init
+	certhashCount := 0
+
+	ma.ForEach(multiaddr, func(c ma.Component) bool {
+		if c.Protocol().Code == ma.P_QUIC_V1 && state == init {
+			state = foundUDP
+		}
+		if c.Protocol().Code == ma.P_QUIC_V1 && state == foundUDP {
+			state = foundQuicV1
+		}
+		if c.Protocol().Code == ma.P_WEBTRANSPORT && state == foundQuicV1 {
+			state = foundWebTransport
+		}
+		if c.Protocol().Code == ma.P_CERTHASH && state == foundWebTransport {
+			certhashCount++
+		}
+		return true
+	})
+	return state == foundWebTransport, certhashCount
 }

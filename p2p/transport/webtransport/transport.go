@@ -68,11 +68,12 @@ type transport struct {
 	rcmgr       network.ResourceManager
 	gater       connmgr.ConnectionGater
 
-	listenOnce    sync.Once
-	listenOnceErr error
-	certManager   *certManager
-	staticTLSConf *tls.Config
-	tlsClientConf *tls.Config
+	listenOnce       sync.Once
+	listenOnceErr    error
+	certManager      *certManager
+	certManagerReady chan struct{} // Closed when the certManager has been instantiated.
+	staticTLSConf    *tls.Config
+	tlsClientConf    *tls.Config
 
 	noise *noise.Transport
 
@@ -97,13 +98,14 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 		return nil, err
 	}
 	t := &transport{
-		pid:         id,
-		privKey:     key,
-		rcmgr:       rcmgr,
-		gater:       gater,
-		clock:       clock.New(),
-		connManager: connManager,
-		conns:       map[uint64]*conn{},
+		pid:              id,
+		privKey:          key,
+		rcmgr:            rcmgr,
+		gater:            gater,
+		clock:            clock.New(),
+		connManager:      connManager,
+		conns:            map[uint64]*conn{},
+		certManagerReady: make(chan struct{}),
 	}
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
@@ -286,33 +288,25 @@ func decodeCertHashesFromProtobuf(b [][]byte) ([]multihash.DecodedMultihash, err
 }
 
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
-	var numHashes int
-	ma.ForEach(addr, func(c ma.Component) bool {
-		if c.Protocol().Code == ma.P_CERTHASH {
-			numHashes++
-		}
-		return true
-	})
-	// Remove the /certhash components from the multiaddr.
-	// If the multiaddr doesn't contain any certhashes, the node might have a CA-signed certificate.
-	for i := 0; i < numHashes; i++ {
-		addr, _ = ma.SplitLast(addr)
-	}
-	return webtransportMatcher.Matches(addr)
+	ok, _ := IsWebtransportMultiaddr(addr)
+	return ok
 }
 
 func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
-	if !webtransportMatcher.Matches(laddr) {
+	isWebTransport, _ := IsWebtransportMultiaddr(laddr)
+	if !isWebTransport {
 		return nil, fmt.Errorf("cannot listen on non-WebTransport addr: %s", laddr)
 	}
 	if t.staticTLSConf == nil {
 		t.listenOnce.Do(func() {
 			t.certManager, t.listenOnceErr = newCertManager(t.privKey, t.clock)
+			close(t.certManagerReady)
 		})
 		if t.listenOnceErr != nil {
 			return nil, t.listenOnceErr
 		}
 	} else {
+		close(t.certManagerReady)
 		return nil, errors.New("static TLS config not supported on WebTransport")
 	}
 	tlsConf := t.staticTLSConf.Clone()
@@ -409,4 +403,12 @@ func (t *transport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]ma.Multiad
 		return nil, err
 	}
 	return []ma.Multiaddr{beforeQuicMA.Encapsulate(quicComponent).Encapsulate(sniComponent).Encapsulate(afterQuicMA)}, nil
+}
+
+func (t *transport) AddCertHashes(m ma.Multiaddr) ma.Multiaddr {
+	<-t.certManagerReady
+	if t.certManager == nil {
+		return m
+	}
+	return m.Encapsulate(t.certManager.AddrComponent())
 }

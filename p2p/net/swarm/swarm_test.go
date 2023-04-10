@@ -545,7 +545,7 @@ func TestListenCloseCount(t *testing.T) {
 	s := GenSwarm(t, OptDialOnly)
 	addrsToListen := []ma.Multiaddr{
 		ma.StringCast("/ip4/0.0.0.0/tcp/0"),
-		ma.StringCast("/ip4/0.0.0.0/udp/0/quic"),
+		ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
 	}
 
 	if err := s.Listen(addrsToListen...); err != nil {
@@ -553,9 +553,18 @@ func TestListenCloseCount(t *testing.T) {
 	}
 	listenedAddrs := s.ListenAddresses()
 	require.Equal(t, 2, len(listenedAddrs))
+	var addrToClose ma.Multiaddr
+	for _, addr := range listenedAddrs {
+		if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
+			// make a copy of the address to make sure the multiaddr comparison actually works
+			addrToClose = ma.StringCast(addr.String())
+		}
+	}
 
-	s.ListenClose(listenedAddrs...)
+	s.ListenClose(addrToClose)
 
 	remainingAddrs := s.ListenAddresses()
-	require.Equal(t, 0, len(remainingAddrs))
+	require.Equal(t, 1, len(remainingAddrs))
+	_, err := remainingAddrs[0].ValueForProtocol(ma.P_TCP)
+	require.NoError(t, err, "expected the TCP address to still be present")
 }

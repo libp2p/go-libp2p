@@ -2,6 +2,7 @@ package client_test
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ func TestReservationFailures(t *testing.T) {
 		name          string
 		streamHandler network.StreamHandler
 		err           string
+		status        pbv2.Status
 	}
 	testcases := []testcase{
 		{
@@ -36,7 +38,8 @@ func TestReservationFailures(t *testing.T) {
 					Type: pbv2.HopMessage_RESERVE.Enum(),
 				})
 			},
-			err: "unexpected relay response: not a status message",
+			err:    "unexpected relay response: not a status message",
+			status: pbv2.Status_MALFORMED_MESSAGE,
 		},
 		{
 			name: "unknown status",
@@ -47,7 +50,8 @@ func TestReservationFailures(t *testing.T) {
 					Status: &status,
 				})
 			},
-			err: "reservation failed",
+			err:    "reservation failed",
+			status: pbv2.Status(1337),
 		},
 		{
 			name: "invalid time",
@@ -60,7 +64,8 @@ func TestReservationFailures(t *testing.T) {
 					Reservation: &pbv2.Reservation{Expire: &expire},
 				})
 			},
-			err: "received reservation with expiration date in the past",
+			err:    "received reservation with expiration date in the past",
+			status: pbv2.Status_MALFORMED_MESSAGE,
 		},
 		{
 			name: "invalid voucher",
@@ -76,7 +81,8 @@ func TestReservationFailures(t *testing.T) {
 					},
 				})
 			},
-			err: "error consuming voucher envelope: failed when unmarshalling the envelope",
+			err:    "error consuming voucher envelope: failed when unmarshalling the envelope",
+			status: pbv2.Status_MALFORMED_MESSAGE,
 		},
 	}
 
@@ -98,6 +104,15 @@ func TestReservationFailures(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.err)
+				if tc.status != 0 {
+					var re client.ReservationError
+					if !errors.As(err, &re) {
+						t.Errorf("expected error to be of type %T", re)
+					}
+					if re.Status != tc.status {
+						t.Errorf("expected status %d got %d", tc.status, re.Status)
+					}
+				}
 			}
 		})
 	}

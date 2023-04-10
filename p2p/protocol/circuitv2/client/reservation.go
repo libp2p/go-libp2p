@@ -37,6 +37,27 @@ type Reservation struct {
 	Voucher *proto.ReservationVoucher
 }
 
+// ReservationError is the error returned on failure to reserve a slot in the relay
+type ReservationError struct {
+
+	// Status is the status returned by the relay for rejecting the reservation
+	// request. It is set to pbv2.Status_CONNECTION_FAILED on other failures
+	Status pbv2.Status
+
+	// Reason is the reason for reservation failure
+	Reason string
+
+	err error
+}
+
+func (re ReservationError) Error() string {
+	return fmt.Sprintf("reservation error: status: %s reason: %s err: %s", pbv2.Status_name[int32(re.Status)], re.Reason, re.err)
+}
+
+func (re ReservationError) Unwrap() error {
+	return re.err
+}
+
 // Reserve reserves a slot in a relay and returns the reservation information.
 // Clients must reserve slots in order for the relay to relay connections to them.
 func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, error) {
@@ -46,7 +67,7 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 
 	s, err := h.NewStream(ctx, ai.ID, proto.ProtoIDv2Hop)
 	if err != nil {
-		return nil, err
+		return nil, ReservationError{Status: pbv2.Status_CONNECTION_FAILED, Reason: "failed to open stream", err: err}
 	}
 	defer s.Close()
 
@@ -61,33 +82,39 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 
 	if err := wr.WriteMsg(&msg); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("error writing reservation message: %w", err)
+		return nil, ReservationError{Status: pbv2.Status_CONNECTION_FAILED, Reason: "error writing reservation message", err: err}
 	}
 
 	msg.Reset()
 
 	if err := rd.ReadMsg(&msg); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("error reading reservation response message: %w", err)
+		return nil, ReservationError{Status: pbv2.Status_CONNECTION_FAILED, Reason: "error reading reservation response message: %w", err: err}
 	}
 
 	if msg.GetType() != pbv2.HopMessage_STATUS {
-		return nil, fmt.Errorf("unexpected relay response: not a status message (%d)", msg.GetType())
+		return nil, ReservationError{
+			Status: pbv2.Status_MALFORMED_MESSAGE,
+			Reason: fmt.Sprintf("unexpected relay response: not a status message (%d)", msg.GetType()),
+			err:    err}
 	}
 
 	if status := msg.GetStatus(); status != pbv2.Status_OK {
-		return nil, fmt.Errorf("reservation failed: %s (%d)", pbv2.Status_name[int32(status)], status)
+		return nil, ReservationError{Status: msg.GetStatus(), Reason: "reservation failed"}
 	}
 
 	rsvp := msg.GetReservation()
 	if rsvp == nil {
-		return nil, fmt.Errorf("missing reservation info")
+		return nil, ReservationError{Status: pbv2.Status_MALFORMED_MESSAGE, Reason: "missing reservation info"}
 	}
 
 	result := &Reservation{}
 	result.Expiration = time.Unix(int64(rsvp.GetExpire()), 0)
 	if result.Expiration.Before(time.Now()) {
-		return nil, fmt.Errorf("received reservation with expiration date in the past: %s", result.Expiration)
+		return nil, ReservationError{
+			Status: pbv2.Status_MALFORMED_MESSAGE,
+			Reason: fmt.Sprintf("received reservation with expiration date in the past: %s", result.Expiration),
+		}
 	}
 
 	addrs := rsvp.GetAddrs()
@@ -105,12 +132,19 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 	if voucherBytes != nil {
 		_, rec, err := record.ConsumeEnvelope(voucherBytes, proto.RecordDomain)
 		if err != nil {
-			return nil, fmt.Errorf("error consuming voucher envelope: %w", err)
+			return nil, ReservationError{
+				Status: pbv2.Status_MALFORMED_MESSAGE,
+				Reason: fmt.Sprintf("error consuming voucher envelope: %s", err),
+				err:    err,
+			}
 		}
 
 		voucher, ok := rec.(*proto.ReservationVoucher)
 		if !ok {
-			return nil, fmt.Errorf("unexpected voucher record type: %+T", rec)
+			return nil, ReservationError{
+				Status: pbv2.Status_MALFORMED_MESSAGE,
+				Reason: fmt.Sprintf("unexpected voucher record type: %+T", rec),
+			}
 		}
 		result.Voucher = voucher
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
+	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
@@ -27,6 +28,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/libp2p/go-netroute"
@@ -760,7 +762,51 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 // Addrs returns listening addresses that are safe to announce to the network.
 // The output is the same as AllAddrs, but processed by AddrsFactory.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
-	return h.AddrsFactory(h.AllAddrs())
+	// This is a temporary workaround/hack that fixes #2233. Once we have a
+	// proper address pipeline, rework this. See the issue for more context.
+	type transportForListeninger interface {
+		TransportForListening(a ma.Multiaddr) transport.Transport
+	}
+	type addCertHasher interface {
+		AddCertHashes(m ma.Multiaddr) ma.Multiaddr
+	}
+
+	addrs := h.AddrsFactory(h.AllAddrs())
+
+	s, ok := h.Network().(transportForListeninger)
+	if !ok {
+		return addrs
+	}
+
+	// Copy addrs slice since we'll be modifying it.
+	addrsOld := addrs
+	addrs = make([]ma.Multiaddr, len(addrsOld))
+	copy(addrs, addrsOld)
+
+	for i, addr := range addrs {
+		if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n == 0 {
+			t := s.TransportForListening(addr)
+			tpt, ok := t.(addCertHasher)
+			if !ok {
+				continue
+			}
+			addrs[i] = tpt.AddCertHashes(addr)
+		}
+	}
+	return addrs
+}
+
+// NormalizeMultiaddr returns a multiaddr suitable for equality checks.
+// If the multiaddr is a webtransport component, it removes the certhashes.
+func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
+	if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n > 0 {
+		out := addr
+		for i := 0; i < n; i++ {
+			out, _ = ma.SplitLast(out)
+		}
+		return out
+	}
+	return addr
 }
 
 // mergeAddrs merges input address lists, leave only unique addresses

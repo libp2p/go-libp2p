@@ -356,6 +356,10 @@ func (oas *ObservedAddrManager) removeConn(conn network.Conn) {
 	oas.activeConnsMu.Unlock()
 }
 
+type normalizeMultiaddrer interface {
+	NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr
+}
+
 func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observed ma.Multiaddr) {
 	// First, determine if this observation is even worth keeping...
 
@@ -375,16 +379,40 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 		return
 	}
 
+	normalizer, canNormalize := oas.host.(normalizeMultiaddrer)
+
+	if canNormalize {
+		for i, a := range ifaceaddrs {
+			ifaceaddrs[i] = normalizer.NormalizeMultiaddr(a)
+		}
+	}
+
 	local := conn.LocalMultiaddr()
+	if canNormalize {
+		local = normalizer.NormalizeMultiaddr(local)
+	}
 	if !ma.Contains(ifaceaddrs, local) && !ma.Contains(oas.host.Network().ListenAddresses(), local) {
 		// not in our list
 		return
 	}
 
+	hostAddrs := oas.host.Addrs()
+	if canNormalize {
+		for i, a := range hostAddrs {
+			hostAddrs[i] = normalizer.NormalizeMultiaddr(a)
+		}
+	}
+	listenAddrs := oas.host.Network().ListenAddresses()
+	if canNormalize {
+		for i, a := range listenAddrs {
+			listenAddrs[i] = normalizer.NormalizeMultiaddr(a)
+		}
+	}
+
 	// We should reject the connection if the observation doesn't match the
 	// transports of one of our advertised addresses.
-	if !HasConsistentTransport(observed, oas.host.Addrs()) &&
-		!HasConsistentTransport(observed, oas.host.Network().ListenAddresses()) {
+	if !HasConsistentTransport(observed, hostAddrs) &&
+		!HasConsistentTransport(observed, listenAddrs) {
 		log.Debugw(
 			"observed multiaddr doesn't match the transports of any announced addresses",
 			"from", conn.RemoteMultiaddr(),

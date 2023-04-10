@@ -354,6 +354,12 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			h.Close()
 			return nil, fmt.Errorf("cannot enable autorelay; relay is not enabled")
 		}
+		if !cfg.DisableMetrics {
+			mt := autorelay.WithMetricsTracer(
+				autorelay.NewMetricsTracer(autorelay.WithRegisterer(cfg.PrometheusRegisterer)))
+			mtOpts := []autorelay.Option{mt}
+			cfg.AutoRelayOpts = append(mtOpts, cfg.AutoRelayOpts...)
+		}
 
 		ar, err = autorelay.NewAutoRelay(h, cfg.AutoRelayOpts...)
 		if err != nil {

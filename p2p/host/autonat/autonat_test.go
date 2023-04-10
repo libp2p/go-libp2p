@@ -42,6 +42,29 @@ func sayPrivateStreamHandler(t *testing.T) network.StreamHandler {
 	}
 }
 
+func makeAutoNATRefuseDialRequest(t *testing.T) host.Host {
+	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	h.SetStreamHandler(AutoNATProto, sayRefusedStreamHandler(t))
+	return h
+}
+
+func sayRefusedStreamHandler(t *testing.T) network.StreamHandler {
+	return func(s network.Stream) {
+		defer s.Close()
+		r := pbio.NewDelimitedReader(s, network.MessageSizeMax)
+		if err := r.ReadMsg(&pb.Message{}); err != nil {
+			t.Error(err)
+			return
+		}
+		w := pbio.NewDelimitedWriter(s)
+		res := pb.Message{
+			Type:         pb.Message_DIAL_RESPONSE.Enum(),
+			DialResponse: newDialResponseError(pb.Message_E_DIAL_REFUSED, "dial refused"),
+		}
+		w.WriteMsg(&res)
+	}
+}
+
 func makeAutoNATServicePublic(t *testing.T) host.Host {
 	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	h.SetStreamHandler(AutoNATProto, func(s network.Stream) {
@@ -154,7 +177,7 @@ func TestAutoNATPublictoPrivate(t *testing.T) {
 	// subscribe to AutoNat events
 	s, err := hc.EventBus().Subscribe(&event.EvtLocalReachabilityChanged{})
 	if err != nil {
-		t.Fatalf("failed to subscribe to event EvtLocalRoutabilityPublic, err=%s", err)
+		t.Fatalf("failed to subscribe to event EvtLocalReachabilityChanged, err=%s", err)
 	}
 
 	if status := an.Status(); status != network.ReachabilityUnknown {
@@ -193,6 +216,36 @@ func TestAutoNATIncomingEvents(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return an.Status() != network.ReachabilityUnknown
 	}, 500*time.Millisecond, 10*time.Millisecond, "Expected probe due to identification of autonat service")
+}
+
+func TestAutoNATDialRefused(t *testing.T) {
+	hs := makeAutoNATServicePublic(t)
+	defer hs.Close()
+	hc, an := makeAutoNAT(t, hs)
+	defer hc.Close()
+	defer an.Close()
+
+	// subscribe to AutoNat events
+	s, err := hc.EventBus().Subscribe(&event.EvtLocalReachabilityChanged{})
+	if err != nil {
+		t.Fatalf("failed to subscribe to event EvtLocalReachabilityChanged, err=%s", err)
+	}
+
+	if status := an.Status(); status != network.ReachabilityUnknown {
+		t.Fatalf("unexpected NAT status: %d", status)
+	}
+
+	connect(t, hs, hc)
+	expectEvent(t, s, network.ReachabilityPublic, 10*time.Second)
+
+	hs.SetStreamHandler(AutoNATProto, sayRefusedStreamHandler(t))
+	hps := makeAutoNATRefuseDialRequest(t)
+	connect(t, hps, hc)
+	identifyAsServer(hps, hc)
+
+	require.Never(t, func() bool {
+		return an.Status() != network.ReachabilityPublic
+	}, 3*time.Second, 1*time.Second, "Expected probe to not change reachability from public")
 }
 
 func TestAutoNATObservationRecording(t *testing.T) {

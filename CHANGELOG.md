@@ -1,25 +1,18 @@
 # Table Of Contents <!-- omit in toc -->
-- [v0.27.0 (unreleased)](#v0270-unreleased)
+- [v0.27.0](#v0270)
+- [v0.26.4](#v0264)
+- [v0.26.3](#v0263)
+- [v0.26.2](#v0262)
 - [v0.26.1](#v0261)
 - [v0.26.0](#v0260)
 - [v0.25.1](#v0251)
 - [v0.25.0](#v0250)
 
-# [v0.27.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.27.0) (unreleased)
-
-### Breaking Changes
-
-* The `LocalPrivateKey` method was removed from the `network.Conn` interface.
-
-# [v0.26.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.1)
-
-This patch release fixes two bugs:
-* A panic in WebTransport: https://github.com/quic-go/webtransport-go/releases/tag/v0.5.2
-* Incorrect accounting of accepted connections in the swarm metrics: [#2147](https://github.com/libp2p/go-libp2p/pull/2147)
-
-**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.26.0...v0.26.1
-
 # [v0.27.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.27.0)
+
+### Breaking Changes <!-- omit in toc -->
+
+* The `LocalPrivateKey` method was removed from the `network.Conn` interface. [#2144](https://github.com/libp2p/go-libp2p/pull/2144)
 
 ## 🔦 Highlights <!-- omit in toc -->
 
@@ -27,7 +20,43 @@ This patch release fixes two bugs:
 Since the last release, we've added metrics for:
 * [Relay Service](https://github.com/libp2p/go-libp2p/pull/2154): RequestStatus, RequestCounts, RejectionReasons for Reservation and Connection Requests,
 ConnectionDuration, BytesTransferred, Relay Service Status.
+* [Autorelay](https://github.com/libp2p/go-libp2p/pull/2185): relay finder status, reservation request outcomes, current reservations, candidate circuit v2 support, current candidates, relay addresses updated, num relay address, and scheduled work times
 
+## 🐞 Bugfixes <!-- omit in toc -->
+
+* autonat: don't change status on dial request refused [2225](https://github.com/libp2p/go-libp2p/pull/2225)
+* relaysvc: fix flaky TestReachabilityChangeEvent [2215](https://github.com/libp2p/go-libp2p/pull/2215)
+* basichost: prevent duplicate dials [2196](https://github.com/libp2p/go-libp2p/pull/2196)
+* websocket: don't set a WSS multiaddr for accepted unencrypted conns [2199](https://github.com/libp2p/go-libp2p/pull/2199)
+* identify: Fix IdentifyWait when Connected events happen out of order [2173](https://github.com/libp2p/go-libp2p/pull/2173)
+* circuitv2: cleanup relay service properly [2164](https://github.com/libp2p/go-libp2p/pull/2164)
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.26.4...v0.27.0
+
+# [v0.26.4](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.4)
+
+This patch release fixes a busy-looping happening inside AutoRelay on private nodes, see [2208](https://github.com/libp2p/go-libp2p/pull/2208).
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.26.0...v0.26.4
+
+# [v0.26.3](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.3)
+
+* rcmgr: fix JSON marshalling of ResourceManagerStat peer map [2156](https://github.com/libp2p/go-libp2p/pull/2156)
+* websocket: Don't limit message sizes in the websocket reader [2193](https://github.com/libp2p/go-libp2p/pull/2193)
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.26.0...v0.26.3
+
+# [v0.26.2](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.2)
+
+This patch release fixes two bugs:
+* A panic in WebTransport: https://github.com/quic-go/webtransport-go/releases/tag/v0.5.2
+* Incorrect accounting of accepted connections in the swarm metrics: [#2147](https://github.com/libp2p/go-libp2p/pull/2147)
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.26.0...v0.26.2
+
+# v0.26.1
+
+This version was retracted due to errors when publishing the release.
 
 # [v0.26.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.0)
 
