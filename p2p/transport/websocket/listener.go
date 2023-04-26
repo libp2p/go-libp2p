@@ -10,6 +10,7 @@ import (
 	"net/url"
 
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-reuseport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -44,7 +45,8 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, reuseportAvailable bool) (*listener, error) {
+	var nl net.Listener
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -58,11 +60,20 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	nl, err := net.Listen(lnet, lnaddr)
-	if err != nil {
-		return nil, err
+	if reuseportAvailable {
+		nl, err = reuseport.Listen(lnet, lnaddr)
+		if err != nil {
+			nl, err = net.Listen(lnet, lnaddr)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		nl, err = net.Listen(lnet, lnaddr)
+		if err != nil {
+			return nil, err
+		}
 	}
-
 	laddr, err := manet.FromNetAddr(nl.Addr())
 	if err != nil {
 		return nil, err

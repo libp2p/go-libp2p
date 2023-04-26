@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-reuseport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
@@ -55,6 +56,13 @@ func init() {
 
 type Option func(*WebsocketTransport) error
 
+func EnableReuseport() Option {
+	return func(tr *WebsocketTransport) error {
+		tr.reuseport = true
+		return nil
+	}
+}
+
 // WithTLSClientConfig sets a TLS client configuration on the WebSocket Dialer. Only
 // relevant for non-browser usages.
 //
@@ -82,6 +90,7 @@ type WebsocketTransport struct {
 
 	tlsClientConf *tls.Config
 	tlsConf       *tls.Config
+	reuseport     bool //reuseport is disabled by default, can be enabled by passing it as an option.
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -90,6 +99,7 @@ func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
+
 	t := &WebsocketTransport{
 		upgrader:      u,
 		rcmgr:         rcmgr,
@@ -267,7 +277,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 }
 
 func (t *WebsocketTransport) maListen(a ma.Multiaddr) (manet.Listener, error) {
-	l, err := newListener(a, t.tlsConf)
+	l, err := newListener(a, t.tlsConf, t.reuseport)
 	if err != nil {
 		return nil, err
 	}
@@ -281,4 +291,9 @@ func (t *WebsocketTransport) Listen(a ma.Multiaddr) (transport.Listener, error) 
 		return nil, err
 	}
 	return &transportListener{Listener: t.upgrader.UpgradeListener(t, malist)}, nil
+}
+
+// UseReuseport returns true if reuseport is enabled and available.
+func (t *WebsocketTransport) UseReuseport() bool {
+	return t.reuseport && reuseport.Available()
 }
