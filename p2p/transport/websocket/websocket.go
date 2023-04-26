@@ -203,10 +203,10 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 			var conn manet.Conn
 			var err error
 			if t.UseReuseport() {
-				conn, err = t.reuse.Dial(raddr)
+				conn, err = t.reuse.DialContext(ctx, raddr)
 			} else {
 				var d manet.Dialer
-				conn, err = d.Dial(raddr)
+				conn, err = d.DialContext(ctx, raddr)
 			}
 			if err != nil {
 				close(localAddrChan)

@@ -16,7 +16,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -552,15 +551,16 @@ func TestResolveMultiaddr(t *testing.T) {
 
 func TestListenerResusePort(t *testing.T) {
 	laddr := ma.StringCast("/ip4/127.0.0.1/tcp/5002/ws")
-	var wg sync.WaitGroup
+
 	var opts []Option
 	opts = append(opts, EnableReuseport())
 	_, u := newUpgrader(t)
 	tpt, err := New(u, &network.NullResourceManager{}, opts...)
 	require.NoError(t, err)
+	c := make(chan int)
+
 	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func(index int) {
+		go func(index int, ch chan int) {
 			l, err := tpt.maListen(laddr)
 			if err != nil {
 				fmt.Println("Failed to listen on websocket due to error ", err)
@@ -568,7 +568,10 @@ func TestListenerResusePort(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, lastComponent(t, l.Multiaddr()), wsComponent)
 			defer l.Close()
-			//Looping 4 times to ensure all 4 connections are handled.
+			c <- index
+			/* Looping 4 times to ensure all 4 connections are handled.
+			   Noticed that sometimes the distribution of connections was
+			   not clearly load-balanced leading to more than 2 being delivered to 1 listener. */
 			for j := 0; j < 4; j++ {
 				conn, err := l.Accept()
 				if err != nil {
@@ -582,13 +585,15 @@ func TestListenerResusePort(t *testing.T) {
 					t.Errorf("read %d bytes, expected 2", n)
 				}
 				require.NoError(t, err)
+				c <- j
 			}
-		}(i)
+		}(i, c)
 	}
-	time.Sleep(2 * time.Second)
-
+	for i := 0; i < 2; i++ {
+		<-c
+	}
 	for i := 0; i < 4; i++ {
-		go func(index int) {
+		go func(index int, ch chan int) {
 			c, err := tpt.maDial(context.Background(), laddr)
 			if err != nil {
 				t.Error(err)
@@ -596,7 +601,7 @@ func TestListenerResusePort(t *testing.T) {
 			}
 			require.NoError(t, err)
 			defer c.Close()
-			msg := fmt.Sprintf("Hello%d", index)
+			msg := fmt.Sprintf("Hello%d", i)
 			n, err := c.Write([]byte(msg))
 			if n != 6 {
 				t.Errorf("expected to write 0 bytes, wrote %d", n)
@@ -605,8 +610,9 @@ func TestListenerResusePort(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			time.Sleep(2 * time.Second)
-		}(i)
+		}(i, c)
 	}
-	time.Sleep(2 * time.Second)
+	for i := 0; i < 4; i++ {
+		<-c
+	}
 }
