@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-reuseport"
 
+	reusetransport "github.com/libp2p/go-libp2p/p2p/net/reuseport"
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -91,6 +92,7 @@ type WebsocketTransport struct {
 	tlsClientConf *tls.Config
 	tlsConf       *tls.Config
 	reuseport     bool //reuseport is disabled by default, can be enabled by passing it as an option.
+	reuse         reusetransport.Transport
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -198,7 +200,14 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := net.Dial(network, addr)
+			var conn manet.Conn
+			var err error
+			if t.UseReuseport() {
+				conn, err = t.reuse.Dial(raddr)
+			} else {
+				var d manet.Dialer
+				conn, err = d.Dial(raddr)
+			}
 			if err != nil {
 				close(localAddrChan)
 				return nil, err
