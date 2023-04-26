@@ -552,14 +552,12 @@ func TestResolveMultiaddr(t *testing.T) {
 
 func TestListenerResusePort(t *testing.T) {
 	laddr := ma.StringCast("/ip4/127.0.0.1/tcp/5002/ws")
-	//fmt.Println("Starting Reuse Port test.")
 	var wg sync.WaitGroup
 	var opts []Option
 	opts = append(opts, EnableReuseport())
 	_, u := newUpgrader(t)
 	tpt, err := New(u, &network.NullResourceManager{}, opts...)
 	require.NoError(t, err)
-	//fmt.Println("Invoking Go routines.")
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func(index int) {
@@ -570,14 +568,13 @@ func TestListenerResusePort(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, lastComponent(t, l.Multiaddr()), wsComponent)
 			defer l.Close()
-			//fmt.Println("Routine-", index, " Calling Accept...")
-			for j := 0; j < 2; j++ {
+			//Looping 4 times to ensure all 4 connections are handled.
+			for j := 0; j < 4; j++ {
 				conn, err := l.Accept()
 				if err != nil {
 					fmt.Println("Routine-", index, " Failed accepting connection due to error ", err)
 				}
 				require.NoError(t, err)
-				//fmt.Println("Routine-", index, " Accepting connection ", conn)
 				defer conn.Close()
 				buf := make([]byte, 6)
 				n, err := conn.Read(buf)
@@ -585,16 +582,13 @@ func TestListenerResusePort(t *testing.T) {
 					t.Errorf("read %d bytes, expected 2", n)
 				}
 				require.NoError(t, err)
-				fmt.Println("Read bytes:", buf)
 			}
 		}(i)
 	}
 	time.Sleep(2 * time.Second)
-	//fmt.Println("Invoking Connector Go routines.")
 
 	for i := 0; i < 4; i++ {
 		go func(index int) {
-			//fmt.Println("Routine-", index, " Initiating connection ")
 			c, err := tpt.maDial(context.Background(), laddr)
 			if err != nil {
 				t.Error(err)
@@ -602,7 +596,6 @@ func TestListenerResusePort(t *testing.T) {
 			}
 			require.NoError(t, err)
 			defer c.Close()
-			//fmt.Println("Sleeping for 2 seconds after connection intiation")
 			msg := fmt.Sprintf("Hello%d", index)
 			n, err := c.Write([]byte(msg))
 			if n != 6 {
