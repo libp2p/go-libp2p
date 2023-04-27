@@ -601,7 +601,7 @@ func TestListenerResusePort(t *testing.T) {
 			}
 			require.NoError(t, err)
 			defer c.Close()
-			msg := fmt.Sprintf("Hello%d", i)
+			msg := fmt.Sprintf("Hello%d", index)
 			n, err := c.Write([]byte(msg))
 			if n != 6 {
 				t.Errorf("expected to write 0 bytes, wrote %d", n)
