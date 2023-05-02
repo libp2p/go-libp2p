@@ -154,6 +154,7 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 
 	sconn, security, server, err := u.setupSecurity(ctx, conn, p, dir)
 	if err != nil {
+		log.Debugf("failed to negotiate security protocol %s\n", err.Error())
 		conn.Close()
 		return nil, fmt.Errorf("failed to negotiate security protocol: %w", err)
 	}
