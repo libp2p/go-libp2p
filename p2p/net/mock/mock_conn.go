@@ -86,20 +86,12 @@ func (c *conn) Close() error {
 	return nil
 }
 
-func (c *conn) teardown() error {
+func (c *conn) teardown() {
 	for _, s := range c.allStreams() {
 		s.Reset()
 	}
-	c.net.removeConn(c)
 
-	go func() {
-		c.notifLk.Lock()
-		defer c.notifLk.Unlock()
-		c.net.notifyAll(func(n network.Notifiee) {
-			n.Disconnected(c.net, c)
-		})
-	}()
-	return nil
+	c.net.removeConn(c)
 }
 
 func (c *conn) addStream(s *stream) {

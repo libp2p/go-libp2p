@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -598,5 +599,85 @@ func TestStreamsWithLatency(t *testing.T) {
 	tolerance := time.Second
 	if !within(delta, latency, tolerance) {
 		t.Fatalf("Expected write to take ~%s (+/- %s), but took %s", latency.String(), tolerance.String(), delta.String())
+	}
+}
+
+func TestEventBus(t *testing.T) {
+	const peers = 2
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	mn, err := FullMeshLinked(peers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mn.Close()
+
+	sub0, err := mn.Hosts()[0].EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub0.Close()
+	sub1, err := mn.Hosts()[1].EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub1.Close()
+
+	id0, id1 := mn.Hosts()[0].ID(), mn.Hosts()[1].ID()
+
+	_, err = mn.ConnectPeers(id0, id1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range make([]int, peers) {
+		select {
+		case evt := <-sub0.Out():
+			evnt := evt.(event.EvtPeerConnectednessChanged)
+			if evnt.Peer != id1 {
+				t.Fatal("wrong remote peer")
+			}
+			if evnt.Connectedness != network.Connected {
+				t.Fatal("wrong connectedness type")
+			}
+		case evt := <-sub1.Out():
+			evnt := evt.(event.EvtPeerConnectednessChanged)
+			if evnt.Peer != id0 {
+				t.Fatal("wrong remote peer")
+			}
+			if evnt.Connectedness != network.Connected {
+				t.Fatal("wrong connectedness type")
+			}
+		case <-ctx.Done():
+			t.Fatal("didn't get connectedness events in time")
+		}
+	}
+
+	err = mn.DisconnectPeers(id0, id1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range make([]int, peers) {
+		select {
+		case evt := <-sub0.Out():
+			evnt := evt.(event.EvtPeerConnectednessChanged)
+			if evnt.Peer != id1 {
+				t.Fatal("wrong remote peer")
+			}
+			if evnt.Connectedness != network.NotConnected {
+				t.Fatal("wrong connectedness type")
+			}
+		case evt := <-sub1.Out():
+			evnt := evt.(event.EvtPeerConnectednessChanged)
+			if evnt.Peer != id0 {
+				t.Fatal("wrong remote peer")
+			}
+			if evnt.Connectedness != network.NotConnected {
+				t.Fatal("wrong connectedness type")
+			}
+		case <-ctx.Done():
+			t.Fatal("didn't get connectedness events in time")
+		}
 	}
 }
