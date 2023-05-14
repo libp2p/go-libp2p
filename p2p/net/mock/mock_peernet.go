@@ -18,8 +18,8 @@ import (
 type peernet struct {
 	mocknet *mocknet // parent
 
-	peer peer.ID
-	ps   peerstore.Peerstore
+	peer    peer.ID
+	ps      peerstore.Peerstore
 	emitter event.Emitter
 
 	// conns are actual live connections between peers.
@@ -202,7 +202,7 @@ func (pn *peernet) addConn(c *conn) {
 	})
 
 	pn.emitter.Emit(event.EvtPeerConnectednessChanged{
-		Peer: c.remote,
+		Peer:          c.remote,
 		Connectedness: network.Connected,
 	})
 }
@@ -234,7 +234,7 @@ func (pn *peernet) removeConn(c *conn) {
 	}()
 
 	c.net.emitter.Emit(event.EvtPeerConnectednessChanged{
-		Peer: c.remote,
+		Peer:          c.remote,
 		Connectedness: network.NotConnected,
 	})
 }
