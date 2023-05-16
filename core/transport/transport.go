@@ -4,6 +4,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -93,6 +94,9 @@ type Listener interface {
 	Addr() net.Addr
 	Multiaddr() ma.Multiaddr
 }
+
+// ErrListenerClosed is returned by Listener.Accept when the listener is gracefully closed.
+var ErrListenerClosed = errors.New("listener closed")
 
 // TransportNetwork is an inet.Network with methods for managing transports.
 type TransportNetwork interface {

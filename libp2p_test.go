@@ -329,3 +329,30 @@ func TestTransportCustomAddressWebTransport(t *testing.T) {
 	require.Equal(t, secondToLastComp.Protocol().Code, ma.P_CERTHASH)
 	require.True(t, restOfAddr.Equal(customAddr))
 }
+
+// TestTransportCustomAddressWebTransportDoesNotStall tests that if the user
+// manually returns a webtransport address from AddrsFactory, but we aren't
+// listening on a webtranport address, we don't stall.
+func TestTransportCustomAddressWebTransportDoesNotStall(t *testing.T) {
+	customAddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := New(
+		Transport(webtransport.New),
+		// Purposely not listening on the custom address so that we make sure the node doesn't stall if it fails to add a certhash to the multiaddr
+		// ListenAddrs(customAddr),
+		DisableRelay(),
+		AddrsFactory(func(multiaddrs []ma.Multiaddr) []ma.Multiaddr {
+			return []ma.Multiaddr{customAddr}
+		}),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+	addrs := h.Addrs()
+	require.Len(t, addrs, 1)
+	_, lastComp := ma.SplitLast(addrs[0])
+	require.NotEqual(t, lastComp.Protocol().Code, ma.P_CERTHASH)
+	// We did not add the certhash to the multiaddr
+	require.Equal(t, addrs[0], customAddr)
+}

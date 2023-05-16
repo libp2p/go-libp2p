@@ -8,7 +8,7 @@ on:
 jobs:
   run-multidim-interop:
     name: Run multidimensional interoperability tests
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJSON(vars['INTEROP_TEST_RUNNER_UBUNTU'] || '"ubuntu-22.04"') }}
     steps:
       - uses: actions/checkout@v3
       - name: Build image

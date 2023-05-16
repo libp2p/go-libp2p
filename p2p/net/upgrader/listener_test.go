@@ -158,7 +158,7 @@ func TestListenerClose(t *testing.T) {
 	require.NoError(ln.Close())
 	err := <-errCh
 	require.Error(err)
-	require.Contains(err.Error(), "use of closed network connection")
+	require.Equal(err, transport.ErrListenerClosed)
 
 	// doesn't accept new connections when it is closed
 	_, err = dial(t, u, ln.Multiaddr(), peer.ID("1"), &network.NullScope{})

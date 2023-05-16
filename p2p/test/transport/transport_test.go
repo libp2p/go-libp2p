@@ -13,6 +13,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
+	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -30,8 +31,9 @@ type TransportTestCase struct {
 }
 
 type TransportTestCaseOpts struct {
-	NoListen bool
-	NoRcmgr  bool
+	NoListen  bool
+	NoRcmgr   bool
+	ConnGater connmgr.ConnectionGater
 }
 
 func transformOpts(opts TransportTestCaseOpts) []config.Option {
@@ -39,6 +41,9 @@ func transformOpts(opts TransportTestCaseOpts) []config.Option {
 
 	if opts.NoRcmgr {
 		libp2pOpts = append(libp2pOpts, libp2p.ResourceManager(&network.NullResourceManager{}))
+	}
+	if opts.ConnGater != nil {
+		libp2pOpts = append(libp2pOpts, libp2p.ConnectionGater(opts.ConnGater))
 	}
 	return libp2pOpts
 }

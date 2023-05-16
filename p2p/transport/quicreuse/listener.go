@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
 )
@@ -134,6 +136,9 @@ func (l *connListener) Run() error {
 	for {
 		conn, err := l.l.Accept(context.Background())
 		if err != nil {
+			if errors.Is(err, quic.ErrServerClosed) || strings.Contains(err.Error(), "use of closed network connection") {
+				return transport.ErrListenerClosed
+			}
 			return err
 		}
 		proto := conn.ConnectionState().TLS.NegotiatedProtocol
@@ -192,10 +197,10 @@ func (l *listener) Accept(ctx context.Context) (quic.Connection, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-l.acceptLoopRunning:
-		return nil, errors.New("accept goroutine finished")
+		return nil, transport.ErrListenerClosed
 	case c, ok := <-l.queue:
 		if !ok {
-			return nil, errors.New("listener closed")
+			return nil, transport.ErrListenerClosed
 		}
 		return c, nil
 	}

@@ -1,21 +1,16 @@
 package websocket
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
-	"net/url"
 
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-reuseport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
-
-	ws "nhooyr.io/websocket"
 )
 
 type listener struct {
@@ -28,7 +23,7 @@ type listener struct {
 	laddr ma.Multiaddr
 
 	closed   chan struct{}
-	incoming chan net.Conn
+	incoming chan *Conn
 }
 
 func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
@@ -90,7 +85,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, reuseportAvailable bool) (
 	ln := &listener{
 		nl:       nl,
 		laddr:    parsed.toMultiaddr(),
-		incoming: make(chan net.Conn),
+		incoming: make(chan *Conn),
 		closed:   make(chan struct{}),
 	}
 	ln.server = http.Server{Handler: ln}
@@ -111,38 +106,16 @@ func (l *listener) serve() {
 }
 
 func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	scheme := "ws"
-	if l.isWss {
-		scheme = "wss"
-	}
-
-	c, err := ws.Accept(w, r, &ws.AcceptOptions{
-		// Allow requests from *all* origins.
-		InsecureSkipVerify: true,
-	})
+	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// The upgrader writes a response for us.
 		return
 	}
 
-	// Set an arbitrarily large read limit since we don't actually want to limit the message size here.
-	// See https://github.com/nhooyr/websocket/issues/382 for details.
-	c.SetReadLimit(math.MaxInt64 - 1) // -1 because the library adds a byte for the fin frame
-
 	select {
-	case l.incoming <- conn{
-		Conn: ws.NetConn(context.Background(), c, ws.MessageBinary),
-		localAddr: addrWrapper{&url.URL{
-			Host:   r.Context().Value(http.LocalAddrContextKey).(net.Addr).String(),
-			Scheme: scheme,
-		}},
-		remoteAddr: addrWrapper{&url.URL{
-			Host:   r.RemoteAddr,
-			Scheme: scheme,
-		}},
-	}:
+	case l.incoming <- NewConn(c, l.isWss):
 	case <-l.closed:
-		c.Close(ws.StatusNormalClosure, "closed")
+		c.Close()
 	}
 	// The connection has been hijacked, it's safe to return.
 }
@@ -151,7 +124,7 @@ func (l *listener) Accept() (manet.Conn, error) {
 	select {
 	case c, ok := <-l.incoming:
 		if !ok {
-			return nil, fmt.Errorf("listener is closed")
+			return nil, transport.ErrListenerClosed
 		}
 
 		mnc, err := manet.WrapNetConn(c)
@@ -162,7 +135,7 @@ func (l *listener) Accept() (manet.Conn, error) {
 
 		return mnc, nil
 	case <-l.closed:
-		return nil, fmt.Errorf("listener is closed")
+		return nil, transport.ErrListenerClosed
 	}
 }
 

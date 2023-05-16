@@ -12,6 +12,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/transport"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -25,7 +26,7 @@ func checkClosed(t *testing.T, cm *ConnManager) {
 			continue
 		}
 		r.mutex.Lock()
-		for _, conn := range r.global {
+		for _, conn := range r.globalListeners {
 			require.Zero(t, conn.GetCount())
 		}
 		for _, conns := range r.unicast {
@@ -152,8 +153,7 @@ func TestAcceptErrorGetCleanedUp(t *testing.T) {
 	require.NoError(t, err)
 	defer l.Close()
 	_, err = l.Accept(context.Background())
-	require.EqualError(t, err, "accept goroutine finished")
-
+	require.ErrorIs(t, err, transport.ErrListenerClosed)
 }
 
 // The connection passed to quic-go needs to be type-assertable to a net.UDPConn,

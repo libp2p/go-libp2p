@@ -495,7 +495,7 @@ func TestWriteZero(t *testing.T) {
 		}
 		defer c.Close()
 
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 100; i++ {
 			n, err := c.Write(msg)
 			if n != 0 {
 				t.Errorf("expected to write 0 bytes, wrote %d", n)
@@ -512,7 +512,7 @@ func TestWriteZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	buf := make([]byte, 1)
+	buf := make([]byte, 100)
 	n, err := c.Read(buf)
 	if n != 0 {
 		t.Errorf("read %d bytes, expected 0", n)

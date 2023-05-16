@@ -18,8 +18,6 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-var errClosed = errors.New("closed")
-
 const queueLen = 16
 const handshakeTimeout = 10 * time.Second
 
@@ -155,7 +153,7 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 func (l *listener) Accept() (tpt.CapableConn, error) {
 	select {
 	case <-l.ctx.Done():
-		return nil, errClosed
+		return nil, tpt.ErrListenerClosed
 	case c := <-l.queue:
 		return c, nil
 	}

@@ -45,7 +45,9 @@ type transport struct {
 
 	holePunchingMx sync.Mutex
 	holePunching   map[holePunchKey]*activeHolePunch
-	rnd            rand.Rand
+
+	rndMx sync.Mutex
+	rnd   rand.Rand
 
 	connMx sync.Mutex
 	conns  map[quic.Connection]*conn
@@ -218,7 +220,10 @@ func (t *transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID
 	var punchErr error
 loop:
 	for i := 0; ; i++ {
-		if _, err := t.rnd.Read(payload); err != nil {
+		t.rndMx.Lock()
+		_, err := t.rnd.Read(payload)
+		t.rndMx.Unlock()
+		if err != nil {
 			punchErr = err
 			break
 		}

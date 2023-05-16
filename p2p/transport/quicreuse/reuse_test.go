@@ -21,7 +21,12 @@ func (c *reuseConn) GetCount() int {
 
 func closeAllConns(reuse *reuse) {
 	reuse.mutex.Lock()
-	for _, conn := range reuse.global {
+	for _, conn := range reuse.globalListeners {
+		for conn.GetCount() > 0 {
+			conn.DecreaseCount()
+		}
+	}
+	for _, conn := range reuse.globalDialers {
 		for conn.GetCount() > 0 {
 			conn.DecreaseCount()
 		}
@@ -110,6 +115,52 @@ func TestReuseConnectionWhenDialing(t *testing.T) {
 	require.Equal(t, conn.GetCount(), 2)
 }
 
+func TestReuseConnectionWhenListening(t *testing.T) {
+	reuse := newReuse()
+	cleanup(t, reuse)
+
+	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
+	require.NoError(t, err)
+	conn, err := reuse.Dial("udp4", raddr)
+	require.NoError(t, err)
+	laddr := &net.UDPAddr{IP: net.IPv4zero, Port: conn.UDPConn.LocalAddr().(*net.UDPAddr).Port}
+	lconn, err := reuse.Listen("udp4", laddr)
+	require.NoError(t, err)
+	require.Equal(t, lconn.GetCount(), 2)
+	require.Equal(t, conn.GetCount(), 2)
+}
+
+func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
+	reuse := newReuse()
+	cleanup(t, reuse)
+
+	// dial any address
+	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
+	require.NoError(t, err)
+	rconn, err := reuse.Dial("udp4", raddr)
+	require.NoError(t, err)
+
+	// open a listener
+	laddr := &net.UDPAddr{IP: net.IPv4zero, Port: 1234}
+	lconn, err := reuse.Listen("udp4", laddr)
+	require.NoError(t, err)
+
+	// new dials should go via the listener connection
+	raddr, err = net.ResolveUDPAddr("udp4", "1.1.1.1:1235")
+	require.NoError(t, err)
+	conn, err := reuse.Dial("udp4", raddr)
+	require.NoError(t, err)
+	require.Equal(t, conn, lconn)
+	require.Equal(t, conn.GetCount(), 2)
+
+	// a listener on an unspecified port should reuse the dialer
+	laddr2 := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
+	lconn2, err := reuse.Listen("udp4", laddr2)
+	require.NoError(t, err)
+	require.Equal(t, lconn2, rconn)
+	require.Equal(t, lconn2.GetCount(), 2)
+}
+
 func TestReuseListenOnSpecificInterface(t *testing.T) {
 	if platformHasRoutingTables() {
 		t.Skip("this test only works on platforms that support routing tables")
@@ -157,10 +208,16 @@ func TestReuseGarbageCollect(t *testing.T) {
 	numGlobals := func() int {
 		reuse.mutex.Lock()
 		defer reuse.mutex.Unlock()
-		return len(reuse.global)
+		return len(reuse.globalListeners) + len(reuse.globalDialers)
 	}
 
-	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:0")
+	raddr, err := net.ResolveUDPAddr("udp4", "1.2.3.4:1234")
+	require.NoError(t, err)
+	dconn, err := reuse.Dial("udp4", raddr)
+	require.NoError(t, err)
+	require.Equal(t, dconn.GetCount(), 1)
+
+	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:1234")
 	require.NoError(t, err)
 	lconn, err := reuse.Listen("udp4", addr)
 	require.NoError(t, err)
@@ -168,13 +225,14 @@ func TestReuseGarbageCollect(t *testing.T) {
 
 	closeTime := time.Now()
 	lconn.DecreaseCount()
+	dconn.DecreaseCount()
 
 	for {
 		num := numGlobals()
 		if closeTime.Add(maxUnusedDuration).Before(time.Now()) {
 			break
 		}
-		require.Equal(t, num, 1)
+		require.Equal(t, num, 2)
 		time.Sleep(2 * time.Millisecond)
 	}
 	require.Eventually(t, func() bool { return numGlobals() == 0 }, 4*garbageCollectInterval, 10*time.Millisecond)

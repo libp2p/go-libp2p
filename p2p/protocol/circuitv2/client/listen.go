@@ -1,9 +1,9 @@
 package client
 
 import (
-	"errors"
 	"net"
 
+	"github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -33,7 +33,7 @@ func (l *Listener) Accept() (manet.Conn, error) {
 			return evt.conn, nil
 
 		case <-l.ctx.Done():
-			return nil, errors.New("circuit v2 client closed")
+			return nil, transport.ErrListenerClosed
 		}
 	}
 }

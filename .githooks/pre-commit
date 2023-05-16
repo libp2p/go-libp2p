@@ -1,0 +1,13 @@
+#!/bin/bash
+
+pushd ./test-plans > /dev/null
+go mod tidy
+if [[ -n $(git diff --name-only -- "go.mod" "go.sum") ]]; then
+  echo "go.mod / go.sum in test-plans not tidied"
+  errored=true
+fi
+popd > /dev/null
+
+if [ "$errored" = true ]; then
+	exit 1
+fi

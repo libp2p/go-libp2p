@@ -3,6 +3,7 @@ package upgrader
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -164,6 +165,9 @@ func (l *listener) Accept() (transport.CapableConn, error) {
 		if !c.IsClosed() {
 			return c, nil
 		}
+	}
+	if strings.Contains(l.err.Error(), "use of closed network connection") {
+		return nil, transport.ErrListenerClosed
 	}
 	return nil, l.err
 }

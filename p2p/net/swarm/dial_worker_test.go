@@ -24,6 +24,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -341,4 +342,69 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 
 	close(reqch)
 	worker.wg.Wait()
+}
+
+func TestDialWorkerLoopAddrDedup(t *testing.T) {
+	s1 := makeSwarm(t)
+	s2 := makeSwarm(t)
+	defer s1.Close()
+	defer s2.Close()
+	t1 := ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 10000))
+	t2 := ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 10000))
+
+	// acceptAndClose accepts a connection and closes it
+	acceptAndClose := func(a ma.Multiaddr, ch chan struct{}, closech chan struct{}) {
+		list, err := manet.Listen(a)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		go func() {
+			ch <- struct{}{}
+			for {
+				conn, err := list.Accept()
+				if err != nil {
+					return
+				}
+				ch <- struct{}{}
+				conn.Close()
+			}
+		}()
+		<-closech
+		list.Close()
+	}
+	ch := make(chan struct{}, 1)
+	closeCh := make(chan struct{})
+	go acceptAndClose(t1, ch, closeCh)
+	defer close(closeCh)
+	<-ch // the routine has started listening on addr
+
+	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{t1}, peerstore.PermanentAddrTTL)
+
+	reqch := make(chan dialRequest)
+	resch := make(chan dialResponse, 2)
+
+	worker := newDialWorker(s1, s2.LocalPeer(), reqch)
+	go worker.loop()
+	defer worker.wg.Wait()
+	defer close(reqch)
+
+	reqch <- dialRequest{ctx: context.Background(), resch: resch}
+	<-ch
+	<-resch
+	// Need to clear backoff otherwise the dial attempt would not be made
+	s1.Backoff().Clear(s2.LocalPeer())
+
+	s1.Peerstore().ClearAddrs(s2.LocalPeer())
+	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{t2}, peerstore.PermanentAddrTTL)
+
+	reqch <- dialRequest{ctx: context.Background(), resch: resch}
+	select {
+	case r := <-resch:
+		require.Error(t, r.err)
+	case <-ch:
+		t.Errorf("didn't expect a connection attempt")
+	case <-time.After(5 * time.Second):
+		t.Errorf("expected a fail response")
+	}
 }

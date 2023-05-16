@@ -52,7 +52,6 @@ import (
 // DisconnectReasons is that we require stream multiplexing capability to open a
 // control protocol stream to transmit the message.
 type ConnectionGater interface {
-
 	// InterceptPeerDial tests whether we're permitted to Dial the specified peer.
 	//
 	// This is called by the network.Network implementation when dialling a peer.
