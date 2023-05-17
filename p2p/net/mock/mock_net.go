@@ -64,6 +64,13 @@ func (mn *mocknet) Close() error {
 }
 
 func (mn *mocknet) GenPeer() (host.Host, error) {
+	return mn.GenPeerWithOptions(PeerOptions{})
+}
+
+func (mn *mocknet) GenPeerWithOptions(opts PeerOptions) (host.Host, error) {
+	if err := mn.addDefaults(&opts); err != nil {
+		return nil, err
+	}
 	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
 	if err != nil {
 		return nil, err
@@ -83,7 +90,20 @@ func (mn *mocknet) GenPeer() (host.Host, error) {
 		return nil, fmt.Errorf("failed to create test multiaddr: %s", err)
 	}
 
-	h, err := mn.AddPeer(sk, a)
+	var ps peerstore.Peerstore
+	if opts.ps == nil {
+		ps, err = pstoremem.NewPeerstore()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		ps = opts.ps
+	}
+	p, err := mn.updatePeerstore(sk, a, ps)
+	if err != nil {
+		return nil, err
+	}
+	h, err := mn.AddPeerWithOptions(p, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -92,36 +112,39 @@ func (mn *mocknet) GenPeer() (host.Host, error) {
 }
 
 func (mn *mocknet) AddPeer(k ic.PrivKey, a ma.Multiaddr) (host.Host, error) {
-	p, err := peer.IDFromPublicKey(k.GetPublic())
-	if err != nil {
-		return nil, err
-	}
-
 	ps, err := pstoremem.NewPeerstore()
 	if err != nil {
 		return nil, err
 	}
-	ps.AddAddr(p, a, peerstore.PermanentAddrTTL)
-	ps.AddPrivKey(p, k)
-	ps.AddPubKey(p, k.GetPublic())
+	p, err := mn.updatePeerstore(k, a, ps)
+	if err != nil {
+		return nil, err
+	}
 
 	return mn.AddPeerWithPeerstore(p, ps)
 }
 
 func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host.Host, error) {
+	return mn.AddPeerWithOptions(p, PeerOptions{ps: ps})
+}
+
+func (mn *mocknet) AddPeerWithOptions(p peer.ID, opts PeerOptions) (host.Host, error) {
 	bus := eventbus.NewBus()
-	n, err := newPeernet(mn, p, ps, bus)
+	if err := mn.addDefaults(&opts); err != nil {
+		return nil, err
+	}
+	n, err := newPeernet(mn, p, opts, bus)
 	if err != nil {
 		return nil, err
 	}
 
-	opts := &bhost.HostOpts{
+	hostOpts := &bhost.HostOpts{
 		NegotiationTimeout:      -1,
 		DisableSignedPeerRecord: true,
 		EventBus:                bus,
 	}
 
-	h, err := bhost.NewHost(n, opts)
+	h, err := bhost.NewHost(n, hostOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +155,35 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host
 	mn.hosts[n.peer] = h
 	mn.Unlock()
 	return h, nil
+}
+
+func (mn *mocknet) addDefaults(opts *PeerOptions) error {
+	if opts.ps == nil {
+		ps, err := pstoremem.NewPeerstore()
+		if err != nil {
+			return err
+		}
+		opts.ps = ps
+	}
+	return nil
+}
+
+func (mn *mocknet) updatePeerstore(k ic.PrivKey, a ma.Multiaddr, ps peerstore.Peerstore) (peer.ID, error) {
+	p, err := peer.IDFromPublicKey(k.GetPublic())
+	if err != nil {
+		return "", err
+	}
+
+	ps.AddAddr(p, a, peerstore.PermanentAddrTTL)
+	err = ps.AddPrivKey(p, k)
+	if err != nil {
+		return "", err
+	}
+	err = ps.AddPubKey(p, k.GetPublic())
+	if err != nil {
+		return "", err
+	}
+	return p, nil
 }
 
 func (mn *mocknet) Peers() []peer.ID {
