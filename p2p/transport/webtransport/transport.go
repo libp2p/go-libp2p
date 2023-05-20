@@ -233,6 +233,7 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	if err != nil {
 		return nil, err
 	}
+	defer str.Close()
 
 	// Now run a Noise handshake (using early data) and get all the certificate hashes from the server.
 	// We will verify that the certhashes we used to dial is a subset of the certhashes we received from the server.
@@ -262,6 +263,9 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	}
 	c, err := n.SecureOutbound(ctx, &webtransportStream{Stream: str, wsess: sess}, p)
 	if err != nil {
+		return nil, err
+	}
+	if err = c.Close(); err != nil {
 		return nil, err
 	}
 	// The Noise handshake _should_ guarantee that our verification callback is called.
