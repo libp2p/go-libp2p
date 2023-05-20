@@ -1,3 +1,5 @@
+//go:build !js
+
 package websocket
 
 import (
@@ -28,7 +30,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -62,21 +63,6 @@ func newInsecureMuxer(t *testing.T) (peer.ID, []sec.SecureTransport) {
 	id, err := peer.IDFromPrivateKey(priv)
 	require.NoError(t, err)
 	return id, []sec.SecureTransport{insecure.NewWithIdentity(insecure.ID, id, priv)}
-}
-
-func newSecureMuxer(t *testing.T) (peer.ID, []sec.SecureTransport) {
-	t.Helper()
-	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := peer.IDFromPrivateKey(priv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	noiseTpt, err := noise.New(noise.ID, priv, nil)
-	require.NoError(t, err)
-	return id, []sec.SecureTransport{noiseTpt}
 }
 
 func lastComponent(t *testing.T, a ma.Multiaddr) ma.Multiaddr {

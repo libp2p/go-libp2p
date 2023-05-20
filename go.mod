@@ -5,6 +5,7 @@ go 1.19
 retract v0.26.1 // Tag was applied incorrectly due to a bug in the release workflow.
 
 require (
+	github.com/agnivade/wasmbrowsertest v0.7.0
 	github.com/benbjohnson/clock v1.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0
@@ -49,8 +50,8 @@ require (
 	github.com/quic-go/quic-go v0.33.0
 	github.com/quic-go/webtransport-go v0.5.3
 	github.com/raulk/go-watchdog v1.3.0
-	github.com/stretchr/testify v1.8.2
-	go.uber.org/fx v1.19.2
+	github.com/stretchr/testify v1.8.1
+	go.uber.org/fx v1.19.2-0.20230112190306-5e90c3828924
 	go.uber.org/goleak v1.1.12
 	golang.org/x/crypto v0.7.0
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
@@ -65,6 +66,9 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/chromedp/cdproto v0.0.0-20221108233440-fad8339618ab // indirect
+	github.com/chromedp/chromedp v0.8.6 // indirect
+	github.com/chromedp/sysutil v1.0.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -75,7 +79,11 @@ require (
 	github.com/elastic/gosigar v0.14.2 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
+	github.com/go-interpreter/wagon v0.6.0 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
+	github.com/gobwas/httphead v0.1.0 // indirect
+	github.com/gobwas/pool v0.2.1 // indirect
+	github.com/gobwas/ws v1.1.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
@@ -85,9 +93,11 @@ require (
 	github.com/huin/goupnp v1.1.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.4 // indirect
 	github.com/koron/go-ssdp v0.0.4 // indirect
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.53 // indirect
