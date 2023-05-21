@@ -154,7 +154,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_identify_identify_pushes_triggered_total[$__rate_interval])",
+          "expr": "increase(libp2p_identify_identify_pushes_triggered_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{trigger}}",
           "range": true,
           "refId": "A"
@@ -246,7 +246,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(libp2p_identify_identify_total[$__rate_interval])",
+          "expr": "rate(libp2p_identify_identify_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{dir}}",
           "range": true,
           "refId": "A"
@@ -326,7 +326,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "libp2p_identify_addrs_count",
+          "expr": "libp2p_identify_addrs_count{instance=~\"$instance\"}",
           "legendFormat": "address count",
           "range": true,
           "refId": "A"
@@ -404,7 +404,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "libp2p_identify_protocols_count",
+          "expr": "libp2p_identify_protocols_count{instance=~\"$instance\"}",
           "legendFormat": "protocols count",
           "range": true,
           "refId": "A"
@@ -496,7 +496,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(libp2p_identify_identify_push_total[$__rate_interval])",
+          "expr": "rate(libp2p_identify_identify_push_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{dir}}",
           "range": true,
           "refId": "A"
@@ -604,7 +604,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum(rate(libp2p_identify_addrs_received_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(libp2p_identify_addrs_received_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "50th percentile",
           "range": true,
           "refId": "A"
@@ -615,7 +615,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum(rate(libp2p_identify_addrs_received_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(libp2p_identify_addrs_received_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "hide": false,
           "legendFormat": "90th percentile",
           "range": true,
@@ -627,7 +627,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(libp2p_identify_addrs_received_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(libp2p_identify_addrs_received_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "hide": false,
           "legendFormat": "99 percentile",
           "range": true,
@@ -736,7 +736,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum(rate(libp2p_identify_protocols_received_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(libp2p_identify_protocols_received_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "legendFormat": "50th percentile",
           "range": true,
           "refId": "A"
@@ -747,7 +747,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum(rate(libp2p_identify_protocols_received_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(libp2p_identify_protocols_received_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "hide": false,
           "legendFormat": "90th percentile",
           "range": true,
@@ -759,7 +759,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(libp2p_identify_protocols_received_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(libp2p_identify_protocols_received_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "hide": false,
           "legendFormat": "99th percentile",
           "range": true,
@@ -823,7 +823,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_identify_conn_push_support_total[$__rate_interval])",
+          "expr": "increase(libp2p_identify_conn_push_support_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{support}}",
           "range": true,
           "refId": "A"
@@ -837,7 +837,29 @@
   "style": "dark",
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(up, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-15m",

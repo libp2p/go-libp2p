@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -108,7 +109,8 @@ func (mn *mocknet) AddPeer(k ic.PrivKey, a ma.Multiaddr) (host.Host, error) {
 }
 
 func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host.Host, error) {
-	n, err := newPeernet(mn, p, ps)
+	bus := eventbus.NewBus()
+	n, err := newPeernet(mn, p, ps, bus)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +118,7 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host
 	opts := &bhost.HostOpts{
 		NegotiationTimeout:      -1,
 		DisableSignedPeerRecord: true,
+		EventBus:                bus,
 	}
 
 	h, err := bhost.NewHost(n, opts)

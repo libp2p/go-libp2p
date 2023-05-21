@@ -157,7 +157,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "libp2p_relaysvc_status",
+          "expr": "libp2p_relaysvc_status{instance=~\"$instance\"}",
           "legendFormat": "active",
           "range": true,
           "refId": "A"
@@ -242,7 +242,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "libp2p_relaysvc_reservations_total{type=\"opened\"} - ignoring(type) libp2p_relaysvc_reservations_total{type=\"closed\"}",
+          "expr": "libp2p_relaysvc_reservations_total{type=\"opened\",instance=~\"$instance\"} - ignoring(type) libp2p_relaysvc_reservations_total{type=\"closed\",instance=~\"$instance\"}",
           "legendFormat": "active reservations",
           "range": true,
           "refId": "A"
@@ -365,7 +365,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_relaysvc_reservation_request_response_status_total[$__rate_interval])",
+          "expr": "increase(libp2p_relaysvc_reservation_request_response_status_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{status}}",
           "range": true,
           "refId": "A"
@@ -457,7 +457,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_relaysvc_reservations_total{type=\"opened\"}[$__rate_interval])",
+          "expr": "increase(libp2p_relaysvc_reservations_total{type=\"opened\",instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "new",
           "range": true,
           "refId": "A"
@@ -468,7 +468,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_relaysvc_reservations_total{type=\"renewed\"}[$__rate_interval])",
+          "expr": "increase(libp2p_relaysvc_reservations_total{type=\"renewed\",instance=~\"$instance\"}[$__rate_interval])",
           "hide": false,
           "legendFormat": "renewed",
           "range": true,
@@ -562,7 +562,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_relaysvc_reservation_rejections_total[$__rate_interval])",
+          "expr": "increase(libp2p_relaysvc_reservation_rejections_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{reason}}",
           "range": true,
           "refId": "A"
@@ -642,7 +642,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_relaysvc_data_transferred_bytes_total[$__range])",
+          "expr": "increase(libp2p_relaysvc_data_transferred_bytes_total{instance=~\"$instance\"}[$__range])",
           "legendFormat": "data transferred",
           "range": true,
           "refId": "A"
@@ -715,7 +715,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "libp2p_relaysvc_connections_total{type=\"opened\"} - ignoring(type) libp2p_relaysvc_connections_total{type=\"closed\"}",
+          "expr": "libp2p_relaysvc_connections_total{type=\"opened\",instance=~\"$instance\"} - ignoring(type) libp2p_relaysvc_connections_total{type=\"closed\",instance=~\"$instance\"}",
           "legendFormat": "active connections",
           "range": true,
           "refId": "A"
@@ -862,7 +862,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_relaysvc_connection_request_response_status_total[$__rate_interval])",
+          "expr": "increase(libp2p_relaysvc_connection_request_response_status_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{status}}",
           "range": true,
           "refId": "A"
@@ -991,7 +991,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "2 * rate(libp2p_relaysvc_data_transferred_bytes_total[$__rate_interval])",
+          "expr": "2 * rate(libp2p_relaysvc_data_transferred_bytes_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "bandwidth",
           "range": true,
           "refId": "A"
@@ -1083,7 +1083,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_relaysvc_connection_rejections_total[$__rate_interval])",
+          "expr": "increase(libp2p_relaysvc_connection_rejections_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{reason}}",
           "range": true,
           "refId": "A"
@@ -1173,7 +1173,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(libp2p_relaysvc_connection_duration_seconds_sum[$__range])/rate(libp2p_relaysvc_connection_duration_seconds_count[$__range])\n",
+          "expr": "rate(libp2p_relaysvc_connection_duration_seconds_sum{instance=~\"$instance\"}[$__range])/rate(libp2p_relaysvc_connection_duration_seconds_count{instance=~\"$instance\"}[$__range])\n",
           "hide": false,
           "legendFormat": "rolling average",
           "range": true,
@@ -1189,7 +1189,29 @@
   "style": "dark",
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(up, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-1h",

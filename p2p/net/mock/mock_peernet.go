@@ -7,10 +7,10 @@ import (
 	"math/rand"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -18,8 +18,9 @@ import (
 type peernet struct {
 	mocknet *mocknet // parent
 
-	peer peer.ID
-	ps   peerstore.Peerstore
+	peer    peer.ID
+	ps      peerstore.Peerstore
+	emitter event.Emitter
 
 	// conns are actual live connections between peers.
 	// many conns could run over each link.
@@ -37,11 +38,17 @@ type peernet struct {
 }
 
 // newPeernet constructs a new peernet
-func newPeernet(m *mocknet, p peer.ID, ps peerstore.Peerstore) (*peernet, error) {
+func newPeernet(m *mocknet, p peer.ID, ps peerstore.Peerstore, bus event.Bus) (*peernet, error) {
+	emitter, err := bus.Emitter(&event.EvtPeerConnectednessChanged{})
+	if err != nil {
+		return nil, err
+	}
+
 	n := &peernet{
 		mocknet: m,
 		peer:    p,
 		ps:      ps,
+		emitter: emitter,
 
 		connsByPeer: map[peer.ID]map[*conn]struct{}{},
 		connsByLink: map[*link]map[*conn]struct{}{},
@@ -57,6 +64,7 @@ func (pn *peernet) Close() error {
 	for _, c := range pn.allConns() {
 		c.Close()
 	}
+	pn.emitter.Close()
 	return pn.ps.Close()
 }
 
@@ -192,13 +200,16 @@ func (pn *peernet) addConn(c *conn) {
 	pn.notifyAll(func(n network.Notifiee) {
 		n.Connected(pn, c)
 	})
+
+	pn.emitter.Emit(event.EvtPeerConnectednessChanged{
+		Peer:          c.remote,
+		Connectedness: network.Connected,
+	})
 }
 
 // removeConn removes a given conn
 func (pn *peernet) removeConn(c *conn) {
 	pn.Lock()
-	defer pn.Unlock()
-
 	cs, found := pn.connsByLink[c.link]
 	if !found || len(cs) < 1 {
 		panic(fmt.Sprintf("attempting to remove a conn that doesnt exist %p", c.link))
@@ -210,6 +221,22 @@ func (pn *peernet) removeConn(c *conn) {
 		panic(fmt.Sprintf("attempting to remove a conn that doesnt exist %v", c.remote))
 	}
 	delete(cs, c)
+	pn.Unlock()
+
+	// notify asynchronously to mimic Swarm
+	// FIXME: IIRC, we wanted to make notify for Close synchronous
+	go func() {
+		c.notifLk.Lock()
+		defer c.notifLk.Unlock()
+		pn.notifyAll(func(n network.Notifiee) {
+			n.Disconnected(c.net, c)
+		})
+	}()
+
+	c.net.emitter.Emit(event.EvtPeerConnectednessChanged{
+		Peer:          c.remote,
+		Connectedness: network.NotConnected,
+	})
 }
 
 // LocalPeer the network's LocalPeer
@@ -355,18 +382,11 @@ func (pn *peernet) StopNotify(f network.Notifiee) {
 // notifyAll runs the notification function on all Notifiees
 func (pn *peernet) notifyAll(notification func(f network.Notifiee)) {
 	pn.notifmu.Lock()
-	var wg sync.WaitGroup
+	// notify synchronously to mimic Swarm
 	for n := range pn.notifs {
-		// make sure we dont block
-		// and they dont block each other.
-		wg.Add(1)
-		go func(n network.Notifiee) {
-			defer wg.Done()
-			notification(n)
-		}(n)
+		notification(n)
 	}
 	pn.notifmu.Unlock()
-	wg.Wait()
 }
 
 func (pn *peernet) ResourceManager() network.ResourceManager {

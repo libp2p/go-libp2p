@@ -168,7 +168,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "rate(libp2p_rcmgr_blocked_resources[$__rate_interval])",
+          "expr": "rate(libp2p_rcmgr_blocked_resources{instance=~\"$instance\"}[$__rate_interval])",
           "interval": "",
           "legendFormat": "",
           "refId": "A"
@@ -273,7 +273,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_streams{scope=\"system\"}",
+          "expr": "libp2p_rcmgr_streams{scope=\"system\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{dir}} {{instance}}",
           "refId": "A"
@@ -365,7 +365,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_streams{scope=\"transient\"}",
+          "expr": "libp2p_rcmgr_streams{scope=\"transient\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{dir}} {{instance}}",
           "refId": "A"
@@ -458,7 +458,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_streams{scope=\"protocol\"}",
+          "expr": "libp2p_rcmgr_streams{scope=\"protocol\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{dir}} {{protocol}} {{instance}}",
           "refId": "A"
@@ -551,7 +551,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.50, (libp2p_rcmgr_peer_streams_bucket - libp2p_rcmgr_previous_peer_streams_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.50, (libp2p_rcmgr_peer_streams_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_streams_bucket{instance=~\"$instance\"})) - 0.1",
           "interval": "",
           "legendFormat": "p50 {{dir}} streams per peer – {{instance}}",
           "refId": "A"
@@ -562,7 +562,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, (libp2p_rcmgr_peer_streams_bucket - libp2p_rcmgr_previous_peer_streams_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.90, (libp2p_rcmgr_peer_streams_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_streams_bucket{instance=~\"$instance\"})) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p90 {{dir}} streams per peer – {{instance}}",
@@ -574,7 +574,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(1, (libp2p_rcmgr_peer_streams_bucket - libp2p_rcmgr_previous_peer_streams_bucket)) - 0.1",
+          "expr": "histogram_quantile(1, (libp2p_rcmgr_peer_streams_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_streams_bucket{instance=~\"$instance\"})) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "max {{dir}} streams per peer – {{instance}}",
@@ -641,7 +641,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (libp2p_rcmgr_peer_streams_bucket{dir=\"inbound\"}-libp2p_rcmgr_previous_peer_streams_bucket{dir=\"inbound\"})",
+          "expr": "sum without (instance) (libp2p_rcmgr_peer_streams_bucket{dir=\"inbound\",instance=~\"$instance\"}-libp2p_rcmgr_previous_peer_streams_bucket{dir=\"inbound\",instance=~\"$instance\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -709,7 +709,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (libp2p_rcmgr_peer_streams_bucket{dir=\"outbound\"}-libp2p_rcmgr_previous_peer_streams_bucket{dir=\"outbound\"})",
+          "expr": "sum without (instance) (libp2p_rcmgr_peer_streams_bucket{dir=\"outbound\",instance=~\"$instance\"}-libp2p_rcmgr_previous_peer_streams_bucket{dir=\"outbound\",instance=~\"$instance\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -841,7 +841,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_connections{scope=\"system\"}",
+          "expr": "libp2p_rcmgr_connections{scope=\"system\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{dir}} {{instance}}",
           "refId": "A"
@@ -933,7 +933,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_connections{scope=\"transient\"}",
+          "expr": "libp2p_rcmgr_connections{scope=\"transient\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{dir}} {{instance}}",
           "refId": "A"
@@ -1051,7 +1051,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.50, (libp2p_rcmgr_peer_connections_bucket - libp2p_rcmgr_previous_peer_connections_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.50, (libp2p_rcmgr_peer_connections_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_connections_bucket{instance=~\"$instance\"})) - 0.1",
           "interval": "",
           "legendFormat": "p50 {{dir}} connections per peer – {{instance}}",
           "refId": "A"
@@ -1062,7 +1062,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, (libp2p_rcmgr_peer_connections_bucket - libp2p_rcmgr_previous_peer_connections_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.90, (libp2p_rcmgr_peer_connections_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_connections_bucket{instance=~\"$instance\"})) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p90 {{dir}} connections per peer – {{instance}}",
@@ -1074,7 +1074,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(1, (libp2p_rcmgr_peer_connections_bucket - libp2p_rcmgr_previous_peer_connections_bucket)) - 0.1",
+          "expr": "histogram_quantile(1, (libp2p_rcmgr_peer_connections_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_connections_bucket{instance=~\"$instance\"})) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "max {{dir}} connections per peer – {{instance}}",
@@ -1141,7 +1141,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (libp2p_rcmgr_peer_connections_bucket{dir=\"inbound\"}-libp2p_rcmgr_previous_peer_connections_bucket{dir=\"inbound\"})",
+          "expr": "sum without (instance) (libp2p_rcmgr_peer_connections_bucket{dir=\"inbound\",instance=~\"$instance\"}-libp2p_rcmgr_previous_peer_connections_bucket{dir=\"inbound\",instance=~\"$instance\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -1209,7 +1209,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (libp2p_rcmgr_peer_connections_bucket{dir=\"outbound\"}-libp2p_rcmgr_previous_peer_connections_bucket{dir=\"outbound\"})",
+          "expr": "sum without (instance) (libp2p_rcmgr_peer_connections_bucket{dir=\"outbound\",instance=~\"$instance\"}-libp2p_rcmgr_previous_peer_connections_bucket{dir=\"outbound\",instance=~\"$instance\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -1318,7 +1318,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_memory{scope=\"system\"}",
+          "expr": "libp2p_rcmgr_memory{scope=\"system\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "Bytes Reserved",
           "refId": "A"
@@ -1412,7 +1412,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_memory{scope=\"protocol\"}",
+          "expr": "libp2p_rcmgr_memory{scope=\"protocol\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{protocol}} {{instance}}",
           "refId": "A"
@@ -1506,7 +1506,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_memory{scope=\"service\"}",
+          "expr": "libp2p_rcmgr_memory{scope=\"service\",instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{service}} {{instance}}",
           "refId": "A"
@@ -1620,7 +1620,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.50, sum by (le) (libp2p_rcmgr_peer_memory_bucket - libp2p_rcmgr_previous_peer_memory_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.50, sum by (le) (libp2p_rcmgr_peer_memory_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_memory_bucket{instance=~\"$instance\"})) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p50 memory usage per peer",
@@ -1632,7 +1632,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum by (le) (libp2p_rcmgr_peer_memory_bucket - libp2p_rcmgr_previous_peer_memory_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.90, sum by (le) (libp2p_rcmgr_peer_memory_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_memory_bucket{instance=~\"$instance\"})) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p90 memory usage per peer",
@@ -1644,7 +1644,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(1, sum by (le) (libp2p_rcmgr_peer_memory_bucket - libp2p_rcmgr_previous_peer_memory_bucket)) - 0.1",
+          "expr": "histogram_quantile(1, sum by (le) (libp2p_rcmgr_peer_memory_bucket{instance=~\"$instance\"} - libp2p_rcmgr_previous_peer_memory_bucket{instance=~\"$instance\"})) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "max memory usage per peer",
@@ -1657,7 +1657,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(libp2p_rcmgr_peer_memory_count-libp2p_rcmgr_previous_peer_memory_count)",
+          "expr": "sum(libp2p_rcmgr_peer_memory_count{instance=~\"$instance\"}-libp2p_rcmgr_previous_peer_memory_count{instance=~\"$instance\"})",
           "hide": false,
           "instant": false,
           "interval": "",
@@ -1766,7 +1766,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "libp2p_rcmgr_fds",
+          "expr": "libp2p_rcmgr_fds{instance=~\"$instance\"}",
           "interval": "",
           "legendFormat": "{{scope}} {{instance}}",
           "refId": "A"
@@ -1781,7 +1781,29 @@
   "style": "dark",
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(up, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-5m",

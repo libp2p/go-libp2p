@@ -237,7 +237,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (transport) (libp2p_swarm_connections_opened_total) - sum by (transport) (libp2p_swarm_connections_closed_total)",
+          "expr": "sum by (transport) (libp2p_swarm_connections_opened_total{instance=~\"$instance\"}) - sum by (transport) (libp2p_swarm_connections_closed_total{instance=~\"$instance\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -464,7 +464,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (transport, security, muxer) (libp2p_swarm_connections_opened_total{dir=\"inbound\"}) - sum by (transport, security, muxer) (libp2p_swarm_connections_closed_total{dir=\"inbound\"})",
+          "expr": "sum by (transport, security, muxer) (libp2p_swarm_connections_opened_total{dir=\"inbound\",instance=~\"$instance\"}) - sum by (transport, security, muxer) (libp2p_swarm_connections_closed_total{dir=\"inbound\",instance=~\"$instance\"})",
           "legendFormat": "{{transport}} {{security}} {{muxer}}",
           "range": true,
           "refId": "A"
@@ -691,7 +691,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (transport, security, muxer)(libp2p_swarm_connections_opened_total{dir=\"outbound\"}) - sum by (transport, security, muxer) (libp2p_swarm_connections_closed_total{dir=\"outbound\"})",
+          "expr": "sum by (transport, security, muxer)(libp2p_swarm_connections_opened_total{dir=\"outbound\",instance=~\"$instance\"}) - sum by (transport, security, muxer) (libp2p_swarm_connections_closed_total{dir=\"outbound\",instance=~\"$instance\"})",
           "legendFormat": "{{transport}} {{security}} {{muxer}}",
           "range": true,
           "refId": "A"
@@ -784,7 +784,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=~\"quic|quic-v1\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=~\"quic|quic-v1\",instance=~\"$instance\"}[$__rate_interval])))",
           "hide": false,
           "legendFormat": "50th percentile",
           "range": true,
@@ -796,7 +796,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=~\"quic|quic-v1\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.90, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=~\"quic|quic-v1\",instance=~\"$instance\"}[$__rate_interval])))",
           "hide": false,
           "legendFormat": "90th percentile",
           "range": true,
@@ -808,7 +808,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=~\"quic|quic-v1\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=~\"quic|quic-v1\",instance=~\"$instance\"}[$__rate_interval])))",
           "hide": false,
           "legendFormat": "95th percentile",
           "range": true,
@@ -902,7 +902,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=\"tcp\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=\"tcp\",instance=~\"$instance\"}[$__rate_interval])))",
           "hide": false,
           "legendFormat": "50th percentile",
           "range": true,
@@ -914,7 +914,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=\"tcp\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.90, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=\"tcp\",instance=~\"$instance\"}[$__rate_interval])))",
           "hide": false,
           "legendFormat": "90th percentile",
           "range": true,
@@ -926,7 +926,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=\"tcp\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(libp2p_swarm_handshake_latency_seconds_bucket{transport=\"tcp\",instance=~\"$instance\"}[$__rate_interval])))",
           "hide": false,
           "legendFormat": "95th percentile",
           "range": true,
@@ -1025,7 +1025,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.5, sum(rate(libp2p_swarm_connection_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.5, sum(rate(libp2p_swarm_connection_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "instant": false,
           "legendFormat": "50th percentile",
           "range": true,
@@ -1037,7 +1037,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.9, sum(rate(libp2p_swarm_connection_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.9, sum(rate(libp2p_swarm_connection_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "hide": false,
           "legendFormat": "90th percentile",
           "range": true,
@@ -1049,7 +1049,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(libp2p_swarm_connection_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(libp2p_swarm_connection_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
           "hide": false,
           "legendFormat": "95th percentile",
           "range": true,
@@ -1145,7 +1145,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(libp2p_swarm_connections_opened_total{transport=\"tcp\",early_muxer=\"true\"} - libp2p_swarm_connections_closed_total{transport=\"tcp\",early_muxer=\"true\"})",
+          "expr": "sum(libp2p_swarm_connections_opened_total{transport=\"tcp\",early_muxer=\"true\",instance=~\"$instance\"} - libp2p_swarm_connections_closed_total{transport=\"tcp\",early_muxer=\"true\",instance=~\"$instance\"})",
           "legendFormat": "early muxer",
           "range": true,
           "refId": "A"
@@ -1156,7 +1156,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(libp2p_swarm_connections_opened_total{transport=\"tcp\",early_muxer=\"false\"} - libp2p_swarm_connections_closed_total{transport=\"tcp\",early_muxer=\"false\"})",
+          "expr": "sum(libp2p_swarm_connections_opened_total{transport=\"tcp\",early_muxer=\"false\",instance=~\"$instance\"} - libp2p_swarm_connections_closed_total{transport=\"tcp\",early_muxer=\"false\",instance=~\"$instance\"})",
           "hide": false,
           "legendFormat": "regular",
           "range": true,
@@ -1396,7 +1396,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum (rate(libp2p_swarm_connections_opened_total{dir=\"inbound\"}[$__rate_interval])) by (transport, security, muxer)",
+          "expr": "sum (rate(libp2p_swarm_connections_opened_total{dir=\"inbound\",instance=~\"$instance\"}[$__rate_interval])) by (transport, security, muxer)",
           "legendFormat": "{{transport}} {{security}} {{muxer}}",
           "range": true,
           "refId": "A"
@@ -1622,7 +1622,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum (rate(libp2p_swarm_connections_opened_total{dir=\"outbound\"}[$__rate_interval])) by (transport, security, muxer)",
+          "expr": "sum (rate(libp2p_swarm_connections_opened_total{dir=\"outbound\",instance=~\"$instance\"}[$__rate_interval])) by (transport, security, muxer)",
           "legendFormat": "{{transport}} {{security}} {{muxer}}",
           "range": true,
           "refId": "A"
@@ -1820,7 +1820,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum (increase(libp2p_swarm_connections_opened_total{dir=\"inbound\"}[$__range])) by (transport, security, muxer)",
+          "expr": "sum (increase(libp2p_swarm_connections_opened_total{dir=\"inbound\",instance=~\"$instance\"}[$__range])) by (transport, security, muxer)",
           "legendFormat": "{{transport}} {{security}} {{muxer}}",
           "range": true,
           "refId": "A"
@@ -2020,7 +2020,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum (increase(libp2p_swarm_connections_opened_total{dir=\"outbound\"}[$__range])) by (transport, security, muxer)",
+          "expr": "sum (increase(libp2p_swarm_connections_opened_total{dir=\"outbound\",instance=~\"$instance\"}[$__range])) by (transport, security, muxer)",
           "legendFormat": "{{transport}} {{security}} {{muxer}}",
           "range": true,
           "refId": "A"
@@ -2114,7 +2114,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (ip_version) (libp2p_swarm_connections_opened_total{dir=\"inbound\"}) - sum by (ip_version) (libp2p_swarm_connections_closed_total{dir=\"inbound\"})",
+          "expr": "sum by (ip_version) (libp2p_swarm_connections_opened_total{dir=\"inbound\",instance=~\"$instance\"}) - sum by (ip_version) (libp2p_swarm_connections_closed_total{dir=\"inbound\",instance=~\"$instance\"})",
           "legendFormat": "{{ip_version}}",
           "range": true,
           "refId": "A"
@@ -2209,7 +2209,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (ip_version) (libp2p_swarm_connections_opened_total{dir=\"outbound\"}) - sum by (ip_version) (libp2p_swarm_connections_closed_total{dir=\"outbound\"})",
+          "expr": "sum by (ip_version) (libp2p_swarm_connections_opened_total{dir=\"outbound\",instance=~\"$instance\"}) - sum by (ip_version) (libp2p_swarm_connections_closed_total{dir=\"outbound\",instance=~\"$instance\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -2273,7 +2273,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(libp2p_swarm_dial_errors_total[$__range])) by (error)",
+          "expr": "sum(increase(libp2p_swarm_dial_errors_total{instance=~\"$instance\"}[$__range])) by (error)",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -2456,7 +2456,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (transport) (rate(libp2p_swarm_connections_opened_total{dir=\"outbound\"}[$__rate_interval])) ",
+          "expr": "sum by (transport) (rate(libp2p_swarm_connections_opened_total{dir=\"outbound\",instance=~\"$instance\"}[$__rate_interval])) ",
           "hide": true,
           "legendFormat": "{{transport}}",
           "range": true,
@@ -2468,7 +2468,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by(transport, error) (rate(libp2p_swarm_dial_errors_total[$__rate_interval]))",
+          "expr": "sum by(transport, error) (rate(libp2p_swarm_dial_errors_total{instance=~\"$instance\"}[$__rate_interval]))",
           "hide": true,
           "legendFormat": "dial error ({{error}}, {{transport}})",
           "range": true,
@@ -2480,7 +2480,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(libp2p_swarm_connections_opened_total{dir=\"outbound\"}[$__rate_interval])) by (transport)  / (sum(rate(libp2p_swarm_connections_opened_total{dir=\"outbound\"}[$__rate_interval])) by (transport) + (sum(rate(libp2p_swarm_dial_errors_total[$__rate_interval])) by (transport)))",
+          "expr": "sum(rate(libp2p_swarm_connections_opened_total{dir=\"outbound\",instance=~\"$instance\"}[$__rate_interval])) by (transport)  / (sum(rate(libp2p_swarm_connections_opened_total{dir=\"outbound\",instance=~\"$instance\"}[$__rate_interval])) by (transport) + (sum(rate(libp2p_swarm_dial_errors_total{instance=~\"$instance\"}[$__rate_interval])) by (transport)))",
           "hide": false,
           "legendFormat": "__auto",
           "range": true,
@@ -2545,7 +2545,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (key_type) (increase(libp2p_swarm_key_types_total[$__range]))",
+          "expr": "sum by (key_type) (increase(libp2p_swarm_key_types_total{instance=~\"$instance\"}[$__range]))",
           "legendFormat": "{{key_type}}",
           "range": true,
           "refId": "A"
@@ -2577,7 +2577,6 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "/(.*):[0-9].*/",
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"

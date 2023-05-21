@@ -155,7 +155,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "rate(libp2p_eventbus_events_emitted_total[$__rate_interval])",
+          "expr": "rate(libp2p_eventbus_events_emitted_total{instance=~\"$instance\"}[$__rate_interval])",
           "format": "time_series",
           "instant": false,
           "interval": "",
@@ -225,7 +225,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "libp2p_eventbus_subscribers_total",
+          "expr": "libp2p_eventbus_subscribers_total{instance=~\"$instance\"}",
           "legendFormat": "{{event}}",
           "range": true,
           "refId": "A"
@@ -317,7 +317,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "rate(libp2p_eventbus_subscriber_event_queued[$__rate_interval])",
+          "expr": "rate(libp2p_eventbus_subscriber_event_queued{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{subscriber_name}}",
           "range": true,
           "refId": "A"
@@ -410,7 +410,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "libp2p_eventbus_subscriber_queue_length",
+          "expr": "libp2p_eventbus_subscriber_queue_length{instance=~\"$instance\"}",
           "hide": false,
           "legendFormat": "{{subscriber_name}}",
           "range": true,
@@ -496,7 +496,7 @@
           },
           "editorMode": "builder",
           "exemplar": false,
-          "expr": "libp2p_eventbus_subscriber_queue_full",
+          "expr": "libp2p_eventbus_subscriber_queue_full{instance=~\"$instance\"}",
           "format": "time_series",
           "hide": false,
           "instant": false,
@@ -514,7 +514,29 @@
   "style": "dark",
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(up, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-15m",

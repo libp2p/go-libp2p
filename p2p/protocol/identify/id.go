@@ -1,11 +1,15 @@
 package identify
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"time"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
@@ -60,6 +64,31 @@ type identifySnapshot struct {
 	protocols []protocol.ID
 	addrs     []ma.Multiaddr
 	record    *record.Envelope
+}
+
+// Equal says if two snapshots are identical.
+// It does NOT compare the sequence number.
+func (s identifySnapshot) Equal(other *identifySnapshot) bool {
+	hasRecord := s.record != nil
+	otherHasRecord := other.record != nil
+	if hasRecord != otherHasRecord {
+		return false
+	}
+	if hasRecord && !s.record.Equal(other.record) {
+		return false
+	}
+	if !slices.Equal(s.protocols, other.protocols) {
+		return false
+	}
+	if len(s.addrs) != len(other.addrs) {
+		return false
+	}
+	for i, a := range s.addrs {
+		if !a.Equal(other.addrs[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 type IDService interface {
@@ -249,10 +278,12 @@ func (ids *idService) loop(ctx context.Context) {
 			if !ok {
 				return
 			}
+			if updated := ids.updateSnapshot(); !updated {
+				continue
+			}
 			if ids.metricsTracer != nil {
 				ids.metricsTracer.TriggeredPushes(e)
 			}
-			ids.updateSnapshot()
 			select {
 			case triggerPush <- struct{}{}:
 			default: // we already have one more push queued, no need to queue another one
@@ -529,11 +560,16 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 	return fmt.Errorf("too many parts")
 }
 
-func (ids *idService) updateSnapshot() {
+func (ids *idService) updateSnapshot() (updated bool) {
+	addrs := ids.Host.Addrs()
+	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) == -1 })
+	protos := ids.Host.Mux().Protocols()
+	sort.Slice(protos, func(i, j int) bool { return protos[i] < protos[j] })
 	snapshot := identifySnapshot{
-		addrs:     ids.Host.Addrs(),
-		protocols: ids.Host.Mux().Protocols(),
+		addrs:     addrs,
+		protocols: protos,
 	}
+
 	if !ids.disableSignedPeerRecord {
 		if cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore()); ok {
 			snapshot.record = cab.GetPeerRecord(ids.Host.ID())
@@ -541,11 +577,17 @@ func (ids *idService) updateSnapshot() {
 	}
 
 	ids.currentSnapshot.Lock()
+	defer ids.currentSnapshot.Unlock()
+
+	if ids.currentSnapshot.snapshot.Equal(&snapshot) {
+		return false
+	}
+
 	snapshot.seq = ids.currentSnapshot.snapshot.seq + 1
 	ids.currentSnapshot.snapshot = snapshot
-	ids.currentSnapshot.Unlock()
 
 	log.Debugw("updating snapshot", "seq", snapshot.seq, "addrs", snapshot.addrs)
+	return true
 }
 
 func (ids *idService) writeChunkedIdentifyMsg(s network.Stream, mes *pb.Identify) error {

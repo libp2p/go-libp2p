@@ -47,12 +47,13 @@ require (
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/prometheus/client_golang v1.14.0
 	github.com/quic-go/quic-go v0.33.0
-	github.com/quic-go/webtransport-go v0.5.2
+	github.com/quic-go/webtransport-go v0.5.3
 	github.com/raulk/go-watchdog v1.3.0
 	github.com/stretchr/testify v1.8.2
 	go.uber.org/fx v1.19.2
 	go.uber.org/goleak v1.1.12
 	golang.org/x/crypto v0.7.0
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/sync v0.1.0
 	golang.org/x/sys v0.7.0
 	golang.org/x/tools v0.7.0
@@ -109,7 +110,6 @@ require (
 	go.uber.org/dig v1.16.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
-	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/text v0.8.0 // indirect

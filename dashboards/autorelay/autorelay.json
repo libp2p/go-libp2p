@@ -169,7 +169,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "libp2p_autorelay_status",
+          "expr": "libp2p_autorelay_status{instance=~\"$instance\"}",
           "legendFormat": "active",
           "range": true,
           "refId": "A"
@@ -245,7 +245,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "libp2p_autorelay_reservations_opened_total -  libp2p_autorelay_reservations_closed_total",
+          "expr": "libp2p_autorelay_reservations_opened_total{instance=~\"$instance\"} -  libp2p_autorelay_reservations_closed_total{instance=~\"$instance\"}",
           "instant": true,
           "legendFormat": "current reservations",
           "range": false,
@@ -258,7 +258,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "libp2p_autorelay_desired_reservations",
+          "expr": "libp2p_autorelay_desired_reservations{instance=~\"$instance\"}",
           "format": "time_series",
           "hide": false,
           "instant": true,
@@ -403,7 +403,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "increase(libp2p_autorelay_reservation_requests_outcome_total[$__rate_interval])",
+          "expr": "increase(libp2p_autorelay_reservation_requests_outcome_total{instance=~\"$instance\"}[$__rate_interval])",
           "format": "time_series",
           "instant": false,
           "interval": "",
@@ -512,7 +512,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "libp2p_autorelay_candidate_loop_state",
+          "expr": "libp2p_autorelay_candidate_loop_state{instance=~\"$instance\"}",
           "instant": false,
           "legendFormat": "state",
           "range": true,
@@ -575,7 +575,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "libp2p_autorelay_candidates_total{type=\"added\"} - ignoring(type) libp2p_autorelay_candidates_total{type=\"removed\"}",
+          "expr": "libp2p_autorelay_candidates_total{type=\"added\",instance=~\"$instance\"} - ignoring(type) libp2p_autorelay_candidates_total{type=\"removed\",instance=~\"$instance\"}",
           "legendFormat": "num candidates",
           "range": true,
           "refId": "A"
@@ -669,7 +669,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_autorelay_candidates_circuit_v2_support_total[$__range])",
+          "expr": "increase(libp2p_autorelay_candidates_circuit_v2_support_total{instance=~\"$instance\"}[$__range])",
           "legendFormat": "{{support}}",
           "range": true,
           "refId": "A"
@@ -745,7 +745,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "libp2p_autorelay_scheduled_work_time{work_type=\"old candidate check\"} * 1000\n",
+          "expr": "libp2p_autorelay_scheduled_work_time{work_type=\"old candidate check\",instance=~\"$instance\"} * 1000\n",
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
@@ -833,7 +833,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "round(libp2p_autorelay_scheduled_work_time{work_type=\"allowed peer source call\"} - time()) ",
+          "expr": "round(libp2p_autorelay_scheduled_work_time{work_type=\"allowed peer source call\",instance=~\"$instance\"} - time()) ",
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
@@ -909,7 +909,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "libp2p_autorelay_relay_addresses_count",
+          "expr": "libp2p_autorelay_relay_addresses_count{instance=~\"$instance\"}",
           "legendFormat": "num addresses",
           "range": true,
           "refId": "A"
@@ -1017,7 +1017,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_autorelay_relay_addresses_updated_total[$__rate_interval])",
+          "expr": "increase(libp2p_autorelay_relay_addresses_updated_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "update triggered",
           "range": true,
           "refId": "A"
@@ -1033,7 +1033,29 @@
   "style": "dark",
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(up, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-1h",

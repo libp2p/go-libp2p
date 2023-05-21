@@ -156,7 +156,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "libp2p_autonat_reachability_status",
+          "expr": "libp2p_autonat_reachability_status{instance=~\"$instance\"}",
           "legendFormat": " ",
           "range": true,
           "refId": "A"
@@ -222,7 +222,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "libp2p_autonat_reachability_status_confidence",
+          "expr": "libp2p_autonat_reachability_status_confidence{instance=~\"$instance\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -286,7 +286,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "libp2p_autonat_next_probe_timestamp * 1000",
+          "expr": "libp2p_autonat_next_probe_timestamp{instance=~\"$instance\"} * 1000",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -427,7 +427,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "increase(libp2p_autonat_received_dial_response_total[$__rate_interval])",
+          "expr": "increase(libp2p_autonat_received_dial_response_total{instance=~\"$instance\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "{{response_status}}",
           "range": true,
@@ -567,7 +567,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_autonat_outgoing_dial_response_total[$__rate_interval])",
+          "expr": "increase(libp2p_autonat_outgoing_dial_response_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{response_status}}",
           "range": true,
           "refId": "A"
@@ -676,7 +676,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_autonat_outgoing_dial_refused_total[$__rate_interval])",
+          "expr": "increase(libp2p_autonat_outgoing_dial_refused_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{refusal_reason}}",
           "range": true,
           "refId": "A"
@@ -690,7 +690,29 @@
   "style": "dark",
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(up, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(up, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-6h",
