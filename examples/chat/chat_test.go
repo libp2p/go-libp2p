@@ -36,7 +36,7 @@ func TestMain(t *testing.T) {
 			return
 		}
 
-		h1, err := makeHost(port1, rand.Reader, false)
+		h1, err := makeHost(port1, rand.Reader, false, false)
 		if err != nil {
 			log.Println(err)
 			return
@@ -47,11 +47,11 @@ func TestMain(t *testing.T) {
 			// Sleep a bit to let h2 print the logs we're waiting for
 			time.Sleep(500 * time.Millisecond)
 			cancel() // end the test
-		}, false)
+		}, false, false)
 
 		dest := fmt.Sprintf("/ip4/127.0.0.1/tcp/%v/p2p/%s", port1, h1.ID().Pretty())
 
-		h2, err := makeHost(port2, rand.Reader, false)
+		h2, err := makeHost(port2, rand.Reader, false, false)
 		if err != nil {
 			log.Println(err)
 			return
