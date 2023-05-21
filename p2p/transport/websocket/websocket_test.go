@@ -32,6 +32,7 @@ import (
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -549,70 +550,121 @@ func TestResolveMultiaddr(t *testing.T) {
 	}
 }
 
-func TestListenerResusePort(t *testing.T) {
-	laddr := ma.StringCast("/ip4/127.0.0.1/tcp/5002/ws")
+func startListeners(tpt *WebsocketTransport) (ma.Multiaddr, []*manet.Listener, error) {
+	laddr := ma.StringCast("/ip4/127.0.0.1/tcp/0/ws")
+	listeners := make([]*manet.Listener, 2)
 
+	l, err := tpt.maListen(laddr)
+	if err != nil {
+		fmt.Println("Failed to listen on websocket due to error ", err)
+		return nil, nil, err
+	}
+	listeners[0] = &l
+
+	port := l.Addr().(*net.TCPAddr).Port
+	fmt.Println("Port allocated for listener:", port)
+	laddr = ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/ws", port))
+	l1, err := tpt.maListen(laddr)
+	if err != nil {
+		fmt.Println("Failed to listen on websocket due to error ", err)
+		return nil, nil, err
+	}
+	listeners[1] = &l1
+
+	return laddr, listeners, nil
+}
+
+func TestListenerResusePort(t *testing.T) {
+	noOfClientConns := 4
 	var opts []Option
 	opts = append(opts, EnableReuseport())
 	_, u := newUpgrader(t)
 	tpt, err := New(u, &network.NullResourceManager{}, opts...)
 	require.NoError(t, err)
-	c := make(chan int)
+	c := make(chan int, noOfClientConns)
 
+	raddr, listeners, err := startListeners(tpt)
+	//fmt.Println("Started Listeners")
 	for i := 0; i < 2; i++ {
-		go func(index int, ch chan int) {
-			l, err := tpt.maListen(laddr)
-			if err != nil {
-				fmt.Println("Failed to listen on websocket due to error ", err)
-			}
-			require.NoError(t, err)
-			require.Equal(t, lastComponent(t, l.Multiaddr()), wsComponent)
+		go func(index int, ln *manet.Listener, ch chan int) {
+			l := *ln
 			defer l.Close()
-			c <- index
-			/* Looping 4 times to ensure all 4 connections are handled.
-			   Noticed that sometimes the distribution of connections was
-			   not clearly load-balanced leading to more than 2 being delivered to 1 listener. */
-			for j := 0; j < 4; j++ {
+			/* Looping noOfClientConns times to ensure all 4 connections are handled.
+				With SO_REUSEPORT the distribution happens based on threads that are waiting on Accept call as mentioned below.
+				We cannot gaurantee when Server go-routines would block on Accept.
+				Sometimes the client routines get scheduled first causing unequal distribution of connections.
+				Ref: https://lwn.net/Articles/542629/
+				By contrast, the SO_REUSEPORT implementation distributes connections evenly across all of the threads (or processes)
+			 	that are blocked in accept() on the same port. */
+			for j := 0; j < noOfClientConns; j++ {
+				//j := 0
 				conn, err := l.Accept()
 				if err != nil {
-					fmt.Println("Routine-", index, " Failed accepting connection due to error ", err)
+					fmt.Println("Server Routine-", index, " Failed accepting connection ", j, " due to error ", err)
+					return
 				}
 				require.NoError(t, err)
+				//fmt.Println("Server Routine-", index, " accepting connection-", j)
 				defer conn.Close()
 				buf := make([]byte, 6)
 				n, err := conn.Read(buf)
 				if n != 6 {
-					t.Errorf("read %d bytes, expected 2", n)
+					t.Errorf("read %d bytes, expected 6", n)
 				}
 				require.NoError(t, err)
-				c <- j
+				n, err = conn.Write(buf)
+				if n != 6 {
+					t.Errorf("expected to write 6 bytes, wrote %d", n)
+				}
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				ch <- index
 			}
-		}(i, c)
+
+		}(i, listeners[i], c)
+	}
+
+	fmt.Println("Initiating Connections to addr:", raddr)
+
+	for i := 0; i < noOfClientConns; i++ {
+		go func(index int) {
+			conn, err := tpt.maDial(context.Background(), raddr)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			//fmt.Println("Initiated Conn from Client routine-", index)
+			require.NoError(t, err)
+			defer conn.Close()
+			msg := fmt.Sprintf("Hello%d", index)
+			n, err := conn.Write([]byte(msg))
+			if n != 6 {
+				t.Errorf("expected to write 6 bytes, wrote %d", n)
+			}
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			buf := make([]byte, 6)
+			n, err = conn.Read(buf)
+			if n != 6 {
+				t.Errorf("read %d bytes, expected 6", n)
+			}
+		}(i)
+	}
+	var connsHandled [2]int
+	//Waiting to ensure all 4 connections are handled.
+	for i := 0; i < noOfClientConns; i++ {
+		temp := <-c
+		connsHandled[temp]++
 	}
 	for i := 0; i < 2; i++ {
-		<-c
-	}
-	for i := 0; i < 4; i++ {
-		go func(index int, ch chan int) {
-			c, err := tpt.maDial(context.Background(), laddr)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			require.NoError(t, err)
-			defer c.Close()
-			msg := fmt.Sprintf("Hello%d", index)
-			n, err := c.Write([]byte(msg))
-			if n != 6 {
-				t.Errorf("expected to write 0 bytes, wrote %d", n)
-			}
-			if err != nil {
-				t.Error(err)
-				return
-			}
-		}(i, c)
-	}
-	for i := 0; i < 4; i++ {
-		<-c
+		/*Not checking for equal distribution of connections due to above explanation.*/
+		if connsHandled[i] == 0 {
+			t.Fatalf("No connections handled by listener %d", i)
+		}
+		fmt.Printf("Listener %d handled %d connections.", i, connsHandled[i])
 	}
 }
