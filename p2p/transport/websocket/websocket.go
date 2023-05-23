@@ -240,7 +240,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 }
 
 func (t *WebsocketTransport) maListen(a ma.Multiaddr) (manet.Listener, error) {
-	l, err := newListener(a, t.tlsConf, t.reuseport)
+	l, err := newListener(a, t.tlsConf, t.UseReuseport())
 	if err != nil {
 		return nil, err
 	}

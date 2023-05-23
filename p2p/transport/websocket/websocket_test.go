@@ -550,31 +550,26 @@ func TestResolveMultiaddr(t *testing.T) {
 	}
 }
 
-func startListeners(tpt *WebsocketTransport) (ma.Multiaddr, []*manet.Listener, error) {
+func startListeners(t *testing.T, tpt *WebsocketTransport) (ma.Multiaddr, []*manet.Listener, error) {
+	t.Helper()
 	laddr := ma.StringCast("/ip4/127.0.0.1/tcp/0/ws")
 	listeners := make([]*manet.Listener, 2)
 
 	l, err := tpt.maListen(laddr)
-	if err != nil {
-		fmt.Println("Failed to listen on websocket due to error ", err)
-		return nil, nil, err
-	}
+	require.NoError(t, err)
 	listeners[0] = &l
 
 	port := l.Addr().(*net.TCPAddr).Port
-	fmt.Println("Port allocated for listener:", port)
+	t.Logf("Port allocated for listener: %d", port)
 	laddr = ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/ws", port))
 	l1, err := tpt.maListen(laddr)
-	if err != nil {
-		fmt.Println("Failed to listen on websocket due to error ", err)
-		return nil, nil, err
-	}
+	require.NoError(t, err)
 	listeners[1] = &l1
 
 	return laddr, listeners, nil
 }
 
-func TestListenerResusePort(t *testing.T) {
+func TestListenerReusePort(t *testing.T) {
 	noOfClientConns := 4
 	var opts []Option
 	opts = append(opts, EnableReuseport())
@@ -583,8 +578,8 @@ func TestListenerResusePort(t *testing.T) {
 	require.NoError(t, err)
 	c := make(chan int, noOfClientConns)
 
-	raddr, listeners, err := startListeners(tpt)
-	//fmt.Println("Started Listeners")
+	raddr, listeners, err := startListeners(t, tpt)
+	require.NoErrorf(t, err, "failed to start listeners")
 	for i := 0; i < 2; i++ {
 		go func(index int, ln *manet.Listener, ch chan int) {
 			l := *ln
@@ -599,59 +594,34 @@ func TestListenerResusePort(t *testing.T) {
 			for j := 0; j < noOfClientConns; j++ {
 				//j := 0
 				conn, err := l.Accept()
-				if err != nil {
-					fmt.Println("Server Routine-", index, " Failed accepting connection ", j, " due to error ", err)
-					return
-				}
-				require.NoError(t, err)
-				//fmt.Println("Server Routine-", index, " accepting connection-", j)
+				require.NoErrorf(t, err, "Server Routine-", index, " Failed accepting connection ", j, " due to error ")
 				defer conn.Close()
 				buf := make([]byte, 6)
 				n, err := conn.Read(buf)
-				if n != 6 {
-					t.Errorf("read %d bytes, expected 6", n)
-				}
 				require.NoError(t, err)
+				require.Equal(t, 6, n)
 				n, err = conn.Write(buf)
-				if n != 6 {
-					t.Errorf("expected to write 6 bytes, wrote %d", n)
-				}
-				if err != nil {
-					t.Error(err)
-					return
-				}
+				require.NoError(t, err)
+				require.Equal(t, 6, n)
 				ch <- index
 			}
 
 		}(i, listeners[i], c)
 	}
 
-	fmt.Println("Initiating Connections to addr:", raddr)
-
 	for i := 0; i < noOfClientConns; i++ {
 		go func(index int) {
 			conn, err := tpt.maDial(context.Background(), raddr)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			//fmt.Println("Initiated Conn from Client routine-", index)
 			require.NoError(t, err)
 			defer conn.Close()
 			msg := fmt.Sprintf("Hello%d", index)
 			n, err := conn.Write([]byte(msg))
-			if n != 6 {
-				t.Errorf("expected to write 6 bytes, wrote %d", n)
-			}
-			if err != nil {
-				t.Error(err)
-				return
-			}
+			require.Equal(t, 6, n)
+			require.NoError(t, err)
 			buf := make([]byte, 6)
 			n, err = conn.Read(buf)
-			if n != 6 {
-				t.Errorf("read %d bytes, expected 6", n)
-			}
+			require.NoError(t, err)
+			require.Equal(t, 6, n)
 		}(i)
 	}
 	var connsHandled [2]int
@@ -662,9 +632,7 @@ func TestListenerResusePort(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ {
 		/*Not checking for equal distribution of connections due to above explanation.*/
-		if connsHandled[i] == 0 {
-			t.Fatalf("No connections handled by listener %d", i)
-		}
-		fmt.Printf("Listener %d handled %d connections.", i, connsHandled[i])
+		require.NotEqualf(t, 0, connsHandled[i], "No connections handled by listener %d", i)
+		t.Logf("Listener %d handled %d connections.", i, connsHandled[i])
 	}
 }
