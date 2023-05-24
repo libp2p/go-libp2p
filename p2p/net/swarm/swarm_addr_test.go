@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/test"
+	"github.com/libp2p/go-libp2p/internal/sha256"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
@@ -18,7 +19,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
-	"github.com/minio/sha256-simd"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
