@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -565,7 +566,6 @@ func startListeners(t *testing.T, tpt *WebsocketTransport) (ma.Multiaddr, []*man
 	l1, err := tpt.maListen(laddr)
 	require.NoError(t, err)
 	listeners[1] = &l1
-
 	return laddr, listeners, nil
 }
 
@@ -577,7 +577,6 @@ func TestListenerReusePort(t *testing.T) {
 	tpt, err := New(u, &network.NullResourceManager{}, opts...)
 	require.NoError(t, err)
 	c := make(chan int, noOfClientConns)
-
 	raddr, listeners, err := startListeners(t, tpt)
 	require.NoErrorf(t, err, "failed to start listeners")
 	for i := 0; i < 2; i++ {
@@ -630,9 +629,20 @@ func TestListenerReusePort(t *testing.T) {
 		temp := <-c
 		connsHandled[temp]++
 	}
-	for i := 0; i < 2; i++ {
-		/*Not checking for equal distribution of connections due to above explanation.*/
-		require.NotEqualf(t, 0, connsHandled[i], "No connections handled by listener %d", i)
-		t.Logf("Listener %d handled %d connections.", i, connsHandled[i])
+	/*
+		 For windows and macOS load balancing is not done by kernel as per references below.
+		 For other architectures, behaviour is not known.
+		 Hence, Check for load balancing only for linux based architectures.
+		 Refer https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse?redirectedfrom=MSDN for windows
+		 References for MACOS
+			Ref - (https://stackoverflow.com/questions/41247790/so-reuseport-on-macos-with-libuv)
+			Ref -(https://github.com/uNetworking/uWebSockets/issues/1194)
+	*/
+	if runtime.GOOS == "linux" {
+		for i := 0; i < 2; i++ {
+			/*Not checking for equal distribution of connections due to above explanation.*/
+			require.NotEqualf(t, 0, connsHandled[i], "No connections handled by listener %d", i)
+			t.Logf("Listener %d handled %d connections.", i, connsHandled[i])
+		}
 	}
 }
