@@ -13,11 +13,11 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-reuseport"
 
+	ws "github.com/gorilla/websocket"
+	reuseTransport "github.com/libp2p/go-libp2p/p2p/net/reuseport"
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
-
-	ws "github.com/gorilla/websocket"
 )
 
 // WsFmt is multiaddr formatter for WsProtocol
@@ -93,9 +93,10 @@ type WebsocketTransport struct {
 	upgrader transport.Upgrader
 	rcmgr    network.ResourceManager
 
-	tlsClientConf *tls.Config
-	tlsConf       *tls.Config
-	reuseport     bool //reuseport is disabled by default, can be enabled by passing it as an option.
+	tlsClientConf  *tls.Config
+	tlsConf        *tls.Config
+	reuseport      bool //reuseport is disabled by default, can be enabled by passing it as an option.
+	reuseTransport reuseTransport.Transport
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -199,6 +200,11 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 	isWss := wsurl.Scheme == "wss"
 
 	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
+	if t.UseReuseport() {
+		dialer.NetDial = func(network, address string) (net.Conn, error) {
+			return t.reuseTransport.DialContext(ctx, raddr)
+		}
+	}
 	if isWss {
 		sni := ""
 		sni, err = raddr.ValueForProtocol(ma.P_SNI)
