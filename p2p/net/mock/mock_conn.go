@@ -53,19 +53,19 @@ func newConn(ln, rn *peernet, l *link, dir network.Direction) *conn {
 	c.stat.Direction = dir
 	c.id = connCounter.Add(1)
 
-	c.localAddr = ln.ps.Addrs(ln.peer)[0]
-	for _, a := range rn.ps.Addrs(rn.peer) {
+	c.localAddr = ln.ps.Addrs(context.Background(), ln.peer)[0]
+	for _, a := range rn.ps.Addrs(context.Background(), rn.peer) {
 		if !manet.IsIPUnspecified(a) {
 			c.remoteAddr = a
 			break
 		}
 	}
 	if c.remoteAddr == nil {
-		c.remoteAddr = rn.ps.Addrs(rn.peer)[0]
+		c.remoteAddr = rn.ps.Addrs(context.Background(), rn.peer)[0]
 	}
 
-	c.localPrivKey = ln.ps.PrivKey(ln.peer)
-	c.remotePubKey = rn.ps.PubKey(rn.peer)
+	c.localPrivKey = ln.ps.PrivKey(context.Background(), ln.peer)
+	c.remotePubKey = rn.ps.PubKey(context.Background(), rn.peer)
 	return c
 }
 

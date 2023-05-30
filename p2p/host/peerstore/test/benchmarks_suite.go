@@ -68,7 +68,7 @@ func benchmarkAddAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			pp := <-addrs
-			ps.AddAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
+			ps.AddAddrs(context.Background(), pp.ID, pp.Addr, pstore.PermanentAddrTTL)
 		}
 	}
 }
@@ -78,7 +78,7 @@ func benchmarkSetAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			pp := <-addrs
-			ps.SetAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
+			ps.SetAddrs(context.Background(), pp.ID, pp.Addr, pstore.PermanentAddrTTL)
 		}
 	}
 }
@@ -86,11 +86,11 @@ func benchmarkSetAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.
 func benchmarkGetAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.B) {
 	return func(b *testing.B) {
 		pp := <-addrs
-		ps.SetAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
+		ps.SetAddrs(context.Background(), pp.ID, pp.Addr, pstore.PermanentAddrTTL)
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = ps.Addrs(pp.ID)
+			_ = ps.Addrs(context.Background(), pp.ID)
 		}
 	}
 }
@@ -100,9 +100,9 @@ func benchmarkAddGetAndClearAddrs(ps pstore.Peerstore, addrs chan *peerpair) fun
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			pp := <-addrs
-			ps.AddAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
-			ps.Addrs(pp.ID)
-			ps.ClearAddrs(pp.ID)
+			ps.AddAddrs(context.Background(), pp.ID, pp.Addr, pstore.PermanentAddrTTL)
+			ps.Addrs(context.Background(), pp.ID)
+			ps.ClearAddrs(context.Background(), pp.ID)
 		}
 	}
 }
@@ -112,13 +112,13 @@ func benchmarkGet1000PeersWithAddrs(ps pstore.Peerstore, addrs chan *peerpair) f
 		var peers = make([]*peerpair, 1000)
 		for i := range peers {
 			pp := <-addrs
-			ps.AddAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
+			ps.AddAddrs(context.Background(), pp.ID, pp.Addr, pstore.PermanentAddrTTL)
 			peers[i] = pp
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = ps.PeersWithAddrs()
+			_ = ps.PeersWithAddrs(context.Background())
 		}
 	}
 }

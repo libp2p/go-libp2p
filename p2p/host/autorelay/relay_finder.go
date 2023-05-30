@@ -493,7 +493,7 @@ func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsR
 		return false, ctx.Err()
 	}
 
-	protos, err := rf.host.Peerstore().SupportsProtocols(pi.ID, protoIDv2)
+	protos, err := rf.host.Peerstore().SupportsProtocols(ctx, pi.ID, protoIDv2)
 	if err != nil {
 		return false, fmt.Errorf("error checking relay protocol support for peer %s: %w", pi.ID, err)
 	}
@@ -734,7 +734,7 @@ func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	// add relay specific addrs to the list
 	relayAddrCnt := 0
 	for p := range rf.relays {
-		addrs := cleanupAddressSet(rf.host.Peerstore().Addrs(p))
+		addrs := cleanupAddressSet(rf.host.Peerstore().Addrs(context.Background(), p))
 		relayAddrCnt += len(addrs)
 		circuit := ma.StringCast(fmt.Sprintf("/p2p/%s/p2p-circuit", p.Pretty()))
 		for _, addr := range addrs {

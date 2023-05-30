@@ -64,7 +64,7 @@ func runRound(t *testing.T, hosts []host.Host) {
 		h1.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 
 		for _, h2 := range hosts {
-			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
+			h1.Peerstore().AddAddrs(context.Background(), h2.ID(), h2.Addrs(), time.Hour)
 		}
 	}
 

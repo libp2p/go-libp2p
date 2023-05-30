@@ -300,7 +300,7 @@ func (s *Swarm) dialWorkerLoop(p peer.ID, reqch <-chan dialRequest) {
 }
 
 func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, error) {
-	peerAddrs := s.peers.Addrs(p)
+	peerAddrs := s.peers.Addrs(ctx, p)
 	if len(peerAddrs) == 0 {
 		return nil, ErrNoAddresses
 	}
@@ -339,7 +339,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 		return nil, ErrNoGoodAddresses
 	}
 
-	s.peers.AddAddrs(p, goodAddrs, peerstore.TempAddrTTL)
+	s.peers.AddAddrs(ctx, p, goodAddrs, peerstore.TempAddrTTL)
 
 	return goodAddrs, nil
 }

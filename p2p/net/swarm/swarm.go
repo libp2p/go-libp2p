@@ -313,7 +313,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 
 	// Add the public key.
 	if pk := tc.RemotePublicKey(); pk != nil {
-		s.peers.AddPubKey(p, pk)
+		s.peers.AddPubKey(context.Background(), p, pk)
 	}
 
 	// Clear any backoffs

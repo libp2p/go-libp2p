@@ -52,7 +52,7 @@ func sortProtos(protos []protocol.ID) {
 func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 	return func(t *testing.T) {
 		addrs, pid := getAddrs(t, 100), peer.ID("testpeer")
-		ps.AddAddrs(pid, addrs[:10], time.Hour)
+		ps.AddAddrs(context.Background(), pid, addrs[:10], time.Hour)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		addrch := ps.AddrStream(ctx, pid)
@@ -60,7 +60,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 		// while that subscription is active, publish ten more addrs
 		// this tests that it doesnt hang
 		for i := 10; i < 20; i++ {
-			ps.AddAddr(pid, addrs[i], time.Hour)
+			ps.AddAddr(context.Background(), pid, addrs[i], time.Hour)
 		}
 
 		// now receive them (without hanging)
@@ -82,7 +82,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 			defer close(done)
 			// now send the rest of the addresses
 			for _, a := range addrs[20:80] {
-				ps.AddAddr(pid, a, time.Hour)
+				ps.AddAddr(context.Background(), pid, a, time.Hour)
 			}
 		}()
 
@@ -118,7 +118,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 
 		// and add a few more addresses it doesnt hang afterwards
 		for _, a := range addrs[80:] {
-			ps.AddAddr(pid, a, time.Hour)
+			ps.AddAddr(context.Background(), pid, a, time.Hour)
 		}
 	}
 }
@@ -132,7 +132,7 @@ func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 
 		ach := ps.AddrStream(ctx, pid)
 		for i := 0; i < 10; i++ {
-			ps.AddAddr(pid, addrs[i], time.Hour)
+			ps.AddAddr(context.Background(), pid, addrs[i], time.Hour)
 		}
 
 		received := make(map[string]bool)
@@ -182,8 +182,8 @@ func testAddrStreamDuplicates(ps pstore.Peerstore) func(t *testing.T) {
 		ach := ps.AddrStream(ctx, pid)
 		go func() {
 			for i := 0; i < 10; i++ {
-				ps.AddAddr(pid, addrs[i], time.Hour)
-				ps.AddAddr(pid, addrs[rand.Intn(10)], time.Hour)
+				ps.AddAddr(context.Background(), pid, addrs[i], time.Hour)
+				ps.AddAddr(context.Background(), pid, addrs[rand.Intn(10)], time.Hour)
 			}
 
 			// make sure that all addresses get processed before context is cancelled
@@ -216,8 +216,8 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 			p1 := peer.ID("TESTPEER")
 			protos := []protocol.ID{"a", "b", "c", "d"}
 
-			require.NoError(t, ps.AddProtocols(p1, protos...))
-			out, err := ps.GetProtocols(p1)
+			require.NoError(t, ps.AddProtocols(context.Background(), p1, protos...))
+			out, err := ps.GetProtocols(context.Background(), p1)
 			require.NoError(t, err)
 			require.Len(t, out, len(protos), "got wrong number of protocols back")
 
@@ -228,7 +228,7 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 				}
 			}
 
-			supported, err := ps.SupportsProtocols(p1, "q", "w", "a", "y", "b")
+			supported, err := ps.SupportsProtocols(context.Background(), p1, "q", "w", "a", "y", "b")
 			require.NoError(t, err)
 			require.Len(t, supported, 2, "only expected 2 supported")
 
@@ -236,26 +236,26 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 				t.Fatal("got wrong supported array: ", supported)
 			}
 
-			b, err := ps.FirstSupportedProtocol(p1, "q", "w", "a", "y", "b")
+			b, err := ps.FirstSupportedProtocol(context.Background(), p1, "q", "w", "a", "y", "b")
 			require.NoError(t, err)
 			require.Equal(t, protocol.ID("a"), b)
 
-			b, err = ps.FirstSupportedProtocol(p1, "q", "x", "z")
+			b, err = ps.FirstSupportedProtocol(context.Background(), p1, "q", "x", "z")
 			require.NoError(t, err)
 			require.Empty(t, b)
 
-			b, err = ps.FirstSupportedProtocol(p1, "a")
+			b, err = ps.FirstSupportedProtocol(context.Background(), p1, "a")
 			require.NoError(t, err)
 			require.Equal(t, protocol.ID("a"), b)
 
 			protos = []protocol.ID{"other", "yet another", "one more"}
-			require.NoError(t, ps.SetProtocols(p1, protos...))
+			require.NoError(t, ps.SetProtocols(context.Background(), p1, protos...))
 
-			supported, err = ps.SupportsProtocols(p1, "q", "w", "a", "y", "b")
+			supported, err = ps.SupportsProtocols(context.Background(), p1, "q", "w", "a", "y", "b")
 			require.NoError(t, err)
 			require.Empty(t, supported, "none of those protocols should have been supported")
 
-			supported, err = ps.GetProtocols(p1)
+			supported, err = ps.GetProtocols(context.Background(), p1)
 			require.NoError(t, err)
 
 			sortProtos(supported)
@@ -264,9 +264,9 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 				t.Fatalf("expected previously set protos; expected: %v, have: %v", protos, supported)
 			}
 
-			require.NoError(t, ps.RemoveProtocols(p1, protos[:2]...))
+			require.NoError(t, ps.RemoveProtocols(context.Background(), p1, protos[:2]...))
 
-			supported, err = ps.GetProtocols(p1)
+			supported, err = ps.GetProtocols(context.Background(), p1)
 			require.NoError(t, err)
 			if !reflect.DeepEqual(supported, protos[2:]) {
 				t.Fatal("expected only one protocol to remain")
@@ -277,12 +277,12 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 			p := peer.ID("foobar")
 			protos := []protocol.ID{"a", "b"}
 
-			require.NoError(t, ps.SetProtocols(p, protos...))
-			out, err := ps.GetProtocols(p)
+			require.NoError(t, ps.SetProtocols(context.Background(), p, protos...))
+			out, err := ps.GetProtocols(context.Background(), p)
 			require.NoError(t, err)
 			require.Len(t, out, 2)
-			ps.RemovePeer(p)
-			out, err = ps.GetProtocols(p)
+			ps.RemovePeer(context.Background(), p)
+			out, err = ps.GetProtocols(context.Background(), p)
 			require.NoError(t, err)
 			require.Empty(t, out)
 		})
@@ -304,15 +304,15 @@ func testBasicPeerstore(ps pstore.Peerstore) func(t *testing.T) {
 				t.Fatal(err)
 			}
 			pids = append(pids, p)
-			ps.AddAddr(p, a, pstore.PermanentAddrTTL)
+			ps.AddAddr(context.Background(), p, a, pstore.PermanentAddrTTL)
 		}
 
-		peers := ps.Peers()
+		peers := ps.Peers(context.Background())
 		if len(peers) != 10 {
 			t.Fatal("expected ten peers, got", len(peers))
 		}
 
-		pinfo := ps.PeerInfo(pids[0])
+		pinfo := ps.PeerInfo(context.Background(), pids[0])
 		if !pinfo.Addrs[0].Equal(addrs[0]) {
 			t.Fatal("stored wrong address")
 		}
@@ -331,15 +331,15 @@ func testMetadata(ps pstore.Peerstore) func(t *testing.T) {
 				pids[i] = p
 			}
 			for _, p := range pids {
-				require.NoError(t, ps.Put(p, "AgentVersion", "string"), "failed to put AgentVersion")
-				require.NoError(t, ps.Put(p, "bar", 1), "failed to put bar")
+				require.NoError(t, ps.Put(context.Background(), p, "AgentVersion", "string"), "failed to put AgentVersion")
+				require.NoError(t, ps.Put(context.Background(), p, "bar", 1), "failed to put bar")
 			}
 			for _, p := range pids {
-				v, err := ps.Get(p, "AgentVersion")
+				v, err := ps.Get(context.Background(), p, "AgentVersion")
 				require.NoError(t, err)
 				require.Equal(t, v, "string")
 
-				v, err = ps.Get(p, "bar")
+				v, err = ps.Get(context.Background(), p, "bar")
 				require.NoError(t, err)
 				require.Equal(t, v, 1)
 			}
@@ -348,16 +348,16 @@ func testMetadata(ps pstore.Peerstore) func(t *testing.T) {
 		t.Run("removing a peer", func(t *testing.T) {
 			p := peer.ID("foo")
 			otherP := peer.ID("foobar")
-			require.NoError(t, ps.Put(otherP, "AgentVersion", "v1"))
-			require.NoError(t, ps.Put(p, "AgentVersion", "v1"))
-			require.NoError(t, ps.Put(p, "bar", 1))
-			ps.RemovePeer(p)
-			_, err := ps.Get(p, "AgentVersion")
+			require.NoError(t, ps.Put(context.Background(), otherP, "AgentVersion", "v1"))
+			require.NoError(t, ps.Put(context.Background(), p, "AgentVersion", "v1"))
+			require.NoError(t, ps.Put(context.Background(), p, "bar", 1))
+			ps.RemovePeer(context.Background(), p)
+			_, err := ps.Get(context.Background(), p, "AgentVersion")
 			require.ErrorIs(t, err, pstore.ErrNotFound)
-			_, err = ps.Get(p, "bar")
+			_, err = ps.Get(context.Background(), p, "bar")
 			require.ErrorIs(t, err, pstore.ErrNotFound)
 			// make sure that entries for otherP were not deleted
-			val, err := ps.Get(otherP, "AgentVersion")
+			val, err := ps.Get(context.Background(), otherP, "AgentVersion")
 			require.NoError(t, err)
 			require.Equal(t, val, "v1")
 		})
@@ -394,14 +394,14 @@ func TestPeerstoreProtoStoreLimits(t *testing.T, ps pstore.Peerstore, limit int)
 	}
 
 	t.Run("setting protocols", func(t *testing.T) {
-		require.NoError(t, ps.SetProtocols(p, protocols...))
-		require.EqualError(t, ps.SetProtocols(p, append(protocols, "proto")...), "too many protocols")
+		require.NoError(t, ps.SetProtocols(context.Background(), p, protocols...))
+		require.EqualError(t, ps.SetProtocols(context.Background(), p, append(protocols, "proto")...), "too many protocols")
 	})
 	t.Run("adding protocols", func(t *testing.T) {
 		p1 := protocols[:limit/2]
 		p2 := protocols[limit/2:]
-		require.NoError(t, ps.SetProtocols(p, p1...))
-		require.NoError(t, ps.AddProtocols(p, p2...))
-		require.EqualError(t, ps.AddProtocols(p, "proto"), "too many protocols")
+		require.NoError(t, ps.SetProtocols(context.Background(), p, p1...))
+		require.NoError(t, ps.AddProtocols(context.Background(), p, p2...))
+		require.EqualError(t, ps.AddProtocols(context.Background(), p, "proto"), "too many protocols")
 	})
 }

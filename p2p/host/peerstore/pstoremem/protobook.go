@@ -1,6 +1,7 @@
 package pstoremem
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -88,7 +89,7 @@ func (pb *memoryProtoBook) internProtocol(proto protocol.ID) protocol.ID {
 	return proto
 }
 
-func (pb *memoryProtoBook) SetProtocols(p peer.ID, protos ...protocol.ID) error {
+func (pb *memoryProtoBook) SetProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) error {
 	if len(protos) > pb.maxProtos {
 		return errTooManyProtocols
 	}
@@ -106,7 +107,7 @@ func (pb *memoryProtoBook) SetProtocols(p peer.ID, protos ...protocol.ID) error 
 	return nil
 }
 
-func (pb *memoryProtoBook) AddProtocols(p peer.ID, protos ...protocol.ID) error {
+func (pb *memoryProtoBook) AddProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) error {
 	s := pb.segments.get(p)
 	s.Lock()
 	defer s.Unlock()
@@ -126,7 +127,7 @@ func (pb *memoryProtoBook) AddProtocols(p peer.ID, protos ...protocol.ID) error 
 	return nil
 }
 
-func (pb *memoryProtoBook) GetProtocols(p peer.ID) ([]protocol.ID, error) {
+func (pb *memoryProtoBook) GetProtocols(ctx context.Context, p peer.ID) ([]protocol.ID, error) {
 	s := pb.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
@@ -139,7 +140,7 @@ func (pb *memoryProtoBook) GetProtocols(p peer.ID) ([]protocol.ID, error) {
 	return out, nil
 }
 
-func (pb *memoryProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) error {
+func (pb *memoryProtoBook) RemoveProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) error {
 	s := pb.segments.get(p)
 	s.Lock()
 	defer s.Unlock()
@@ -156,7 +157,7 @@ func (pb *memoryProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) err
 	return nil
 }
 
-func (pb *memoryProtoBook) SupportsProtocols(p peer.ID, protos ...protocol.ID) ([]protocol.ID, error) {
+func (pb *memoryProtoBook) SupportsProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) ([]protocol.ID, error) {
 	s := pb.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
@@ -171,7 +172,7 @@ func (pb *memoryProtoBook) SupportsProtocols(p peer.ID, protos ...protocol.ID) (
 	return out, nil
 }
 
-func (pb *memoryProtoBook) FirstSupportedProtocol(p peer.ID, protos ...protocol.ID) (protocol.ID, error) {
+func (pb *memoryProtoBook) FirstSupportedProtocol(ctx context.Context, p peer.ID, protos ...protocol.ID) (protocol.ID, error) {
 	s := pb.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
@@ -184,7 +185,7 @@ func (pb *memoryProtoBook) FirstSupportedProtocol(p peer.ID, protos ...protocol.
 	return "", nil
 }
 
-func (pb *memoryProtoBook) RemovePeer(p peer.ID) {
+func (pb *memoryProtoBook) RemovePeer(ctx context.Context, p peer.ID) {
 	s := pb.segments.get(p)
 	s.Lock()
 	delete(s.protocols, p)

@@ -1,6 +1,7 @@
 package peerstore
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -51,7 +52,7 @@ func (m *metrics) LatencyEWMA(p peer.ID) time.Duration {
 	return m.latmap[p]
 }
 
-func (m *metrics) RemovePeer(p peer.ID) {
+func (m *metrics) RemovePeer(ctx context.Context, p peer.ID) {
 	m.mutex.Lock()
 	delete(m.latmap, p)
 	m.mutex.Unlock()

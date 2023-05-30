@@ -60,10 +60,10 @@ type Peerstore interface {
 	// PeerInfo returns a peer.PeerInfo struct for given peer.ID.
 	// This is a small slice of the information Peerstore has on
 	// that peer, useful to other services.
-	PeerInfo(peer.ID) peer.AddrInfo
+	PeerInfo(context.Context, peer.ID) peer.AddrInfo
 
 	// Peers returns all of the peer IDs stored across all inner stores.
-	Peers() peer.IDSlice
+	Peers(context.Context) peer.IDSlice
 }
 
 // PeerMetadata can handle values of any type. Serializing values is
@@ -77,36 +77,36 @@ type PeerMetadata interface {
 	// Get / Put is a simple registry for other peer-related key/value pairs.
 	// If we find something we use often, it should become its own set of
 	// methods. This is a last resort.
-	Get(p peer.ID, key string) (interface{}, error)
-	Put(p peer.ID, key string, val interface{}) error
+	Get(ctx context.Context, p peer.ID, key string) (interface{}, error)
+	Put(ctx context.Context, p peer.ID, key string, val interface{}) error
 
 	// RemovePeer removes all values stored for a peer.
-	RemovePeer(peer.ID)
+	RemovePeer(context.Context, peer.ID)
 }
 
 // AddrBook holds the multiaddrs of peers.
 type AddrBook interface {
 	// AddAddr calls AddAddrs(p, []ma.Multiaddr{addr}, ttl)
-	AddAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration)
+	AddAddr(context.Context, peer.ID, ma.Multiaddr, time.Duration)
 
 	// AddAddrs gives this AddrBook addresses to use, with a given ttl
 	// (time-to-live), after which the address is no longer valid.
 	// If the manager has a longer TTL, the operation is a no-op for that address
-	AddAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration)
+	AddAddrs(context.Context, peer.ID, []ma.Multiaddr, time.Duration)
 
 	// SetAddr calls mgr.SetAddrs(p, addr, ttl)
-	SetAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration)
+	SetAddr(context.Context, peer.ID, ma.Multiaddr, time.Duration)
 
 	// SetAddrs sets the ttl on addresses. This clears any TTL there previously.
 	// This is used when we receive the best estimate of the validity of an address.
-	SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration)
+	SetAddrs(context.Context, peer.ID, []ma.Multiaddr, time.Duration)
 
 	// UpdateAddrs updates the addresses associated with the given peer that have
 	// the given oldTTL to have the given newTTL.
-	UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL time.Duration)
+	UpdateAddrs(context.Context, peer.ID, time.Duration, time.Duration)
 
 	// Addrs returns all known (and valid) addresses for a given peer.
-	Addrs(p peer.ID) []ma.Multiaddr
+	Addrs(context.Context, peer.ID) []ma.Multiaddr
 
 	// AddrStream returns a channel that gets all addresses for a given
 	// peer sent on it. If new addresses are added after the call is made
@@ -114,10 +114,10 @@ type AddrBook interface {
 	AddrStream(context.Context, peer.ID) <-chan ma.Multiaddr
 
 	// ClearAddresses removes all previously stored addresses.
-	ClearAddrs(p peer.ID)
+	ClearAddrs(context.Context, peer.ID)
 
 	// PeersWithAddrs returns all of the peer IDs stored in the AddrBook.
-	PeersWithAddrs() peer.IDSlice
+	PeersWithAddrs(context.Context) peer.IDSlice
 }
 
 // CertifiedAddrBook manages "self-certified" addresses for remote peers.
@@ -172,12 +172,12 @@ type CertifiedAddrBook interface {
 	// AddrBook.SetAddrs will be ignored. AddrBook.SetAddrs may still be used
 	// to update the TTL of certified addresses that have previously been
 	// added via ConsumePeerRecord.
-	ConsumePeerRecord(s *record.Envelope, ttl time.Duration) (accepted bool, err error)
+	ConsumePeerRecord(context.Context, *record.Envelope, time.Duration) (accepted bool, err error)
 
 	// GetPeerRecord returns a Envelope containing a PeerRecord for the
 	// given peer id, if one exists.
 	// Returns nil if no signed PeerRecord exists for the peer.
-	GetPeerRecord(p peer.ID) *record.Envelope
+	GetPeerRecord(context.Context, peer.ID) *record.Envelope
 }
 
 // GetCertifiedAddrBook is a helper to "upcast" an AddrBook to a
@@ -196,24 +196,24 @@ func GetCertifiedAddrBook(ab AddrBook) (cab CertifiedAddrBook, ok bool) {
 // KeyBook tracks the keys of Peers.
 type KeyBook interface {
 	// PubKey stores the public key of a peer.
-	PubKey(peer.ID) ic.PubKey
+	PubKey(context.Context, peer.ID) ic.PubKey
 
 	// AddPubKey stores the public key of a peer.
-	AddPubKey(peer.ID, ic.PubKey) error
+	AddPubKey(context.Context, peer.ID, ic.PubKey) error
 
 	// PrivKey returns the private key of a peer, if known. Generally this might only be our own
 	// private key, see
 	// https://discuss.libp2p.io/t/what-is-the-purpose-of-having-map-peer-id-privatekey-in-peerstore/74.
-	PrivKey(peer.ID) ic.PrivKey
+	PrivKey(context.Context, peer.ID) ic.PrivKey
 
 	// AddPrivKey stores the private key of a peer.
-	AddPrivKey(peer.ID, ic.PrivKey) error
+	AddPrivKey(context.Context, peer.ID, ic.PrivKey) error
 
 	// PeersWithKeys returns all the peer IDs stored in the KeyBook.
-	PeersWithKeys() peer.IDSlice
+	PeersWithKeys(context.Context) peer.IDSlice
 
 	// RemovePeer removes all keys associated with a peer.
-	RemovePeer(peer.ID)
+	RemovePeer(context.Context, peer.ID)
 }
 
 // Metrics tracks metrics across a set of peers.
@@ -226,25 +226,25 @@ type Metrics interface {
 	LatencyEWMA(peer.ID) time.Duration
 
 	// RemovePeer removes all metrics stored for a peer.
-	RemovePeer(peer.ID)
+	RemovePeer(context.Context, peer.ID)
 }
 
 // ProtoBook tracks the protocols supported by peers.
 type ProtoBook interface {
-	GetProtocols(peer.ID) ([]protocol.ID, error)
-	AddProtocols(peer.ID, ...protocol.ID) error
-	SetProtocols(peer.ID, ...protocol.ID) error
-	RemoveProtocols(peer.ID, ...protocol.ID) error
+	GetProtocols(context.Context, peer.ID) ([]protocol.ID, error)
+	AddProtocols(context.Context, peer.ID, ...protocol.ID) error
+	SetProtocols(context.Context, peer.ID, ...protocol.ID) error
+	RemoveProtocols(context.Context, peer.ID, ...protocol.ID) error
 
 	// SupportsProtocols returns the set of protocols the peer supports from among the given protocols.
 	// If the returned error is not nil, the result is indeterminate.
-	SupportsProtocols(peer.ID, ...protocol.ID) ([]protocol.ID, error)
+	SupportsProtocols(context.Context, peer.ID, ...protocol.ID) ([]protocol.ID, error)
 
 	// FirstSupportedProtocol returns the first protocol that the peer supports among the given protocols.
 	// If the peer does not support any of the given protocols, this function will return an empty protocol.ID and a nil error.
 	// If the returned error is not nil, the result is indeterminate.
-	FirstSupportedProtocol(peer.ID, ...protocol.ID) (protocol.ID, error)
+	FirstSupportedProtocol(context.Context, peer.ID, ...protocol.ID) (protocol.ID, error)
 
 	// RemovePeer removes all protocols associated with a peer.
-	RemovePeer(peer.ID)
+	RemovePeer(context.Context, peer.ID)
 }

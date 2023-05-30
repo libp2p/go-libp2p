@@ -118,7 +118,7 @@ func (c *Client) dialPeer(ctx context.Context, relay, dest peer.AddrInfo) (*Conn
 	log.Debugf("dialing peer %s through relay %s", dest.ID, relay.ID)
 
 	if len(relay.Addrs) > 0 {
-		c.host.Peerstore().AddAddrs(relay.ID, relay.Addrs, peerstore.TempAddrTTL)
+		c.host.Peerstore().AddAddrs(ctx, relay.ID, relay.Addrs, peerstore.TempAddrTTL)
 	}
 
 	dialCtx, cancel := context.WithTimeout(ctx, DialRelayTimeout)

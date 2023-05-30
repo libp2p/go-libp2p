@@ -47,11 +47,11 @@ type addrsRecord struct {
 
 // flush writes the record to the datastore by calling ds.Put, unless the record is
 // marked for deletion, in which case we call ds.Delete. To be called within a lock.
-func (r *addrsRecord) flush(write ds.Write) (err error) {
+func (r *addrsRecord) flush(ctx context.Context, write ds.Write) (err error) {
 	key := addrBookBase.ChildString(b32.RawStdEncoding.EncodeToString(r.Id))
 
 	if len(r.Addrs) == 0 {
-		if err = write.Delete(context.TODO(), key); err == nil {
+		if err = write.Delete(ctx, key); err == nil {
 			r.dirty = false
 		}
 		return err
@@ -61,7 +61,7 @@ func (r *addrsRecord) flush(write ds.Write) (err error) {
 	if err != nil {
 		return err
 	}
-	if err = write.Put(context.TODO(), key, data); err != nil {
+	if err = write.Put(ctx, key, data); err != nil {
 		return err
 	}
 	// write succeeded; record is no longer dirty.
@@ -229,13 +229,13 @@ func (ab *dsAddrBook) Close() error {
 // as a result and the update argument is true, the resulting state is saved in the datastore.
 //
 // If the cache argument is true, the record is inserted in the cache when loaded from the datastore.
-func (ab *dsAddrBook) loadRecord(id peer.ID, cache bool, update bool) (pr *addrsRecord, err error) {
+func (ab *dsAddrBook) loadRecord(ctx context.Context, id peer.ID, cache bool, update bool) (pr *addrsRecord, err error) {
 	if pr, ok := ab.cache.Get(id); ok {
 		pr.Lock()
 		defer pr.Unlock()
 
 		if pr.clean(ab.clock.Now()) && update {
-			err = pr.flush(ab.ds)
+			err = pr.flush(ctx, ab.ds)
 		}
 		return pr, err
 	}
@@ -254,7 +254,7 @@ func (ab *dsAddrBook) loadRecord(id peer.ID, cache bool, update bool) (pr *addrs
 		}
 		// this record is new and local for now (not in cache), so we don't need to lock.
 		if pr.clean(ab.clock.Now()) && update {
-			err = pr.flush(ab.ds)
+			err = pr.flush(ctx, ab.ds)
 		}
 	default:
 		return nil, err
@@ -267,23 +267,23 @@ func (ab *dsAddrBook) loadRecord(id peer.ID, cache bool, update bool) (pr *addrs
 }
 
 // AddAddr will add a new address if it's not already in the AddrBook.
-func (ab *dsAddrBook) AddAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
-	ab.AddAddrs(p, []ma.Multiaddr{addr}, ttl)
+func (ab *dsAddrBook) AddAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
+	ab.AddAddrs(ctx, p, []ma.Multiaddr{addr}, ttl)
 }
 
 // AddAddrs will add many new addresses if they're not already in the AddrBook.
-func (ab *dsAddrBook) AddAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (ab *dsAddrBook) AddAddrs(ctx context.Context, p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	if ttl <= 0 {
 		return
 	}
 	addrs = cleanAddrs(addrs, p)
-	ab.setAddrs(p, addrs, ttl, ttlExtend, false)
+	ab.setAddrs(ctx, p, addrs, ttl, ttlExtend, false)
 }
 
 // ConsumePeerRecord adds addresses from a signed peer.PeerRecord (contained in
 // a record.Envelope), which will expire after the given TTL.
 // See https://godoc.org/github.com/libp2p/go-libp2p/core/peerstore#CertifiedAddrBook for more details.
-func (ab *dsAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl time.Duration) (bool, error) {
+func (ab *dsAddrBook) ConsumePeerRecord(ctx context.Context, recordEnvelope *record.Envelope, ttl time.Duration) (bool, error) {
 	r, err := recordEnvelope.Record()
 	if err != nil {
 		return false, err
@@ -298,25 +298,25 @@ func (ab *dsAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl tim
 
 	// ensure that the seq number from envelope is >= any previously received seq no
 	// update when equal to extend the ttls
-	if ab.latestPeerRecordSeq(rec.PeerID) > rec.Seq {
+	if ab.latestPeerRecordSeq(ctx, rec.PeerID) > rec.Seq {
 		return false, nil
 	}
 
 	addrs := cleanAddrs(rec.Addrs, rec.PeerID)
-	err = ab.setAddrs(rec.PeerID, addrs, ttl, ttlExtend, true)
+	err = ab.setAddrs(ctx, rec.PeerID, addrs, ttl, ttlExtend, true)
 	if err != nil {
 		return false, err
 	}
 
-	err = ab.storeSignedPeerRecord(rec.PeerID, recordEnvelope, rec)
+	err = ab.storeSignedPeerRecord(ctx, rec.PeerID, recordEnvelope, rec)
 	if err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-func (ab *dsAddrBook) latestPeerRecordSeq(p peer.ID) uint64 {
-	pr, err := ab.loadRecord(p, true, false)
+func (ab *dsAddrBook) latestPeerRecordSeq(ctx context.Context, p peer.ID) uint64 {
+	pr, err := ab.loadRecord(ctx, p, true, false)
 	if err != nil {
 		// We ignore the error because we don't want to fail storing a new record in this
 		// case.
@@ -332,7 +332,7 @@ func (ab *dsAddrBook) latestPeerRecordSeq(p peer.ID) uint64 {
 	return pr.CertifiedRecord.Seq
 }
 
-func (ab *dsAddrBook) storeSignedPeerRecord(p peer.ID, envelope *record.Envelope, rec *peer.PeerRecord) error {
+func (ab *dsAddrBook) storeSignedPeerRecord(ctx context.Context, p peer.ID, envelope *record.Envelope, rec *peer.PeerRecord) error {
 	envelopeBytes, err := envelope.Marshal()
 	if err != nil {
 		return err
@@ -341,7 +341,7 @@ func (ab *dsAddrBook) storeSignedPeerRecord(p peer.ID, envelope *record.Envelope
 	// this has to be done after we add the addresses, since if
 	// we try to flush a datastore record with no addresses,
 	// it will just get deleted
-	pr, err := ab.loadRecord(p, true, false)
+	pr, err := ab.loadRecord(ctx, p, true, false)
 	if err != nil {
 		return err
 	}
@@ -352,15 +352,15 @@ func (ab *dsAddrBook) storeSignedPeerRecord(p peer.ID, envelope *record.Envelope
 		Raw: envelopeBytes,
 	}
 	pr.dirty = true
-	err = pr.flush(ab.ds)
+	err = pr.flush(ctx, ab.ds)
 	return err
 }
 
 // GetPeerRecord returns a record.Envelope containing a peer.PeerRecord for the
 // given peer id, if one exists.
 // Returns nil if no signed PeerRecord exists for the peer.
-func (ab *dsAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
-	pr, err := ab.loadRecord(p, true, false)
+func (ab *dsAddrBook) GetPeerRecord(ctx context.Context, p peer.ID) *record.Envelope {
+	pr, err := ab.loadRecord(ctx, p, true, false)
 	if err != nil {
 		log.Errorf("unable to load record for peer %s: %v", p.Pretty(), err)
 		return nil
@@ -379,24 +379,24 @@ func (ab *dsAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
 }
 
 // SetAddr will add or update the TTL of an address in the AddrBook.
-func (ab *dsAddrBook) SetAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
-	ab.SetAddrs(p, []ma.Multiaddr{addr}, ttl)
+func (ab *dsAddrBook) SetAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
+	ab.SetAddrs(ctx, p, []ma.Multiaddr{addr}, ttl)
 }
 
 // SetAddrs will add or update the TTLs of addresses in the AddrBook.
-func (ab *dsAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (ab *dsAddrBook) SetAddrs(ctx context.Context, p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	addrs = cleanAddrs(addrs, p)
 	if ttl <= 0 {
-		ab.deleteAddrs(p, addrs)
+		ab.deleteAddrs(ctx, p, addrs)
 		return
 	}
-	ab.setAddrs(p, addrs, ttl, ttlOverride, false)
+	ab.setAddrs(ctx, p, addrs, ttl, ttlOverride, false)
 }
 
 // UpdateAddrs will update any addresses for a given peer and TTL combination to
 // have a new TTL.
-func (ab *dsAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL time.Duration) {
-	pr, err := ab.loadRecord(p, true, false)
+func (ab *dsAddrBook) UpdateAddrs(ctx context.Context, p peer.ID, oldTTL time.Duration, newTTL time.Duration) {
+	pr, err := ab.loadRecord(ctx, p, true, false)
 	if err != nil {
 		log.Errorf("failed to update ttls for peer %s: %s\n", p.Pretty(), err)
 		return
@@ -415,13 +415,13 @@ func (ab *dsAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL time.D
 	}
 
 	if pr.clean(ab.clock.Now()) {
-		pr.flush(ab.ds)
+		pr.flush(ctx, ab.ds)
 	}
 }
 
 // Addrs returns all of the non-expired addresses for a given peer.
-func (ab *dsAddrBook) Addrs(p peer.ID) []ma.Multiaddr {
-	pr, err := ab.loadRecord(p, true, true)
+func (ab *dsAddrBook) Addrs(ctx context.Context, p peer.ID) []ma.Multiaddr {
+	pr, err := ab.loadRecord(ctx, p, true, true)
 	if err != nil {
 		log.Warn("failed to load peerstore entry for peer %v while querying addrs, err: %v", p, err)
 		return nil
@@ -443,8 +443,8 @@ func (ab *dsAddrBook) Addrs(p peer.ID) []ma.Multiaddr {
 }
 
 // Peers returns all of the peer IDs for which the AddrBook has addresses.
-func (ab *dsAddrBook) PeersWithAddrs() peer.IDSlice {
-	ids, err := uniquePeerIds(ab.ds, addrBookBase, func(result query.Result) string {
+func (ab *dsAddrBook) PeersWithAddrs(ctx context.Context) peer.IDSlice {
+	ids, err := uniquePeerIds(ctx, ab.ds, addrBookBase, func(result query.Result) string {
 		return ds.RawKey(result.Key).Name()
 	})
 	if err != nil {
@@ -456,26 +456,26 @@ func (ab *dsAddrBook) PeersWithAddrs() peer.IDSlice {
 // AddrStream returns a channel on which all new addresses discovered for a
 // given peer ID will be published.
 func (ab *dsAddrBook) AddrStream(ctx context.Context, p peer.ID) <-chan ma.Multiaddr {
-	initial := ab.Addrs(p)
+	initial := ab.Addrs(ctx, p)
 	return ab.subsManager.AddrStream(ctx, p, initial)
 }
 
 // ClearAddrs will delete all known addresses for a peer ID.
-func (ab *dsAddrBook) ClearAddrs(p peer.ID) {
+func (ab *dsAddrBook) ClearAddrs(ctx context.Context, p peer.ID) {
 	ab.cache.Remove(p)
 
 	key := addrBookBase.ChildString(b32.RawStdEncoding.EncodeToString([]byte(p)))
-	if err := ab.ds.Delete(context.TODO(), key); err != nil {
+	if err := ab.ds.Delete(ctx, key); err != nil {
 		log.Errorf("failed to clear addresses for peer %s: %v", p.Pretty(), err)
 	}
 }
 
-func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration, mode ttlWriteMode, signed bool) (err error) {
+func (ab *dsAddrBook) setAddrs(ctx context.Context, p peer.ID, addrs []ma.Multiaddr, ttl time.Duration, mode ttlWriteMode, signed bool) (err error) {
 	if len(addrs) == 0 {
 		return nil
 	}
 
-	pr, err := ab.loadRecord(p, true, false)
+	pr, err := ab.loadRecord(ctx, p, true, false)
 	if err != nil {
 		return fmt.Errorf("failed to load peerstore entry for peer %v while setting addrs, err: %v", p, err)
 	}
@@ -549,7 +549,7 @@ func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 
 	pr.dirty = true
 	pr.clean(ab.clock.Now())
-	return pr.flush(ab.ds)
+	return pr.flush(ctx, ab.ds)
 }
 
 // deletes addresses in place, avoiding copies until we encounter the first deletion.
@@ -578,8 +578,8 @@ Outer:
 	return s[:survived]
 }
 
-func (ab *dsAddrBook) deleteAddrs(p peer.ID, addrs []ma.Multiaddr) (err error) {
-	pr, err := ab.loadRecord(p, false, false)
+func (ab *dsAddrBook) deleteAddrs(ctx context.Context, p peer.ID, addrs []ma.Multiaddr) (err error) {
+	pr, err := ab.loadRecord(ctx, p, false, false)
 	if err != nil {
 		return fmt.Errorf("failed to load peerstore entry for peer %v while deleting addrs, err: %v", p, err)
 	}
@@ -595,7 +595,7 @@ func (ab *dsAddrBook) deleteAddrs(p peer.ID, addrs []ma.Multiaddr) (err error) {
 
 	pr.dirty = true
 	pr.clean(ab.clock.Now())
-	return pr.flush(ab.ds)
+	return pr.flush(ctx, ab.ds)
 }
 
 func cleanAddrs(addrs []ma.Multiaddr, pid peer.ID) []ma.Multiaddr {

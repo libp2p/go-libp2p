@@ -42,8 +42,8 @@ func TestAddrsForDial(t *testing.T) {
 
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
-	ps.AddPubKey(id, priv.GetPublic())
-	ps.AddPrivKey(id, priv)
+	ps.AddPubKey(context.Background(), id, priv.GetPublic())
+	ps.AddPrivKey(context.Background(), id, priv)
 	t.Cleanup(func() { ps.Close() })
 
 	tpt, err := websocket.New(nil, &network.NullResourceManager{})
@@ -56,7 +56,7 @@ func TestAddrsForDial(t *testing.T) {
 
 	otherPeer := test.RandPeerIDFatal(t)
 
-	ps.AddAddr(otherPeer, ma.StringCast("/dns4/example.com/tcp/1234/wss"), time.Hour)
+	ps.AddAddr(context.Background(), otherPeer, ma.StringCast("/dns4/example.com/tcp/1234/wss"), time.Hour)
 
 	ctx := context.Background()
 	mas, err := s.addrsForDial(ctx, otherPeer)
@@ -72,8 +72,8 @@ func newTestSwarmWithResolver(t *testing.T, resolver *madns.Resolver) *Swarm {
 	require.NoError(t, err)
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
-	ps.AddPubKey(id, priv.GetPublic())
-	ps.AddPrivKey(id, priv)
+	ps.AddPubKey(context.Background(), id, priv.GetPublic())
+	ps.AddPrivKey(context.Background(), id, priv)
 	t.Cleanup(func() { ps.Close() })
 	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(resolver))
 	require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestAddrResolution(t *testing.T) {
 
 	s := newTestSwarmWithResolver(t, resolver)
 
-	s.peers.AddAddr(p1, addr1, time.Hour)
+	s.peers.AddAddr(context.Background(), p1, addr1, time.Hour)
 
 	tctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
 	defer cancel()
@@ -121,7 +121,7 @@ func TestAddrResolution(t *testing.T) {
 	require.Len(t, mas, 1)
 	require.Contains(t, mas, addr2)
 
-	addrs := s.peers.Addrs(p1)
+	addrs := s.peers.Addrs(context.Background(), p1)
 	require.Len(t, addrs, 2)
 	require.Contains(t, addrs, addr1)
 	require.Contains(t, addrs, addr2)
@@ -172,11 +172,11 @@ func TestAddrResolutionRecursive(t *testing.T) {
 
 	tctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
 	defer cancel()
-	s.Peerstore().AddAddrs(pi1.ID, pi1.Addrs, peerstore.TempAddrTTL)
+	s.Peerstore().AddAddrs(context.Background(), pi1.ID, pi1.Addrs, peerstore.TempAddrTTL)
 	_, err = s.addrsForDial(tctx, p1)
 	require.NoError(t, err)
 
-	addrs1 := s.Peerstore().Addrs(pi1.ID)
+	addrs1 := s.Peerstore().Addrs(context.Background(), pi1.ID)
 	require.Len(t, addrs1, 2)
 	require.Contains(t, addrs1, addr1)
 	require.Contains(t, addrs1, addr2)
@@ -184,12 +184,12 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	pi2, err := peer.AddrInfoFromP2pAddr(p2paddr2)
 	require.NoError(t, err)
 
-	s.Peerstore().AddAddrs(pi2.ID, pi2.Addrs, peerstore.TempAddrTTL)
+	s.Peerstore().AddAddrs(context.Background(), pi2.ID, pi2.Addrs, peerstore.TempAddrTTL)
 	_, err = s.addrsForDial(tctx, p2)
 	// This never resolves to a good address
 	require.Equal(t, ErrNoGoodAddresses, err)
 
-	addrs2 := s.Peerstore().Addrs(pi2.ID)
+	addrs2 := s.Peerstore().Addrs(context.Background(), pi2.ID)
 	require.Len(t, addrs2, 1)
 	require.Contains(t, addrs2, addr1)
 }

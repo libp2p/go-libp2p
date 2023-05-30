@@ -113,7 +113,7 @@ func TestDirectDialWorks(t *testing.T) {
 	h2, _ := mkHostWithHolePunchSvc(t)
 	defer h2.Close()
 	h2.RemoveStreamHandler(holepunch.Protocol)
-	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
+	h1.Peerstore().AddAddrs(context.Background(), h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
 
 	// try to hole punch without any connection and streams, if it works -> it's a direct connection
 	require.Len(t, h1.Network().ConnsToPeer(h2.ID()), 0)
@@ -227,7 +227,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 			hps := addHolePunchService(t, h2, opts...)
 			// wait until the hole punching protocol has actually started
 			require.Eventually(t, func() bool {
-				protos, _ := h2.Peerstore().SupportsProtocols(h1.ID(), holepunch.Protocol)
+				protos, _ := h2.Peerstore().SupportsProtocols(context.Background(), h1.ID(), holepunch.Protocol)
 				return len(protos) > 0
 			}, 200*time.Millisecond, 10*time.Millisecond)
 
@@ -462,7 +462,7 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePunc
 	defer h.Close()
 	require.NoError(t, h.Connect(context.Background(), peer.AddrInfo{ID: relay.ID(), Addrs: relay.Addrs()}))
 	require.Eventually(t, func() bool {
-		supported, err := h.Peerstore().SupportsProtocols(relay.ID(), proto.ProtoIDv2Hop)
+		supported, err := h.Peerstore().SupportsProtocols(context.Background(), relay.ID(), proto.ProtoIDv2Hop)
 		return err == nil && len(supported) > 0
 	}, 3*time.Second, 100*time.Millisecond)
 

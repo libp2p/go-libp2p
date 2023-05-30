@@ -55,7 +55,7 @@ func getNetHosts(t *testing.T, n int) []host.Host {
 func loadCh(peers []host.Host) <-chan peer.AddrInfo {
 	ch := make(chan peer.AddrInfo, len(peers))
 	for _, p := range peers {
-		ch <- p.Peerstore().PeerInfo(p.ID())
+		ch <- p.Peerstore().PeerInfo(context.Background(), p.ID())
 	}
 	close(ch)
 	return ch

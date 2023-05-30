@@ -41,8 +41,8 @@ func makeSwarm(t *testing.T) *Swarm {
 
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
-	ps.AddPubKey(id, priv.GetPublic())
-	ps.AddPrivKey(id, priv)
+	ps.AddPubKey(context.Background(), id, priv.GetPublic())
+	ps.AddPrivKey(context.Background(), id, priv)
 	t.Cleanup(func() { ps.Close() })
 
 	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithDialTimeout(time.Second))
@@ -81,7 +81,7 @@ func makeSwarm(t *testing.T) *Swarm {
 
 func makeUpgrader(t *testing.T, n *Swarm) transport.Upgrader {
 	id := n.LocalPeer()
-	pk := n.Peerstore().PrivKey(id)
+	pk := n.Peerstore().PrivKey(context.Background(), id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
 
 	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: yamux.ID, Muxer: yamux.DefaultTransport}}, nil, nil, nil)
@@ -96,7 +96,7 @@ func TestDialWorkerLoopBasic(t *testing.T) {
 	defer s2.Close()
 
 	// Only pass in a single address here, otherwise we might end up with a TCP and QUIC connection dialed.
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{s2.ListenAddresses()[0]}, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), []ma.Multiaddr{s2.ListenAddresses()[0]}, peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	resch := make(chan dialResponse)
@@ -142,7 +142,7 @@ func TestDialWorkerLoopConcurrent(t *testing.T) {
 	defer s1.Close()
 	defer s2.Close()
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	worker := newDialWorker(s1, s2.LocalPeer(), reqch)
@@ -184,7 +184,7 @@ func TestDialWorkerLoopFailure(t *testing.T) {
 
 	_, p2 := newPeer(t)
 
-	s1.Peerstore().AddAddrs(p2, []ma.Multiaddr{ma.StringCast("/ip4/11.0.0.1/tcp/1234"), ma.StringCast("/ip4/11.0.0.1/udp/1234/quic")}, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), p2, []ma.Multiaddr{ma.StringCast("/ip4/11.0.0.1/tcp/1234"), ma.StringCast("/ip4/11.0.0.1/udp/1234/quic")}, peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	resch := make(chan dialResponse)
@@ -209,7 +209,7 @@ func TestDialWorkerLoopConcurrentFailure(t *testing.T) {
 
 	_, p2 := newPeer(t)
 
-	s1.Peerstore().AddAddrs(p2, []ma.Multiaddr{ma.StringCast("/ip4/11.0.0.1/tcp/1234"), ma.StringCast("/ip4/11.0.0.1/udp/1234/quic")}, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), p2, []ma.Multiaddr{ma.StringCast("/ip4/11.0.0.1/tcp/1234"), ma.StringCast("/ip4/11.0.0.1/udp/1234/quic")}, peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	worker := newDialWorker(s1, p2, reqch)
@@ -256,8 +256,8 @@ func TestDialWorkerLoopConcurrentMix(t *testing.T) {
 	defer s1.Close()
 	defer s2.Close()
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{ma.StringCast("/ip4/11.0.0.1/tcp/1234"), ma.StringCast("/ip4/11.0.0.1/udp/1234/quic")}, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), []ma.Multiaddr{ma.StringCast("/ip4/11.0.0.1/tcp/1234"), ma.StringCast("/ip4/11.0.0.1/udp/1234/quic")}, peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	worker := newDialWorker(s1, s2.LocalPeer(), reqch)
@@ -303,7 +303,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 	for i := 0; i < 16; i++ {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/11.0.0.%d/tcp/%d", i%256, 1234+i)))
 	}
-	s1.Peerstore().AddAddrs(p2, addrs, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), p2, addrs, peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	worker := newDialWorker(s1, p2, reqch)
@@ -379,7 +379,7 @@ func TestDialWorkerLoopAddrDedup(t *testing.T) {
 	defer close(closeCh)
 	<-ch // the routine has started listening on addr
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{t1}, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), []ma.Multiaddr{t1}, peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	resch := make(chan dialResponse, 2)
@@ -395,8 +395,8 @@ func TestDialWorkerLoopAddrDedup(t *testing.T) {
 	// Need to clear backoff otherwise the dial attempt would not be made
 	s1.Backoff().Clear(s2.LocalPeer())
 
-	s1.Peerstore().ClearAddrs(s2.LocalPeer())
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{t2}, peerstore.PermanentAddrTTL)
+	s1.Peerstore().ClearAddrs(context.Background(), s2.LocalPeer())
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), []ma.Multiaddr{t2}, peerstore.PermanentAddrTTL)
 
 	reqch <- dialRequest{ctx: context.Background(), resch: resch}
 	select {
