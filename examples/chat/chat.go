@@ -97,6 +97,8 @@ func main() {
 	defer cancel()
 
 	sourcePort := flag.Int("sp", 0, "Source port number")
+	websocket := flag.Bool("ws", false, "Use websocket transport for wasm browser example.")
+	webtransport := flag.Bool("wt", false, "Use WebTransport transport for wasm browser example.")
 	dest := flag.String("d", "", "Destination multiaddr string")
 	help := flag.Bool("help", false, "Display help")
 	debug := flag.Bool("debug", false, "Debug generates the same node ID on every execution")
@@ -123,14 +125,14 @@ func main() {
 		r = rand.Reader
 	}
 
-	h, err := makeHost(*sourcePort, r)
+	h, err := makeHost(*sourcePort, r, *websocket, *webtransport)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
 	if *dest == "" {
-		startPeer(ctx, h, handleStream)
+		startPeer(ctx, h, handleStream, *websocket, *webtransport)
 	} else {
 		rw, err := startPeerAndConnect(ctx, h, *dest)
 		if err != nil {
@@ -148,7 +150,7 @@ func main() {
 	select {}
 }
 
-func makeHost(port int, randomness io.Reader) (host.Host, error) {
+func makeHost(port int, randomness io.Reader, websocket, webtransport bool) (host.Host, error) {
 	// Creates a new RSA key pair for this host.
 	prvKey, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, randomness)
 	if err != nil {
@@ -157,7 +159,14 @@ func makeHost(port int, randomness io.Reader) (host.Host, error) {
 	}
 
 	// 0.0.0.0 will listen on any interface device.
-	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port))
+	format := "/ip4/0.0.0.0/tcp/%d"
+	if websocket {
+		format += "/ws"
+	}
+	if webtransport {
+		format = "/ip4/0.0.0.0/udp/%d/quic-v1/webtransport"
+	}
+	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf(format, port))
 
 	// libp2p.New constructs a new libp2p Host.
 	// Other options can be added here.
@@ -167,7 +176,7 @@ func makeHost(port int, randomness io.Reader) (host.Host, error) {
 	)
 }
 
-func startPeer(ctx context.Context, h host.Host, streamHandler network.StreamHandler) {
+func startPeer(ctx context.Context, h host.Host, streamHandler network.StreamHandler, websocket, webtransport bool) {
 	// Set a function as stream handler.
 	// This function is called when a peer connects, and starts a stream with this protocol.
 	// Only applies on the receiving side.
@@ -176,9 +185,16 @@ func startPeer(ctx context.Context, h host.Host, streamHandler network.StreamHan
 	// Let's get the actual TCP port from our listen multiaddr, in case we're using 0 (default; random available port).
 	var port string
 	for _, la := range h.Network().ListenAddresses() {
-		if p, err := la.ValueForProtocol(multiaddr.P_TCP); err == nil {
-			port = p
-			break
+		if webtransport {
+			if _, err := la.ValueForProtocol(multiaddr.P_WEBTRANSPORT); err == nil {
+				port = la.String()
+				break
+			}
+		} else {
+			if p, err := la.ValueForProtocol(multiaddr.P_TCP); err == nil {
+				port = p
+				break
+			}
 		}
 	}
 
@@ -187,7 +203,14 @@ func startPeer(ctx context.Context, h host.Host, streamHandler network.StreamHan
 		return
 	}
 
-	log.Printf("Run './chat -d /ip4/127.0.0.1/tcp/%v/p2p/%s' on another console.\n", port, h.ID().Pretty())
+	format := "Run './chat -d /ip4/127.0.0.1/tcp/%v/p2p/%s' on another console.\n"
+	if websocket {
+		format = "Use address '/ip4/127.0.0.1/tcp/%v/ws/p2p/%s' to connect from the browser.\n"
+	}
+	if webtransport {
+		format = "Use address '%s/p2p/%s' to connect from the browser.\n"
+	}
+	log.Printf(format, port, h.ID().Pretty())
 	log.Println("You can replace 127.0.0.1 with public IP as well.")
 	log.Println("Waiting for incoming connection")
 	log.Println()

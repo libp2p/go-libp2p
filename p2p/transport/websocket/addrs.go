@@ -173,3 +173,15 @@ func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
 
 	return out, nil
 }
+
+func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
+	if !pwma.isWSS {
+		return pwma.restMultiaddr.Encapsulate(wsComponent)
+	}
+
+	if pwma.sni == nil {
+		return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(wsComponent)
+	}
+
+	return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(pwma.sni).Encapsulate(wsComponent)
+}
