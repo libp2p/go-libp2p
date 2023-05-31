@@ -1,6 +1,7 @@
 package pstoremem
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -20,7 +21,13 @@ func (s *protoSegments) get(p peer.ID) *protoSegment {
 	return s[byte(p[len(p)-1])]
 }
 
+type peersPerProtocol struct {
+	sync.RWMutex
+	peers map[protocol.ID]map[peer.ID]peer.ID
+}
+
 var errTooManyProtocols = errors.New("too many protocols")
+var errNoPeersForProtocol = errors.New("no peers available for queried protocol")
 
 type memoryProtoBook struct {
 	segments protoSegments
@@ -29,6 +36,8 @@ type memoryProtoBook struct {
 
 	lk       sync.RWMutex
 	interned map[protocol.ID]protocol.ID
+
+	peers peersPerProtocol
 }
 
 var _ pstore.ProtoBook = (*memoryProtoBook)(nil)
@@ -61,6 +70,7 @@ func NewProtoBook(opts ...ProtoBookOption) (*memoryProtoBook, error) {
 			return nil, err
 		}
 	}
+	pb.peers.peers = make(map[protocol.ID]map[peer.ID]peer.ID, pb.maxProtos)
 	return pb, nil
 }
 
@@ -97,17 +107,35 @@ func (pb *memoryProtoBook) SetProtocols(p peer.ID, protos ...protocol.ID) error 
 	for _, proto := range protos {
 		newprotos[pb.internProtocol(proto)] = struct{}{}
 	}
-
 	s := pb.segments.get(p)
 	s.Lock()
 	s.protocols[p] = newprotos
 	s.Unlock()
-
+	pb.addPeersPerProtocol(p, protos...)
 	return nil
 }
 
-func (pb *memoryProtoBook) AddProtocols(p peer.ID, protos ...protocol.ID) error {
+func (pb *memoryProtoBook) addPeersPerProtocol(p peer.ID, protos ...protocol.ID) {
+	pb.peers.Lock()
+	defer pb.peers.Unlock()
+	for _, proto := range protos {
+		peers, ok := pb.peers.peers[proto]
+		if !ok {
+			peers = make(map[peer.ID]peer.ID)
+			peers[p] = p
+			pb.peers.peers[proto] = peers
+		} else {
+			_, ok := peers[p]
+			if !ok {
+				peers[p] = p
+			}
+		}
+	}
+}
+
+func (pb *memoryProtoBook) addProtocolsToSegment(p peer.ID, protos ...protocol.ID) error {
 	s := pb.segments.get(p)
+
 	s.Lock()
 	defer s.Unlock()
 
@@ -126,6 +154,15 @@ func (pb *memoryProtoBook) AddProtocols(p peer.ID, protos ...protocol.ID) error 
 	return nil
 }
 
+func (pb *memoryProtoBook) AddProtocols(p peer.ID, protos ...protocol.ID) error {
+	err := pb.addProtocolsToSegment(p, protos...)
+	if err != nil {
+		return err
+	}
+	pb.addPeersPerProtocol(p, protos...)
+	return nil
+}
+
 func (pb *memoryProtoBook) GetProtocols(p peer.ID) ([]protocol.ID, error) {
 	s := pb.segments.get(p)
 	s.RLock()
@@ -139,7 +176,7 @@ func (pb *memoryProtoBook) GetProtocols(p peer.ID) ([]protocol.ID, error) {
 	return out, nil
 }
 
-func (pb *memoryProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) error {
+func (pb *memoryProtoBook) removeProtocolsFromSegment(p peer.ID, protos ...protocol.ID) error {
 	s := pb.segments.get(p)
 	s.Lock()
 	defer s.Unlock()
@@ -153,6 +190,25 @@ func (pb *memoryProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) err
 	for _, proto := range protos {
 		delete(protomap, pb.internProtocol(proto))
 	}
+	return nil
+}
+
+func (pb *memoryProtoBook) removePeersFromProtocols(p peer.ID, protos ...protocol.ID) {
+	pb.peers.Lock()
+	defer pb.peers.Unlock()
+	for _, proto := range protos {
+		if peerMap, ok := pb.peers.peers[proto]; ok {
+			delete(peerMap, p)
+		}
+	}
+}
+
+func (pb *memoryProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) error {
+	err := pb.removeProtocolsFromSegment(p, protos...)
+	if err != nil {
+		return err
+	}
+	pb.removePeersFromProtocols(p, protos...)
 	return nil
 }
 
@@ -189,4 +245,21 @@ func (pb *memoryProtoBook) RemovePeer(p peer.ID) {
 	s.Lock()
 	delete(s.protocols, p)
 	s.Unlock()
+}
+
+func (pb *memoryProtoBook) GetPeersForProtocol(ctx context.Context, proto protocol.ID) ([]peer.ID, error) {
+	pb.peers.RLock()
+	defer pb.peers.RUnlock()
+
+	peers, ok := pb.peers.peers[proto]
+	if !ok {
+		return nil, errNoPeersForProtocol
+	}
+	peerIDs := make([]peer.ID, len(peers))
+	i := 0
+	for k := range peers {
+		i++
+		peerIDs[i] = k
+	}
+	return peerIDs, nil
 }

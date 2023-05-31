@@ -247,4 +247,6 @@ type ProtoBook interface {
 
 	// RemovePeer removes all protocols associated with a peer.
 	RemovePeer(peer.ID)
+
+	GetPeersForProtocol(context.Context, protocol.ID) ([]peer.ID, error)
 }

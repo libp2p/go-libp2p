@@ -1,6 +1,7 @@
 package pstoreds
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -193,4 +194,8 @@ func (pb *dsProtoBook) getProtocolMap(p peer.ID) (map[protocol.ID]struct{}, erro
 
 func (pb *dsProtoBook) RemovePeer(p peer.ID) {
 	pb.meta.RemovePeer(p)
+}
+
+func (pb *dsProtoBook) GetPeersForProtocol(ctx context.Context, proto protocol.ID) ([]peer.ID, error) {
+	return nil, nil
 }
