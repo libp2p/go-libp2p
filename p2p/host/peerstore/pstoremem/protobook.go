@@ -242,9 +242,21 @@ func (pb *memoryProtoBook) FirstSupportedProtocol(p peer.ID, protos ...protocol.
 
 func (pb *memoryProtoBook) RemovePeer(p peer.ID) {
 	s := pb.segments.get(p)
+	//TODO: Is a read lock required for the segment??
+	pb.peers.Lock()
+	for _, protos := range s.protocols {
+		for proto := range protos {
+			if peers, ok := pb.peers.peers[proto]; ok {
+				delete(peers, p)
+			}
+		}
+	}
+	pb.peers.Unlock()
+
 	s.Lock()
 	delete(s.protocols, p)
 	s.Unlock()
+
 }
 
 func (pb *memoryProtoBook) GetPeersForProtocol(ctx context.Context, proto protocol.ID) ([]peer.ID, error) {
