@@ -227,11 +227,21 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 					t.Fatal("got wrong protocol")
 				}
 			}
+			peers, err := ps.GetPeersForProtocol(context.Background(), protocol.ID("a"))
+			t.Log("peers returned for protocol a is :", peers)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(peers))
+			require.Equal(t, p1, peers[0])
+
+			peers, err = ps.GetPeersForProtocol(context.Background(), protocol.ID("non-existent"))
+			t.Log("peers returned for protocol non-existent is :", peers)
+
+			require.Error(t, err)
+			require.Equal(t, 0, len(peers))
 
 			supported, err := ps.SupportsProtocols(p1, "q", "w", "a", "y", "b")
 			require.NoError(t, err)
 			require.Len(t, supported, 2, "only expected 2 supported")
-
 			if supported[0] != "a" || supported[1] != "b" {
 				t.Fatal("got wrong supported array: ", supported)
 			}
@@ -281,10 +291,21 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 			out, err := ps.GetProtocols(p)
 			require.NoError(t, err)
 			require.Len(t, out, 2)
+
+			peers, err := ps.GetPeersForProtocol(context.Background(), protocol.ID("a"))
+			t.Log("peers returned for protocol a is :", peers)
+			require.NoError(t, err)
+			require.Equal(t, 2, len(peers))
+
 			ps.RemovePeer(p)
 			out, err = ps.GetProtocols(p)
 			require.NoError(t, err)
 			require.Empty(t, out)
+
+			peers, err = ps.GetPeersForProtocol(context.Background(), protocol.ID("a"))
+			t.Log("peers returned for protocol a is :", peers)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(peers))
 		})
 	}
 }

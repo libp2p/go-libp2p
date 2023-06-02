@@ -3,6 +3,7 @@ package pstoremem
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -37,7 +38,7 @@ type memoryProtoBook struct {
 	lk       sync.RWMutex
 	interned map[protocol.ID]protocol.ID
 
-	peers peersPerProtocol
+	protocolToPeersMap peersPerProtocol
 }
 
 var _ pstore.ProtoBook = (*memoryProtoBook)(nil)
@@ -70,7 +71,7 @@ func NewProtoBook(opts ...ProtoBookOption) (*memoryProtoBook, error) {
 			return nil, err
 		}
 	}
-	pb.peers.peers = make(map[protocol.ID]map[peer.ID]peer.ID, pb.maxProtos)
+	pb.protocolToPeersMap.peers = make(map[protocol.ID]map[peer.ID]peer.ID, pb.maxProtos)
 	return pb, nil
 }
 
@@ -102,7 +103,7 @@ func (pb *memoryProtoBook) SetProtocols(p peer.ID, protos ...protocol.ID) error 
 	if len(protos) > pb.maxProtos {
 		return errTooManyProtocols
 	}
-
+	fmt.Println("Set Protocols for peer ", p, " protocols are :", protos)
 	newprotos := make(map[protocol.ID]struct{}, len(protos))
 	for _, proto := range protos {
 		newprotos[pb.internProtocol(proto)] = struct{}{}
@@ -116,14 +117,16 @@ func (pb *memoryProtoBook) SetProtocols(p peer.ID, protos ...protocol.ID) error 
 }
 
 func (pb *memoryProtoBook) addPeersPerProtocol(p peer.ID, protos ...protocol.ID) {
-	pb.peers.Lock()
-	defer pb.peers.Unlock()
+	fmt.Println("Add Protocols for peer ", p, " protocols are :", protos)
+
+	pb.protocolToPeersMap.Lock()
+	defer pb.protocolToPeersMap.Unlock()
 	for _, proto := range protos {
-		peers, ok := pb.peers.peers[proto]
+		peers, ok := pb.protocolToPeersMap.peers[proto]
 		if !ok {
 			peers = make(map[peer.ID]peer.ID)
 			peers[p] = p
-			pb.peers.peers[proto] = peers
+			pb.protocolToPeersMap.peers[proto] = peers
 		} else {
 			_, ok := peers[p]
 			if !ok {
@@ -194,16 +197,18 @@ func (pb *memoryProtoBook) removeProtocolsFromSegment(p peer.ID, protos ...proto
 }
 
 func (pb *memoryProtoBook) removePeersFromProtocols(p peer.ID, protos ...protocol.ID) {
-	pb.peers.Lock()
-	defer pb.peers.Unlock()
+	pb.protocolToPeersMap.Lock()
+	defer pb.protocolToPeersMap.Unlock()
 	for _, proto := range protos {
-		if peerMap, ok := pb.peers.peers[proto]; ok {
+		if peerMap, ok := pb.protocolToPeersMap.peers[proto]; ok {
 			delete(peerMap, p)
 		}
 	}
 }
 
 func (pb *memoryProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) error {
+	fmt.Println("RemoveProtocols for peer ", p, " protocols are :", protos)
+
 	err := pb.removeProtocolsFromSegment(p, protos...)
 	if err != nil {
 		return err
@@ -213,6 +218,8 @@ func (pb *memoryProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) err
 }
 
 func (pb *memoryProtoBook) SupportsProtocols(p peer.ID, protos ...protocol.ID) ([]protocol.ID, error) {
+	fmt.Println("SupportsProtocols for peer ", p, " queried protocols are :", protos)
+
 	s := pb.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
@@ -223,6 +230,7 @@ func (pb *memoryProtoBook) SupportsProtocols(p peer.ID, protos ...protocol.ID) (
 			out = append(out, proto)
 		}
 	}
+	fmt.Println("SupportsProtocols for peer ", p, " supported protocols are :", out)
 
 	return out, nil
 }
@@ -241,17 +249,20 @@ func (pb *memoryProtoBook) FirstSupportedProtocol(p peer.ID, protos ...protocol.
 }
 
 func (pb *memoryProtoBook) RemovePeer(p peer.ID) {
+
 	s := pb.segments.get(p)
 	//TODO: Is a read lock required for the segment??
-	pb.peers.Lock()
+	pb.protocolToPeersMap.Lock()
 	for _, protos := range s.protocols {
 		for proto := range protos {
-			if peers, ok := pb.peers.peers[proto]; ok {
+			if peers, ok := pb.protocolToPeersMap.peers[proto]; ok {
+				fmt.Println("Removing Peer for protocol ", proto, " peers before removal ", peers)
 				delete(peers, p)
+				fmt.Println("Removing Peer for protocol ", proto, " peers after removal ", peers)
 			}
 		}
 	}
-	pb.peers.Unlock()
+	pb.protocolToPeersMap.Unlock()
 
 	s.Lock()
 	delete(s.protocols, p)
@@ -260,18 +271,20 @@ func (pb *memoryProtoBook) RemovePeer(p peer.ID) {
 }
 
 func (pb *memoryProtoBook) GetPeersForProtocol(ctx context.Context, proto protocol.ID) ([]peer.ID, error) {
-	pb.peers.RLock()
-	defer pb.peers.RUnlock()
+	pb.protocolToPeersMap.RLock()
+	defer pb.protocolToPeersMap.RUnlock()
 
-	peers, ok := pb.peers.peers[proto]
+	peers, ok := pb.protocolToPeersMap.peers[proto]
 	if !ok {
 		return nil, errNoPeersForProtocol
 	}
 	peerIDs := make([]peer.ID, len(peers))
+
 	i := 0
 	for k := range peers {
-		i++
 		peerIDs[i] = k
+		i++
 	}
+
 	return peerIDs, nil
 }
