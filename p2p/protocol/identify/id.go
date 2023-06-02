@@ -749,12 +749,13 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 		ttl = peerstore.ConnectedAddrTTL
 	}
 
-	// Downgrade connected and recently connected addrs to a temporary TTL.
+	// Expire all temporary addrs, connected and recently connected addrs.
 	for _, ttl := range []time.Duration{
 		peerstore.RecentlyConnectedAddrTTL,
 		peerstore.ConnectedAddrTTL,
+		peerstore.TempAddrTTL,
 	} {
-		ids.Host.Peerstore().UpdateAddrs(p, ttl, peerstore.TempAddrTTL)
+		ids.Host.Peerstore().UpdateAddrs(p, ttl, 0)
 	}
 
 	// add signed addrs if we have them and the peerstore supports them
@@ -771,9 +772,6 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	} else {
 		ids.Host.Peerstore().AddAddrs(p, filterAddrs(lmaddrs, c.RemoteMultiaddr()), ttl)
 	}
-
-	// Finally, expire all temporary addrs.
-	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
 	ids.addrMu.Unlock()
 
 	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
