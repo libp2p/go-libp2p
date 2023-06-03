@@ -229,7 +229,7 @@ func (s *Swarm) close() {
 
 	for l := range listeners {
 		go func(l transport.Listener) {
-			if err := l.Close(); err != nil {
+			if err := l.Close(); err != nil && err != transport.ErrListenerClosed {
 				log.Errorf("error when shutting down listener: %s", err)
 			}
 		}(l)
@@ -313,7 +313,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 
 	// Add the public key.
 	if pk := tc.RemotePublicKey(); pk != nil {
-		s.peers.AddPubKey(p, pk)
+		s.peers.AddPubKey(context.Background(), p, pk)
 	}
 
 	// Clear any backoffs

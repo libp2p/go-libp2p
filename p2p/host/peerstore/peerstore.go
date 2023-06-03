@@ -1,14 +1,16 @@
 package peerstore
 
 import (
+	"context"
+
 	"github.com/libp2p/go-libp2p/core/peer"
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 )
 
-func PeerInfos(ps pstore.Peerstore, peers peer.IDSlice) []peer.AddrInfo {
+func PeerInfos(ctx context.Context, ps pstore.Peerstore, peers peer.IDSlice) []peer.AddrInfo {
 	pi := make([]peer.AddrInfo, len(peers))
 	for i, p := range peers {
-		pi[i] = ps.PeerInfo(p)
+		pi[i] = ps.PeerInfo(ctx, p)
 	}
 	return pi
 }

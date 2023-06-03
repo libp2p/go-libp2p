@@ -6,8 +6,10 @@
 package network
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -183,4 +185,24 @@ type Dialer interface {
 	// Notify/StopNotify register and unregister a notifiee for signals
 	Notify(Notifiee)
 	StopNotify(Notifiee)
+}
+
+// DedupAddrs deduplicates addresses in place, leave only unique addresses.
+// It doesn't allocate.
+func DedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
+	if len(addrs) == 0 {
+		return addrs
+	}
+	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
+	idx := 1
+	for i := 1; i < len(addrs); i++ {
+		if !addrs[i-1].Equal(addrs[i]) {
+			addrs[idx] = addrs[i]
+			idx++
+		}
+	}
+	for i := idx; i < len(addrs); i++ {
+		addrs[i] = nil
+	}
+	return addrs[:idx]
 }

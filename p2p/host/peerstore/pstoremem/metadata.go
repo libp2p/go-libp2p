@@ -1,6 +1,7 @@
 package pstoremem
 
 import (
+	"context"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -21,7 +22,7 @@ func NewPeerMetadata() *memoryPeerMetadata {
 	}
 }
 
-func (ps *memoryPeerMetadata) Put(p peer.ID, key string, val interface{}) error {
+func (ps *memoryPeerMetadata) Put(ctx context.Context, p peer.ID, key string, val interface{}) error {
 	ps.dslock.Lock()
 	defer ps.dslock.Unlock()
 	m, ok := ps.ds[p]
@@ -33,7 +34,7 @@ func (ps *memoryPeerMetadata) Put(p peer.ID, key string, val interface{}) error 
 	return nil
 }
 
-func (ps *memoryPeerMetadata) Get(p peer.ID, key string) (interface{}, error) {
+func (ps *memoryPeerMetadata) Get(ctx context.Context, p peer.ID, key string) (interface{}, error) {
 	ps.dslock.RLock()
 	defer ps.dslock.RUnlock()
 	m, ok := ps.ds[p]
@@ -47,7 +48,7 @@ func (ps *memoryPeerMetadata) Get(p peer.ID, key string) (interface{}, error) {
 	return val, nil
 }
 
-func (ps *memoryPeerMetadata) RemovePeer(p peer.ID) {
+func (ps *memoryPeerMetadata) RemovePeer(ctx context.Context, p peer.ID) {
 	ps.dslock.Lock()
 	delete(ps.ds, p)
 	ps.dslock.Unlock()

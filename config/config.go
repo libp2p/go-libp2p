@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -150,10 +151,10 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 		return nil, err
 	}
 
-	if err := cfg.Peerstore.AddPrivKey(pid, cfg.PeerKey); err != nil {
+	if err := cfg.Peerstore.AddPrivKey(context.Background(), pid, cfg.PeerKey); err != nil {
 		return nil, err
 	}
-	if err := cfg.Peerstore.AddPubKey(pid, cfg.PeerKey.GetPublic()); err != nil {
+	if err := cfg.Peerstore.AddPubKey(context.Background(), pid, cfg.PeerKey.GetPublic()); err != nil {
 		return nil, err
 	}
 
@@ -194,7 +195,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 		fx.Supply(cfg.Muxers),
 		fx.Supply(h.ID()),
 		fx.Provide(func() host.Host { return h }),
-		fx.Provide(func() crypto.PrivKey { return h.Peerstore().PrivKey(h.ID()) }),
+		fx.Provide(func() crypto.PrivKey { return h.Peerstore().PrivKey(context.Background(), h.ID()) }),
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),

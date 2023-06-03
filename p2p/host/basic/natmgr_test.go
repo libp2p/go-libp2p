@@ -76,7 +76,7 @@ func TestAddAndRemoveListeners(t *testing.T) {
 
 	added := make(chan struct{}, 1)
 	// add a TCP listener
-	mockNAT.EXPECT().AddMapping("tcp", 1234).Do(func(string, int) { added <- struct{}{} })
+	mockNAT.EXPECT().AddMapping(gomock.Any(), "tcp", 1234).Do(func(context.Context, string, int) { added <- struct{}{} })
 	require.NoError(t, sw.Listen(ma.StringCast("/ip4/0.0.0.0/tcp/1234")))
 	select {
 	case <-added:
@@ -85,7 +85,7 @@ func TestAddAndRemoveListeners(t *testing.T) {
 	}
 
 	// add a QUIC listener
-	mockNAT.EXPECT().AddMapping("udp", 1234).Do(func(string, int) { added <- struct{}{} })
+	mockNAT.EXPECT().AddMapping(gomock.Any(), "udp", 1234).Do(func(context.Context, string, int) { added <- struct{}{} })
 	require.NoError(t, sw.Listen(ma.StringCast("/ip4/0.0.0.0/udp/1234/quic-v1")))
 	select {
 	case <-added:
@@ -94,7 +94,7 @@ func TestAddAndRemoveListeners(t *testing.T) {
 	}
 
 	// remove the QUIC listener
-	mockNAT.EXPECT().RemoveMapping("udp", 1234).Do(func(string, int) { added <- struct{}{} })
+	mockNAT.EXPECT().RemoveMapping(gomock.Any(), "udp", 1234).Do(func(context.Context, string, int) { added <- struct{}{} })
 	sw.ListenClose(ma.StringCast("/ip4/0.0.0.0/udp/1234/quic-v1"))
 	select {
 	case <-added:
@@ -103,6 +103,6 @@ func TestAddAndRemoveListeners(t *testing.T) {
 	}
 
 	// test shutdown
-	mockNAT.EXPECT().RemoveMapping("tcp", 1234).MaxTimes(1)
+	mockNAT.EXPECT().RemoveMapping(gomock.Any(), "tcp", 1234).MaxTimes(1)
 	mockNAT.EXPECT().Close().MaxTimes(1)
 }

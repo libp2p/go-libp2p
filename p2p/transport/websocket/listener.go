@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/libp2p/go-libp2p/core/transport"
 
@@ -136,6 +137,9 @@ func (l *listener) Close() error {
 	l.server.Close()
 	err := l.nl.Close()
 	<-l.closed
+	if strings.Contains(err.Error(), "use of closed network connection") {
+		return transport.ErrListenerClosed
+	}
 	return err
 }
 

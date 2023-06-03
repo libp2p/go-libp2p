@@ -34,7 +34,7 @@ func TestBasicDialPeer(t *testing.T) {
 	s1 := swarms[0]
 	s2 := swarms[1]
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
 
 	c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func TestBasicDialPeerWithResolver(t *testing.T) {
 		}
 	}
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2Addrs, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2Addrs, peerstore.PermanentAddrTTL)
 
 	c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestDialWithNoListeners(t *testing.T) {
 	defer closeSwarms(swarms)
 	s2 := swarms[0]
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
 
 	c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func TestSimultDials(t *testing.T) {
 		connect := func(s *swarm.Swarm, dst peer.ID, addr ma.Multiaddr) {
 			// copy for other peer
 			log.Debugf("TestSimultOpen: connecting: %s --> %s (%s)", s.LocalPeer(), dst, addr)
-			s.Peerstore().AddAddr(dst, addr, peerstore.TempAddrTTL)
+			s.Peerstore().AddAddr(context.Background(), dst, addr, peerstore.TempAddrTTL)
 			if _, err := s.DialPeer(ctx, dst); err != nil {
 				errs <- err
 			}
@@ -196,7 +196,7 @@ func TestDialWait(t *testing.T) {
 	s2p, s2addr, s2l := newSilentPeer(t)
 	go acceptAndHang(s2l)
 	defer s2l.Close()
-	s1.Peerstore().AddAddr(s2p, s2addr, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddr(context.Background(), s2p, s2addr, peerstore.PermanentAddrTTL)
 
 	before := time.Now()
 	if c, err := s1.DialPeer(context.Background(), s2p); err == nil {
@@ -233,13 +233,13 @@ func TestDialBackoff(t *testing.T) {
 
 	s2addrs, err := s2.InterfaceListenAddresses()
 	require.NoError(t, err)
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2addrs, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2addrs, peerstore.PermanentAddrTTL)
 
 	// dial to a non-existent peer.
 	s3p, s3addr, s3l := newSilentPeer(t)
 	go acceptAndHang(s3l)
 	defer s3l.Close()
-	s1.Peerstore().AddAddr(s3p, s3addr, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddr(context.Background(), s3p, s3addr, peerstore.PermanentAddrTTL)
 
 	// in this test we will:
 	//   1) dial 10x to each node.
@@ -438,7 +438,7 @@ func TestDialBackoffClears(t *testing.T) {
 	defer s2l.Close()
 
 	// phase 1 -- dial to non-operational addresses
-	s1.Peerstore().AddAddr(s2.LocalPeer(), s2bad, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddr(context.Background(), s2.LocalPeer(), s2bad, peerstore.PermanentAddrTTL)
 
 	before := time.Now()
 	_, err := s1.DialPeer(context.Background(), s2.LocalPeer())
@@ -456,7 +456,7 @@ func TestDialBackoffClears(t *testing.T) {
 	// phase 2 -- add the working address. dial should succeed.
 	ifaceAddrs1, err := s2.InterfaceListenAddresses()
 	require.NoError(t, err)
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), ifaceAddrs1, peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), ifaceAddrs1, peerstore.PermanentAddrTTL)
 
 	// backoffs are per address, not peer
 	c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
@@ -476,7 +476,7 @@ func TestDialPeerFailed(t *testing.T) {
 		go acceptAndHang(silentPeerListener)
 		defer silentPeerListener.Close()
 
-		testedSwarm.Peerstore().AddAddr(targetSwarm.LocalPeer(), silentPeerAddress, peerstore.PermanentAddrTTL)
+		testedSwarm.Peerstore().AddAddr(context.Background(), targetSwarm.LocalPeer(), silentPeerAddress, peerstore.PermanentAddrTTL)
 	}
 
 	_, err := testedSwarm.DialPeer(context.Background(), targetSwarm.LocalPeer())
@@ -506,7 +506,7 @@ func TestDialExistingConnection(t *testing.T) {
 	// Only use one of the addresses here.
 	// Otherwise, we might dial TCP and QUIC simultaneously here, and end up with two connections,
 	// if the handshake latencies line up exactly.
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses()[:1], peerstore.PermanentAddrTTL)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2.ListenAddresses()[:1], peerstore.PermanentAddrTTL)
 
 	c1, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
@@ -553,7 +553,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 
 	// start a dial to s2 through the silent addr
 	go func() {
-		s1.Peerstore().AddAddrs(s2.LocalPeer(), s2silentAddrs, peerstore.PermanentAddrTTL)
+		s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2silentAddrs, peerstore.PermanentAddrTTL)
 
 		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {
@@ -578,7 +578,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 			errs <- err
 			return
 		}
-		s1.Peerstore().AddAddrs(s2.LocalPeer(), s2addrs[:1], peerstore.PermanentAddrTTL)
+		s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), s2addrs[:1], peerstore.PermanentAddrTTL)
 
 		c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 		if err != nil {

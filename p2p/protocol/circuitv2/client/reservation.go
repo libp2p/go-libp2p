@@ -62,7 +62,7 @@ func (re ReservationError) Unwrap() error {
 // Clients must reserve slots in order for the relay to relay connections to them.
 func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, error) {
 	if len(ai.Addrs) > 0 {
-		h.Peerstore().AddAddrs(ai.ID, ai.Addrs, peerstore.TempAddrTTL)
+		h.Peerstore().AddAddrs(ctx, ai.ID, ai.Addrs, peerstore.TempAddrTTL)
 	}
 
 	s, err := h.NewStream(ctx, ai.ID, proto.ProtoIDv2Hop)

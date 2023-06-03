@@ -59,29 +59,29 @@ func TestGCLookahead(t *testing.T) {
 	addrs := test.GenerateAddrs(100)
 
 	// lookahead is 10 seconds, so these entries will be outside the lookahead window.
-	ab.AddAddrs(ids[0], addrs[:10], time.Hour)
-	ab.AddAddrs(ids[1], addrs[10:20], time.Hour)
-	ab.AddAddrs(ids[2], addrs[20:30], time.Hour)
+	ab.AddAddrs(context.Background(), ids[0], addrs[:10], time.Hour)
+	ab.AddAddrs(context.Background(), ids[1], addrs[10:20], time.Hour)
+	ab.AddAddrs(context.Background(), ids[2], addrs[20:30], time.Hour)
 
-	gc.populateLookahead()
+	gc.populateLookahead(context.Background())
 	if i := tp.countLookaheadEntries(); i != 0 {
 		t.Errorf("expected no GC lookahead entries, got: %v", i)
 	}
 
 	// change addresses of a peer to have TTL 1 second, placing them in the lookahead window.
-	ab.UpdateAddrs(ids[1], time.Hour, time.Second)
+	ab.UpdateAddrs(context.Background(), ids[1], time.Hour, time.Second)
 
 	// Purge the cache, to exercise a different path in the lookahead cycle.
 	tp.clearCache()
 
-	gc.populateLookahead()
+	gc.populateLookahead(context.Background())
 	if i := tp.countLookaheadEntries(); i != 1 {
 		t.Errorf("expected 1 GC lookahead entry, got: %v", i)
 	}
 
 	// change addresses of another to have TTL 5 second, placing them in the lookahead window.
-	ab.UpdateAddrs(ids[2], time.Hour, 5*time.Second)
-	gc.populateLookahead()
+	ab.UpdateAddrs(context.Background(), ids[2], time.Hour, 5*time.Second)
+	gc.populateLookahead(context.Background())
 	if i := tp.countLookaheadEntries(); i != 2 {
 		t.Errorf("expected 2 GC lookahead entries, got: %v", i)
 	}
@@ -108,26 +108,26 @@ func TestGCPurging(t *testing.T) {
 	addrs := test.GenerateAddrs(100)
 
 	// stagger addresses within the lookahead window, but stagger them.
-	ab.AddAddrs(ids[0], addrs[:10], 1*time.Second)
-	ab.AddAddrs(ids[1], addrs[30:40], 1*time.Second)
-	ab.AddAddrs(ids[2], addrs[60:70], 1*time.Second)
+	ab.AddAddrs(context.Background(), ids[0], addrs[:10], 1*time.Second)
+	ab.AddAddrs(context.Background(), ids[1], addrs[30:40], 1*time.Second)
+	ab.AddAddrs(context.Background(), ids[2], addrs[60:70], 1*time.Second)
 
-	ab.AddAddrs(ids[0], addrs[10:20], 4*time.Second)
-	ab.AddAddrs(ids[1], addrs[40:50], 4*time.Second)
+	ab.AddAddrs(context.Background(), ids[0], addrs[10:20], 4*time.Second)
+	ab.AddAddrs(context.Background(), ids[1], addrs[40:50], 4*time.Second)
 
-	ab.AddAddrs(ids[0], addrs[20:30], 10*time.Second)
-	ab.AddAddrs(ids[1], addrs[50:60], 10*time.Second)
+	ab.AddAddrs(context.Background(), ids[0], addrs[20:30], 10*time.Second)
+	ab.AddAddrs(context.Background(), ids[1], addrs[50:60], 10*time.Second)
 
 	// this is inside the window, but it will survive the purges we do in the test.
-	ab.AddAddrs(ids[3], addrs[70:80], 15*time.Second)
+	ab.AddAddrs(context.Background(), ids[3], addrs[70:80], 15*time.Second)
 
-	gc.populateLookahead()
+	gc.populateLookahead(context.Background())
 	if i := tp.countLookaheadEntries(); i != 4 {
 		t.Errorf("expected 4 GC lookahead entries, got: %v", i)
 	}
 
 	clk.Add(2 * time.Second)
-	gc.purgeLookahead()
+	gc.purgeLookahead(context.Background())
 	if i := tp.countLookaheadEntries(); i != 3 {
 		t.Errorf("expected 3 GC lookahead entries, got: %v", i)
 	}
@@ -136,20 +136,20 @@ func TestGCPurging(t *testing.T) {
 	tp.clearCache()
 
 	clk.Add(5 * time.Second)
-	gc.purgeLookahead()
+	gc.purgeLookahead(context.Background())
 	if i := tp.countLookaheadEntries(); i != 3 {
 		t.Errorf("expected 3 GC lookahead entries, got: %v", i)
 	}
 
 	clk.Add(5 * time.Second)
-	gc.purgeLookahead()
+	gc.purgeLookahead(context.Background())
 	if i := tp.countLookaheadEntries(); i != 1 {
 		t.Errorf("expected 1 GC lookahead entries, got: %v", i)
 	}
-	if i := len(ab.PeersWithAddrs()); i != 1 {
+	if i := len(ab.PeersWithAddrs(context.Background())); i != 1 {
 		t.Errorf("expected 1 entries in database, got: %v", i)
 	}
-	if p := ab.PeersWithAddrs()[0]; p != ids[3] {
+	if p := ab.PeersWithAddrs(context.Background())[0]; p != ids[3] {
 		t.Errorf("expected remaining peer to be #3, got: %v, expected: %v", p, ids[3])
 	}
 }
@@ -173,7 +173,7 @@ func TestGCDelay(t *testing.T) {
 
 	tp := &testProbe{t, ab}
 
-	ab.AddAddrs(ids[0], addrs, 1*time.Second)
+	ab.AddAddrs(context.Background(), ids[0], addrs, 1*time.Second)
 
 	// immediately after we should be having no lookahead entries.
 	if i := tp.countLookaheadEntries(); i != 0 {
@@ -209,11 +209,11 @@ func TestGCLookaheadDisabled(t *testing.T) {
 	//   ids[1] has 20 addresses; 50% expire in 500ms and 50% in 10 hours.
 	//   ids[2] has 10 addresses; all expire in 10 hours.
 	//   ids[3] has 60 addresses; all expire in 10 hours.
-	ab.AddAddrs(ids[0], addrs[:10], 500*time.Millisecond)
-	ab.AddAddrs(ids[1], addrs[10:20], 500*time.Millisecond)
-	ab.AddAddrs(ids[1], addrs[20:30], 10*time.Hour)
-	ab.AddAddrs(ids[2], addrs[30:40], 10*time.Hour)
-	ab.AddAddrs(ids[3], addrs[40:], 10*time.Hour)
+	ab.AddAddrs(context.Background(), ids[0], addrs[:10], 500*time.Millisecond)
+	ab.AddAddrs(context.Background(), ids[1], addrs[10:20], 500*time.Millisecond)
+	ab.AddAddrs(context.Background(), ids[1], addrs[20:30], 10*time.Hour)
+	ab.AddAddrs(context.Background(), ids[2], addrs[30:40], 10*time.Hour)
+	ab.AddAddrs(context.Background(), ids[3], addrs[40:], 10*time.Hour)
 
 	clk.Add(100 * time.Millisecond)
 
@@ -223,13 +223,13 @@ func TestGCLookaheadDisabled(t *testing.T) {
 
 	clk.Add(500 * time.Millisecond)
 	gc := ab.(*dsAddrBook).gc
-	gc.purgeFunc()
+	gc.purgeFunc(context.Background())
 
 	var empty []ma.Multiaddr
-	test.AssertAddressesEqual(t, empty, ab.Addrs(ids[0]))
-	test.AssertAddressesEqual(t, addrs[20:30], ab.Addrs(ids[1]))
-	test.AssertAddressesEqual(t, addrs[30:40], ab.Addrs(ids[2]))
-	test.AssertAddressesEqual(t, addrs[40:], ab.Addrs(ids[3]))
+	test.AssertAddressesEqual(t, empty, ab.Addrs(context.Background(), ids[0]))
+	test.AssertAddressesEqual(t, addrs[20:30], ab.Addrs(context.Background(), ids[1]))
+	test.AssertAddressesEqual(t, addrs[30:40], ab.Addrs(context.Background(), ids[2]))
+	test.AssertAddressesEqual(t, addrs[40:], ab.Addrs(context.Background(), ids[3]))
 }
 
 func BenchmarkLookaheadCycle(b *testing.B) {
@@ -254,11 +254,11 @@ func BenchmarkLookaheadCycle(b *testing.B) {
 		} else {
 			ttl = outside
 		}
-		ab.AddAddrs(id, addrs, ttl)
+		ab.AddAddrs(context.Background(), id, addrs, ttl)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ab.(*dsAddrBook).gc.populateLookahead()
+		ab.(*dsAddrBook).gc.populateLookahead(context.Background())
 	}
 }

@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"sort"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestKeyBook(t *testing.T, factory KeyBookFactory) {
 
 func testKeybookPrivKey(kb pstore.KeyBook) func(t *testing.T) {
 	return func(t *testing.T) {
-		if peers := kb.PeersWithKeys(); len(peers) > 0 {
+		if peers := kb.PeersWithKeys(context.Background()); len(peers) > 0 {
 			t.Error("expected peers to be empty on init")
 		}
 
@@ -53,20 +54,20 @@ func testKeybookPrivKey(kb pstore.KeyBook) func(t *testing.T) {
 			t.Error(err)
 		}
 
-		if res := kb.PrivKey(id); res != nil {
+		if res := kb.PrivKey(context.Background(), id); res != nil {
 			t.Error("retrieving private key should have failed")
 		}
 
-		err = kb.AddPrivKey(id, priv)
+		err = kb.AddPrivKey(context.Background(), id, priv)
 		if err != nil {
 			t.Error(err)
 		}
 
-		if res := kb.PrivKey(id); !priv.Equals(res) {
+		if res := kb.PrivKey(context.Background(), id); !priv.Equals(res) {
 			t.Error("retrieved private key did not match stored private key")
 		}
 
-		if peers := kb.PeersWithKeys(); len(peers) != 1 || peers[0] != id {
+		if peers := kb.PeersWithKeys(context.Background()); len(peers) != 1 || peers[0] != id {
 			t.Error("list of peers did not include test peer")
 		}
 	}
@@ -74,7 +75,7 @@ func testKeybookPrivKey(kb pstore.KeyBook) func(t *testing.T) {
 
 func testKeyBookPubKey(kb pstore.KeyBook) func(t *testing.T) {
 	return func(t *testing.T) {
-		if peers := kb.PeersWithKeys(); len(peers) > 0 {
+		if peers := kb.PeersWithKeys(context.Background()); len(peers) > 0 {
 			t.Error("expected peers to be empty on init")
 		}
 
@@ -88,20 +89,20 @@ func testKeyBookPubKey(kb pstore.KeyBook) func(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if res := kb.PubKey(id); res != nil {
+		if res := kb.PubKey(context.Background(), id); res != nil {
 			t.Error("retrieving public key should have failed")
 		}
 
-		err = kb.AddPubKey(id, pub)
+		err = kb.AddPubKey(context.Background(), id, pub)
 		if err != nil {
 			t.Error(err)
 		}
 
-		if res := kb.PubKey(id); !pub.Equals(res) {
+		if res := kb.PubKey(context.Background(), id); !pub.Equals(res) {
 			t.Error("retrieved public key did not match stored public key")
 		}
 
-		if peers := kb.PeersWithKeys(); len(peers) != 1 || peers[0] != id {
+		if peers := kb.PeersWithKeys(context.Background()); len(peers) != 1 || peers[0] != id {
 			t.Error("list of peers did not include test peer")
 		}
 	}
@@ -109,7 +110,7 @@ func testKeyBookPubKey(kb pstore.KeyBook) func(t *testing.T) {
 
 func testKeyBookPeers(kb pstore.KeyBook) func(t *testing.T) {
 	return func(t *testing.T) {
-		if peers := kb.PeersWithKeys(); len(peers) > 0 {
+		if peers := kb.PeersWithKeys(context.Background()); len(peers) > 0 {
 			t.Error("expected peers to be empty on init")
 		}
 
@@ -124,7 +125,7 @@ func testKeyBookPeers(kb pstore.KeyBook) func(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			kb.AddPubKey(p1, pub)
+			kb.AddPubKey(context.Background(), p1, pub)
 
 			// Add a private key.
 			priv, _, err := pt.RandTestKeyPair(ic.RSA, 2048)
@@ -135,12 +136,12 @@ func testKeyBookPeers(kb pstore.KeyBook) func(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			kb.AddPrivKey(p2, priv)
+			kb.AddPrivKey(context.Background(), p2, priv)
 
 			peers = append(peers, []peer.ID{p1, p2}...)
 		}
 
-		kbPeers := kb.PeersWithKeys()
+		kbPeers := kb.PeersWithKeys(context.Background())
 		sort.Sort(kbPeers)
 		sort.Sort(peers)
 
@@ -156,7 +157,7 @@ func testInlinedPubKeyAddedOnRetrieve(kb pstore.KeyBook) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Skip("key inlining disabled for now: see libp2p/specs#111")
 
-		if peers := kb.PeersWithKeys(); len(peers) > 0 {
+		if peers := kb.PeersWithKeys(context.Background()); len(peers) > 0 {
 			t.Error("expected peers to be empty on init")
 		}
 
@@ -171,7 +172,7 @@ func testInlinedPubKeyAddedOnRetrieve(kb pstore.KeyBook) func(t *testing.T) {
 			t.Error(err)
 		}
 
-		pubKey := kb.PubKey(id)
+		pubKey := kb.PubKey(context.Background(), id)
 		if !pubKey.Equals(pub) {
 			t.Error("mismatch between original public key and keybook-calculated one")
 		}
@@ -185,13 +186,13 @@ func testKeyBookDelete(kb pstore.KeyBook) func(t *testing.T) {
 		require.NoError(t, err)
 		p, err := peer.IDFromPublicKey(pub)
 		require.NoError(t, err)
-		require.NoError(t, kb.AddPubKey(p, pub))
-		require.NoError(t, kb.AddPrivKey(p, priv))
-		require.NotNil(t, kb.PrivKey(p))
-		require.NotNil(t, kb.PubKey(p))
-		kb.RemovePeer(p)
-		require.Nil(t, kb.PrivKey(p))
-		require.Nil(t, kb.PubKey(p))
+		require.NoError(t, kb.AddPubKey(context.Background(), p, pub))
+		require.NoError(t, kb.AddPrivKey(context.Background(), p, priv))
+		require.NotNil(t, kb.PrivKey(context.Background(), p))
+		require.NotNil(t, kb.PubKey(context.Background(), p))
+		kb.RemovePeer(context.Background(), p)
+		require.Nil(t, kb.PrivKey(context.Background(), p))
+		require.Nil(t, kb.PubKey(context.Background(), p))
 	}
 }
 
@@ -233,14 +234,14 @@ func benchmarkPubKey(kb pstore.KeyBook) func(*testing.B) {
 			b.Fatal(err)
 		}
 
-		err = kb.AddPubKey(id, pub)
+		err = kb.AddPubKey(context.Background(), id, pub)
 		if err != nil {
 			b.Fatal(err)
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			kb.PubKey(id)
+			kb.PubKey(context.Background(), id)
 		}
 	}
 }
@@ -259,7 +260,7 @@ func benchmarkAddPubKey(kb pstore.KeyBook) func(*testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			kb.AddPubKey(id, pub)
+			kb.AddPubKey(context.Background(), id, pub)
 		}
 	}
 }
@@ -276,14 +277,14 @@ func benchmarkPrivKey(kb pstore.KeyBook) func(*testing.B) {
 			b.Fatal(err)
 		}
 
-		err = kb.AddPrivKey(id, priv)
+		err = kb.AddPrivKey(context.Background(), id, priv)
 		if err != nil {
 			b.Fatal(err)
 		}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			kb.PrivKey(id)
+			kb.PrivKey(context.Background(), id)
 		}
 	}
 }
@@ -302,7 +303,7 @@ func benchmarkAddPrivKey(kb pstore.KeyBook) func(*testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			kb.AddPrivKey(id, priv)
+			kb.AddPrivKey(context.Background(), id, priv)
 		}
 	}
 }
@@ -320,18 +321,18 @@ func benchmarkPeersWithKeys(kb pstore.KeyBook) func(*testing.B) {
 				b.Fatal(err)
 			}
 
-			err = kb.AddPubKey(id, pub)
+			err = kb.AddPubKey(context.Background(), id, pub)
 			if err != nil {
 				b.Fatal(err)
 			}
-			err = kb.AddPrivKey(id, priv)
+			err = kb.AddPrivKey(context.Background(), id, priv)
 			if err != nil {
 				b.Fatal(err)
 			}
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			kb.PeersWithKeys()
+			kb.PeersWithKeys(context.Background())
 		}
 	}
 }

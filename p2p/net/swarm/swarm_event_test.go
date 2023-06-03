@@ -51,7 +51,7 @@ func TestConnectednessEventsSingleConn(t *testing.T) {
 	s1, sub1 := newSwarmWithSubscription(t)
 	s2, sub2 := newSwarmWithSubscription(t)
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{s2.ListenAddresses()[0]}, time.Hour)
+	s1.Peerstore().AddAddrs(context.Background(), s2.LocalPeer(), []ma.Multiaddr{s2.ListenAddresses()[0]}, time.Hour)
 	_, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
 

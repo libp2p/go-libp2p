@@ -47,7 +47,7 @@ func TestHostSimple(t *testing.T) {
 	defer h2.Close()
 	h2.Start()
 
-	h2pi := h2.Peerstore().PeerInfo(h2.ID())
+	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2.ID())
 	require.NoError(t, h1.Connect(ctx, h2pi))
 
 	piper, pipew := io.Pipe()
@@ -105,7 +105,7 @@ func TestSignedPeerRecordWithNoListenAddrs(t *testing.T) {
 	// the signed record with the new addr is added async
 	var env *record.Envelope
 	require.Eventually(t, func() bool {
-		env = cab.GetPeerRecord(h.ID())
+		env = cab.GetPeerRecord(context.Background(), h.ID())
 		return env != nil
 	}, 500*time.Millisecond, 10*time.Millisecond)
 	rec, err := env.Record()
@@ -255,7 +255,7 @@ func getHostPair(t *testing.T) (host.Host, host.Host) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	h2pi := h2.Peerstore().PeerInfo(h2.ID())
+	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2.ID())
 	require.NoError(t, h1.Connect(ctx, h2pi))
 	return h1, h2
 }
@@ -369,7 +369,7 @@ func TestHostProtoPreknowledge(t *testing.T) {
 	// Prevent pushing identify information so this test actually _uses_ the super protocol.
 	h1.RemoveStreamHandler(identify.IDPush)
 
-	h2pi := h2.Peerstore().PeerInfo(h2.ID())
+	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2.ID())
 	// Filter to only 1 address so that we don't have to think about parallel
 	// connections in this test
 	h2pi.Addrs = h2pi.Addrs[:1]
@@ -395,7 +395,7 @@ func TestHostProtoPreknowledge(t *testing.T) {
 	h2.SetStreamHandler("/foo", handler)
 
 	require.Never(t, func() bool {
-		protos, err := h1.Peerstore().GetProtocols(h2.ID())
+		protos, err := h1.Peerstore().GetProtocols(context.Background(), h2.ID())
 		require.NoError(t, err)
 		for _, p := range protos {
 			if p == "/foo" {
@@ -458,7 +458,7 @@ func TestNewStreamResolve(t *testing.T) {
 	defer cancel()
 
 	// Get the tcp port that h2 is listening on.
-	h2pi := h2.Peerstore().PeerInfo(h2.ID())
+	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2.ID())
 	var dialAddr string
 	const tcpPrefix = "/ip4/127.0.0.1/tcp/"
 	for _, addr := range h2pi.Addrs {
@@ -474,7 +474,7 @@ func TestNewStreamResolve(t *testing.T) {
 	// Add the DNS multiaddr to h1's peerstore.
 	maddr, err := ma.NewMultiaddr(dialAddr)
 	require.NoError(t, err)
-	h1.Peerstore().AddAddr(h2.ID(), maddr, time.Second)
+	h1.Peerstore().AddAddr(context.Background(), h2.ID(), maddr, time.Second)
 
 	connectedOn := make(chan protocol.ID)
 	h2.SetStreamHandler("/testing", func(s network.Stream) {
@@ -535,7 +535,7 @@ func TestProtoDowngrade(t *testing.T) {
 	// This is _almost_ instantaneous, but this test fails once every ~1k runs without this.
 	time.Sleep(time.Millisecond)
 
-	h2pi := h2.Peerstore().PeerInfo(h2.ID())
+	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2.ID())
 	require.NoError(t, h1.Connect(ctx, h2pi))
 
 	s2, err := h1.NewStream(ctx, h2.ID(), "/testing/1.0.0", "/testing")
@@ -587,7 +587,7 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	require.Equal(t, taddrs, rc.Addrs)
 
 	// assert it's in the peerstore
-	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
+	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(context.Background(), h.ID())
 	require.NotNil(t, ev)
 	rc = peerRecordFromEnvelope(t, ev)
 	require.Equal(t, taddrs, rc.Addrs)
@@ -696,7 +696,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		require.Equal(t, addrSets[i], rc.Addrs)
 
 		// assert it's in the peerstore
-		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
+		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(context.Background(), h.ID())
 		require.NotNil(t, ev)
 		rc = peerRecordFromEnvelope(t, ev)
 		require.Equal(t, addrSets[i], rc.Addrs)
@@ -823,32 +823,6 @@ func TestNormalizeMultiaddr(t *testing.T) {
 	defer h1.Close()
 
 	require.Equal(t, "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport", h1.NormalizeMultiaddr(ma.StringCast("/ip4/1.2.3.4/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")).String())
-}
-
-func TestDedupAddrs(t *testing.T) {
-	tcpAddr := ma.StringCast("/ip4/127.0.0.1/tcp/1234")
-	quicAddr := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
-	wsAddr := ma.StringCast("/ip4/127.0.0.1/tcp/1234/ws")
-
-	type testcase struct {
-		in, out []ma.Multiaddr
-	}
-
-	for i, tc := range []testcase{
-		{in: nil, out: nil},
-		{in: []ma.Multiaddr{tcpAddr}, out: []ma.Multiaddr{tcpAddr}},
-		{in: []ma.Multiaddr{tcpAddr, tcpAddr, tcpAddr}, out: []ma.Multiaddr{tcpAddr}},
-		{in: []ma.Multiaddr{tcpAddr, quicAddr, tcpAddr}, out: []ma.Multiaddr{tcpAddr, quicAddr}},
-		{in: []ma.Multiaddr{tcpAddr, quicAddr, wsAddr}, out: []ma.Multiaddr{tcpAddr, quicAddr, wsAddr}},
-	} {
-		tc := tc
-		t.Run(fmt.Sprintf("test %d", i), func(t *testing.T) {
-			deduped := dedupAddrs(tc.in)
-			for _, a := range tc.out {
-				require.Contains(t, deduped, a)
-			}
-		})
-	}
 }
 
 func TestInferWebtransportAddrsFromQuic(t *testing.T) {

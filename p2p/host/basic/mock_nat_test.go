@@ -5,6 +5,7 @@
 package basichost
 
 import (
+	context "context"
 	netip "net/netip"
 	reflect "reflect"
 
@@ -35,17 +36,17 @@ func (m *MockNAT) EXPECT() *MockNATMockRecorder {
 }
 
 // AddMapping mocks base method.
-func (m *MockNAT) AddMapping(arg0 string, arg1 int) error {
+func (m *MockNAT) AddMapping(arg0 context.Context, arg1 string, arg2 int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddMapping", arg0, arg1)
+	ret := m.ctrl.Call(m, "AddMapping", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AddMapping indicates an expected call of AddMapping.
-func (mr *MockNATMockRecorder) AddMapping(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockNATMockRecorder) AddMapping(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMapping", reflect.TypeOf((*MockNAT)(nil).AddMapping), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMapping", reflect.TypeOf((*MockNAT)(nil).AddMapping), arg0, arg1, arg2)
 }
 
 // Close mocks base method.
@@ -78,15 +79,15 @@ func (mr *MockNATMockRecorder) GetMapping(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // RemoveMapping mocks base method.
-func (m *MockNAT) RemoveMapping(arg0 string, arg1 int) error {
+func (m *MockNAT) RemoveMapping(arg0 context.Context, arg1 string, arg2 int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveMapping", arg0, arg1)
+	ret := m.ctrl.Call(m, "RemoveMapping", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveMapping indicates an expected call of RemoveMapping.
-func (mr *MockNATMockRecorder) RemoveMapping(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockNATMockRecorder) RemoveMapping(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveMapping", reflect.TypeOf((*MockNAT)(nil).RemoveMapping), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveMapping", reflect.TypeOf((*MockNAT)(nil).RemoveMapping), arg0, arg1, arg2)
 }

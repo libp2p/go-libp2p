@@ -38,7 +38,7 @@ func TestDialBadAddrs(t *testing.T) {
 
 	test := func(a ma.Multiaddr) {
 		p := test.RandPeerIDFatal(t)
-		s.Peerstore().AddAddr(p, a, peerstore.PermanentAddrTTL)
+		s.Peerstore().AddAddr(context.Background(), p, a, peerstore.PermanentAddrTTL)
 		if _, err := s.DialPeer(context.Background(), p); err == nil {
 			t.Errorf("swarm should not dial: %s", p)
 		}

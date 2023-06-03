@@ -106,11 +106,6 @@ func Seal(rec Record, privateKey crypto.PrivKey) (*Envelope, error) {
 //	  doSomethingWithPeerRecord(peerRec)
 //	}
 //
-// Important: you MUST check the error value before using the returned Envelope. In some error
-// cases, including when the envelope signature is invalid, both the Envelope and an error will
-// be returned. This allows you to inspect the unmarshalled but invalid Envelope. As a result,
-// you must not assume that any non-nil Envelope returned from this function is valid.
-//
 // If the Envelope signature is valid, but no Record type is registered for the Envelope's
 // PayloadType, ErrPayloadTypeNotRegistered will be returned, along with the Envelope and
 // a nil Record.
@@ -122,12 +117,12 @@ func ConsumeEnvelope(data []byte, domain string) (envelope *Envelope, rec Record
 
 	err = e.validate(domain)
 	if err != nil {
-		return e, nil, fmt.Errorf("failed to validate envelope: %w", err)
+		return nil, nil, fmt.Errorf("failed to validate envelope: %w", err)
 	}
 
 	rec, err = e.Record()
 	if err != nil {
-		return e, nil, fmt.Errorf("failed to unmarshal envelope payload: %w", err)
+		return nil, nil, fmt.Errorf("failed to unmarshal envelope payload: %w", err)
 	}
 	return e, rec, nil
 }

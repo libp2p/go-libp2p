@@ -36,8 +36,8 @@ func TestAddMapping(t *testing.T) {
 	nat, err := DiscoverNAT(context.Background())
 	require.NoError(t, err)
 
-	mockNAT.EXPECT().AddPortMapping("tcp", 10000, gomock.Any(), MappingDuration).Return(1234, nil)
-	require.NoError(t, nat.AddMapping("tcp", 10000))
+	mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000, gomock.Any(), MappingDuration).Return(1234, nil)
+	require.NoError(t, nat.AddMapping(context.Background(), "tcp", 10000))
 
 	_, found := nat.GetMapping("tcp", 9999)
 	require.False(t, found, "didn't expect a port mapping for unmapped port")
@@ -55,14 +55,14 @@ func TestRemoveMapping(t *testing.T) {
 	mockNAT.EXPECT().GetExternalAddress().Return(net.IPv4(1, 2, 3, 4), nil)
 	nat, err := DiscoverNAT(context.Background())
 	require.NoError(t, err)
-	mockNAT.EXPECT().AddPortMapping("tcp", 10000, gomock.Any(), MappingDuration).Return(1234, nil)
-	require.NoError(t, nat.AddMapping("tcp", 10000))
+	mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000, gomock.Any(), MappingDuration).Return(1234, nil)
+	require.NoError(t, nat.AddMapping(context.Background(), "tcp", 10000))
 	_, found := nat.GetMapping("tcp", 10000)
 	require.True(t, found, "expected port mapping")
 
-	require.Error(t, nat.RemoveMapping("tcp", 9999), "expected error for unknown mapping")
-	mockNAT.EXPECT().DeletePortMapping("tcp", 10000)
-	require.NoError(t, nat.RemoveMapping("tcp", 10000))
+	require.Error(t, nat.RemoveMapping(context.Background(), "tcp", 9999), "expected error for unknown mapping")
+	mockNAT.EXPECT().DeletePortMapping(gomock.Any(), "tcp", 10000)
+	require.NoError(t, nat.RemoveMapping(context.Background(), "tcp", 10000))
 
 	_, found = nat.GetMapping("tcp", 10000)
 	require.False(t, found, "didn't expect port mapping for deleted mapping")

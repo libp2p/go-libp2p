@@ -148,7 +148,7 @@ func (mab *memoryAddrBook) gc() {
 	}
 }
 
-func (mab *memoryAddrBook) PeersWithAddrs() peer.IDSlice {
+func (mab *memoryAddrBook) PeersWithAddrs(ctx context.Context) peer.IDSlice {
 	// deduplicate, since the same peer could have both signed & unsigned addrs
 	set := make(map[peer.ID]struct{})
 	for _, s := range mab.segments {
@@ -168,14 +168,14 @@ func (mab *memoryAddrBook) PeersWithAddrs() peer.IDSlice {
 }
 
 // AddAddr calls AddAddrs(p, []ma.Multiaddr{addr}, ttl)
-func (mab *memoryAddrBook) AddAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
-	mab.AddAddrs(p, []ma.Multiaddr{addr}, ttl)
+func (mab *memoryAddrBook) AddAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
+	mab.AddAddrs(ctx, p, []ma.Multiaddr{addr}, ttl)
 }
 
 // AddAddrs gives memoryAddrBook addresses to use, with a given ttl
 // (time-to-live), after which the address is no longer valid.
 // This function never reduces the TTL or expiration of an address.
-func (mab *memoryAddrBook) AddAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) AddAddrs(ctx context.Context, p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	// if we have a valid peer record, ignore unsigned addrs
 	// peerRec := mab.GetPeerRecord(p)
 	// if peerRec != nil {
@@ -187,7 +187,7 @@ func (mab *memoryAddrBook) AddAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Du
 // ConsumePeerRecord adds addresses from a signed peer.PeerRecord (contained in
 // a record.Envelope), which will expire after the given TTL.
 // See https://godoc.org/github.com/libp2p/go-libp2p/core/peerstore#CertifiedAddrBook for more details.
-func (mab *memoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl time.Duration) (bool, error) {
+func (mab *memoryAddrBook) ConsumePeerRecord(ctx context.Context, recordEnvelope *record.Envelope, ttl time.Duration) (bool, error) {
 	r, err := recordEnvelope.Record()
 	if err != nil {
 		return false, err
@@ -269,13 +269,13 @@ func (mab *memoryAddrBook) addAddrsUnlocked(s *addrSegment, p peer.ID, addrs []m
 }
 
 // SetAddr calls mgr.SetAddrs(p, addr, ttl)
-func (mab *memoryAddrBook) SetAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
-	mab.SetAddrs(p, []ma.Multiaddr{addr}, ttl)
+func (mab *memoryAddrBook) SetAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
+	mab.SetAddrs(ctx, p, []ma.Multiaddr{addr}, ttl)
 }
 
 // SetAddrs sets the ttl on addresses. This clears any TTL there previously.
 // This is used when we receive the best estimate of the validity of an address.
-func (mab *memoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) SetAddrs(ctx context.Context, p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	s := mab.segments.get(p)
 	s.Lock()
 	defer s.Unlock()
@@ -312,7 +312,7 @@ func (mab *memoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Du
 
 // UpdateAddrs updates the addresses associated with the given peer that have
 // the given oldTTL to have the given newTTL.
-func (mab *memoryAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL time.Duration) {
+func (mab *memoryAddrBook) UpdateAddrs(ctx context.Context, p peer.ID, oldTTL time.Duration, newTTL time.Duration) {
 	s := mab.segments.get(p)
 	s.Lock()
 	defer s.Unlock()
@@ -336,7 +336,7 @@ func (mab *memoryAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL t
 }
 
 // Addrs returns all known (and valid) addresses for a given peer
-func (mab *memoryAddrBook) Addrs(p peer.ID) []ma.Multiaddr {
+func (mab *memoryAddrBook) Addrs(ctx context.Context, p peer.ID) []ma.Multiaddr {
 	s := mab.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
@@ -361,7 +361,7 @@ func validAddrs(now time.Time, amap map[string]*expiringAddr) []ma.Multiaddr {
 // GetPeerRecord returns a Envelope containing a PeerRecord for the
 // given peer id, if one exists.
 // Returns nil if no signed PeerRecord exists for the peer.
-func (mab *memoryAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
+func (mab *memoryAddrBook) GetPeerRecord(ctx context.Context, p peer.ID) *record.Envelope {
 	s := mab.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
@@ -381,7 +381,7 @@ func (mab *memoryAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
 }
 
 // ClearAddrs removes all previously stored addresses
-func (mab *memoryAddrBook) ClearAddrs(p peer.ID) {
+func (mab *memoryAddrBook) ClearAddrs(ctx context.Context, p peer.ID) {
 	s := mab.segments.get(p)
 	s.Lock()
 	defer s.Unlock()

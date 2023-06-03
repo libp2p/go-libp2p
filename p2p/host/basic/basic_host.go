@@ -1,13 +1,11 @@
 package basichost
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"sort"
 	"sync"
 	"time"
 
@@ -209,7 +207,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		}
 		h.caBook = cab
 
-		h.signKey = h.Peerstore().PrivKey(h.ID())
+		h.signKey = h.Peerstore().PrivKey(context.Background(), h.ID())
 		if h.signKey == nil {
 			return nil, errors.New("unable to access host key")
 		}
@@ -223,7 +221,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
 		}
-		if _, err := cab.ConsumePeerRecord(ev, peerstore.PermanentAddrTTL); err != nil {
+		if _, err := cab.ConsumePeerRecord(context.Background(), ev, peerstore.PermanentAddrTTL); err != nil {
 			return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
 		}
 	}
@@ -517,7 +515,7 @@ func (h *BasicHost) background() {
 			changeEvt.SignedPeerRecord = sr
 
 			// persist the signed record to the peerstore
-			if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
+			if _, err := h.caBook.ConsumePeerRecord(context.Background(), sr, peerstore.PermanentAddrTTL); err != nil {
 				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
 				return
 			}
@@ -591,7 +589,6 @@ func (h *BasicHost) EventBus() event.Bus {
 func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
 	h.Mux().AddHandler(pid, func(p protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
-		is.SetProtocol(p)
 		handler(is)
 		return nil
 	})
@@ -605,7 +602,6 @@ func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHand
 func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(protocol.ID) bool, handler network.StreamHandler) {
 	h.Mux().AddHandlerWithFunc(pid, m, func(p protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
-		is.SetProtocol(p)
 		handler(is)
 		return nil
 	})
@@ -660,7 +656,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		return nil, ctx.Err()
 	}
 
-	pref, err := h.preferredProtocol(p, pids)
+	pref, err := h.preferredProtocol(ctx, p, pids)
 	if err != nil {
 		_ = s.Reset()
 		return nil, err
@@ -696,12 +692,12 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	}
 
 	s.SetProtocol(selected)
-	h.Peerstore().AddProtocols(p, selected)
+	h.Peerstore().AddProtocols(ctx, p, selected)
 	return s, nil
 }
 
-func (h *BasicHost) preferredProtocol(p peer.ID, pids []protocol.ID) (protocol.ID, error) {
-	supported, err := h.Peerstore().SupportsProtocols(p, pids...)
+func (h *BasicHost) preferredProtocol(ctx context.Context, p peer.ID, pids []protocol.ID) (protocol.ID, error) {
+	supported, err := h.Peerstore().SupportsProtocols(ctx, p, pids...)
 	if err != nil {
 		return "", err
 	}
@@ -720,7 +716,7 @@ func (h *BasicHost) preferredProtocol(p peer.ID, pids []protocol.ID) (protocol.I
 // It will also resolve any /dns4, /dns6, and /dnsaddr addresses.
 func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// absorb addresses into peerstore
-	h.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.TempAddrTTL)
+	h.Peerstore().AddAddrs(ctx, pi.ID, pi.Addrs, peerstore.TempAddrTTL)
 
 	forceDirect, _ := network.GetForceDirectDial(ctx)
 	if !forceDirect {
@@ -815,26 +811,6 @@ func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	return addr
 }
 
-// dedupAddrs deduplicates addresses in place, leave only unique addresses.
-// It doesn't allocate.
-func dedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	if len(addrs) == 0 {
-		return addrs
-	}
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
-	idx := 1
-	for i := 1; i < len(addrs); i++ {
-		if !addrs[i-1].Equal(addrs[i]) {
-			addrs[idx] = addrs[i]
-			idx++
-		}
-	}
-	for i := idx; i < len(addrs); i++ {
-		addrs[i] = nil
-	}
-	return addrs[:idx]
-}
-
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
@@ -859,7 +835,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		finalAddrs = append(finalAddrs, resolved...)
 	}
 
-	finalAddrs = dedupAddrs(finalAddrs)
+	finalAddrs = network.DedupAddrs(finalAddrs)
 
 	// natmgr is nil if we do not use nat option;
 	if h.natmgr != nil {
@@ -929,7 +905,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		}
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
-	finalAddrs = dedupAddrs(finalAddrs)
+	finalAddrs = network.DedupAddrs(finalAddrs)
 	finalAddrs = inferWebtransportAddrsFromQuic(finalAddrs)
 
 	return finalAddrs

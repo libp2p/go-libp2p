@@ -318,13 +318,13 @@ func (pn *peernet) BandwidthTotals() (in uint64, out uint64) {
 
 // Listen tells the network to start listening on given multiaddrs.
 func (pn *peernet) Listen(addrs ...ma.Multiaddr) error {
-	pn.Peerstore().AddAddrs(pn.LocalPeer(), addrs, peerstore.PermanentAddrTTL)
+	pn.Peerstore().AddAddrs(context.Background(), pn.LocalPeer(), addrs, peerstore.PermanentAddrTTL)
 	return nil
 }
 
 // ListenAddresses returns a list of addresses at which this network listens.
 func (pn *peernet) ListenAddresses() []ma.Multiaddr {
-	return pn.Peerstore().Addrs(pn.LocalPeer())
+	return pn.Peerstore().Addrs(context.Background(), pn.LocalPeer())
 }
 
 // InterfaceListenAddresses returns a list of addresses at which this network

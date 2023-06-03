@@ -177,7 +177,12 @@ loop:
 		case <-w.triggerDial:
 			for _, addr := range w.nextDial {
 				// spawn the dial
-				ad := w.pending[string(addr.Bytes())]
+				ad, ok := w.pending[string(addr.Bytes())]
+				if !ok {
+					log.Warn("unexpectedly missing pending addrDial for addr")
+					// Assume nothing to dial here
+					continue
+				}
 				err := w.s.dialNextAddr(ad.ctx, w.peer, addr, w.resch)
 				if err != nil {
 					w.dispatchError(ad, err)
@@ -192,7 +197,12 @@ loop:
 				w.connected = true
 			}
 
-			ad := w.pending[string(res.Addr.Bytes())]
+			ad, ok := w.pending[string(res.Addr.Bytes())]
+			if !ok {
+				log.Warn("unexpectedly missing pending addrDial res")
+				// Assume nothing to do here
+				continue
+			}
 
 			if res.Conn != nil {
 				// we got a connection, add it to the swarm

@@ -26,7 +26,7 @@ require (
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-mplex v0.7.0
 	github.com/libp2p/go-msgio v0.3.0
-	github.com/libp2p/go-nat v0.1.0
+	github.com/libp2p/go-nat v0.2.0
 	github.com/libp2p/go-netroute v0.2.1
 	github.com/libp2p/go-reuseport v0.2.0
 	github.com/libp2p/go-yamux/v4 v4.0.0
@@ -54,8 +54,8 @@ require (
 	go.uber.org/goleak v1.1.12
 	golang.org/x/crypto v0.7.0
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
-	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.7.0
+	golang.org/x/sync v0.2.0
+	golang.org/x/sys v0.8.0
 	golang.org/x/tools v0.7.0
 	google.golang.org/protobuf v1.30.0
 )
@@ -82,7 +82,7 @@ require (
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/pprof v0.0.0-20230405160723-4a4c7d95572b // indirect
 	github.com/google/uuid v1.3.0 // indirect
-	github.com/huin/goupnp v1.1.0 // indirect
+	github.com/huin/goupnp v1.2.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.4 // indirect
@@ -111,8 +111,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/mod v0.10.0 // indirect
-	golang.org/x/net v0.8.0 // indirect
-	golang.org/x/text v0.8.0 // indirect
+	golang.org/x/net v0.10.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.1.7 // indirect
 )

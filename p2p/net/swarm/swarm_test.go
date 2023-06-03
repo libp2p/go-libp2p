@@ -81,7 +81,7 @@ func connectSwarms(t *testing.T, ctx context.Context, swarms []*swarm.Swarm) {
 	var wg sync.WaitGroup
 	connect := func(s *swarm.Swarm, dst peer.ID, addr ma.Multiaddr) {
 		// TODO: make a DialAddr func.
-		s.Peerstore().AddAddr(dst, addr, peerstore.PermanentAddrTTL)
+		s.Peerstore().AddAddr(context.Background(), dst, addr, peerstore.PermanentAddrTTL)
 		if _, err := s.DialPeer(ctx, dst); err != nil {
 			t.Fatal("error swarm dialing to peer", err)
 		}
@@ -341,7 +341,7 @@ func TestConnectionGating(t *testing.T) {
 
 				p1 := sw1.LocalPeer()
 				p2 := sw2.LocalPeer()
-				sw1.Peerstore().AddAddr(p2, sw2.ListenAddresses()[0], peerstore.PermanentAddrTTL)
+				sw1.Peerstore().AddAddr(context.Background(), p2, sw2.ListenAddresses()[0], peerstore.PermanentAddrTTL)
 				// 1 -> 2
 				_, err := sw1.DialPeer(ctx, p2)
 
@@ -409,7 +409,7 @@ func TestPreventDialListenAddr(t *testing.T) {
 		}
 	}
 	remote := test.RandPeerIDFatal(t)
-	s.Peerstore().AddAddr(remote, addr, time.Hour)
+	s.Peerstore().AddAddr(context.Background(), remote, addr, time.Hour)
 	_, err = s.DialPeer(context.Background(), remote)
 	if !errors.Is(err, swarm.ErrNoGoodAddresses) {
 		t.Fatal("expected dial to fail: %w", err)

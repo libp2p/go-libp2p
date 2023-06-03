@@ -592,7 +592,7 @@ func (r *Relay) makeReservationMsg(p peer.ID, expire time.Time) *pbv2.Reservatio
 		Expiration: expire,
 	}
 
-	envelope, err := record.Seal(voucher, r.host.Peerstore().PrivKey(r.host.ID()))
+	envelope, err := record.Seal(voucher, r.host.Peerstore().PrivKey(r.ctx, r.host.ID()))
 	if err != nil {
 		log.Errorf("error sealing voucher for %s: %s", p, err)
 		return rsvp
