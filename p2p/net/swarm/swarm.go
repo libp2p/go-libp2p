@@ -229,7 +229,7 @@ func (s *Swarm) close() {
 
 	for l := range listeners {
 		go func(l transport.Listener) {
-			if err := l.Close(); err != nil {
+			if err := l.Close(); err != nil && err != transport.ErrListenerClosed {
 				log.Errorf("error when shutting down listener: %s", err)
 			}
 		}(l)

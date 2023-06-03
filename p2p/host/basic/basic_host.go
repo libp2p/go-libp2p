@@ -1,13 +1,11 @@
 package basichost
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"sort"
 	"sync"
 	"time"
 
@@ -591,7 +589,6 @@ func (h *BasicHost) EventBus() event.Bus {
 func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
 	h.Mux().AddHandler(pid, func(p protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
-		is.SetProtocol(p)
 		handler(is)
 		return nil
 	})
@@ -605,7 +602,6 @@ func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHand
 func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(protocol.ID) bool, handler network.StreamHandler) {
 	h.Mux().AddHandlerWithFunc(pid, m, func(p protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
-		is.SetProtocol(p)
 		handler(is)
 		return nil
 	})
@@ -815,26 +811,6 @@ func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	return addr
 }
 
-// dedupAddrs deduplicates addresses in place, leave only unique addresses.
-// It doesn't allocate.
-func dedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	if len(addrs) == 0 {
-		return addrs
-	}
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
-	idx := 1
-	for i := 1; i < len(addrs); i++ {
-		if !addrs[i-1].Equal(addrs[i]) {
-			addrs[idx] = addrs[i]
-			idx++
-		}
-	}
-	for i := idx; i < len(addrs); i++ {
-		addrs[i] = nil
-	}
-	return addrs[:idx]
-}
-
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
@@ -859,7 +835,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		finalAddrs = append(finalAddrs, resolved...)
 	}
 
-	finalAddrs = dedupAddrs(finalAddrs)
+	finalAddrs = network.DedupAddrs(finalAddrs)
 
 	// natmgr is nil if we do not use nat option;
 	if h.natmgr != nil {
@@ -929,7 +905,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		}
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
-	finalAddrs = dedupAddrs(finalAddrs)
+	finalAddrs = network.DedupAddrs(finalAddrs)
 	finalAddrs = inferWebtransportAddrsFromQuic(finalAddrs)
 
 	return finalAddrs

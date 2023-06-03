@@ -65,6 +65,51 @@ func TestAddrsForDial(t *testing.T) {
 	require.NotZero(t, len(mas))
 }
 
+func TestDedupAddrsForDial(t *testing.T) {
+	mockResolver := madns.MockResolver{IP: make(map[string][]net.IPAddr)}
+	ipaddr, err := net.ResolveIPAddr("ip4", "1.2.3.4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mockResolver.IP["example.com"] = []net.IPAddr{*ipaddr}
+
+	resolver, err := madns.NewResolver(madns.WithDomainResolver("example.com", &mockResolver))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	id, err := peer.IDFromPrivateKey(priv)
+	require.NoError(t, err)
+
+	ps, err := pstoremem.NewPeerstore()
+	require.NoError(t, err)
+	ps.AddPubKey(context.Background(), id, priv.GetPublic())
+	ps.AddPrivKey(context.Background(), id, priv)
+	t.Cleanup(func() { ps.Close() })
+
+	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(resolver))
+	require.NoError(t, err)
+	defer s.Close()
+
+	tpt, err := tcp.NewTCPTransport(nil, &network.NullResourceManager{})
+	require.NoError(t, err)
+	err = s.AddTransport(tpt)
+	require.NoError(t, err)
+
+	otherPeer := test.RandPeerIDFatal(t)
+
+	ps.AddAddr(context.Background(), otherPeer, ma.StringCast("/dns4/example.com/tcp/1234"), time.Hour)
+	ps.AddAddr(context.Background(), otherPeer, ma.StringCast("/ip4/1.2.3.4/tcp/1234"), time.Hour)
+
+	ctx := context.Background()
+	mas, err := s.addrsForDial(ctx, otherPeer)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, len(mas))
+}
+
 func newTestSwarmWithResolver(t *testing.T, resolver *madns.Resolver) *Swarm {
 	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(t, err)

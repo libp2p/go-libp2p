@@ -31,9 +31,10 @@ type TransportTestCase struct {
 }
 
 type TransportTestCaseOpts struct {
-	NoListen  bool
-	NoRcmgr   bool
-	ConnGater connmgr.ConnectionGater
+	NoListen        bool
+	NoRcmgr         bool
+	ConnGater       connmgr.ConnectionGater
+	ResourceManager network.ResourceManager
 }
 
 func transformOpts(opts TransportTestCaseOpts) []config.Option {
@@ -44,6 +45,10 @@ func transformOpts(opts TransportTestCaseOpts) []config.Option {
 	}
 	if opts.ConnGater != nil {
 		libp2pOpts = append(libp2pOpts, libp2p.ConnectionGater(opts.ConnGater))
+	}
+
+	if opts.ResourceManager != nil {
+		libp2pOpts = append(libp2pOpts, libp2p.ResourceManager(opts.ResourceManager))
 	}
 	return libp2pOpts
 }
