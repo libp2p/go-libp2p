@@ -188,7 +188,7 @@ func (as *AmbientAutoNAT) background() {
 					as.confidence--
 				}
 			case event.EvtPeerIdentificationCompleted:
-				if s, err := as.host.Peerstore().SupportsProtocols(context.Background(), e.Peer, AutoNATProto); err == nil && len(s) > 0 {
+				if s, err := as.host.Peerstore().SupportsProtocols(e.Peer, AutoNATProto); err == nil && len(s) > 0 {
 					currentStatus := *as.status.Load()
 					if currentStatus == network.ReachabilityUnknown {
 						as.tryProbe(e.Peer)
@@ -367,7 +367,7 @@ func (as *AmbientAutoNAT) tryProbe(p peer.ID) bool {
 	}
 	as.cleanupRecentProbes()
 
-	info := as.host.Peerstore().PeerInfo(context.Background(), p)
+	info := as.host.Peerstore().PeerInfo(p)
 
 	if !as.config.dialPolicy.skipPeer(info.Addrs) {
 		as.recentProbes[p] = time.Now()
@@ -402,9 +402,9 @@ func (as *AmbientAutoNAT) getPeerToProbe() peer.ID {
 	candidates := make([]peer.ID, 0, len(peers))
 
 	for _, p := range peers {
-		info := as.host.Peerstore().PeerInfo(context.Background(), p)
+		info := as.host.Peerstore().PeerInfo(p)
 		// Exclude peers which don't support the autonat protocol.
-		if proto, err := as.host.Peerstore().SupportsProtocols(context.Background(), p, AutoNATProto); len(proto) == 0 || err != nil {
+		if proto, err := as.host.Peerstore().SupportsProtocols(p, AutoNATProto); len(proto) == 0 || err != nil {
 			continue
 		}
 

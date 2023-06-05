@@ -163,7 +163,7 @@ func TestInterceptAccept(t *testing.T) {
 				// remove the certhash component from WebTransport addresses
 				require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
 			})
-			h1.Peerstore().AddAddrs(ctx, h2.ID(), h2.Addrs(), time.Hour)
+			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
 			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
@@ -194,7 +194,7 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
 				}),
 			)
-			h1.Peerstore().AddAddrs(ctx, h2.ID(), h2.Addrs(), time.Hour)
+			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
 			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
@@ -228,7 +228,7 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 					require.Equal(t, h2.ID(), c.LocalPeer())
 				}),
 			)
-			h1.Peerstore().AddAddrs(ctx, h2.ID(), h2.Addrs(), time.Hour)
+			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
 			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)

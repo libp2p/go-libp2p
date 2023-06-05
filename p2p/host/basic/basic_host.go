@@ -207,7 +207,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		}
 		h.caBook = cab
 
-		h.signKey = h.Peerstore().PrivKey(context.Background(), h.ID())
+		h.signKey = h.Peerstore().PrivKey(h.ID())
 		if h.signKey == nil {
 			return nil, errors.New("unable to access host key")
 		}
@@ -221,7 +221,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
 		}
-		if _, err := cab.ConsumePeerRecord(context.Background(), ev, peerstore.PermanentAddrTTL); err != nil {
+		if _, err := cab.ConsumePeerRecord(ev, peerstore.PermanentAddrTTL); err != nil {
 			return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
 		}
 	}
@@ -515,7 +515,7 @@ func (h *BasicHost) background() {
 			changeEvt.SignedPeerRecord = sr
 
 			// persist the signed record to the peerstore
-			if _, err := h.caBook.ConsumePeerRecord(context.Background(), sr, peerstore.PermanentAddrTTL); err != nil {
+			if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
 				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
 				return
 			}
@@ -656,7 +656,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		return nil, ctx.Err()
 	}
 
-	pref, err := h.preferredProtocol(ctx, p, pids)
+	pref, err := h.preferredProtocol(p, pids)
 	if err != nil {
 		_ = s.Reset()
 		return nil, err
@@ -692,12 +692,12 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	}
 
 	s.SetProtocol(selected)
-	h.Peerstore().AddProtocols(ctx, p, selected)
+	h.Peerstore().AddProtocols(p, selected)
 	return s, nil
 }
 
-func (h *BasicHost) preferredProtocol(ctx context.Context, p peer.ID, pids []protocol.ID) (protocol.ID, error) {
-	supported, err := h.Peerstore().SupportsProtocols(ctx, p, pids...)
+func (h *BasicHost) preferredProtocol(p peer.ID, pids []protocol.ID) (protocol.ID, error) {
+	supported, err := h.Peerstore().SupportsProtocols(p, pids...)
 	if err != nil {
 		return "", err
 	}
@@ -716,7 +716,7 @@ func (h *BasicHost) preferredProtocol(ctx context.Context, p peer.ID, pids []pro
 // It will also resolve any /dns4, /dns6, and /dnsaddr addresses.
 func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// absorb addresses into peerstore
-	h.Peerstore().AddAddrs(ctx, pi.ID, pi.Addrs, peerstore.TempAddrTTL)
+	h.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.TempAddrTTL)
 
 	forceDirect, _ := network.GetForceDirectDial(ctx)
 	if !forceDirect {

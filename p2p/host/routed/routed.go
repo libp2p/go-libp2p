@@ -56,11 +56,11 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// if we were given some addresses, keep + use them.
 	if len(pi.Addrs) > 0 {
-		rh.Peerstore().AddAddrs(ctx, pi.ID, pi.Addrs, peerstore.TempAddrTTL)
+		rh.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.TempAddrTTL)
 	}
 
 	// Check if we have some addresses in our recent memory.
-	addrs := rh.Peerstore().Addrs(ctx, pi.ID)
+	addrs := rh.Peerstore().Addrs(pi.ID)
 	if len(addrs) < 1 {
 		// no addrs? find some with the routing system.
 		var err error
@@ -91,7 +91,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			continue
 		}
 
-		if len(rh.Peerstore().Addrs(ctx, relayID)) > 0 {
+		if len(rh.Peerstore().Addrs(relayID)) > 0 {
 			// we already have addrs for this relay
 			continue
 		}
@@ -102,7 +102,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			continue
 		}
 
-		rh.Peerstore().AddAddrs(ctx, relayID, relayAddrs, peerstore.TempAddrTTL)
+		rh.Peerstore().AddAddrs(relayID, relayAddrs, peerstore.TempAddrTTL)
 	}
 
 	// if we're here, we got some addrs. let's use our wrapped host to connect.

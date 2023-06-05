@@ -97,12 +97,12 @@ func (bh *BlankHost) initSignedRecord() error {
 		return errors.New("peerstore does not support signed records")
 	}
 	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{ID: bh.ID(), Addrs: bh.Addrs()})
-	ev, err := record.Seal(rec, bh.Peerstore().PrivKey(context.Background(), bh.ID()))
+	ev, err := record.Seal(rec, bh.Peerstore().PrivKey(bh.ID()))
 	if err != nil {
 		log.Errorf("failed to create signed record for self, err=%s", err)
 		return fmt.Errorf("failed to create signed record for self, err=%s", err)
 	}
-	_, err = cab.ConsumePeerRecord(context.Background(), ev, peerstore.PermanentAddrTTL)
+	_, err = cab.ConsumePeerRecord(ev, peerstore.PermanentAddrTTL)
 	if err != nil {
 		log.Errorf("failed to persist signed record to peerstore,err=%s", err)
 		return fmt.Errorf("failed to persist signed record for self, err=%s", err)
@@ -128,7 +128,7 @@ func (bh *BlankHost) Close() error {
 
 func (bh *BlankHost) Connect(ctx context.Context, ai peer.AddrInfo) error {
 	// absorb addresses into peerstore
-	bh.Peerstore().AddAddrs(ctx, ai.ID, ai.Addrs, peerstore.TempAddrTTL)
+	bh.Peerstore().AddAddrs(ai.ID, ai.Addrs, peerstore.TempAddrTTL)
 
 	cs := bh.n.ConnsToPeer(ai.ID)
 	if len(cs) > 0 {
@@ -160,7 +160,7 @@ func (bh *BlankHost) NewStream(ctx context.Context, p peer.ID, protos ...protoco
 	}
 
 	s.SetProtocol(selected)
-	bh.Peerstore().AddProtocols(ctx, p, selected)
+	bh.Peerstore().AddProtocols(p, selected)
 
 	return s, nil
 }

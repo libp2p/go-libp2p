@@ -31,11 +31,11 @@ func NewKeyBook(_ context.Context, store ds.Datastore, _ Options) (*dsKeyBook, e
 	return &dsKeyBook{store}, nil
 }
 
-func (kb *dsKeyBook) PubKey(ctx context.Context, p peer.ID) ic.PubKey {
+func (kb *dsKeyBook) PubKey(p peer.ID) ic.PubKey {
 	key := peerToKey(p, pubSuffix)
 
 	var pk ic.PubKey
-	if value, err := kb.ds.Get(ctx, key); err == nil {
+	if value, err := kb.ds.Get(context.TODO(), key); err == nil {
 		pk, err = ic.UnmarshalPublicKey(value)
 		if err != nil {
 			log.Errorf("error when unmarshalling pubkey from datastore for peer %s: %s\n", p.Pretty(), err)
@@ -55,7 +55,7 @@ func (kb *dsKeyBook) PubKey(ctx context.Context, p peer.ID) ic.PubKey {
 			log.Errorf("error when turning extracted pubkey into bytes for peer %s: %s\n", p.Pretty(), err)
 			return nil
 		}
-		if err := kb.ds.Put(ctx, key, pkb); err != nil {
+		if err := kb.ds.Put(context.TODO(), key, pkb); err != nil {
 			log.Errorf("error when adding extracted pubkey to peerstore for peer %s: %s\n", p.Pretty(), err)
 			return nil
 		}
@@ -66,7 +66,7 @@ func (kb *dsKeyBook) PubKey(ctx context.Context, p peer.ID) ic.PubKey {
 	return pk
 }
 
-func (kb *dsKeyBook) AddPubKey(ctx context.Context, p peer.ID, pk ic.PubKey) error {
+func (kb *dsKeyBook) AddPubKey(p peer.ID, pk ic.PubKey) error {
 	// check it's correct.
 	if !p.MatchesPublicKey(pk) {
 		return errors.New("peer ID does not match public key")
@@ -77,15 +77,15 @@ func (kb *dsKeyBook) AddPubKey(ctx context.Context, p peer.ID, pk ic.PubKey) err
 		log.Errorf("error while converting pubkey byte string for peer %s: %s\n", p.Pretty(), err)
 		return err
 	}
-	if err := kb.ds.Put(ctx, peerToKey(p, pubSuffix), val); err != nil {
+	if err := kb.ds.Put(context.TODO(), peerToKey(p, pubSuffix), val); err != nil {
 		log.Errorf("error while updating pubkey in datastore for peer %s: %s\n", p.Pretty(), err)
 		return err
 	}
 	return nil
 }
 
-func (kb *dsKeyBook) PrivKey(ctx context.Context, p peer.ID) ic.PrivKey {
-	value, err := kb.ds.Get(ctx, peerToKey(p, privSuffix))
+func (kb *dsKeyBook) PrivKey(p peer.ID) ic.PrivKey {
+	value, err := kb.ds.Get(context.TODO(), peerToKey(p, privSuffix))
 	if err != nil {
 		return nil
 	}
@@ -96,7 +96,7 @@ func (kb *dsKeyBook) PrivKey(ctx context.Context, p peer.ID) ic.PrivKey {
 	return sk
 }
 
-func (kb *dsKeyBook) AddPrivKey(ctx context.Context, p peer.ID, sk ic.PrivKey) error {
+func (kb *dsKeyBook) AddPrivKey(p peer.ID, sk ic.PrivKey) error {
 	if sk == nil {
 		return errors.New("private key is nil")
 	}
@@ -110,14 +110,14 @@ func (kb *dsKeyBook) AddPrivKey(ctx context.Context, p peer.ID, sk ic.PrivKey) e
 		log.Errorf("error while converting privkey byte string for peer %s: %s\n", p.Pretty(), err)
 		return err
 	}
-	if err := kb.ds.Put(ctx, peerToKey(p, privSuffix), val); err != nil {
+	if err := kb.ds.Put(context.TODO(), peerToKey(p, privSuffix), val); err != nil {
 		log.Errorf("error while updating privkey in datastore for peer %s: %s\n", p.Pretty(), err)
 	}
 	return err
 }
 
-func (kb *dsKeyBook) PeersWithKeys(ctx context.Context) peer.IDSlice {
-	ids, err := uniquePeerIds(ctx, kb.ds, kbBase, func(result query.Result) string {
+func (kb *dsKeyBook) PeersWithKeys() peer.IDSlice {
+	ids, err := uniquePeerIds(kb.ds, kbBase, func(result query.Result) string {
 		return ds.RawKey(result.Key).Parent().Name()
 	})
 	if err != nil {
@@ -126,9 +126,9 @@ func (kb *dsKeyBook) PeersWithKeys(ctx context.Context) peer.IDSlice {
 	return ids
 }
 
-func (kb *dsKeyBook) RemovePeer(ctx context.Context, p peer.ID) {
-	kb.ds.Delete(ctx, peerToKey(p, privSuffix))
-	kb.ds.Delete(ctx, peerToKey(p, pubSuffix))
+func (kb *dsKeyBook) RemovePeer(p peer.ID) {
+	kb.ds.Delete(context.TODO(), peerToKey(p, privSuffix))
+	kb.ds.Delete(context.TODO(), peerToKey(p, pubSuffix))
 }
 
 func peerToKey(p peer.ID, suffix ds.Key) ds.Key {

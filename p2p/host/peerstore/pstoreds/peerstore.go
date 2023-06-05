@@ -103,14 +103,14 @@ func NewPeerstore(ctx context.Context, store ds.Batching, opts Options) (*pstore
 }
 
 // uniquePeerIds extracts and returns unique peer IDs from database keys.
-func uniquePeerIds(ctx context.Context, ds ds.Datastore, prefix ds.Key, extractor func(result query.Result) string) (peer.IDSlice, error) {
+func uniquePeerIds(ds ds.Datastore, prefix ds.Key, extractor func(result query.Result) string) (peer.IDSlice, error) {
 	var (
 		q       = query.Query{Prefix: prefix.String(), KeysOnly: true}
 		results query.Results
 		err     error
 	)
 
-	if results, err = ds.Query(ctx, q); err != nil {
+	if results, err = ds.Query(context.TODO(), q); err != nil {
 		log.Error(err)
 		return nil, err
 	}
@@ -156,12 +156,12 @@ func (ps *pstoreds) Close() (err error) {
 	return nil
 }
 
-func (ps *pstoreds) Peers(ctx context.Context) peer.IDSlice {
+func (ps *pstoreds) Peers() peer.IDSlice {
 	set := map[peer.ID]struct{}{}
-	for _, p := range ps.PeersWithKeys(ctx) {
+	for _, p := range ps.PeersWithKeys() {
 		set[p] = struct{}{}
 	}
-	for _, p := range ps.PeersWithAddrs(ctx) {
+	for _, p := range ps.PeersWithAddrs() {
 		set[p] = struct{}{}
 	}
 
@@ -172,10 +172,10 @@ func (ps *pstoreds) Peers(ctx context.Context) peer.IDSlice {
 	return pps
 }
 
-func (ps *pstoreds) PeerInfo(ctx context.Context, p peer.ID) peer.AddrInfo {
+func (ps *pstoreds) PeerInfo(p peer.ID) peer.AddrInfo {
 	return peer.AddrInfo{
 		ID:    p,
-		Addrs: ps.dsAddrBook.Addrs(ctx, p),
+		Addrs: ps.dsAddrBook.Addrs(p),
 	}
 }
 
@@ -185,9 +185,9 @@ func (ps *pstoreds) PeerInfo(ctx context.Context, p peer.ID) peer.AddrInfo {
 // * the PeerMetadata
 // * the Metrics
 // It DOES NOT remove the peer from the AddrBook.
-func (ps *pstoreds) RemovePeer(ctx context.Context, p peer.ID) {
-	ps.dsKeyBook.RemovePeer(ctx, p)
-	ps.dsProtoBook.RemovePeer(ctx, p)
-	ps.dsPeerMetadata.RemovePeer(ctx, p)
-	ps.Metrics.RemovePeer(ctx, p)
+func (ps *pstoreds) RemovePeer(p peer.ID) {
+	ps.dsKeyBook.RemovePeer(p)
+	ps.dsProtoBook.RemovePeer(p)
+	ps.dsPeerMetadata.RemovePeer(p)
+	ps.Metrics.RemovePeer(p)
 }

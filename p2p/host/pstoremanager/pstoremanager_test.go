@@ -1,7 +1,6 @@
 package pstoremanager_test
 
 import (
-	context "context"
 	"testing"
 	"time"
 
@@ -33,7 +32,7 @@ func TestGracePeriod(t *testing.T) {
 	require.NoError(t, err)
 	start := time.Now()
 	removed := make(chan struct{})
-	pstore.EXPECT().RemovePeer(context.Background(), peer.ID("foobar")).DoAndReturn(func(ctx1 context.Context, p peer.ID) {
+	pstore.EXPECT().RemovePeer(peer.ID("foobar")).DoAndReturn(func(p peer.ID) {
 		defer close(removed)
 		// make sure the call happened after the grace period
 		require.GreaterOrEqual(t, time.Since(start), gracePeriod)
@@ -102,8 +101,7 @@ func TestClose(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-
-	pstore.EXPECT().RemovePeer(context.Background(), peer.ID("foobar")).Do(func(ctx context.Context, p peer.ID) { close(done) })
+	pstore.EXPECT().RemovePeer(peer.ID("foobar")).Do(func(peer.ID) { close(done) })
 	require.NoError(t, man.Close())
 	select {
 	case <-done:

@@ -88,7 +88,7 @@ func (m *PeerstoreManager) background(ctx context.Context, sub event.Subscriptio
 
 	defer func() {
 		for p := range disconnected {
-			m.pstore.RemovePeer(context.Background(), p)
+			m.pstore.RemovePeer(p)
 		}
 	}()
 
@@ -113,7 +113,7 @@ func (m *PeerstoreManager) background(ctx context.Context, sub event.Subscriptio
 			now := time.Now()
 			for p, disconnectTime := range disconnected {
 				if disconnectTime.Add(m.gracePeriod).Before(now) {
-					m.pstore.RemovePeer(context.Background(), p)
+					m.pstore.RemovePeer(p)
 					delete(disconnected, p)
 				}
 			}

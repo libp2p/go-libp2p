@@ -43,7 +43,7 @@ func getNetHosts(t *testing.T, ctx context.Context, n int) (hosts []host.Host, u
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ps.AddPrivKey(context.Background(), p, privk)
+		err = ps.AddPrivKey(p, privk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,7 +130,7 @@ func TestBasicRelay(t *testing.T) {
 	connect(t, hosts[0], hosts[1])
 	connect(t, hosts[1], hosts[2])
 
-	rinfo := hosts[1].Peerstore().PeerInfo(context.Background(), hosts[1].ID())
+	rinfo := hosts[1].Peerstore().PeerInfo(hosts[1].ID())
 	rsvp, err := client.Reserve(ctx, hosts[0], rinfo)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +209,7 @@ func TestRelayLimitTime(t *testing.T) {
 	connect(t, hosts[0], hosts[1])
 	connect(t, hosts[1], hosts[2])
 
-	rinfo := hosts[1].Peerstore().PeerInfo(context.Background(), hosts[1].ID())
+	rinfo := hosts[1].Peerstore().PeerInfo(hosts[1].ID())
 	_, err = client.Reserve(ctx, hosts[0], rinfo)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func TestRelayLimitData(t *testing.T) {
 	connect(t, hosts[0], hosts[1])
 	connect(t, hosts[1], hosts[2])
 
-	rinfo := hosts[1].Peerstore().PeerInfo(context.Background(), hosts[1].ID())
+	rinfo := hosts[1].Peerstore().PeerInfo(hosts[1].ID())
 	_, err = client.Reserve(ctx, hosts[0], rinfo)
 	if err != nil {
 		t.Fatal(err)

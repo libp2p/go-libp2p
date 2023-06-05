@@ -69,6 +69,22 @@ var (
 		},
 		[]string{"transport", "security", "muxer", "early_muxer", "ip_version"},
 	)
+	dialsPerPeer = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: metricNamespace,
+			Name:      "dials_per_peer_total",
+			Help:      "Number of addresses dialed per peer",
+		},
+		[]string{"outcome", "num_dials"},
+	)
+	dialRankingDelay = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: metricNamespace,
+			Name:      "dial_ranking_delay_seconds",
+			Help:      "delay introduced by the dial ranking logic",
+			Buckets:   []float64{0.001, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 2},
+		},
+	)
 	collectors = []prometheus.Collector{
 		connsOpened,
 		keyTypes,
@@ -76,6 +92,8 @@ var (
 		dialError,
 		connDuration,
 		connHandshakeLatency,
+		dialsPerPeer,
+		dialRankingDelay,
 	}
 )
 
@@ -84,6 +102,8 @@ type MetricsTracer interface {
 	ClosedConnection(network.Direction, time.Duration, network.ConnectionState, ma.Multiaddr)
 	CompletedHandshake(time.Duration, network.ConnectionState, ma.Multiaddr)
 	FailedDialing(ma.Multiaddr, error)
+	DialCompleted(success bool, totalDials int)
+	DialRankingDelay(d time.Duration)
 }
 
 type metricsTracer struct{}
@@ -212,4 +232,28 @@ func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, err error) {
 	*tags = append(*tags, transport, e)
 	*tags = append(*tags, getIPVersion(addr))
 	dialError.WithLabelValues(*tags...).Inc()
+}
+
+func (m *metricsTracer) DialCompleted(success bool, totalDials int) {
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+	if success {
+		*tags = append(*tags, "success")
+	} else {
+		*tags = append(*tags, "failed")
+	}
+
+	numDialLabels := [...]string{"0", "1", "2", "3", "4", "5", ">=6"}
+	var numDials string
+	if totalDials < len(numDialLabels) {
+		numDials = numDialLabels[totalDials]
+	} else {
+		numDials = numDialLabels[len(numDialLabels)-1]
+	}
+	*tags = append(*tags, numDials)
+	dialsPerPeer.WithLabelValues(*tags...).Inc()
+}
+
+func (m *metricsTracer) DialRankingDelay(d time.Duration) {
+	dialRankingDelay.Observe(d.Seconds())
 }

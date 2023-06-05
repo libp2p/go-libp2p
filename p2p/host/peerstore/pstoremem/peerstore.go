@@ -1,7 +1,6 @@
 package pstoremem
 
 import (
-	"context"
 	"fmt"
 	"io"
 
@@ -78,12 +77,12 @@ func (ps *pstoremem) Close() (err error) {
 	return nil
 }
 
-func (ps *pstoremem) Peers(ctx context.Context) peer.IDSlice {
+func (ps *pstoremem) Peers() peer.IDSlice {
 	set := map[peer.ID]struct{}{}
-	for _, p := range ps.PeersWithKeys(ctx) {
+	for _, p := range ps.PeersWithKeys() {
 		set[p] = struct{}{}
 	}
-	for _, p := range ps.PeersWithAddrs(ctx) {
+	for _, p := range ps.PeersWithAddrs() {
 		set[p] = struct{}{}
 	}
 
@@ -94,10 +93,10 @@ func (ps *pstoremem) Peers(ctx context.Context) peer.IDSlice {
 	return pps
 }
 
-func (ps *pstoremem) PeerInfo(ctx context.Context, p peer.ID) peer.AddrInfo {
+func (ps *pstoremem) PeerInfo(p peer.ID) peer.AddrInfo {
 	return peer.AddrInfo{
 		ID:    p,
-		Addrs: ps.memoryAddrBook.Addrs(ctx, p),
+		Addrs: ps.memoryAddrBook.Addrs(p),
 	}
 }
 
@@ -107,9 +106,9 @@ func (ps *pstoremem) PeerInfo(ctx context.Context, p peer.ID) peer.AddrInfo {
 // * the PeerMetadata
 // * the Metrics
 // It DOES NOT remove the peer from the AddrBook.
-func (ps *pstoremem) RemovePeer(ctx context.Context, p peer.ID) {
-	ps.memoryKeyBook.RemovePeer(ctx, p)
-	ps.memoryProtoBook.RemovePeer(ctx, p)
-	ps.memoryPeerMetadata.RemovePeer(ctx, p)
-	ps.Metrics.RemovePeer(ctx, p)
+func (ps *pstoremem) RemovePeer(p peer.ID) {
+	ps.memoryKeyBook.RemovePeer(p)
+	ps.memoryProtoBook.RemovePeer(p)
+	ps.memoryPeerMetadata.RemovePeer(p)
+	ps.Metrics.RemovePeer(p)
 }

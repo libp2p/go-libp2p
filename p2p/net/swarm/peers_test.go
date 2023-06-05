@@ -21,7 +21,7 @@ func TestPeers(t *testing.T) {
 
 	connect := func(s *Swarm, dst peer.ID, addr ma.Multiaddr) {
 		// TODO: make a DialAddr func.
-		s.Peerstore().AddAddr(context.Background(), dst, addr, peerstore.PermanentAddrTTL)
+		s.Peerstore().AddAddr(dst, addr, peerstore.PermanentAddrTTL)
 		// t.Logf("connections from %s", s.LocalPeer())
 		// for _, c := range s.ConnsToPeer(dst) {
 		// 	t.Logf("connection from %s to %s: %v", s.LocalPeer(), dst, c)

@@ -38,7 +38,7 @@ func createEchos(t *testing.T, count int, makeOpts ...func(int) libp2p.Option) [
 				continue
 			}
 
-			result[i].Host.Peerstore().AddAddrs(context.Background(), result[j].Host.ID(), result[j].Host.Addrs(), peerstore.PermanentAddrTTL)
+			result[i].Host.Peerstore().AddAddrs(result[j].Host.ID(), result[j].Host.Addrs(), peerstore.PermanentAddrTTL)
 		}
 	}
 

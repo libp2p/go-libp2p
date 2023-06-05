@@ -29,8 +29,8 @@ func TestAutonatRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client.Peerstore().AddAddrs(context.Background(), service.ID(), service.Addrs(), time.Hour)
-	require.NoError(t, client.Connect(context.Background(), service.Peerstore().PeerInfo(context.Background(), service.ID())))
+	client.Peerstore().AddAddrs(service.ID(), service.Addrs(), time.Hour)
+	require.NoError(t, client.Connect(context.Background(), service.Peerstore().PeerInfo(service.ID())))
 
 	cSub, err := client.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
 	require.NoError(t, err)

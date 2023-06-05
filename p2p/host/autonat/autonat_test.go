@@ -94,8 +94,8 @@ func makeAutoNATServicePublic(t *testing.T) host.Host {
 
 func makeAutoNAT(t *testing.T, ash host.Host) (host.Host, AutoNAT) {
 	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	h.Peerstore().AddAddrs(context.Background(), ash.ID(), ash.Addrs(), time.Minute)
-	h.Peerstore().AddProtocols(context.Background(), ash.ID(), AutoNATProto)
+	h.Peerstore().AddAddrs(ash.ID(), ash.Addrs(), time.Minute)
+	h.Peerstore().AddProtocols(ash.ID(), AutoNATProto)
 	a, _ := New(h, WithSchedule(100*time.Millisecond, time.Second), WithoutStartupDelay())
 	a.(*AmbientAutoNAT).config.dialPolicy.allowSelfDials = true
 	a.(*AmbientAutoNAT).config.throttlePeerPeriod = 100 * time.Millisecond
@@ -103,8 +103,8 @@ func makeAutoNAT(t *testing.T, ash host.Host) (host.Host, AutoNAT) {
 }
 
 func identifyAsServer(server, recip host.Host) {
-	recip.Peerstore().AddAddrs(context.Background(), server.ID(), server.Addrs(), time.Minute)
-	recip.Peerstore().AddProtocols(context.Background(), server.ID(), AutoNATProto)
+	recip.Peerstore().AddAddrs(server.ID(), server.Addrs(), time.Minute)
+	recip.Peerstore().AddProtocols(server.ID(), AutoNATProto)
 
 }
 

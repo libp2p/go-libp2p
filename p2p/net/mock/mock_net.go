@@ -101,9 +101,9 @@ func (mn *mocknet) AddPeer(k ic.PrivKey, a ma.Multiaddr) (host.Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	ps.AddAddr(context.Background(), p, a, peerstore.PermanentAddrTTL)
-	ps.AddPrivKey(context.Background(), p, k)
-	ps.AddPubKey(context.Background(), p, k.GetPublic())
+	ps.AddAddr(p, a, peerstore.PermanentAddrTTL)
+	ps.AddPrivKey(p, k)
+	ps.AddPubKey(p, k.GetPublic())
 
 	return mn.AddPeerWithPeerstore(p, ps)
 }

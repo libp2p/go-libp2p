@@ -1,7 +1,6 @@
 package pstoremem
 
 import (
-	"context"
 	"errors"
 	"sync"
 
@@ -25,7 +24,7 @@ func NewKeyBook() *memoryKeyBook {
 	}
 }
 
-func (mkb *memoryKeyBook) PeersWithKeys(ctx context.Context) peer.IDSlice {
+func (mkb *memoryKeyBook) PeersWithKeys() peer.IDSlice {
 	mkb.RLock()
 	ps := make(peer.IDSlice, 0, len(mkb.pks)+len(mkb.sks))
 	for p := range mkb.pks {
@@ -40,7 +39,7 @@ func (mkb *memoryKeyBook) PeersWithKeys(ctx context.Context) peer.IDSlice {
 	return ps
 }
 
-func (mkb *memoryKeyBook) PubKey(ctx context.Context, p peer.ID) ic.PubKey {
+func (mkb *memoryKeyBook) PubKey(p peer.ID) ic.PubKey {
 	mkb.RLock()
 	pk := mkb.pks[p]
 	mkb.RUnlock()
@@ -56,7 +55,7 @@ func (mkb *memoryKeyBook) PubKey(ctx context.Context, p peer.ID) ic.PubKey {
 	return pk
 }
 
-func (mkb *memoryKeyBook) AddPubKey(ctx context.Context, p peer.ID, pk ic.PubKey) error {
+func (mkb *memoryKeyBook) AddPubKey(p peer.ID, pk ic.PubKey) error {
 	// check it's correct first
 	if !p.MatchesPublicKey(pk) {
 		return errors.New("ID does not match PublicKey")
@@ -68,13 +67,13 @@ func (mkb *memoryKeyBook) AddPubKey(ctx context.Context, p peer.ID, pk ic.PubKey
 	return nil
 }
 
-func (mkb *memoryKeyBook) PrivKey(ctx context.Context, p peer.ID) ic.PrivKey {
+func (mkb *memoryKeyBook) PrivKey(p peer.ID) ic.PrivKey {
 	mkb.RLock()
 	defer mkb.RUnlock()
 	return mkb.sks[p]
 }
 
-func (mkb *memoryKeyBook) AddPrivKey(ctx context.Context, p peer.ID, sk ic.PrivKey) error {
+func (mkb *memoryKeyBook) AddPrivKey(p peer.ID, sk ic.PrivKey) error {
 	if sk == nil {
 		return errors.New("sk is nil (PrivKey)")
 	}
@@ -90,7 +89,7 @@ func (mkb *memoryKeyBook) AddPrivKey(ctx context.Context, p peer.ID, sk ic.PrivK
 	return nil
 }
 
-func (mkb *memoryKeyBook) RemovePeer(ctx context.Context, p peer.ID) {
+func (mkb *memoryKeyBook) RemovePeer(p peer.ID) {
 	mkb.Lock()
 	delete(mkb.sks, p)
 	delete(mkb.pks, p)

@@ -1,7 +1,6 @@
 package pstoreds
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -60,7 +59,7 @@ func NewProtoBook(meta pstore.PeerMetadata, opts ...ProtoBookOption) (*dsProtoBo
 	return pb, nil
 }
 
-func (pb *dsProtoBook) SetProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) error {
+func (pb *dsProtoBook) SetProtocols(p peer.ID, protos ...protocol.ID) error {
 	if len(protos) > pb.maxProtos {
 		return errTooManyProtocols
 	}
@@ -74,15 +73,15 @@ func (pb *dsProtoBook) SetProtocols(ctx context.Context, p peer.ID, protos ...pr
 	s.Lock()
 	defer s.Unlock()
 
-	return pb.meta.Put(ctx, p, "protocols", protomap)
+	return pb.meta.Put(p, "protocols", protomap)
 }
 
-func (pb *dsProtoBook) AddProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) error {
+func (pb *dsProtoBook) AddProtocols(p peer.ID, protos ...protocol.ID) error {
 	s := pb.segments.get(p)
 	s.Lock()
 	defer s.Unlock()
 
-	pmap, err := pb.getProtocolMap(ctx, p)
+	pmap, err := pb.getProtocolMap(p)
 	if err != nil {
 		return err
 	}
@@ -94,15 +93,15 @@ func (pb *dsProtoBook) AddProtocols(ctx context.Context, p peer.ID, protos ...pr
 		pmap[proto] = struct{}{}
 	}
 
-	return pb.meta.Put(ctx, p, "protocols", pmap)
+	return pb.meta.Put(p, "protocols", pmap)
 }
 
-func (pb *dsProtoBook) GetProtocols(ctx context.Context, p peer.ID) ([]protocol.ID, error) {
+func (pb *dsProtoBook) GetProtocols(p peer.ID) ([]protocol.ID, error) {
 	s := pb.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
 
-	pmap, err := pb.getProtocolMap(ctx, p)
+	pmap, err := pb.getProtocolMap(p)
 	if err != nil {
 		return nil, err
 	}
@@ -115,12 +114,12 @@ func (pb *dsProtoBook) GetProtocols(ctx context.Context, p peer.ID) ([]protocol.
 	return res, nil
 }
 
-func (pb *dsProtoBook) SupportsProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) ([]protocol.ID, error) {
+func (pb *dsProtoBook) SupportsProtocols(p peer.ID, protos ...protocol.ID) ([]protocol.ID, error) {
 	s := pb.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
 
-	pmap, err := pb.getProtocolMap(ctx, p)
+	pmap, err := pb.getProtocolMap(p)
 	if err != nil {
 		return nil, err
 	}
@@ -135,12 +134,12 @@ func (pb *dsProtoBook) SupportsProtocols(ctx context.Context, p peer.ID, protos 
 	return res, nil
 }
 
-func (pb *dsProtoBook) FirstSupportedProtocol(ctx context.Context, p peer.ID, protos ...protocol.ID) (protocol.ID, error) {
+func (pb *dsProtoBook) FirstSupportedProtocol(p peer.ID, protos ...protocol.ID) (protocol.ID, error) {
 	s := pb.segments.get(p)
 	s.RLock()
 	defer s.RUnlock()
 
-	pmap, err := pb.getProtocolMap(ctx, p)
+	pmap, err := pb.getProtocolMap(p)
 	if err != nil {
 		return "", err
 	}
@@ -153,12 +152,12 @@ func (pb *dsProtoBook) FirstSupportedProtocol(ctx context.Context, p peer.ID, pr
 	return "", nil
 }
 
-func (pb *dsProtoBook) RemoveProtocols(ctx context.Context, p peer.ID, protos ...protocol.ID) error {
+func (pb *dsProtoBook) RemoveProtocols(p peer.ID, protos ...protocol.ID) error {
 	s := pb.segments.get(p)
 	s.Lock()
 	defer s.Unlock()
 
-	pmap, err := pb.getProtocolMap(ctx, p)
+	pmap, err := pb.getProtocolMap(p)
 	if err != nil {
 		return err
 	}
@@ -172,11 +171,11 @@ func (pb *dsProtoBook) RemoveProtocols(ctx context.Context, p peer.ID, protos ..
 		delete(pmap, proto)
 	}
 
-	return pb.meta.Put(ctx, p, "protocols", pmap)
+	return pb.meta.Put(p, "protocols", pmap)
 }
 
-func (pb *dsProtoBook) getProtocolMap(ctx context.Context, p peer.ID) (map[protocol.ID]struct{}, error) {
-	iprotomap, err := pb.meta.Get(ctx, p, "protocols")
+func (pb *dsProtoBook) getProtocolMap(p peer.ID) (map[protocol.ID]struct{}, error) {
+	iprotomap, err := pb.meta.Get(p, "protocols")
 	switch err {
 	default:
 		return nil, err
@@ -192,10 +191,10 @@ func (pb *dsProtoBook) getProtocolMap(ctx context.Context, p peer.ID) (map[proto
 	}
 }
 
-func (pb *dsProtoBook) RemovePeer(ctx context.Context, p peer.ID) {
-	pb.meta.RemovePeer(ctx, p)
+func (pb *dsProtoBook) RemovePeer(p peer.ID) {
+	pb.meta.RemovePeer(p)
 }
 
-func (pb *dsProtoBook) GetPeersForProtocol(ctx context.Context, proto protocol.ID) ([]peer.ID, error) {
+func (pb *dsProtoBook) GetPeersForProtocol(proto protocol.ID) ([]peer.ID, error) {
 	return nil, nil
 }

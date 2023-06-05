@@ -223,13 +223,13 @@ func (as *autoNATService) doDial(pi peer.AddrInfo) *pb.Message_DialResponse {
 	ctx, cancel := context.WithTimeout(context.Background(), as.config.dialTimeout)
 	defer cancel()
 
-	as.config.dialer.Peerstore().ClearAddrs(ctx, pi.ID)
+	as.config.dialer.Peerstore().ClearAddrs(pi.ID)
 
-	as.config.dialer.Peerstore().AddAddrs(ctx, pi.ID, pi.Addrs, peerstore.TempAddrTTL)
+	as.config.dialer.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.TempAddrTTL)
 
 	defer func() {
-		as.config.dialer.Peerstore().ClearAddrs(ctx, pi.ID)
-		as.config.dialer.Peerstore().RemovePeer(ctx, pi.ID)
+		as.config.dialer.Peerstore().ClearAddrs(pi.ID)
+		as.config.dialer.Peerstore().RemovePeer(pi.ID)
 	}()
 
 	conn, err := as.config.dialer.DialPeer(ctx, pi.ID)

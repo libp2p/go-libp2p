@@ -118,7 +118,7 @@ func TestWrongSignedPeerRecord(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 
-	require.Empty(t, h1.Peerstore().Addrs(context.Background(), h3.ID()), "h1 should not know about h3 since it was relayed over h2")
+	require.Empty(t, h1.Peerstore().Addrs(h3.ID()), "h1 should not know about h3 since it was relayed over h2")
 }
 
 func TestInvalidSignedPeerRecord(t *testing.T) {
@@ -138,7 +138,7 @@ func TestInvalidSignedPeerRecord(t *testing.T) {
 	// ids2.Start()
 
 	h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
-	require.Empty(t, h1.Peerstore().Addrs(context.Background(), h2.ID()))
+	require.Empty(t, h1.Peerstore().Addrs(h2.ID()))
 
 	s, err := h2.NewStream(context.Background(), h1.ID(), IDPush)
 	require.NoError(t, err)
@@ -171,5 +171,5 @@ func TestInvalidSignedPeerRecord(t *testing.T) {
 
 	cab, ok := h1.Peerstore().(peerstore.CertifiedAddrBook)
 	require.True(t, ok)
-	require.Nil(t, cab.GetPeerRecord(context.Background(), h2.ID()))
+	require.Nil(t, cab.GetPeerRecord(h2.ID()))
 }

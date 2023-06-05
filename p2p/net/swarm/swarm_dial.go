@@ -15,7 +15,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
-	"github.com/quic-go/quic-go"
 )
 
 // The maximum number of address resolution steps we'll perform for a single
@@ -295,12 +294,12 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 
 // dialWorkerLoop synchronizes and executes concurrent dials to a single peer
 func (s *Swarm) dialWorkerLoop(p peer.ID, reqch <-chan dialRequest) {
-	w := newDialWorker(s, p, reqch)
+	w := newDialWorker(s, p, reqch, nil)
 	w.loop()
 }
 
 func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, error) {
-	peerAddrs := s.peers.Addrs(ctx, p)
+	peerAddrs := s.peers.Addrs(p)
 	if len(peerAddrs) == 0 {
 		return nil, ErrNoAddresses
 	}
@@ -340,7 +339,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 		return nil, ErrNoGoodAddresses
 	}
 
-	s.peers.AddAddrs(ctx, p, goodAddrs, peerstore.TempAddrTTL)
+	s.peers.AddAddrs(p, goodAddrs, peerstore.TempAddrTTL)
 
 	return goodAddrs, nil
 }
@@ -440,24 +439,36 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 	lisAddrs, _ := s.InterfaceListenAddresses()
 	var ourAddrs []ma.Multiaddr
 	for _, addr := range lisAddrs {
-		protos := addr.Protocols()
 		// we're only sure about filtering out /ip4 and /ip6 addresses, so far
-		if protos[0].Code == ma.P_IP4 || protos[0].Code == ma.P_IP6 {
-			ourAddrs = append(ourAddrs, addr)
+		ma.ForEach(addr, func(c ma.Component) bool {
+			if c.Protocol().Code == ma.P_IP4 || c.Protocol().Code == ma.P_IP6 {
+				ourAddrs = append(ourAddrs, addr)
+			}
+			return false
+		})
+	}
+
+	// Make a map of udp ports we are listening on to filter peers web transport addresses
+	ourLocalHostUDPPorts := make(map[string]bool, 2)
+	for _, a := range ourAddrs {
+		if !manet.IsIPLoopback(a) {
+			continue
+		}
+		if p, err := a.ValueForProtocol(ma.P_UDP); err == nil {
+			ourLocalHostUDPPorts[p] = true
 		}
 	}
 
-	return maybeRemoveWebTransportAddrs(
-		maybeRemoveQUICDraft29(
-			ma.FilterAddrs(addrs,
-				func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
-				s.canDial,
-				// TODO: Consider allowing link-local addresses
-				func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },
-				func(addr ma.Multiaddr) bool {
-					return s.gater == nil || s.gater.InterceptAddrDial(p, addr)
-				},
-			)))
+	return ma.FilterAddrs(addrs,
+		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
+		func(addr ma.Multiaddr) bool { return checkLocalHostUDPAddrs(addr, ourLocalHostUDPPorts) },
+		s.canDial,
+		// TODO: Consider allowing link-local addresses
+		func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },
+		func(addr ma.Multiaddr) bool {
+			return s.gater == nil || s.gater.InterceptAddrDial(p, addr)
+		},
+	)
 }
 
 // limitedDial will start a dial to the given peer when
@@ -543,110 +554,20 @@ func isFdConsumingAddr(addr ma.Multiaddr) bool {
 	return err1 == nil || err2 == nil
 }
 
-func isExpensiveAddr(addr ma.Multiaddr) bool {
-	_, wsErr := addr.ValueForProtocol(ma.P_WS)
-	_, wssErr := addr.ValueForProtocol(ma.P_WSS)
-	_, wtErr := addr.ValueForProtocol(ma.P_WEBTRANSPORT)
-	return wsErr == nil || wssErr == nil || wtErr == nil
-}
-
 func isRelayAddr(addr ma.Multiaddr) bool {
 	_, err := addr.ValueForProtocol(ma.P_CIRCUIT)
 	return err == nil
 }
 
-func isWebTransport(addr ma.Multiaddr) bool {
-	_, err := addr.ValueForProtocol(ma.P_WEBTRANSPORT)
-	return err == nil
-}
-
-func quicVersion(addr ma.Multiaddr) (quic.VersionNumber, bool) {
-	found := false
-	foundWebTransport := false
-	var version quic.VersionNumber
-	ma.ForEach(addr, func(c ma.Component) bool {
-		switch c.Protocol().Code {
-		case ma.P_QUIC:
-			version = quic.VersionDraft29
-			found = true
-			return true
-		case ma.P_QUIC_V1:
-			version = quic.Version1
-			found = true
-			return true
-		case ma.P_WEBTRANSPORT:
-			version = quic.Version1
-			foundWebTransport = true
-			return false
-		default:
-			return true
-		}
-	})
-	if foundWebTransport {
-		return 0, false
+// checkLocalHostUDPAddrs returns false for addresses that have the same localhost port
+// as the one we are listening on
+// This is useful for filtering out peer's localhost webtransport addresses.
+func checkLocalHostUDPAddrs(addr ma.Multiaddr, ourUDPPorts map[string]bool) bool {
+	if !manet.IsIPLoopback(addr) {
+		return true
 	}
-	return version, found
-}
-
-// If we have QUIC addresses, we don't want to dial WebTransport addresses.
-// It's better to have a native QUIC connection.
-// Note that this is a hack. The correct solution would be a proper
-// Happy-Eyeballs-style dialing.
-func maybeRemoveWebTransportAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	var hasQuic, hasWebTransport bool
-	for _, addr := range addrs {
-		if _, isQuic := quicVersion(addr); isQuic {
-			hasQuic = true
-		}
-		if isWebTransport(addr) {
-			hasWebTransport = true
-		}
+	if p, err := addr.ValueForProtocol(ma.P_UDP); err == nil {
+		return !ourUDPPorts[p]
 	}
-	if !hasWebTransport || !hasQuic {
-		return addrs
-	}
-	var c int
-	for _, addr := range addrs {
-		if isWebTransport(addr) {
-			continue
-		}
-		addrs[c] = addr
-		c++
-	}
-	return addrs[:c]
-}
-
-// If we have QUIC V1 addresses, we don't want to dial QUIC draft29 addresses.
-// This is a similar hack to the above. If we add one more hack like this, let's
-// define a `Filterer` interface like the `Resolver` interface that transports
-// can optionally implement if they want to filter the multiaddrs.
-//
-// This mutates the input
-func maybeRemoveQUICDraft29(addrs []ma.Multiaddr) []ma.Multiaddr {
-	var hasQuicV1, hasQuicDraft29 bool
-	for _, addr := range addrs {
-		v, isQuic := quicVersion(addr)
-		if !isQuic {
-			continue
-		}
-
-		if v == quic.Version1 {
-			hasQuicV1 = true
-		}
-		if v == quic.VersionDraft29 {
-			hasQuicDraft29 = true
-		}
-	}
-	if !hasQuicDraft29 || !hasQuicV1 {
-		return addrs
-	}
-	var c int
-	for _, addr := range addrs {
-		if v, isQuic := quicVersion(addr); isQuic && v == quic.VersionDraft29 {
-			continue
-		}
-		addrs[c] = addr
-		c++
-	}
-	return addrs[:c]
+	return true
 }

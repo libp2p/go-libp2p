@@ -1,7 +1,6 @@
 package testing
 
 import (
-	"context"
 	"crypto/rand"
 	"testing"
 	"time"
@@ -111,7 +110,7 @@ func EventBus(b event.Bus) Option {
 // GenUpgrader creates a new connection upgrader for use with this swarm.
 func GenUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater, opts ...tptu.Option) transport.Upgrader {
 	id := n.LocalPeer()
-	pk := n.Peerstore().PrivKey(context.Background(), id)
+	pk := n.Peerstore().PrivKey(id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
 
 	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: yamux.ID, Muxer: yamux.DefaultTransport}}, nil, nil, connGater, opts...)
@@ -140,8 +139,8 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 
 	ps, err := pstoremem.NewPeerstore(pstoremem.WithClock(cfg.clock))
 	require.NoError(t, err)
-	ps.AddPubKey(context.Background(), id, priv.GetPublic())
-	ps.AddPrivKey(context.Background(), id, priv)
+	ps.AddPubKey(id, priv.GetPublic())
+	ps.AddPrivKey(id, priv)
 	t.Cleanup(func() { ps.Close() })
 
 	swarmOpts := cfg.swarmOpts
@@ -194,7 +193,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		}
 	}
 	if !cfg.dialOnly {
-		s.Peerstore().AddAddrs(context.Background(), id, s.ListenAddresses(), peerstore.PermanentAddrTTL)
+		s.Peerstore().AddAddrs(id, s.ListenAddresses(), peerstore.PermanentAddrTTL)
 	}
 	return s
 }
@@ -202,8 +201,8 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 // DivulgeAddresses adds swarm a's addresses to swarm b's peerstore.
 func DivulgeAddresses(a, b network.Network) {
 	id := a.LocalPeer()
-	addrs := a.Peerstore().Addrs(context.Background(), id)
-	b.Peerstore().AddAddrs(context.Background(), id, addrs, peerstore.PermanentAddrTTL)
+	addrs := a.Peerstore().Addrs(id)
+	b.Peerstore().AddAddrs(id, addrs, peerstore.PermanentAddrTTL)
 }
 
 // MockConnectionGater is a mock connection gater to be used by the tests.
