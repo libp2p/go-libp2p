@@ -14,8 +14,10 @@
 ## 🔦 Highlights <!-- omit in toc -->
 
 ### Smart Dialing <!-- omit in toc -->
-* When connecting to a peer we now do [happy eyeballs](https://www.rfc-editor.org/rfc/rfc8305) like dial prioritisation to prefer QUIC addresses over TCP addresses. We dial the QUIC address first and wait 250ms to dial the TCP address of the peer.
-* In our experiments we've seen little impact on latencies up to 80th percentile. 90th and 95th percentile latencies are impacted. For details see discussion on the [PR](https://github.com/libp2p/go-libp2p/pull/2260#issuecomment-1528848170).
+* When connecting to a peer we now do dial prioritisation to prefer QUIC addresses over TCP addresses. We dial the QUIC addresses first and wait 250ms to dial the TCP addresses of the peer.
+* In our experiments, we've seen little impact on latencies up to 95th percentile. Two new metrics have been added, dial ranking delay and dials per connection to gauge the impact.
+* To avoid adversely impacting users in UDP black holed environments, this feature is disabled by default.
+* To enable use `libp2p.EnableSmartDialing` option.
 * For details of the address ranking logic see godoc for `swarm.DefaultDialRanker`.
 * To disable smart dialing and keep the old behaviour use the
 `libp2p.NoDelayNetworkDialRanker` option.
