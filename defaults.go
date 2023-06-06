@@ -135,6 +135,11 @@ var DefaultPrometheusRegisterer = func(cfg *Config) error {
 	return cfg.Apply(PrometheusRegisterer(prometheus.DefaultRegisterer))
 }
 
+// DefaultSmartDialing configures libp2p to disable smart dialing by default
+var DefaultSmartDialing = func(cfg *Config) error {
+	return cfg.Apply(DisableSmartDialing())
+}
+
 // Complete list of default options and when to fallback on them.
 //
 // Please *DON'T* specify default options any other way. Putting this all here
@@ -190,6 +195,10 @@ var defaults = []struct {
 	{
 		fallback: func(cfg *Config) bool { return !cfg.DisableMetrics && cfg.PrometheusRegisterer == nil },
 		opt:      DefaultPrometheusRegisterer,
+	},
+	{
+		fallback: func(cfg *Config) bool { return !cfg.SmartDialingCustom },
+		opt:      DefaultSmartDialing,
 	},
 }
 
