@@ -31,10 +31,15 @@ func WithMaxProtocols(num int) ProtoBookOption {
 	}
 }
 
+type peersPerProtocol struct {
+	sync.RWMutex
+}
+
 type dsProtoBook struct {
-	segments  protoSegments
-	meta      pstore.PeerMetadata
-	maxProtos int
+	segments           protoSegments
+	meta               pstore.PeerMetadata
+	maxProtos          int
+	protocolToPeersMap peersPerProtocol
 }
 
 var _ pstore.ProtoBook = (*dsProtoBook)(nil)
@@ -71,9 +76,13 @@ func (pb *dsProtoBook) SetProtocols(p peer.ID, protos ...protocol.ID) error {
 
 	s := pb.segments.get(p)
 	s.Lock()
-	defer s.Unlock()
+	err := pb.meta.Put(p, "protocols", protomap)
+	s.Unlock()
+	if err != nil {
+		return err
+	}
 
-	return pb.meta.Put(p, "protocols", protomap)
+	return nil
 }
 
 func (pb *dsProtoBook) AddProtocols(p peer.ID, protos ...protocol.ID) error {
@@ -193,8 +202,12 @@ func (pb *dsProtoBook) getProtocolMap(p peer.ID) (map[protocol.ID]struct{}, erro
 
 func (pb *dsProtoBook) RemovePeer(p peer.ID) {
 	pb.meta.RemovePeer(p)
+	//TODO: Remove peer from protolist as well.
 }
 
 func (pb *dsProtoBook) GetPeersForProtocol(proto protocol.ID) ([]peer.ID, error) {
+	/* 	pb.protocolToPeersMap.Lock()
+	   	defer pb.protocolToPeersMap.Unlock()
+	   	pb.meta.getPeers(proto, "peers") */
 	return nil, nil
 }
