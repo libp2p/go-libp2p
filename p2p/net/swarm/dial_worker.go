@@ -415,7 +415,7 @@ func (w *dialWorker) dispatchError(ad *addrDial, err error) {
 // dial all addresses immediately without any delay
 func (w *dialWorker) rankAddrs(addrs []ma.Multiaddr, isSimConnect bool) []network.AddrDelay {
 	if isSimConnect {
-		return NoDelayRanker(addrs)
+		return NoDelayDialRanker(addrs)
 	}
 	return w.s.dialRanker(addrs)
 }

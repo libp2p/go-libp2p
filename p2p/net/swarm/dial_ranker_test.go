@@ -53,7 +53,7 @@ func TestNoDelayRanker(t *testing.T) {
 	}
 	for _, tc := range testCase {
 		t.Run(tc.name, func(t *testing.T) {
-			res := NoDelayRanker(tc.addrs)
+			res := NoDelayDialRanker(tc.addrs)
 			if len(res) != len(tc.output) {
 				log.Errorf("expected %s got %s", tc.output, res)
 				t.Errorf("expected elems: %d got: %d", len(tc.output), len(res))

@@ -576,14 +576,14 @@ func PrometheusRegisterer(reg prometheus.Registerer) Option {
 }
 
 // DialRanker configures libp2p to use d as the dial ranker. To enable smart
-// dialing use `swarm.DefaultDialRanker`. nil disables smart dialing.
+// dialing use `swarm.DefaultDialRanker`. use `swarm.NoDelayDialRanker` to
+// disable smart dialing.
 func DialRanker(d network.DialRanker) Option {
 	return func(cfg *Config) error {
-		if cfg.DialRankerCustom {
+		if cfg.DialRanker != nil {
 			return errors.New("dial ranker already configured")
 		}
 		cfg.DialRanker = d
-		cfg.DialRankerCustom = true
 		return nil
 	}
 }

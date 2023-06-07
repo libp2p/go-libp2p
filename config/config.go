@@ -124,8 +124,7 @@ type Config struct {
 	DisableMetrics       bool
 	PrometheusRegisterer prometheus.Registerer
 
-	DialRanker       network.DialRanker
-	DialRankerCustom bool
+	DialRanker network.DialRanker
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -178,7 +177,7 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	}
 	dialRanker := cfg.DialRanker
 	if dialRanker == nil {
-		dialRanker = swarm.NoDelayRanker
+		dialRanker = swarm.NoDelayDialRanker
 	}
 	opts = append(opts, swarm.WithDialRanker(dialRanker))
 	if enableMetrics {
@@ -413,6 +412,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			Reporter:           cfg.Reporter,
 			PeerKey:            autonatPrivKey,
 			Peerstore:          ps,
+			DialRanker:         swarm.NoDelayDialRanker,
 		}
 
 		dialer, err := autoNatCfg.makeSwarm(eventbus.NewBus(), false)
