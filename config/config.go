@@ -124,8 +124,8 @@ type Config struct {
 	DisableMetrics       bool
 	PrometheusRegisterer prometheus.Registerer
 
-	SmartDialing       bool
-	SmartDialingCustom bool
+	DialRanker       network.DialRanker
+	DialRankerCustom bool
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -176,9 +176,11 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	if cfg.MultiaddrResolver != nil {
 		opts = append(opts, swarm.WithMultiaddrResolver(cfg.MultiaddrResolver))
 	}
-	if !cfg.SmartDialing {
-		opts = append(opts, swarm.WithNoDialDelay())
+	dialRanker := cfg.DialRanker
+	if dialRanker == nil {
+		dialRanker = swarm.NoDelayRanker
 	}
+	opts = append(opts, swarm.WithDialRanker(dialRanker))
 	if enableMetrics {
 		opts = append(opts,
 			swarm.WithMetricsTracer(swarm.NewMetricsTracer(swarm.WithRegisterer(cfg.PrometheusRegisterer))))

@@ -575,31 +575,15 @@ func PrometheusRegisterer(reg prometheus.Registerer) Option {
 	}
 }
 
-// EnableSmartDialing configures libp2p to prioritise dials to certain
-// addresses for outgoing connection attempts to a peer. This reduces the number
-// of dial attempts with little impact to latency. see `swarm.DefaultDialRanker`
-// for details of the ranking logic.
-// (default: disabled)
-func EnableSmartDialing() Option {
+// DialRanker configures libp2p to use d as the dial ranker. To enable smart
+// dialing use `swarm.DefaultDialRanker`. nil disables smart dialing.
+func DialRanker(d network.DialRanker) Option {
 	return func(cfg *Config) error {
-		if cfg.SmartDialingCustom {
-			return errors.New("smart dialing already configured")
+		if cfg.DialRankerCustom {
+			return errors.New("dial ranker already configured")
 		}
-		cfg.SmartDialingCustom = true
-		cfg.SmartDialing = true
-		return nil
-	}
-}
-
-// DisableSmartDialing configures libp2p to dial all addresses in parallel
-// for outgoing connection attempts to a peer.
-func DisableSmartDialing() Option {
-	return func(cfg *Config) error {
-		if cfg.SmartDialingCustom {
-			return errors.New("smart dialing already configured")
-		}
-		cfg.SmartDialingCustom = true
-		cfg.SmartDialing = false
+		cfg.DialRanker = d
+		cfg.DialRankerCustom = true
 		return nil
 	}
 }

@@ -787,7 +787,7 @@ func TestCheckDialWorkerLoopScheduling(t *testing.T) {
 	s4 := makeSwarmWithNoListenAddrs(t)
 	defer s4.Close()
 	// invalid ranking logic to trigger an error
-	s3.dialRanker = noDelayRanker
+	s3.dialRanker = NoDelayRanker
 	err = checkDialWorkerLoopScheduling(t, s3, s4, tc)
 	require.Error(t, err)
 }

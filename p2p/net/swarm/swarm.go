@@ -100,15 +100,6 @@ func WithResourceManager(m network.ResourceManager) Option {
 	}
 }
 
-// WithNoDialDelay configures swarm to dial all addresses for a peer without
-// any delay
-func WithNoDialDelay() Option {
-	return func(s *Swarm) error {
-		s.dialRanker = noDelayRanker
-		return nil
-	}
-}
-
 // WithDialRanker configures swarm to use d as the DialRanker
 func WithDialRanker(d network.DialRanker) Option {
 	return func(s *Swarm) error {
