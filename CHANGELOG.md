@@ -15,7 +15,7 @@
 
 ### Smart Dialing <!-- omit in toc -->
 
-This release introduces smart dialing logic. Currentlny, libp2p dials all addresses of a remote peer in parallel, and
+This release introduces smart dialing logic. Currently, libp2p dials all addresses of a remote peer in parallel, and
 aborts all outstanding dials as soon as the first one succeeds.
 Dialing many addresses in parallel creates a lot of churn on the client side, and unnecessary load on the network and
 on the server side, and is heavily discouraged by the networking community (see [RFC 8305](https://www.rfc-editor.org/rfc/rfc8305) for example).
@@ -29,6 +29,10 @@ At a high level, this is what happens:
 Our measurements on the IPFS network show that for >90% of established libp2p connections, the first connection attempt succeeds,
 leading a dramatic decrease in the number of aborted connection attempts.
 
+We also added new metrics to the swarm Grafana dashboard, showing:
+* The number of connection attempts it took to establish a connection
+* The delay introduced by the ranking logic
+
 This feature should be safe to enable for nodes running in data centers and for most nodes in home networks.
 However, there are some (mostly home and corporate networks) that block all UDP traffic. If enabled, the current implementation
 of the smart dialing logic will lead to a regression, since it preferes QUIC addresses over TCP addresses. Nodes would still be
@@ -41,6 +45,7 @@ dialing QUIC in this case altogether. Once this detection logic is in place, sma
 ### More Metrics! <!-- omit in toc -->
 Since the last release, we've added metrics for:
 * [Holepunching](https://github.com/libp2p/go-libp2p/pull/2246)
+* Smart Dialing (see above)
 
 ### WebTransport <!-- omit in toc -->
 * [#2251](https://github.com/libp2p/go-libp2p/pull/2251): Infer public WebTransport address from `quic-v1` addresses if both transports are using the same port for both quic-v1 and WebTransport addresses.
