@@ -130,7 +130,7 @@ type Network interface {
 	io.Closer
 
 	// SetStreamHandler sets the handler for new streams opened by the
-	// remote side. This operation is threadsafe.
+	// remote side. This operation is thread safe.
 	SetStreamHandler(StreamHandler)
 
 	// NewStream returns a new stream to given peer p.

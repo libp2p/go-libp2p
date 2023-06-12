@@ -14,12 +14,12 @@ import (
 	"github.com/minio/sha256-simd"
 )
 
-// RsaPrivateKey is an rsa private key
+// RsaPrivateKey is a rsa private key
 type RsaPrivateKey struct {
 	sk rsa.PrivateKey
 }
 
-// RsaPublicKey is an rsa public key
+// RsaPublicKey is a rsa public key
 type RsaPublicKey struct {
 	k rsa.PublicKey
 
@@ -101,7 +101,7 @@ func (sk *RsaPrivateKey) Raw() (res []byte, err error) {
 
 // Equals checks whether this key is equal to another
 func (sk *RsaPrivateKey) Equals(k Key) bool {
-	// make sure this is an rsa public key
+	// make sure this is a rsa public key
 	other, ok := (k).(*RsaPrivateKey)
 	if !ok {
 		return basicEquals(sk, k)

@@ -87,7 +87,7 @@ func Seal(rec Record, privateKey crypto.PrivKey) (*Envelope, error) {
 
 // ConsumeEnvelope unmarshals a serialized Envelope and validates its
 // signature using the provided 'domain' string. If validation fails, an error
-// is returned, along with the unmarshalled envelope so it can be inspected.
+// is returned, along with the unmarshalled envelope, so it can be inspected.
 //
 // On success, ConsumeEnvelope returns the Envelope itself, as well as the inner payload,
 // unmarshalled into a concrete Record type. The actual type of the returned Record depends
@@ -129,7 +129,7 @@ func ConsumeEnvelope(data []byte, domain string) (envelope *Envelope, rec Record
 
 // ConsumeTypedEnvelope unmarshals a serialized Envelope and validates its
 // signature. If validation fails, an error is returned, along with the unmarshalled
-// envelope so it can be inspected.
+// envelope, so it can be inspected.
 //
 // Unlike ConsumeEnvelope, ConsumeTypedEnvelope does not try to automatically determine
 // the type of Record to unmarshal the Envelope's payload into. Instead, the caller provides
@@ -271,8 +271,8 @@ func makeUnsigned(domain string, payloadType []byte, payload []byte) ([]byte, er
 	var (
 		fields = [][]byte{[]byte(domain), payloadType, payload}
 
-		// fields are prefixed with their length as an unsigned varint. we
-		// compute the lengths before allocating the sig buffer so we know how
+		// fields are prefixed with their length as an unsigned variant. we
+		// compute the lengths before allocating the sig buffer, so we know how
 		// much space to add for the lengths
 		flen = make([][]byte, len(fields))
 		size = 0

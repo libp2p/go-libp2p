@@ -12,10 +12,10 @@ import (
 	"github.com/minio/sha256-simd"
 )
 
-// Secp256k1PrivateKey is an Secp256k1 private key
+// Secp256k1PrivateKey is a Secp256k1 private key
 type Secp256k1PrivateKey secp256k1.PrivateKey
 
-// Secp256k1PublicKey is an Secp256k1 public key
+// Secp256k1PublicKey is a Secp256k1 public key
 type Secp256k1PublicKey secp256k1.PublicKey
 
 // GenerateSecp256k1Key generates a new Secp256k1 private and public key pair

@@ -23,7 +23,7 @@ var (
 	// AddressTTL is the expiration time of addresses.
 	AddressTTL = time.Hour
 
-	// TempAddrTTL is the ttl used for a short lived address.
+	// TempAddrTTL is the ttl used for a short-lived address.
 	TempAddrTTL = time.Minute * 2
 
 	// RecentlyConnectedAddrTTL is used when we recently connected to a peer.
@@ -62,7 +62,7 @@ type Peerstore interface {
 	// that peer, useful to other services.
 	PeerInfo(peer.ID) peer.AddrInfo
 
-	// Peers returns all of the peer IDs stored across all inner stores.
+	// Peers returns all the peer IDs stored across all inner stores.
 	Peers() peer.IDSlice
 }
 
@@ -116,7 +116,7 @@ type AddrBook interface {
 	// ClearAddresses removes all previously stored addresses.
 	ClearAddrs(p peer.ID)
 
-	// PeersWithAddrs returns all of the peer IDs stored in the AddrBook.
+	// PeersWithAddrs returns all the peer IDs stored in the AddrBook.
 	PeersWithAddrs() peer.IDSlice
 }
 

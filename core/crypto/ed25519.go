@@ -101,7 +101,7 @@ func (k *Ed25519PublicKey) Equals(o Key) bool {
 	return bytes.Equal(k.k, edk.k)
 }
 
-// Verify checks a signature agains the input data.
+// Verify checks a signature against the input data.
 func (k *Ed25519PublicKey) Verify(data []byte, sig []byte) (success bool, err error) {
 	defer func() {
 		catch.HandlePanic(recover(), &err, "ed15519 signature verification")

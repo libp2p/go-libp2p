@@ -69,7 +69,7 @@ type Security struct {
 // This is *not* a stable interface. Use the options defined in the root
 // package.
 type Config struct {
-	// UserAgent is the identifier this node will send to other peers when
+	// UserAgent is the identifier that node will send to other peers when
 	// identifying itself, e.g. via the identify protocol.
 	//
 	// Set it via the UserAgent option function.
@@ -136,8 +136,8 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	if pnet.ForcePrivateNetwork && len(cfg.PSK) == 0 {
 		log.Error("tried to create a libp2p node with no Private" +
 			" Network Protector but usage of Private Networks" +
-			" is forced by the enviroment")
-		// Note: This is *also* checked the upgrader itself so it'll be
+			" is forced by the environment")
+		// Note: This is *also* checked the upgrader itself, so it'll be
 		// enforced even *if* you don't use the libp2p constructor.
 		return nil, pnet.ErrNotInPrivateNetwork
 	}
@@ -400,7 +400,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		}
 
 		// Pull out the pieces of the config that we _actually_ care about.
-		// Specifically, don't setup things like autorelay, listeners,
+		// Specifically, don't set up things like autorelay, listeners,
 		// identify, etc.
 		autoNatCfg := Config{
 			Transports:         cfg.Transports,

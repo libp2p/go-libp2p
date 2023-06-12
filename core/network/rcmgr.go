@@ -102,7 +102,7 @@ type ResourceManager interface {
 // ResourceScopeViewer is a mixin interface providing view methods for accessing top level
 // scopes.
 type ResourceScopeViewer interface {
-	// ViewSystem views the system wide resource scope.
+	// ViewSystem views the system-wide resource scope.
 	// The system scope is the top level scope that accounts for global
 	// resource usage at all levels of the system. This scope constrains all
 	// other scopes and institutes global hard limits.
@@ -134,7 +134,7 @@ const (
 	// Reservation PriorityMedium is a reservation priority that indicates a reservation if the scope
 	// memory utilization is at 60% or less.
 	ReservationPriorityMedium uint8 = 152
-	// ReservationPriorityHigh is a reservation prioirity that indicates a reservation if the scope
+	// ReservationPriorityHigh is a reservation priority that indicates a reservation if the scope
 	// memory utilization is at 80% or less.
 	ReservationPriorityHigh uint8 = 203
 	// ReservationPriorityAlways is a reservation priority that indicates a reservation if there is
@@ -218,7 +218,7 @@ type ConnManagementScope interface {
 	ResourceScopeSpan
 
 	// PeerScope returns the peer scope associated with this connection.
-	// It returns nil if the connection is not yet asociated with any peer.
+	// It returns nil if the connection is not yet associated with any peer.
 	PeerScope() PeerScope
 
 	// SetPeer sets the peer for a previously unassociated connection
