@@ -332,7 +332,7 @@ and streams.
 ### Scaling Limits
 
 When building software that is supposed to run on many different kind of machines,
-with various memory and CPU configurations, it is desireable to have limits that
+with various memory and CPU configurations, it is desirable to have limits that
 scale with the size of the machine.
 
 This is done using the `ScalingLimitConfig`. For every scope, this configuration

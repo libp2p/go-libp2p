@@ -271,7 +271,7 @@ func makeUnsigned(domain string, payloadType []byte, payload []byte) ([]byte, er
 	var (
 		fields = [][]byte{[]byte(domain), payloadType, payload}
 
-		// fields are prefixed with their length as an unsigned variant. we
+		// fields are prefixed with their length as an unsigned varint. we
 		// compute the lengths before allocating the sig buffer, so we know how
 		// much space to add for the lengths
 		flen = make([][]byte, len(fields))
