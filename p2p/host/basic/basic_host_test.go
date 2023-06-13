@@ -739,7 +739,7 @@ func TestNegotiationCancel(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		require.Equal(t, err, context.Canceled)
+		require.ErrorIs(t, err, context.Canceled)
 	case <-time.After(500 * time.Millisecond):
 		// failed to cancel
 		t.Fatal("expected negotiation to be canceled")

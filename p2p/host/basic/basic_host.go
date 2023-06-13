@@ -641,7 +641,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		if errors.Is(err, network.ErrNoConn) {
 			return nil, errors.New("connection failed")
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 
 	// Wait for any in-progress identifies on the connection to finish. This
@@ -653,7 +653,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	case <-h.ids.IdentifyWait(s.Conn()):
 	case <-ctx.Done():
 		_ = s.Reset()
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("identify failed to complete: %w", ctx.Err())
 	}
 
 	pref, err := h.preferredProtocol(p, pids)
@@ -682,13 +682,13 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	case err = <-errCh:
 		if err != nil {
 			s.Reset()
-			return nil, err
+			return nil, fmt.Errorf("failed to negotiate protocol: %w", err)
 		}
 	case <-ctx.Done():
 		s.Reset()
 		// wait for `SelectOneOf` to error out because of resetting the stream.
 		<-errCh
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("failed to negotiate protocol: %w", ctx.Err())
 	}
 
 	s.SetProtocol(selected)
@@ -734,7 +734,7 @@ func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 	log.Debugf("host %s dialing %s", h.ID(), p)
 	c, err := h.Network().DialPeer(ctx, p)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to dial: %w", err)
 	}
 
 	// TODO: Consider removing this? On one hand, it's nice because we can
@@ -745,7 +745,7 @@ func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 	select {
 	case <-h.ids.IdentifyWait(c):
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("identify failed to complete: %w", ctx.Err())
 	}
 
 	log.Debugf("host %s finished dialing %s", h.ID(), p)
