@@ -495,7 +495,7 @@ or any other platform that can scrape a prometheus endpoint.
 
 There is also an included Grafana dashboard to help kickstart your
 observability into the resource manager. Find more information about it at
-[here](./obs/grafana-dashboards/README.md).
+[here](./../../../dashboards/README.md).
 
 ## Allowlisting multiaddrs to mitigate eclipse attacks
 
