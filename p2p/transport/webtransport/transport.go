@@ -265,9 +265,7 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	if err != nil {
 		return nil, err
 	}
-	if err = c.Close(); err != nil {
-		return nil, err
-	}
+	defer c.Close()
 	// The Noise handshake _should_ guarantee that our verification callback is called.
 	// Double-check just in case.
 	if !verified {
