@@ -5,8 +5,10 @@ import follow the Grafana docs [here](https://grafana.com/docs/grafana/latest/da
 
 ## Setup
 
-To make sure you're emitting the correct metrics you'll have to register the
-metrics with a Prometheus Registerer. For example:
+To make sure you're emitting the metrics you'll have to create the Resource
+Manager with a StatsTraceReporter. By default metrics will be sent to
+prometheus.DefaultRegisterer. To use a different Registerer use the libp2p
+option libp2p.PrometheusRegisterer. For example:
 
 ``` go
 import (
@@ -18,8 +20,6 @@ import (
 )
 
     func SetupResourceManager() (network.ResourceManager, error) {
-        rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)
-
         str, err := rcmgrObs.NewStatsTraceReporter()
         if err != nil {
             return nil, err
