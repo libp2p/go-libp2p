@@ -142,7 +142,7 @@ var (
 )
 
 func MustRegisterWith(reg prometheus.Registerer) {
-	reg.MustRegister(
+	metricshelper.RegisterCollectors(reg,
 		conns,
 		peerConns,
 		previousPeerConns,
