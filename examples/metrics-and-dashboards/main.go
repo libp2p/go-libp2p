@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
-	"os"
-	"os/signal"
 	"sync"
 	"time"
 
@@ -18,6 +18,8 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
 )
+
+const ClientCount = 32
 
 func main() {
 	http.Handle("/metrics", promhttp.Handler())
@@ -43,7 +45,7 @@ func main() {
 
 	// Make a bunch of clients that all ping the server at various times
 	wg := sync.WaitGroup{}
-	for i := 0; i < 100; i++ {
+	for i := 0; i < ClientCount; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -54,28 +56,23 @@ func main() {
 			}, i)
 		}(i)
 	}
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-	// Listen for ctrl c
-	ctrlC := make(chan os.Signal, 1)
-	signal.Notify(ctrlC, os.Interrupt)
-
-	select {
-	case <-done:
-	case <-ctrlC:
-	}
-
+	wg.Wait()
 }
 
 func newClient(serverInfo peer.AddrInfo, pings int) {
+	// Sleep some random amount of time to spread out the clients so the graphs look more interesting
+	time.Sleep(time.Duration(rand.Intn(100)) * time.Second)
+	fmt.Println("Started client", pings)
+
 	client, err := libp2p.New(
 		// We just want metrics from the server
 		libp2p.DisableMetrics(),
 		libp2p.NoListenAddrs,
 	)
+	defer func() {
+		_ = client.Close()
+	}()
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -85,13 +82,12 @@ func newClient(serverInfo peer.AddrInfo, pings int) {
 	p := ping.Ping(context.Background(), client, serverInfo.ID)
 
 	pingSoFar := 0
-
 	for pingSoFar < pings {
 		res := <-p
 		pingSoFar++
 		if res.Error != nil {
 			log.Fatal(res.Error)
 		}
-		time.Sleep(time.Second)
+		time.Sleep(5 * time.Second)
 	}
 }
