@@ -72,7 +72,7 @@ func TestNoDeadlockWhenConsumingConnectednessEvents(t *testing.T) {
 
 	listener := swarmt.GenSwarm(t, swarmt.OptDialOnly)
 	addrsToListen := []ma.Multiaddr{
-		ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
+		ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
 	}
 
 	if err := listener.Listen(addrsToListen...); err != nil {
