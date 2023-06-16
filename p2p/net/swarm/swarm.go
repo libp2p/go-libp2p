@@ -340,12 +340,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	}
 
 	c.streams.m = make(map[*Stream]struct{})
-	if len(s.conns.m[p]) == 0 { // first connection
-		s.emitter.Emit(event.EvtPeerConnectednessChanged{
-			Peer:          p,
-			Connectedness: network.Connected,
-		})
-	}
+	isFirstConnection := len(s.conns.m[p]) == 0
 	s.conns.m[p] = append(s.conns.m[p], c)
 
 	// Add two swarm refs:
@@ -357,6 +352,15 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	// Disconnect notifications until after the Connect notifications done.
 	c.notifyLk.Lock()
 	s.conns.Unlock()
+
+	// Emit event after releasing s.conns else a subscriber that listen boths on
+	// event.EvtPeerConnectednessChanged can't call any of the swarm method that read or write.
+	if isFirstConnection {
+		s.emitter.Emit(event.EvtPeerConnectednessChanged{
+			Peer:          p,
+			Connectedness: network.Connected,
+		})
+	}
 
 	s.notifyAll(func(f network.Notifiee) {
 		f.Connected(s, c)
