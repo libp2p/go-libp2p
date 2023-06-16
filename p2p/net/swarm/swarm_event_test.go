@@ -96,10 +96,10 @@ func TestNoDeadlockWhenConsumingConnectednessEvents(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case <-sub.Out():
-				time.Sleep(time.Second)
+				time.Sleep(100 * time.Millisecond)
 				// Do something with the swarm that needs the conns lock
 				_ = dialer.ConnsToPeer(listener.LocalPeer())
-				time.Sleep(time.Second)
+				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}()
