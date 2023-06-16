@@ -353,8 +353,8 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	c.notifyLk.Lock()
 	s.conns.Unlock()
 
-	// Emit event after releasing s.conns else a subscriber that listen boths on
-	// event.EvtPeerConnectednessChanged can't call any of the swarm method that read or write.
+	// Emit event after releasing `s.conns` lock so that a consumer can still
+	// use swarm methods that need the `s.conns` lock.
 	if isFirstConnection {
 		s.emitter.Emit(event.EvtPeerConnectednessChanged{
 			Peer:          p,
@@ -641,25 +641,32 @@ func (s *Swarm) removeConn(c *Conn) {
 	p := c.RemotePeer()
 
 	s.conns.Lock()
-	defer s.conns.Unlock()
 
 	cs := s.conns.m[p]
+
+	if len(cs) == 1 {
+		delete(s.conns.m, p)
+		s.conns.Unlock()
+
+		// Emit event after releasing `s.conns` lock so that a consumer can still
+		// use swarm methods that need the `s.conns` lock.
+		s.emitter.Emit(event.EvtPeerConnectednessChanged{
+			Peer:          p,
+			Connectedness: network.NotConnected,
+		})
+		return
+	}
+
+	defer s.conns.Unlock()
+
 	for i, ci := range cs {
 		if ci == c {
-			if len(cs) == 1 {
-				delete(s.conns.m, p)
-				s.emitter.Emit(event.EvtPeerConnectednessChanged{
-					Peer:          p,
-					Connectedness: network.NotConnected,
-				})
-			} else {
-				// NOTE: We're intentionally preserving order.
-				// This way, connections to a peer are always
-				// sorted oldest to newest.
-				copy(cs[i:], cs[i+1:])
-				cs[len(cs)-1] = nil
-				s.conns.m[p] = cs[:len(cs)-1]
-			}
+			// NOTE: We're intentionally preserving order.
+			// This way, connections to a peer are always
+			// sorted oldest to newest.
+			copy(cs[i:], cs[i+1:])
+			cs[len(cs)-1] = nil
+			s.conns.m[p] = cs[:len(cs)-1]
 			break
 		}
 	}
