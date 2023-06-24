@@ -47,7 +47,7 @@ type Host interface {
 	// SetStreamHandler sets the protocol handler on the Host's Mux.
 	// This is equivalent to:
 	//   host.Mux().SetHandler(proto, handler)
-	// (Threadsafe)
+	// (Thread-safe)
 	SetStreamHandler(pid protocol.ID, handler network.StreamHandler)
 
 	// SetStreamHandlerMatch sets the protocol handler on the Host's Mux

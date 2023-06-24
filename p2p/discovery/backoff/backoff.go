@@ -13,7 +13,7 @@ var log = logging.Logger("discovery-backoff")
 
 type BackoffFactory func() BackoffStrategy
 
-// BackoffStrategy describes how backoff will be implemented. BackoffStratgies are stateful.
+// BackoffStrategy describes how backoff will be implemented. BackoffStrategies are stateful.
 type BackoffStrategy interface {
 	// Delay calculates how long the next backoff duration should be, given the prior calls to Delay
 	Delay() time.Duration

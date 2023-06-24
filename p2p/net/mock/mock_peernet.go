@@ -358,7 +358,7 @@ func (pn *peernet) NewStream(ctx context.Context, p peer.ID) (network.Stream, er
 }
 
 // SetStreamHandler sets the new stream handler on the Network.
-// This operation is threadsafe.
+// This operation is thread-safe.
 func (pn *peernet) SetStreamHandler(h network.StreamHandler) {
 	pn.Lock()
 	pn.streamHandler = h

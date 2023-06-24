@@ -28,6 +28,6 @@ var ErrTransientConn = errors.New("transient connection to peer")
 // exceed system resource limits.
 var ErrResourceLimitExceeded = temporaryError("resource limit exceeded")
 
-// ErrResourceScopeClosed is returned when attemptig to reserve resources in a closed resource
+// ErrResourceScopeClosed is returned when attempting to reserve resources in a closed resource
 // scope.
 var ErrResourceScopeClosed = errors.New("resource scope closed")

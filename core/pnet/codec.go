@@ -31,7 +31,7 @@ func expectHeader(r *bufio.Reader, expected []byte) error {
 		return err
 	}
 	if !bytes.Equal(header, expected) {
-		return fmt.Errorf("expected file header %s, got: %s", pathPSKv1, header)
+		return fmt.Errorf("expected file header %s, got: %s", expected, header)
 	}
 	return nil
 }

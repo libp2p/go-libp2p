@@ -35,7 +35,7 @@ func NewNode(host host.Host, done chan bool) *Node {
 }
 
 // Authenticate incoming p2p message
-// message: a protobufs go data object
+// message: a protobuf go data object
 // data: common p2p message data
 func (n *Node) authenticateMessage(message proto.Message, data *p2p.MessageData) bool {
 	// store a temp ref to signature and remove it from message data
@@ -119,7 +119,7 @@ func (n *Node) verifyData(data []byte, signature []byte, peerId peer.ID, pubKeyD
 // helper method - generate message data shared between all node's p2p protocols
 // messageId: unique for requests, copied from request for responses
 func (n *Node) NewMessageData(messageId string, gossip bool) *p2p.MessageData {
-	// Add protobufs bin data for message author public key
+	// Add protobuf bin data for message author public key
 	// this is useful for authenticating  messages forwarded by a node authored by another node
 	nodePubKey, err := crypto.MarshalPublicKey(n.Peerstore().PubKey(n.ID()))
 

@@ -67,7 +67,7 @@ func run() {
 		return
 	}
 
-	// Configure the host to offer the ciruit relay service.
+	// Configure the host to offer the circuit relay service.
 	// Any host that is directly dialable in the network (or on the internet)
 	// can offer a circuit relay service, this isn't just the job of
 	// "dedicated" relay services.

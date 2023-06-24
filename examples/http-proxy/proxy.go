@@ -135,7 +135,7 @@ func (p *ProxyService) Serve() {
 }
 
 // ServeHTTP implements the http.Handler interface. WARNING: This is the
-// simplest approach to a proxy. Therefore we do not do any of the things
+// simplest approach to a proxy. Therefore, we do not do any of the things
 // that should be done when implementing a reverse proxy (like handling
 // headers correctly). For how to do it properly, see:
 // https://golang.org/src/net/http/httputil/reverseproxy.go?s=3845:3920#L121
@@ -216,7 +216,7 @@ func addAddrToPeerstore(h host.Host, addr string) peer.ID {
 	targetPeerAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", peerid))
 	targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
 
-	// We have a peer ID and a targetAddr so we add
+	// We have a peer ID and a targetAddr, so we add
 	// it to the peerstore so LibP2P knows how to contact it
 	h.Peerstore().AddAddr(peerid, targetAddr, peerstore.PermanentAddrTTL)
 	return peerid

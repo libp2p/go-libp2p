@@ -68,7 +68,7 @@ func (pk *RsaPublicKey) Raw() (res []byte, err error) {
 
 // Equals checks whether this key is equal to another
 func (pk *RsaPublicKey) Equals(k Key) bool {
-	// make sure this is an rsa public key
+	// make sure this is a rsa public key
 	other, ok := (k).(*RsaPublicKey)
 	if !ok {
 		return basicEquals(pk, k)

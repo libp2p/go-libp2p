@@ -46,7 +46,7 @@ const (
 	ConnectedAddrTTL
 )
 
-// Peerstore provides a threadsafe store of Peer related
+// Peerstore provides a thread-safe store of Peer related
 // information.
 type Peerstore interface {
 	io.Closer
@@ -174,7 +174,7 @@ type CertifiedAddrBook interface {
 	// added via ConsumePeerRecord.
 	ConsumePeerRecord(s *record.Envelope, ttl time.Duration) (accepted bool, err error)
 
-	// GetPeerRecord returns a Envelope containing a PeerRecord for the
+	// GetPeerRecord returns an Envelope containing a PeerRecord for the
 	// given peer id, if one exists.
 	// Returns nil if no signed PeerRecord exists for the peer.
 	GetPeerRecord(p peer.ID) *record.Envelope

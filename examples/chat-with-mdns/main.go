@@ -19,7 +19,7 @@ import (
 func handleStream(stream network.Stream) {
 	fmt.Println("Got a new stream!")
 
-	// Create a buffer stream for non blocking read and write.
+	// Create a buffer stream for non-blocking read and write.
 	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
 	go readData(rw)
@@ -115,7 +115,7 @@ func main() {
 
 	peerChan := initMDNS(host, cfg.RendezvousString)
 	for { // allows multiple peers to join
-		peer := <-peerChan // will block untill we discover a peer
+		peer := <-peerChan // will block until we discover a peer
 		fmt.Println("Found peer:", peer, ", connecting")
 
 		if err := host.Connect(ctx, peer); err != nil {
