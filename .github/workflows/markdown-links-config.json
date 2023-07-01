@@ -1,7 +1,10 @@
 {
   "ignorePatterns": [
     {
-      "pattern": "^https://github.com/libp2p/go-libp2p/issues/"
+        "pattern": "^http://localhost"
+    },
+    {
+        "pattern": "^gaurav-nelson/"
     }
   ]
 }
