@@ -64,7 +64,7 @@ go-libp2p is MIT-licensed open source software. We welcome contributions big and
 Guidelines:
 
 - read the [libp2p spec](https://github.com/libp2p/specs)
-- ask questions or talk about things in  our [discussion forums](https://discuss.libp2p.io), or open an [issue](https://github.com/libp2p/go-libp2p/issues) for bug reports, or #libp2p-implementers on [Filecoin slack](filecoin.io/slack).
+- ask questions or talk about things in our [discussion forums](https://discuss.libp2p.io), or open an [issue](https://github.com/libp2p/go-libp2p/issues) for bug reports, or #libp2p-implementers on [Filecoin slack](https://filecoin.io/slack).
 - ensure you are able to contribute (no legal issues please -- we use the DCO)
 - get in touch with @libp2p/go-libp2p-maintainers about how best to contribute
 - have fun!
