@@ -24,7 +24,8 @@ const ClientCount = 32
 func main() {
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
-		http.ListenAndServe(":2112", nil)
+		http.Handle("/debug/metrics/prometheus", promhttp.Handler())
+		log.Fatal(http.ListenAndServe(":5001", nil))
 	}()
 
 	rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)

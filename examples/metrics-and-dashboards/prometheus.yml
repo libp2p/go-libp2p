@@ -11,5 +11,6 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
   - job_name: "go-libp2p"
+    metrics_path: /debug/metrics/prometheus
     static_configs:
-      - targets: ["go-libp2p-node:2112"]
+      - targets: ["go-libp2p-node:5001"]
