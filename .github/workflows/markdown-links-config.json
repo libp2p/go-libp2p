@@ -4,7 +4,22 @@
         "pattern": "^http://localhost"
     },
     {
+        "pattern": "^https://twitter.com/"
+    },
+    {
         "pattern": "^gaurav-nelson/"
+    }
+  ],
+  "aliveStatusCodes": [403, 429, 200],
+  "httpHeaders": [
+    {
+      "urls": [
+        "https://docs.github.com/",
+        "https://opensource.org/"
+      ],
+      "headers": {
+        "Accept-Encoding": "zstd, br, gzip, deflate"
+      }
     }
   ]
 }

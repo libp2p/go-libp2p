@@ -1,20 +1,21 @@
-name: Markdown Links Check
-
+name: Markdown Link Checking
 on:
-    push: [master]
-    pull_request: [master]
-    schedule:
-      # runs once in a couple of days at 9am
-      - cron: '0 9 */2 * *'
+  pull_request:
+  push:
+    branches:
+      - "master"
+  schedule:
+    # runs once in a couple of days at 9am
+    - cron: '0 9 */2 * *'
 
 jobs:
   check-links:
+    if: '!cancelled()' # https://stackoverflow.com/a/58859404/2949645
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v3
       - uses: gaurav-nelson/github-action-markdown-link-check@v1
         with:
-          use-quiet-mode: 'yes'
+          use-quiet-mode: 'yes'   # show only broken links
           use-verbose-mode: 'yes'
-          # for removing any false positives
-          config-file: .github/workflows/markdown-links-config.json
+          config-file: .github/workflows/markdown-links-config.json # for removing any false positives
