@@ -23,7 +23,7 @@ go build .
 ./chat
 ```
 
-To change the topic name, use the `-topic` flag:
+To change the topic name, use the `-topicName` flag:
 
 ```shell
 go run . -topicName=adifferenttopic
