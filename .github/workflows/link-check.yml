@@ -5,12 +5,10 @@ on:
     branches:
       - "master"
   schedule:
-    # runs once in a couple of days at 9am
     - cron: '0 9 */2 * *'
 
 jobs:
   check-links:
-    if: '!cancelled()' # https://stackoverflow.com/a/58859404/2949645
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3

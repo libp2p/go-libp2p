@@ -1,7 +1,7 @@
 runs:
   using: "composite"
   steps:
-    - name: increase the UDP receive buffer size # see https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
+    - name: increase the UDP receive buffer size # see https://github.com/lucas-clemente/quic-go/wiki/UDP-Receive-Buffer-Size
       shell: bash
       run: sysctl -w net.core.rmem_max=2500000
       if: ${{ matrix.os == 'ubuntu' }}
