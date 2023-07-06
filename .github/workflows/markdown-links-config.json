@@ -7,7 +7,7 @@
         "pattern": "^https://twitter.com/"
     },
     {
-      "pattern": "  ^https://opensource.org/"
+        "pattern": "^https://opensource.org/"
     }
   ],
   "aliveStatusCodes": [200],
