@@ -5,14 +5,17 @@
     },
     {
         "pattern": "^https://twitter.com/"
+    },
+    {
+      "pattern": "  ^https://opensource.org/"
     }
   ],
-  "aliveStatusCodes": [403, 429, 200],
+  "aliveStatusCodes": [200],
   "httpHeaders": [
     {
       "urls": ["https://docs.github.com/"],
       "headers": {
-        "Accept-Encoding": "zstd, br, gzip, deflate"
+        "Accept-Encoding": "*"
       }
     }
   ]
