@@ -195,8 +195,8 @@ Fix some test-utils used by https://github.com/libp2p/go-libp2p-kad-dht
 ### Metrics <!-- omit in toc -->
 
 We've started instrumenting the entire stack. In this release, we're adding metrics for:
-* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in use: (https://github.com/libp2p/go-libp2p/blob/master/p2p/net/swarm/grafana-dashboards/swarm.json)
-* the event bus: tracking how different events are propagated through the stack and to external consumers (https://github.com/libp2p/go-libp2p/blob/master/p2p/host/eventbus/grafana-dashboards/eventbus.json)
+* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in use: (https://github.com/libp2p/go-libp2p/blob/master/dashboards/swarm/swarm.json)
+* the event bus: tracking how different events are propagated through the stack and to external consumers (https://github.com/libp2p/go-libp2p/blob/master/dashboards/eventbus/eventbus.json)
 
 Our metrics effort is still ongoing, see https://github.com/libp2p/go-libp2p/issues/1356 for progress. We'll add metrics and dashboards for more libp2p components in a future release.
 
