@@ -123,7 +123,7 @@ func (w *dialWorker) loop() {
 			<-dialTimer.Ch()
 		}
 		timerRunning = false
-		if dq.len() > 0 {
+		if dq.Len() > 0 {
 			if dialsInFlight == 0 && !w.connected {
 				// if there are no dials in flight, trigger the next dials immediately
 				dialTimer.Reset(startTime)
@@ -417,7 +417,7 @@ func newDialQueue() *dialQueue {
 // Add adds adelay to the queue. If another element exists in the queue with
 // the same address, it replaces that element.
 func (dq *dialQueue) Add(adelay network.AddrDelay) {
-	for i := 0; i < dq.len(); i++ {
+	for i := 0; i < dq.Len(); i++ {
 		if dq.q[i].Addr.Equal(adelay.Addr) {
 			if dq.q[i].Delay == adelay.Delay {
 				// existing element is the same. nothing to do
@@ -430,7 +430,7 @@ func (dq *dialQueue) Add(adelay network.AddrDelay) {
 		}
 	}
 
-	for i := 0; i < dq.len(); i++ {
+	for i := 0; i < dq.Len(); i++ {
 		if dq.q[i].Delay > adelay.Delay {
 			dq.q = append(dq.q, network.AddrDelay{}) // extend the slice
 			copy(dq.q[i+1:], dq.q[i:])
@@ -443,13 +443,13 @@ func (dq *dialQueue) Add(adelay network.AddrDelay) {
 
 // NextBatch returns all the elements in the queue with the highest priority
 func (dq *dialQueue) NextBatch() []network.AddrDelay {
-	if dq.len() == 0 {
+	if dq.Len() == 0 {
 		return nil
 	}
 
 	// i is the index of the second highest priority element
 	var i int
-	for i = 0; i < dq.len(); i++ {
+	for i = 0; i < dq.Len(); i++ {
 		if dq.q[i].Delay != dq.q[0].Delay {
 			break
 		}
@@ -464,7 +464,7 @@ func (dq *dialQueue) top() network.AddrDelay {
 	return dq.q[0]
 }
 
-// len returns the number of elements in the queue
-func (dq *dialQueue) len() int {
+// Len returns the number of elements in the queue
+func (dq *dialQueue) Len() int {
 	return len(dq.q)
 }

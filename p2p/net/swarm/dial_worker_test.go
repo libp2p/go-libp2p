@@ -484,8 +484,8 @@ func TestDialQueueNextBatch(t *testing.T) {
 					}
 				}
 			}
-			if q.len() != 0 {
-				t.Errorf("expected queue to be empty at end. got: %d", q.len())
+			if q.Len() != 0 {
+				t.Errorf("expected queue to be empty at end. got: %d", q.Len())
 			}
 		})
 	}
