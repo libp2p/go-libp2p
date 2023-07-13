@@ -91,9 +91,9 @@ func UsingAddresses(addrFunc AddrFunc) Option {
 	}
 }
 
-// WithSchedule configures how agressively probes will be made to verify the
+// WithSchedule configures how aggressively probes will be made to verify the
 // address of the host. retryInterval indicates how often probes should be made
-// when the host lacks confident about its address, while refresh interval
+// when the host lacks confidence about its address, while refreshInterval
 // is the schedule of periodic probes when the host believes it knows its
 // steady-state reachability.
 func WithSchedule(retryInterval, refreshInterval time.Duration) Option {
