@@ -153,20 +153,6 @@ func (h *HTTPHost) SetHttpHandlerAtPath(p protocol.ID, path string, handler http
 	h.rootHandler.Handle(path, handler)
 }
 
-// TODO do we need this? Kind of complicated. We could the same with http.Serve and a custom libp2p listener.
-// SetCustomHTTPHandler sets a custom HTTP handler for all HTTP over libp2p
-// streams. It is up to the user to make sure the well-known mapping is set up
-// correctly (NewWellKnownHandler could be helpful). This is useful if you're
-// bringing in an existing HTTP ServeMux (or similar) to be used on top of
-// libp2p streams.
-// Use host.RemoveStreamHandler(libp2phttp.ProtocolIDForMultistreamSelect) to remove this handler.
-func SetCustomHTTPHandler(streamHost host.Host, handler http.Handler) {
-	streamHost.SetStreamHandler(ProtocolIDForMultistreamSelect, func(s network.Stream) {
-		defer s.Close()
-		ServeReadWriter(s, handler)
-	})
-}
-
 type roundTripperOpts struct {
 	// todo SkipClientAuth bool
 	preferHTTPTransport bool
