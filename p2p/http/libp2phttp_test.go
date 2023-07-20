@@ -216,7 +216,7 @@ func TestRoundTrippers(t *testing.T) {
 // TODO test with a native Go HTTP server
 func TestPlainOldHTTPServer(t *testing.T) {
 	mux := http.NewServeMux()
-	wk := libp2phttp.NewWellKnownHandler()
+	wk := libp2phttp.WellKnownHandler{}
 	mux.Handle("/.well-known/libp2p", &wk)
 
 	mux.HandleFunc("/ping/", libp2phttp.Ping)

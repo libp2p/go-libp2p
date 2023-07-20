@@ -1,3 +1,5 @@
+// HTTP semantics with libp2p. Can use a libp2p stream transport or stock HTTP
+// transports. This API is experimental and will likely change soon. Implements libp2p spec #508.
 package libp2phttp
 
 import (
@@ -39,7 +41,8 @@ type WellKnownProtocolMeta struct {
 
 type WellKnownProtoMap map[protocol.ID]WellKnownProtocolMeta
 
-type wellKnownHandler struct {
+// WellKnownHandler is an http.Handler that serves the .well-known/libp2p resource
+type WellKnownHandler struct {
 	wellknownMapMu   sync.Mutex
 	wellKnownMapping WellKnownProtoMap
 }
@@ -49,11 +52,7 @@ func StreamHostListen(streamHost host.Host) (net.Listener, error) {
 	return gostream.Listen(streamHost, ProtocolIDForMultistreamSelect)
 }
 
-func NewWellKnownHandler() wellKnownHandler {
-	return wellKnownHandler{wellKnownMapping: make(map[protocol.ID]WellKnownProtocolMeta)}
-}
-
-func (h *wellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check if the requests accepts JSON
 	accepts := r.Header.Get("Accept")
 	if accepts != "" && !(strings.Contains(accepts, "application/json") || strings.Contains(accepts, "*/*")) {
@@ -78,21 +77,29 @@ func (h *wellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(mapping)
 }
 
-func (h *wellKnownHandler) AddProtocolMapping(p protocol.ID, path string) {
+func (h *WellKnownHandler) AddProtocolMapping(p protocol.ID, path string) {
 	h.wellknownMapMu.Lock()
+	if h.wellKnownMapping == nil {
+		h.wellKnownMapping = make(map[protocol.ID]WellKnownProtocolMeta)
+	}
 	h.wellKnownMapping[p] = WellKnownProtocolMeta{Path: path}
 	h.wellknownMapMu.Unlock()
 }
 
-func (h *wellKnownHandler) RmProtocolMapping(p protocol.ID, path string) {
+func (h *WellKnownHandler) RmProtocolMapping(p protocol.ID, path string) {
 	h.wellknownMapMu.Lock()
-	delete(h.wellKnownMapping, p)
+	if h.wellKnownMapping != nil {
+		delete(h.wellKnownMapping, p)
+	}
 	h.wellknownMapMu.Unlock()
 }
 
+// HTTPHost is a libp2p host for request/responses with HTTP semantics. This is
+// in contrast to a stream-oriented host like the host.Host interface. Warning,
+// this is experimental. The API will likely change.
 type HTTPHost struct {
 	rootHandler      http.ServeMux
-	wk               wellKnownHandler
+	wk               WellKnownHandler
 	httpRoundTripper http.RoundTripper
 	recentHTTPAddrs  *lru.Cache[peer.ID, httpAddr]
 	peerMetadata     *lru.Cache[peer.ID, WellKnownProtoMap]
@@ -113,12 +120,12 @@ func New() *HTTPHost {
 	recentHTTP, err := lru.New[peer.ID, httpAddr](recentConnsLimit)
 	peerMetadata, err2 := lru.New[peer.ID, WellKnownProtoMap](PeerMetadataLRUSize)
 	if err != nil || err2 != nil {
-		// Only happens if size is < 1. We set it to 32, so this should never happen.
+		// Only happens if size is < 1. We make sure to not do that, so this should never happen.
 		panic(err)
 	}
 
 	h := &HTTPHost{
-		wk:               NewWellKnownHandler(),
+		wk:               WellKnownHandler{},
 		rootHandler:      http.ServeMux{},
 		httpRoundTripper: http.DefaultTransport,
 		recentHTTPAddrs:  recentHTTP,
@@ -270,6 +277,9 @@ func RoundTripperPreferHTTPTransport(o roundTripperOpts) roundTripperOpts {
 
 type RoundTripperOptsFn func(o roundTripperOpts) roundTripperOpts
 
+// NewRoundTripper returns an http.RoundTripper that can fulfill and HTTP
+// request to the given server. It may use an HTTP transport or a stream based
+// transport. It is valid to pass an empty server.ID and a nil streamHost.
 func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.RoundTripper, error) {
 	options := roundTripperOpts{}
 	for _, o := range opts {
@@ -340,6 +350,9 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 	}
 
 	// Otherwise use a stream based transport
+	if streamHost == nil {
+		return nil, fmt.Errorf("no http addresses for peer, and no stream host provided")
+	}
 	if !existingStreamConn {
 		if server.ID == "" {
 			return nil, fmt.Errorf("no http addresses for peer, and no server peer ID provided")
@@ -398,7 +411,7 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 	}
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Transport: roundtripper}
+	client := http.Client{Transport: roundtripper}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

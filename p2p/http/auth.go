@@ -134,9 +134,13 @@ func AuthenticateClient(hostKey crypto.PrivKey, responseHeader http.Header, requ
 		return "", fmt.Errorf("error generating noise payload: %w", err)
 	}
 
-	authInfoMsg, _, _, err := hs.WriteMessage(hbuf[:0], payload)
+	authInfoMsg, cs1, cs2, err := hs.WriteMessage(hbuf[:0], payload)
 	if err != nil {
 		return "", fmt.Errorf("error writing handshake message: %w", err)
+	}
+
+	if cs1 == nil || cs2 == nil {
+		return "", errors.New("expected handshake to be complete")
 	}
 
 	authInfoMsgEncoded, err := multibase.Encode(multibase.Encodings["base32"], authInfoMsg)
@@ -171,7 +175,7 @@ func (s AuthState) AuthenticateServer(expectedSNI string, responseHeader http.He
 	}
 
 	if cs1 == nil || cs2 == nil {
-		return "", errors.New("expected ciphersuites to be present")
+		return "", errors.New("expected handshake to be complete")
 	}
 
 	server, extensions, err := handleRemoteHandshakePayload(payload, s.hs.PeerStatic())
@@ -198,9 +202,7 @@ func (s AuthState) AuthenticateServer(expectedSNI string, responseHeader http.He
 }
 
 func generateNoisePayload(hostKey crypto.PrivKey, localStatic noise.DHKey, ext *pb.NoiseExtensions) ([]byte, error) {
-	// obtain the public key from the handshake session, so we can sign it with
-	// our libp2p secret key.
-	localKeyRaw, err := crypto.MarshalPublicKey(hostKey.GetPublic())
+	localPubKeyRaw, err := crypto.MarshalPublicKey(hostKey.GetPublic())
 	if err != nil {
 		return nil, fmt.Errorf("error serializing libp2p identity key: %w", err)
 	}
@@ -214,7 +216,7 @@ func generateNoisePayload(hostKey crypto.PrivKey, localStatic noise.DHKey, ext *
 
 	// create payload
 	payloadEnc, err := proto.Marshal(&pb.NoiseHandshakePayload{
-		IdentityKey: localKeyRaw,
+		IdentityKey: localPubKeyRaw,
 		IdentitySig: signedPayload,
 		Extensions:  ext,
 	})
