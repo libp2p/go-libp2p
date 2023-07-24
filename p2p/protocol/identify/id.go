@@ -769,7 +769,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	} else {
 		addrs = lmaddrs
 	}
-	ids.Host.Peerstore().AddAddrs(p, filterAddrs(addrs, c.RemoteMultiaddr()), ttl)
+	ids.Host.Peerstore().AddAddrs(p, addrs, ttl)
 
 	// Finally, expire all temporary addrs.
 	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
@@ -986,17 +986,3 @@ func (nn *netNotifiee) Disconnected(_ network.Network, c network.Conn) {
 
 func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)      {}
 func (nn *netNotifiee) ListenClose(n network.Network, a ma.Multiaddr) {}
-
-// filterAddrs filters the address slice based on the remove multiaddr:
-// * if it's a localhost address, no filtering is applied
-// * if it's a local network address, all localhost addresses are filtered out
-// * if it's a public address, all localhost and local network addresses are filtered out
-func filterAddrs(addrs []ma.Multiaddr, remote ma.Multiaddr) []ma.Multiaddr {
-	if manet.IsIPLoopback(remote) {
-		return addrs
-	}
-	if manet.IsPrivateAddr(remote) {
-		return ma.FilterAddrs(addrs, func(a ma.Multiaddr) bool { return !manet.IsIPLoopback(a) })
-	}
-	return ma.FilterAddrs(addrs, manet.IsPublicAddr)
-}
