@@ -5,6 +5,7 @@ package libp2phttp
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,7 +23,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	gostream "github.com/libp2p/go-libp2p/p2p/gostream"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const ProtocolIDForMultistreamSelect = "/http/1.1"
@@ -100,7 +100,7 @@ func (h *WellKnownHandler) RmProtocolMapping(p protocol.ID, path string) {
 type HTTPHost struct {
 	rootHandler      http.ServeMux
 	wk               WellKnownHandler
-	httpRoundTripper http.RoundTripper
+	httpRoundTripper *http.Transport
 	recentHTTPAddrs  *lru.Cache[peer.ID, httpAddr]
 	peerMetadata     *lru.Cache[peer.ID, WellKnownProtoMap]
 }
@@ -108,11 +108,24 @@ type HTTPHost struct {
 type httpAddr struct {
 	addr   string
 	scheme string
+	sni    string
+	rt     http.RoundTripper // optional, if this needed its own transport
+}
+
+type HTTPHostOption func(*HTTPHost) error
+
+// WithTLSClientConfig sets the TLS client config for the native HTTP transport.
+func WithTLSClientConfig(tlsConfig *tls.Config) HTTPHostOption {
+	return func(h *HTTPHost) error {
+		h.httpRoundTripper.TLSClientConfig = tlsConfig
+		return nil
+	}
 }
 
 // New creates a new HTTPHost. Use HTTPHost.Serve to start serving HTTP requests (both over libp2p streams and HTTP transport).
-func New() *HTTPHost {
-	recentConnsLimit := http.DefaultTransport.(*http.Transport).MaxIdleConns
+func New(opts ...HTTPHostOption) (*HTTPHost, error) {
+	httpRoundTripper := http.DefaultTransport.(*http.Transport).Clone()
+	recentConnsLimit := httpRoundTripper.MaxIdleConns
 	if recentConnsLimit < 1 {
 		recentConnsLimit = 32
 	}
@@ -127,13 +140,19 @@ func New() *HTTPHost {
 	h := &HTTPHost{
 		wk:               WellKnownHandler{},
 		rootHandler:      http.ServeMux{},
-		httpRoundTripper: http.DefaultTransport,
+		httpRoundTripper: httpRoundTripper,
 		recentHTTPAddrs:  recentHTTP,
 		peerMetadata:     peerMetadata,
 	}
 	h.rootHandler.Handle("/.well-known/libp2p", &h.wk)
+	for _, opt := range opts {
+		err := opt(h)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	return h
+	return h, nil
 }
 
 // Serve starts serving HTTP requests using the given listener. You may call this method multiple times with different listeners.
@@ -142,15 +161,18 @@ func (h *HTTPHost) Serve(l net.Listener) error {
 }
 
 // ServeTLS starts serving TLS+HTTP requests using the given listener. You may call this method multiple times with different listeners.
-func (h *HTTPHost) ServeTLS(l net.Listener, certFile, keyFile string) error {
-	return http.ServeTLS(l, &h.rootHandler, certFile, keyFile)
+func (h *HTTPHost) ServeTLS(l net.Listener, c *tls.Config) error {
+	srv := http.Server{
+		Handler:   &h.rootHandler,
+		TLSConfig: c,
+	}
+	return srv.ServeTLS(l, "", "")
 }
 
 // SetHttpHandler sets the HTTP handler for a given protocol. Automatically
 // manages the .well-known/libp2p mapping.
 func (h *HTTPHost) SetHttpHandler(p protocol.ID, handler http.Handler) {
-	path := string(p) + "/"
-	h.SetHttpHandlerAtPath(p, path, handler)
+	h.SetHttpHandlerAtPath(p, string(p)+"/", handler)
 }
 
 // SetHttpHandlerAtPath sets the HTTP handler for a given protocol using the
@@ -207,9 +229,11 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 // roundTripperForSpecificHost is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
 type roundTripperForSpecificServer struct {
 	http.RoundTripper
+	ownRoundtripper  bool
 	httpHost         *HTTPHost
 	server           peer.ID
 	targetServerAddr string
+	sni              string
 	scheme           string
 }
 
@@ -220,10 +244,14 @@ func (rt *roundTripperForSpecificServer) RoundTrip(r *http.Request) (*http.Respo
 	}
 	r.URL.Scheme = rt.scheme
 	r.URL.Host = rt.targetServerAddr
-	r.Host = rt.targetServerAddr
+	r.Host = rt.sni
 	resp, err := rt.RoundTripper.RoundTrip(r)
 	if err == nil && rt.server != "" {
-		rt.httpHost.recentHTTPAddrs.Add(rt.server, httpAddr{addr: rt.targetServerAddr, scheme: rt.scheme})
+		ha := httpAddr{addr: rt.targetServerAddr, scheme: rt.scheme, sni: rt.sni}
+		if rt.ownRoundtripper {
+			ha.rt = rt.RoundTripper
+		}
+		rt.httpHost.recentHTTPAddrs.Add(rt.server, ha)
 	}
 	return resp, err
 }
@@ -258,7 +286,13 @@ func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p proto
 		return namespacedRoundTripper{}, fmt.Errorf("no protocol %s for server %s", p, server)
 	}
 
-	u, err := url.Parse(v.Path)
+	path := v.Path
+	if path[len(path)-1] == '/' {
+		// Trim the trailing slash, since it's common to make requests starting with a leading forward slash for the path
+		path = path[:len(path)-1]
+	}
+
+	u, err := url.Parse(path)
 	if err != nil {
 		return namespacedRoundTripper{}, fmt.Errorf("invalid path %s for protocol %s for server %s", v.Path, p, server)
 	}
@@ -268,6 +302,21 @@ func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p proto
 		protocolPrefix:    u.Path,
 		protocolPrefixRaw: u.RawPath,
 	}, nil
+}
+
+// NamespacedClient returns an http.Client that is scoped to the given protocol on the given server.
+func (h *HTTPHost) NamespacedClient(streamHost host.Host, p protocol.ID, server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.Client, error) {
+	rt, err := h.NewRoundTripper(streamHost, server, opts...)
+	if err != nil {
+		return http.Client{}, err
+	}
+
+	nrt, err := h.NamespaceRoundTripper(rt, p, server.ID)
+	if err != nil {
+		return http.Client{}, err
+	}
+
+	return http.Client{Transport: &nrt}, nil
 }
 
 func RoundTripperPreferHTTPTransport(o roundTripperOpts) roundTripperOpts {
@@ -288,12 +337,20 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 
 	// Do we have a recent HTTP transport connection to this peer?
 	if a, ok := h.recentHTTPAddrs.Get(server.ID); server.ID != "" && ok {
+		var rt http.RoundTripper = h.httpRoundTripper
+		ownRoundtripper := false
+		if a.rt != nil {
+			ownRoundtripper = true
+			rt = a.rt
+		}
 		return &roundTripperForSpecificServer{
-			RoundTripper:     h.httpRoundTripper,
+			RoundTripper:     rt,
+			ownRoundtripper:  ownRoundtripper,
 			httpHost:         h,
 			server:           server.ID,
 			targetServerAddr: a.addr,
 			scheme:           a.scheme,
+			sni:              a.sni,
 		}, nil
 	}
 
@@ -316,35 +373,56 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 
 	// Do we have an existing connection to this peer?
 	existingStreamConn := false
-	if server.ID != "" {
+	if server.ID != "" && streamHost != nil {
 		existingStreamConn = len(streamHost.Network().ConnsToPeer(server.ID)) > 0
 	}
 
 	if len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
-		useHTTPS := false
-		withoutHTTP, _ := ma.SplitFunc(httpAddrs[0], func(c ma.Component) bool {
-			return c.Protocol().Code == ma.P_HTTP
+		var useHTTPS bool
+		var host string
+		var port string
+		var sni string
+
+		ma.ForEach(httpAddrs[0], func(c ma.Component) bool {
+			p := c.Protocol()
+			if p.Code == ma.P_IP4 || p.Code == ma.P_IP6 || p.Code == ma.P_DNS || p.Code == ma.P_DNS4 || p.Code == ma.P_DNS6 {
+				host = c.Value()
+			} else if p.Code == ma.P_TCP || p.Code == ma.P_UDP {
+				port = c.Value()
+			} else if p.Code == ma.P_TLS {
+				useHTTPS = true
+			} else if p.Code == ma.P_SNI {
+				sni = c.Value()
+			}
+
+			return host == "" || port == "" || !useHTTPS || sni == ""
 		})
-		// Check if we need to pop the TLS component at the end as well
-		maybeWithoutTLS, maybeTLS := ma.SplitLast(withoutHTTP)
-		if maybeTLS != nil && maybeTLS.Protocol().Code == ma.P_TLS {
-			useHTTPS = true
-			withoutHTTP = maybeWithoutTLS
-		}
-		na, err := manet.ToNetAddr(withoutHTTP)
-		if err != nil {
-			return nil, err
-		}
 		scheme := "http"
 		if useHTTPS {
 			scheme = "https"
+			if sni == "" {
+				sni = host
+			}
+		}
+
+		rt := h.httpRoundTripper
+		ownRoundtripper := false
+		if sni != host {
+			// We have a different host and SNI (e.g. using an IP address but specifying a SNI)
+			// We need to make our own transport to support this.
+			rt = rt.Clone()
+			rt.TLSClientConfig = h.httpRoundTripper.TLSClientConfig.Clone()
+			rt.TLSClientConfig.ServerName = sni
+			ownRoundtripper = true
 		}
 
 		return &roundTripperForSpecificServer{
-			RoundTripper:     http.DefaultTransport,
+			RoundTripper:     rt,
+			ownRoundtripper:  ownRoundtripper,
 			httpHost:         h,
 			server:           server.ID,
-			targetServerAddr: na.String(),
+			targetServerAddr: host + ":" + port,
+			sni:              sni,
 			scheme:           scheme,
 		}, nil
 	}
