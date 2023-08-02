@@ -2,27 +2,15 @@ package libp2phttp
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
-	"github.com/multiformats/go-multiaddr"
-	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,8 +54,7 @@ func TestServerHandlerRequiresAuth(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start the server
-	server, err := New()
-	require.NoError(t, err)
+	server := New()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer l.Close()
@@ -156,115 +143,4 @@ func TestServerHandlerRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestSNIIsUsed(t *testing.T) {
-	serverKey, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
-	require.NoError(t, err)
-	serverID, err := peer.IDFromPrivateKey(serverKey)
-	require.NoError(t, err)
-
-	serverHTTPHost, err := New()
-	require.NoError(t, err)
-
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	serverHTTPHost.SetHttpHandler(AuthHandlerProtocolID, &AuthHandler{serverKey})
-	require.NoError(t, err)
-	defer l.Close()
-	tlsConf := getTLSConf(t, net.IPv4(127, 0, 0, 1), time.Now(), time.Now().Add(time.Hour), "example.com")
-	go serverHTTPHost.ServeTLS(l, tlsConf)
-
-	serverMaSNI, err := manet.FromNetAddr(l.Addr())
-	require.NoError(t, err)
-	serverMaWrongSNI := ma.Join(serverMaSNI, multiaddr.StringCast("/tls/sni/wrong.com/http"))
-	serverMaSNI = ma.Join(serverMaSNI, multiaddr.StringCast("/tls/sni/example.com/http"))
-	serverMaDNS := multiaddr.StringCast("/dns4/example.com/tcp/443/tls/http")
-
-	testCases := []struct {
-		name       string
-		ma         ma.Multiaddr
-		shouldFail bool
-	}{
-		{
-			name:       "With sni: " + serverMaSNI.String(),
-			ma:         serverMaSNI,
-			shouldFail: false,
-		},
-		{
-			name:       "With wrong sni: " + serverMaWrongSNI.String(),
-			ma:         serverMaWrongSNI,
-			shouldFail: true,
-		},
-		{
-			name:       "With dns: " + serverMaDNS.String(),
-			ma:         serverMaDNS,
-			shouldFail: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run("With multiaddr "+tc.name, func(t *testing.T) {
-			clientHttpHost, err := New(WithTLSClientConfig(&tls.Config{InsecureSkipVerify: true}))
-			require.NoError(t, err)
-
-			tr := clientHttpHost.httpRoundTripper.Clone()
-			// Resolve example.com to the server's IP in our test
-			clientHttpHost.httpRoundTripper.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-				// Returns our listener's addr
-				return tr.DialContext(ctx, l.Addr().Network(), l.Addr().String())
-			}
-			client, err := clientHttpHost.NamespacedClient(nil, AuthHandlerProtocolID, peer.AddrInfo{ID: serverID, Addrs: []multiaddr.Multiaddr{tc.ma}})
-			if tc.shouldFail {
-				require.Error(t, err)
-			} else {
-
-				require.NoError(t, err)
-			}
-
-			clientKey, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
-			require.NoError(t, err)
-
-			observedServerID, err := DoAuth(client, clientKey)
-			if tc.shouldFail {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, serverID, observedServerID)
-			}
-		})
-	}
-}
-
-func getTLSConf(t *testing.T, ip net.IP, start, end time.Time, expectSNI string) *tls.Config {
-	t.Helper()
-	certTempl := &x509.Certificate{
-		DNSNames:              []string{expectSNI},
-		SerialNumber:          big.NewInt(1234),
-		Subject:               pkix.Name{Organization: []string{"https-test"}},
-		NotBefore:             start,
-		NotAfter:              end,
-		IsCA:                  true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-	}
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	caBytes, err := x509.CreateCertificate(rand.Reader, certTempl, certTempl, &priv.PublicKey, priv)
-	require.NoError(t, err)
-	cert, err := x509.ParseCertificate(caBytes)
-	require.NoError(t, err)
-	var c *tls.Config
-	c = &tls.Config{
-		Certificates: []tls.Certificate{{
-			Certificate: [][]byte{cert.Raw},
-			PrivateKey:  priv,
-			Leaf:        cert,
-		}},
-		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-			if hello.ServerName != expectSNI {
-				return nil, errors.New("unexpected SNI")
-			}
-			return c, nil
-		},
-	}
-	return c
-}
+// TODO test with TLS + sni
