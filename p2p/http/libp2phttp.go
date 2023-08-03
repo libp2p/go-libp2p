@@ -74,9 +74,9 @@ func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
 	w.Header().Add("Content-Type", "application/json")
 	w.Header().Add("Content-Length", strconv.Itoa(len(mapping)))
+	w.WriteHeader(http.StatusOK)
 	w.Write(mapping)
 }
 
@@ -181,6 +181,10 @@ func (h *HTTPHost) SetHttpHandler(p protocol.ID, handler http.Handler) {
 // SetHttpHandlerAtPath sets the HTTP handler for a given protocol using the
 // given path. Automatically manages the .well-known/libp2p mapping.
 func (h *HTTPHost) SetHttpHandlerAtPath(p protocol.ID, path string, handler http.Handler) {
+	if path[len(path)-1] != '/' {
+		// We are nesting this handler under this path, so it should end with a slash.
+		path += "/"
+	}
 	h.wk.AddProtocolMapping(p, path)
 	h.rootHandler.Handle(path, handler)
 }
