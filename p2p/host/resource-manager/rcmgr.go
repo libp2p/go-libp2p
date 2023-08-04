@@ -20,8 +20,9 @@ var log = logging.Logger("rcmgr")
 type resourceManager struct {
 	limits Limiter
 
-	trace   *trace
-	metrics *metrics
+	trace          *trace
+	metrics        *metrics
+	disableMetrics bool
 
 	allowlist *Allowlist
 
@@ -138,6 +139,28 @@ func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager
 	for _, opt := range opts {
 		if err := opt(r); err != nil {
 			return nil, err
+		}
+	}
+
+	if !r.disableMetrics {
+		var sr TraceReporter
+		sr, err := NewStatsTraceReporter()
+		if err != nil {
+			log.Errorf("failed to initialise StatsTraceReporter %s", err)
+		} else {
+			if r.trace == nil {
+				r.trace = &trace{}
+			}
+			found := false
+			for _, rep := range r.trace.reporters {
+				if rep == sr {
+					found = true
+					break
+				}
+			}
+			if !found {
+				r.trace.reporters = append(r.trace.reporters, sr)
+			}
 		}
 	}
 

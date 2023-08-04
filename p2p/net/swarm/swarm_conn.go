@@ -130,6 +130,7 @@ func (c *Conn) start() {
 
 				// We only get an error here when the swarm is closed or closing.
 				if err != nil {
+					scope.Done()
 					return
 				}
 

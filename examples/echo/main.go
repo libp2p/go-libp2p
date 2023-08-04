@@ -151,7 +151,7 @@ func runSender(ctx context.Context, ha host.Host, targetPeer string) {
 		return
 	}
 
-	// We have a peer ID and a targetAddr so we add it to the peerstore
+	// We have a peer ID and a targetAddr, so we add it to the peerstore
 	// so LibP2P knows how to contact it
 	ha.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
 

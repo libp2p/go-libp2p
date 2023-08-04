@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,7 +17,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
-	"github.com/quic-go/quic-go"
 )
 
 // The maximum number of address resolution steps we'll perform for a single
@@ -37,6 +38,9 @@ var (
 	// ErrDialBackoff is returned by the backoff code when a given peer has
 	// been dialed too frequently
 	ErrDialBackoff = errors.New("dial backoff")
+
+	// ErrDialRefusedBlackHole is returned when we are in a black holed environment
+	ErrDialRefusedBlackHole = errors.New("dial refused because of black hole")
 
 	// ErrDialToSelf is returned if we attempt to dial our own peer
 	ErrDialToSelf = errors.New("dial to self attempted")
@@ -74,33 +78,12 @@ const ConcurrentFdDials = 160
 // per peer
 var DefaultPerPeerRateLimit = 8
 
-// dialbackoff is a struct used to avoid over-dialing the same, dead peers.
-// Whenever we totally time out on a peer (all three attempts), we add them
-// to dialbackoff. Then, whenevers goroutines would _wait_ (dialsync), they
-// check dialbackoff. If it's there, they don't wait and exit promptly with
-// an error. (the single goroutine that is actually dialing continues to
-// dial). If a dial is successful, the peer is removed from backoff.
-// Example:
-//
-//  for {
-//  	if ok, wait := dialsync.Lock(p); !ok {
-//  		if backoff.Backoff(p) {
-//  			return errDialFailed
-//  		}
-//  		<-wait
-//  		continue
-//  	}
-//  	defer dialsync.Unlock(p)
-//  	c, err := actuallyDial(p)
-//  	if err != nil {
-//  		dialbackoff.AddBackoff(p)
-//  		continue
-//  	}
-//  	dialbackoff.Clear(p)
-//  }
-//
-
-// DialBackoff is a type for tracking peer dial backoffs.
+// DialBackoff is a type for tracking peer dial backoffs. Dialbackoff is used to
+// avoid over-dialing the same, dead peers. Whenever we totally time out on all
+// addresses of a peer, we add the addresses to DialBackoff. Then, whenever we
+// attempt to dial the peer again, we check each address for backoff. If it's on
+// backoff, we don't dial the address and exit promptly. If a dial is
+// successful, the peer and all its addresses are removed from backoff.
 //
 // * It's safe to use its zero value.
 // * It's thread-safe.
@@ -138,8 +121,8 @@ func (db *DialBackoff) background(ctx context.Context) {
 // Backoff returns whether the client should backoff from dialing
 // peer p at address addr
 func (db *DialBackoff) Backoff(p peer.ID, addr ma.Multiaddr) (backoff bool) {
-	db.lock.Lock()
-	defer db.lock.Unlock()
+	db.lock.RLock()
+	defer db.lock.RUnlock()
 
 	ap, found := db.entries[p][string(addr.Bytes())]
 	return found && time.Now().Before(ap.until)
@@ -154,9 +137,7 @@ var BackoffCoef = time.Second
 // BackoffMax is the maximum backoff time (default: 5m).
 var BackoffMax = time.Minute * 5
 
-// AddBackoff lets other nodes know that we've entered backoff with
-// peer p, so dialers should not wait unnecessarily. We still will
-// attempt to dial with one goroutine, in case we get through.
+// AddBackoff adds peer's address to backoff.
 //
 // Backoff is not exponential, it's quadratic and computed according to the
 // following formula:
@@ -295,7 +276,7 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 
 // dialWorkerLoop synchronizes and executes concurrent dials to a single peer
 func (s *Swarm) dialWorkerLoop(p peer.ID, reqch <-chan dialRequest) {
-	w := newDialWorker(s, p, reqch)
+	w := newDialWorker(s, p, reqch, nil)
 	w.loop()
 }
 
@@ -334,6 +315,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 	if forceDirect, _ := network.GetForceDirectDial(ctx); forceDirect {
 		goodAddrs = ma.FilterAddrs(goodAddrs, s.nonProxyAddr)
 	}
+	goodAddrs = ma.Unique(goodAddrs)
 
 	if len(goodAddrs) == 0 {
 		return nil, ErrNoGoodAddresses
@@ -433,30 +415,43 @@ func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 // filterKnownUndialables takes a list of multiaddrs, and removes those
 // that we definitely don't want to dial: addresses configured to be blocked,
 // IPv6 link-local addresses, addresses without a dial-capable transport,
-// and addresses that we know to be our own.
-// This is an optimization to avoid wasting time on dials that we know are going to fail.
+// addresses that we know to be our own, and addresses with a better tranport
+// available. This is an optimization to avoid wasting time on dials that we
+// know are going to fail or for which we have a better alternative.
 func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Multiaddr {
 	lisAddrs, _ := s.InterfaceListenAddresses()
 	var ourAddrs []ma.Multiaddr
 	for _, addr := range lisAddrs {
-		protos := addr.Protocols()
 		// we're only sure about filtering out /ip4 and /ip6 addresses, so far
-		if protos[0].Code == ma.P_IP4 || protos[0].Code == ma.P_IP6 {
-			ourAddrs = append(ourAddrs, addr)
-		}
+		ma.ForEach(addr, func(c ma.Component) bool {
+			if c.Protocol().Code == ma.P_IP4 || c.Protocol().Code == ma.P_IP6 {
+				ourAddrs = append(ourAddrs, addr)
+			}
+			return false
+		})
 	}
 
-	return maybeRemoveWebTransportAddrs(
-		maybeRemoveQUICDraft29(
-			ma.FilterAddrs(addrs,
-				func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
-				s.canDial,
-				// TODO: Consider allowing link-local addresses
-				func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },
-				func(addr ma.Multiaddr) bool {
-					return s.gater == nil || s.gater.InterceptAddrDial(p, addr)
-				},
-			)))
+	// The order of these two filters is important. If we can only dial /webtransport,
+	// we don't want to filter /webtransport addresses out because the peer had a /quic-v1
+	// address
+
+	// filter addresses we cannot dial
+	addrs = ma.FilterAddrs(addrs, s.canDial)
+
+	// filter low priority addresses among the addresses we can dial
+	addrs = filterLowPriorityAddresses(addrs)
+
+	// remove black holed addrs
+	addrs = s.bhd.FilterAddrs(addrs)
+
+	return ma.FilterAddrs(addrs,
+		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
+		// TODO: Consider allowing link-local addresses
+		func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },
+		func(addr ma.Multiaddr) bool {
+			return s.gater == nil || s.gater.InterceptAddrDial(p, addr)
+		},
+	)
 }
 
 // limitedDial will start a dial to the given peer when
@@ -496,6 +491,12 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 
 	start := time.Now()
 	connC, err := tpt.Dial(ctx, addr, p)
+
+	// We're recording any error as a failure here.
+	// Notably, this also applies to cancelations (i.e. if another dial attempt was faster).
+	// This is ok since the black hole detector uses a very low threshold (5%).
+	s.bhd.RecordResult(addr, err == nil)
+
 	if err != nil {
 		if s.metricsTracer != nil {
 			s.metricsTracer.FailedDialing(addr, err)
@@ -542,110 +543,84 @@ func isFdConsumingAddr(addr ma.Multiaddr) bool {
 	return err1 == nil || err2 == nil
 }
 
-func isExpensiveAddr(addr ma.Multiaddr) bool {
-	_, wsErr := addr.ValueForProtocol(ma.P_WS)
-	_, wssErr := addr.ValueForProtocol(ma.P_WSS)
-	_, wtErr := addr.ValueForProtocol(ma.P_WEBTRANSPORT)
-	return wsErr == nil || wssErr == nil || wtErr == nil
-}
-
 func isRelayAddr(addr ma.Multiaddr) bool {
 	_, err := addr.ValueForProtocol(ma.P_CIRCUIT)
 	return err == nil
 }
 
-func isWebTransport(addr ma.Multiaddr) bool {
-	_, err := addr.ValueForProtocol(ma.P_WEBTRANSPORT)
-	return err == nil
+// filterLowPriorityAddresses removes addresses inplace for which we have a better alternative
+//  1. If a /quic-v1 address is present, filter out /quic and /webtransport address on the same 2-tuple:
+//     QUIC v1 is preferred over the deprecated QUIC draft-29, and given the choice, we prefer using
+//     raw QUIC over using WebTransport.
+//  2. If a /tcp address is present, filter out /ws or /wss addresses on the same 2-tuple:
+//     We prefer using raw TCP over using WebSocket.
+func filterLowPriorityAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
+	// make a map of QUIC v1 and TCP AddrPorts.
+	quicV1Addr := make(map[netip.AddrPort]struct{})
+	tcpAddr := make(map[netip.AddrPort]struct{})
+	for _, a := range addrs {
+		switch {
+		case isProtocolAddr(a, ma.P_WEBTRANSPORT):
+		case isProtocolAddr(a, ma.P_QUIC_V1):
+			ap, err := addrPort(a, ma.P_UDP)
+			if err != nil {
+				continue
+			}
+			quicV1Addr[ap] = struct{}{}
+		case isProtocolAddr(a, ma.P_WS) || isProtocolAddr(a, ma.P_WSS):
+		case isProtocolAddr(a, ma.P_TCP):
+			ap, err := addrPort(a, ma.P_TCP)
+			if err != nil {
+				continue
+			}
+			tcpAddr[ap] = struct{}{}
+		}
+	}
+
+	i := 0
+	for _, a := range addrs {
+		switch {
+		case isProtocolAddr(a, ma.P_WEBTRANSPORT) || isProtocolAddr(a, ma.P_QUIC):
+			ap, err := addrPort(a, ma.P_UDP)
+			if err != nil {
+				break
+			}
+			if _, ok := quicV1Addr[ap]; ok {
+				continue
+			}
+		case isProtocolAddr(a, ma.P_WS) || isProtocolAddr(a, ma.P_WSS):
+			ap, err := addrPort(a, ma.P_TCP)
+			if err != nil {
+				break
+			}
+			if _, ok := tcpAddr[ap]; ok {
+				continue
+			}
+		}
+		addrs[i] = a
+		i++
+	}
+	return addrs[:i]
 }
 
-func quicVersion(addr ma.Multiaddr) (quic.VersionNumber, bool) {
-	found := false
-	foundWebTransport := false
-	var version quic.VersionNumber
-	ma.ForEach(addr, func(c ma.Component) bool {
-		switch c.Protocol().Code {
-		case ma.P_QUIC:
-			version = quic.VersionDraft29
-			found = true
-			return true
-		case ma.P_QUIC_V1:
-			version = quic.Version1
-			found = true
-			return true
-		case ma.P_WEBTRANSPORT:
-			version = quic.Version1
-			foundWebTransport = true
-			return false
-		default:
-			return true
-		}
-	})
-	if foundWebTransport {
-		return 0, false
+// addrPort returns the ip and port for a. p should be either ma.P_TCP or ma.P_UDP.
+// a must be an (ip, TCP) or (ip, udp) address.
+func addrPort(a ma.Multiaddr, p int) (netip.AddrPort, error) {
+	ip, err := manet.ToIP(a)
+	if err != nil {
+		return netip.AddrPort{}, err
 	}
-	return version, found
-}
-
-// If we have QUIC addresses, we don't want to dial WebTransport addresses.
-// It's better to have a native QUIC connection.
-// Note that this is a hack. The correct solution would be a proper
-// Happy-Eyeballs-style dialing.
-func maybeRemoveWebTransportAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	var hasQuic, hasWebTransport bool
-	for _, addr := range addrs {
-		if _, isQuic := quicVersion(addr); isQuic {
-			hasQuic = true
-		}
-		if isWebTransport(addr) {
-			hasWebTransport = true
-		}
+	port, err := a.ValueForProtocol(p)
+	if err != nil {
+		return netip.AddrPort{}, err
 	}
-	if !hasWebTransport || !hasQuic {
-		return addrs
+	pi, err := strconv.Atoi(port)
+	if err != nil {
+		return netip.AddrPort{}, err
 	}
-	var c int
-	for _, addr := range addrs {
-		if isWebTransport(addr) {
-			continue
-		}
-		addrs[c] = addr
-		c++
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return netip.AddrPort{}, fmt.Errorf("failed to parse IP %s", ip)
 	}
-	return addrs[:c]
-}
-
-// If we have QUIC V1 addresses, we don't want to dial QUIC draft29 addresses.
-// This is a similar hack to the above. If we add one more hack like this, let's
-// define a `Filterer` interface like the `Resolver` interface that transports
-// can optionally implement if they want to filter the multiaddrs.
-//
-// This mutates the input
-func maybeRemoveQUICDraft29(addrs []ma.Multiaddr) []ma.Multiaddr {
-	var hasQuicV1, hasQuicDraft29 bool
-	for _, addr := range addrs {
-		v, isQuic := quicVersion(addr)
-		if !isQuic {
-			continue
-		}
-
-		if v == quic.Version1 {
-			hasQuicV1 = true
-		}
-		if v == quic.VersionDraft29 {
-			hasQuicDraft29 = true
-		}
-	}
-	if !hasQuicDraft29 || !hasQuicV1 {
-		return addrs
-	}
-	var c int
-	for _, addr := range addrs {
-		if v, isQuic := quicVersion(addr); isQuic && v == quic.VersionDraft29 {
-			continue
-		}
-		addrs[c] = addr
-		c++
-	}
-	return addrs[:c]
+	return netip.AddrPortFrom(addr, uint16(pi)), nil
 }

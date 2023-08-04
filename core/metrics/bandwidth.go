@@ -36,7 +36,7 @@ func (bwc *BandwidthCounter) LogSentMessage(size int64) {
 }
 
 // LogRecvMessage records the size of an incoming message
-// without associating the bandwith to a specific peer or protocol.
+// without associating the bandwidth to a specific peer or protocol.
 func (bwc *BandwidthCounter) LogRecvMessage(size int64) {
 	bwc.totalIn.Mark(uint64(size))
 }
@@ -70,7 +70,7 @@ func (bwc *BandwidthCounter) GetBandwidthForPeer(p peer.ID) (out Stats) {
 }
 
 // GetBandwidthForProtocol returns a Stats struct with bandwidth metrics associated with the given protocol.ID.
-// The metrics returned include all traffic sent / recieved for the protocol, regardless of which peers were
+// The metrics returned include all traffic sent / received for the protocol, regardless of which peers were
 // involved.
 func (bwc *BandwidthCounter) GetBandwidthForProtocol(proto protocol.ID) (out Stats) {
 	inSnap := bwc.protocolIn.Get(string(proto)).Snapshot()
@@ -84,7 +84,7 @@ func (bwc *BandwidthCounter) GetBandwidthForProtocol(proto protocol.ID) (out Sta
 	}
 }
 
-// GetBandwidthTotals returns a Stats struct with bandwidth metrics for all data sent / recieved by the
+// GetBandwidthTotals returns a Stats struct with bandwidth metrics for all data sent / received by the
 // local peer, regardless of protocol or remote peer IDs.
 func (bwc *BandwidthCounter) GetBandwidthTotals() (out Stats) {
 	inSnap := bwc.totalIn.Snapshot()

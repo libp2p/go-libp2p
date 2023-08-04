@@ -1,7 +1,7 @@
 # Protocol Multiplexing using rpc-style protobufs with libp2p
 
 This example shows how to use protobufs to encode and transmit information between libp2p hosts using libp2p Streams.
-This example expects that you are already familiar with the [echo example](https://github.com/libp2p/go-libp2p-examples/tree/master/echo).
+This example expects that you are already familiar with the [echo example](https://github.com/libp2p/go-libp2p/tree/master/examples/echo).
 
 ## Build
 

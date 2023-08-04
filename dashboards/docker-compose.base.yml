@@ -1,0 +1,28 @@
+version: "3.7"
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./dashboard.yml:/etc/grafana/provisioning/dashboards/main.yml
+      - ./datasources.yml:/etc/grafana/provisioning/datasources/prom.yml
+      - ./autonat/autonat.json:/var/lib/grafana/dashboards/autonat.json
+      - ./autorelay/autorelay.json:/var/lib/grafana/dashboards/autorelay.json
+      - ./eventbus/eventbus.json:/var/lib/grafana/dashboards/eventbus.json
+      - ./holepunch/holepunch.json:/var/lib/grafana/dashboards/holepunch.json
+      - ./identify/identify.json:/var/lib/grafana/dashboards/identify.json
+      - ./relaysvc/relaysvc.json:/var/lib/grafana/dashboards/relaysvc.json
+      - ./swarm/swarm.json:/var/lib/grafana/dashboards/swarm.json

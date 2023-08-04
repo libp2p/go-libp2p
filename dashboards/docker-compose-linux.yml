@@ -1,0 +1,12 @@
+version: "3.7"
+services:
+  prometheus:
+    network_mode: "host"
+    extra_hosts:
+      # define a host.docker.internal alias, so we can use the same prometheus.yml on Linux and macOS
+      - "host.docker.internal:127.0.0.1"
+  grafana:
+    network_mode: "host"
+    extra_hosts:
+      # define a prometheus alias, so we can use the same datasources.yml on Linux and macOS
+      - "prometheus:127.0.0.1"

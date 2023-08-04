@@ -5,6 +5,7 @@
 package nat
 
 import (
+	context "context"
 	net "net"
 	reflect "reflect"
 	time "time"
@@ -36,32 +37,32 @@ func (m *MockNAT) EXPECT() *MockNATMockRecorder {
 }
 
 // AddPortMapping mocks base method.
-func (m *MockNAT) AddPortMapping(arg0 string, arg1 int, arg2 string, arg3 time.Duration) (int, error) {
+func (m *MockNAT) AddPortMapping(arg0 context.Context, arg1 string, arg2 int, arg3 string, arg4 time.Duration) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddPortMapping", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "AddPortMapping", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddPortMapping indicates an expected call of AddPortMapping.
-func (mr *MockNATMockRecorder) AddPortMapping(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockNATMockRecorder) AddPortMapping(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddPortMapping", reflect.TypeOf((*MockNAT)(nil).AddPortMapping), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddPortMapping", reflect.TypeOf((*MockNAT)(nil).AddPortMapping), arg0, arg1, arg2, arg3, arg4)
 }
 
 // DeletePortMapping mocks base method.
-func (m *MockNAT) DeletePortMapping(arg0 string, arg1 int) error {
+func (m *MockNAT) DeletePortMapping(arg0 context.Context, arg1 string, arg2 int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeletePortMapping", arg0, arg1)
+	ret := m.ctrl.Call(m, "DeletePortMapping", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeletePortMapping indicates an expected call of DeletePortMapping.
-func (mr *MockNATMockRecorder) DeletePortMapping(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockNATMockRecorder) DeletePortMapping(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortMapping", reflect.TypeOf((*MockNAT)(nil).DeletePortMapping), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortMapping", reflect.TypeOf((*MockNAT)(nil).DeletePortMapping), arg0, arg1, arg2)
 }
 
 // GetDeviceAddress mocks base method.

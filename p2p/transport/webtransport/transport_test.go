@@ -220,14 +220,13 @@ func TestCanDial(t *testing.T) {
 func TestListenAddrValidity(t *testing.T) {
 	valid := []ma.Multiaddr{
 		ma.StringCast("/ip6/::/udp/0/quic-v1/webtransport/"),
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/"),
 	}
 
 	invalid := []ma.Multiaddr{
-		ma.StringCast("/ip4/127.0.0.1/udp/1234"),              // missing webtransport
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/webtransport"), // missing quic
-		ma.StringCast("/ip4/127.0.0.1/tcp/1234/webtransport"), // WebTransport over TCP? Is this a joke?
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/" + randomMultihash(t)),
+		ma.StringCast("/ip4/127.0.0.1/udp/0"),                                                     // missing webtransport
+		ma.StringCast("/ip4/127.0.0.1/udp/0/webtransport"),                                        // missing quic
+		ma.StringCast("/ip4/127.0.0.1/tcp/0/webtransport"),                                        // WebTransport over TCP? Is this a joke?
+		ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport/certhash/" + randomMultihash(t)), // We can't listen on a specific certhash
 	}
 
 	_, key := newIdentity(t)
@@ -669,7 +668,7 @@ func serverSendsBackValidCert(t *testing.T, timeSinceUnixEpoch time.Duration, ke
 	require.NoError(t, err)
 	defer l.Close()
 
-	conn, err := quic.DialAddr(l.Addr().String(), &tls.Config{
+	conn, err := quic.DialAddr(context.Background(), l.Addr().String(), &tls.Config{
 		NextProtos:         []string{http3.NextProtoH3},
 		InsecureSkipVerify: true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {

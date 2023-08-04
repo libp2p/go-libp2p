@@ -26,7 +26,7 @@ var logger = log.Logger("rendezvous")
 func handleStream(stream network.Stream) {
 	logger.Info("Got a new stream!")
 
-	// Create a buffer stream for non blocking read and write.
+	// Create a buffer stream for non-blocking read and write.
 	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
 	go readData(rw)

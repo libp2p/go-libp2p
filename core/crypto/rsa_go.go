@@ -14,12 +14,12 @@ import (
 	"github.com/minio/sha256-simd"
 )
 
-// RsaPrivateKey is an rsa private key
+// RsaPrivateKey is a rsa private key
 type RsaPrivateKey struct {
 	sk rsa.PrivateKey
 }
 
-// RsaPublicKey is an rsa public key
+// RsaPublicKey is a rsa public key
 type RsaPublicKey struct {
 	k rsa.PublicKey
 
@@ -30,6 +30,9 @@ type RsaPublicKey struct {
 func GenerateRSAKeyPair(bits int, src io.Reader) (PrivKey, PubKey, error) {
 	if bits < MinRsaKeyBits {
 		return nil, nil, ErrRsaKeyTooSmall
+	}
+	if bits > maxRsaKeyBits {
+		return nil, nil, ErrRsaKeyTooBig
 	}
 	priv, err := rsa.GenerateKey(src, bits)
 	if err != nil {
@@ -68,7 +71,7 @@ func (pk *RsaPublicKey) Raw() (res []byte, err error) {
 
 // Equals checks whether this key is equal to another
 func (pk *RsaPublicKey) Equals(k Key) bool {
-	// make sure this is an rsa public key
+	// make sure this is a rsa public key
 	other, ok := (k).(*RsaPublicKey)
 	if !ok {
 		return basicEquals(pk, k)
@@ -101,7 +104,7 @@ func (sk *RsaPrivateKey) Raw() (res []byte, err error) {
 
 // Equals checks whether this key is equal to another
 func (sk *RsaPrivateKey) Equals(k Key) bool {
-	// make sure this is an rsa public key
+	// make sure this is a rsa public key
 	other, ok := (k).(*RsaPrivateKey)
 	if !ok {
 		return basicEquals(sk, k)
@@ -124,6 +127,9 @@ func UnmarshalRsaPrivateKey(b []byte) (key PrivKey, err error) {
 	if sk.N.BitLen() < MinRsaKeyBits {
 		return nil, ErrRsaKeyTooSmall
 	}
+	if sk.N.BitLen() > maxRsaKeyBits {
+		return nil, ErrRsaKeyTooBig
+	}
 	return &RsaPrivateKey{sk: *sk}, nil
 }
 
@@ -140,6 +146,9 @@ func UnmarshalRsaPublicKey(b []byte) (key PubKey, err error) {
 	}
 	if pk.N.BitLen() < MinRsaKeyBits {
 		return nil, ErrRsaKeyTooSmall
+	}
+	if pk.N.BitLen() > maxRsaKeyBits {
+		return nil, ErrRsaKeyTooBig
 	}
 
 	return &RsaPublicKey{k: *pk}, nil

@@ -75,7 +75,7 @@ register [Notifee interface](https://godoc.org/github.com/libp2p/go-libp2p/p2p/d
 Finally we open stream to the peers we found, as we find them
 
 ```go
-	peer := <-peerChan // will block untill we discover a peer
+	peer := <-peerChan // will block until we discover a peer
 	fmt.Println("Found peer:", peer, ", connecting")
 
 	if err := host.Connect(ctx, peer); err != nil {

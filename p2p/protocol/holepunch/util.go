@@ -55,6 +55,15 @@ func addrsFromBytes(bzs [][]byte) []ma.Multiaddr {
 	return addrs
 }
 
+func getDirectConnection(h host.Host, p peer.ID) network.Conn {
+	for _, c := range h.Network().ConnsToPeer(p) {
+		if !isRelayAddress(c.RemoteMultiaddr()) {
+			return c
+		}
+	}
+	return nil
+}
+
 func holePunchConnect(ctx context.Context, host host.Host, pi peer.AddrInfo, isClient bool) error {
 	holePunchCtx := network.WithSimultaneousConnect(ctx, isClient, "hole-punching")
 	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")

@@ -21,6 +21,7 @@ import (
 // and tries to obtain port mappings for those.
 type NATManager interface {
 	GetMapping(ma.Multiaddr) ma.Multiaddr
+	HasDiscoveredNAT() bool
 	io.Closer
 }
 
@@ -35,8 +36,8 @@ type entry struct {
 }
 
 type nat interface {
-	AddMapping(protocol string, port int) error
-	RemoveMapping(protocol string, port int) error
+	AddMapping(ctx context.Context, protocol string, port int) error
+	RemoveMapping(ctx context.Context, protocol string, port int) error
 	GetMapping(protocol string, port int) (netip.AddrPort, bool)
 	io.Closer
 }
@@ -60,6 +61,7 @@ type natManager struct {
 	tracked map[entry]bool // the bool is only used in doSync and has no meaning outside of that function
 
 	refCount  sync.WaitGroup
+	ctx       context.Context
 	ctxCancel context.CancelFunc
 }
 
@@ -68,6 +70,7 @@ func newNATManager(net network.Network) *natManager {
 	nmgr := &natManager{
 		net:       net,
 		syncFlag:  make(chan struct{}, 1),
+		ctx:       ctx,
 		ctxCancel: cancel,
 		tracked:   make(map[entry]bool),
 	}
@@ -82,6 +85,12 @@ func (nmgr *natManager) Close() error {
 	nmgr.ctxCancel()
 	nmgr.refCount.Wait()
 	return nil
+}
+
+func (nmgr *natManager) HasDiscoveredNAT() bool {
+	nmgr.natMx.RLock()
+	defer nmgr.natMx.RUnlock()
+	return nmgr.nat != nil
 }
 
 func (nmgr *natManager) background(ctx context.Context) {
@@ -192,14 +201,14 @@ func (nmgr *natManager) doSync() {
 	// Close old mappings
 	for e, v := range nmgr.tracked {
 		if !v {
-			nmgr.nat.RemoveMapping(e.protocol, e.port)
+			nmgr.nat.RemoveMapping(nmgr.ctx, e.protocol, e.port)
 			delete(nmgr.tracked, e)
 		}
 	}
 
 	// Create new mappings.
 	for _, e := range newAddresses {
-		if err := nmgr.nat.AddMapping(e.protocol, e.port); err != nil {
+		if err := nmgr.nat.AddMapping(nmgr.ctx, e.protocol, e.port); err != nil {
 			log.Errorf("failed to port-map %s port %d: %s", e.protocol, e.port, err)
 		}
 		nmgr.tracked[e] = false

@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -571,6 +572,28 @@ func PrometheusRegisterer(reg prometheus.Registerer) Option {
 			return errors.New("registerer cannot be nil")
 		}
 		cfg.PrometheusRegisterer = reg
+		return nil
+	}
+}
+
+// DialRanker configures libp2p to use d as the dial ranker. To enable smart
+// dialing use `swarm.DefaultDialRanker`. use `swarm.NoDelayDialRanker` to
+// disable smart dialing.
+// Deprecated: use SwarmOpts(swarm.WithDialRanker(d)) instead
+func DialRanker(d network.DialRanker) Option {
+	return func(cfg *Config) error {
+		if cfg.DialRanker != nil {
+			return errors.New("dial ranker already configured")
+		}
+		cfg.DialRanker = d
+		return nil
+	}
+}
+
+// SwarmOpts configures libp2p to use swarm with opts
+func SwarmOpts(opts ...swarm.Option) Option {
+	return func(cfg *Config) error {
+		cfg.SwarmOpts = opts
 		return nil
 	}
 }

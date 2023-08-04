@@ -4,18 +4,18 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/require"
 )
@@ -26,12 +26,12 @@ func checkClosed(t *testing.T, cm *ConnManager) {
 			continue
 		}
 		r.mutex.Lock()
-		for _, conn := range r.globalListeners {
-			require.Zero(t, conn.GetCount())
+		for _, tr := range r.globalListeners {
+			require.Zero(t, tr.GetCount())
 		}
-		for _, conns := range r.unicast {
-			for _, conn := range conns {
-				require.Zero(t, conn.GetCount())
+		for _, trs := range r.unicast {
+			for _, tr := range trs {
+				require.Zero(t, tr.GetCount())
 			}
 		}
 		r.mutex.Unlock()
@@ -92,91 +92,85 @@ func testListenOnSameProto(t *testing.T, enableReuseport bool) {
 // The conn passed to quic-go should be a conn that quic-go can be
 // type-asserted to a UDPConn. That way, it can use all kinds of optimizations.
 func TestConnectionPassedToQUICForListening(t *testing.T) {
-	origQuicListen := quicListen
-	t.Cleanup(func() { quicListen = origQuicListen })
-
-	var conn net.PacketConn
-	quicListen = func(c net.PacketConn, _ *tls.Config, _ *quic.Config) (quic.Listener, error) {
-		conn = c
-		return nil, errors.New("listen error")
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows. Windows doesn't support these optimizations")
 	}
-
 	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)
 	defer cm.Close()
 
-	_, err = cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{"proto"}}, nil)
-	require.EqualError(t, err, "listen error")
-	require.NotNil(t, conn)
-	defer conn.Close()
-	if _, ok := conn.(quic.OOBCapablePacketConn); !ok {
+	raddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
+
+	naddr, _, err := FromQuicMultiaddr(raddr)
+	require.NoError(t, err)
+	netw, _, err := manet.DialArgs(raddr)
+	require.NoError(t, err)
+
+	_, err = cm.ListenQUIC(raddr, &tls.Config{NextProtos: []string{"proto"}}, nil)
+	require.NoError(t, err)
+	quicTr, err := cm.transportForListen(netw, naddr)
+	require.NoError(t, err)
+	defer quicTr.Close()
+	if _, ok := quicTr.(*singleOwnerTransport).Transport.Conn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }
 
-type mockFailAcceptListener struct {
-	addr net.Addr
-}
-
-// Accept implements quic.Listener
-func (l *mockFailAcceptListener) Accept(context.Context) (quic.Connection, error) {
-	return nil, fmt.Errorf("Some error")
-}
-
-// Addr implements quic.Listener
-func (l *mockFailAcceptListener) Addr() net.Addr {
-	return l.addr
-}
-
-// Close implements quic.Listener
-func (l *mockFailAcceptListener) Close() error {
-	return nil
-}
-
-var _ quic.Listener = &mockFailAcceptListener{}
-
 func TestAcceptErrorGetCleanedUp(t *testing.T) {
-	origQuicListen := quicListen
-	t.Cleanup(func() { quicListen = origQuicListen })
-
-	quicListen = func(c net.PacketConn, _ *tls.Config, _ *quic.Config) (quic.Listener, error) {
-		return &mockFailAcceptListener{
-			addr: c.LocalAddr(),
-		}, nil
-	}
+	raddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
 
 	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)
 	defer cm.Close()
 
-	l, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{"proto"}}, nil)
+	originalNumberOfGoroutines := runtime.NumGoroutine()
+	t.Log("num goroutines:", originalNumberOfGoroutines)
+
+	// This spawns a background goroutine for the listener
+	l, err := cm.ListenQUIC(raddr, &tls.Config{NextProtos: []string{"proto"}}, nil)
 	require.NoError(t, err)
-	defer l.Close()
-	_, err = l.Accept(context.Background())
-	require.ErrorIs(t, err, transport.ErrListenerClosed)
+
+	// We spawned a goroutine for the listener
+	require.Greater(t, runtime.NumGoroutine(), originalNumberOfGoroutines)
+	l.Close()
+
+	// Now make sure we have less goroutines than before
+	// Manually doing the same as require.Eventually, except avoiding adding a goroutine
+	goRoutinesCleanedUp := false
+	for i := 0; i < 50; i++ {
+		t.Log("num goroutines:", runtime.NumGoroutine())
+		if runtime.NumGoroutine() <= originalNumberOfGoroutines {
+			goRoutinesCleanedUp = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	require.True(t, goRoutinesCleanedUp, "goroutines were not cleaned up")
 }
 
 // The connection passed to quic-go needs to be type-assertable to a net.UDPConn,
 // in order to enable features like batch processing and ECN.
 func TestConnectionPassedToQUICForDialing(t *testing.T) {
-	origQuicDialContext := quicDialContext
-	defer func() { quicDialContext = origQuicDialContext }()
-
-	var conn net.PacketConn
-	quicDialContext = func(_ context.Context, c net.PacketConn, _ net.Addr, _ string, _ *tls.Config, _ *quic.Config) (quic.Connection, error) {
-		conn = c
-		return nil, errors.New("dial error")
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows. Windows doesn't support these optimizations")
 	}
-
 	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)
 	defer cm.Close()
 
-	_, err = cm.DialQUIC(context.Background(), ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1"), &tls.Config{}, nil)
-	require.EqualError(t, err, "dial error")
-	require.NotNil(t, conn)
-	defer conn.Close()
-	if _, ok := conn.(quic.OOBCapablePacketConn); !ok {
+	raddr := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
+
+	naddr, _, err := FromQuicMultiaddr(raddr)
+	require.NoError(t, err)
+	netw, _, err := manet.DialArgs(raddr)
+	require.NoError(t, err)
+
+	quicTr, err := cm.TransportForDial(netw, naddr)
+
+	require.NoError(t, err, "dial error")
+	defer quicTr.Close()
+	if _, ok := quicTr.(*singleOwnerTransport).Transport.Conn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }
@@ -210,7 +204,7 @@ func connectWithProtocol(t *testing.T, addr net.Addr, alpn string) (peer.ID, err
 	cconn, err := net.ListenUDP("udp4", nil)
 	tlsConf.NextProtos = []string{alpn}
 	require.NoError(t, err)
-	c, err := quic.Dial(cconn, addr, "localhost", tlsConf, nil)
+	c, err := quic.Dial(context.Background(), cconn, addr, tlsConf, nil)
 	if err != nil {
 		return "", err
 	}

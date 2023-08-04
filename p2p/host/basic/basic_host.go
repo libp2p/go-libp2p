@@ -1,13 +1,11 @@
 package basichost
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"sort"
 	"sync"
 	"time"
 
@@ -253,6 +251,12 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}
 
 	if opts.EnableHolePunching {
+		if opts.EnableMetrics {
+			hpOpts := []holepunch.Option{
+				holepunch.WithMetricsTracer(holepunch.NewMetricsTracer(holepunch.WithRegisterer(opts.PrometheusRegisterer)))}
+			opts.HolePunchingOptions = append(hpOpts, opts.HolePunchingOptions...)
+
+		}
 		h.hps, err = holepunch.NewService(h, h.ids, opts.HolePunchingOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
@@ -587,11 +591,10 @@ func (h *BasicHost) EventBus() event.Bus {
 //
 //	host.Mux().SetHandler(proto, handler)
 //
-// (Threadsafe)
+// (Thread-safe)
 func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
 	h.Mux().AddHandler(pid, func(p protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
-		is.SetProtocol(p)
 		handler(is)
 		return nil
 	})
@@ -605,7 +608,6 @@ func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHand
 func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(protocol.ID) bool, handler network.StreamHandler) {
 	h.Mux().AddHandlerWithFunc(pid, m, func(p protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
-		is.SetProtocol(p)
 		handler(is)
 		return nil
 	})
@@ -625,11 +627,8 @@ func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
 // NewStream opens a new stream to given peer p, and writes a p2p/protocol
 // header with given protocol.ID. If there is no connection to p, attempts
 // to create one. If ProtocolID is "", writes no header.
-// (Threadsafe)
+// (Thread-safe)
 func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error) {
-	// Ensure we have a connection, with peer addresses resolved by the routing system (#207)
-	// It is not sufficient to let the underlying host connect, it will most likely not have
-	// any addresses for the peer without any prior connections.
 	// If the caller wants to prevent the host from dialing, it should use the NoDial option.
 	if nodial, _ := network.GetNoDial(ctx); !nodial {
 		err := h.Connect(ctx, peer.AddrInfo{ID: p})
@@ -645,7 +644,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		if errors.Is(err, network.ErrNoConn) {
 			return nil, errors.New("connection failed")
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 
 	// Wait for any in-progress identifies on the connection to finish. This
@@ -657,7 +656,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	case <-h.ids.IdentifyWait(s.Conn()):
 	case <-ctx.Done():
 		_ = s.Reset()
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("identify failed to complete: %w", ctx.Err())
 	}
 
 	pref, err := h.preferredProtocol(p, pids)
@@ -686,13 +685,13 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	case err = <-errCh:
 		if err != nil {
 			s.Reset()
-			return nil, err
+			return nil, fmt.Errorf("failed to negotiate protocol: %w", err)
 		}
 	case <-ctx.Done():
 		s.Reset()
 		// wait for `SelectOneOf` to error out because of resetting the stream.
 		<-errCh
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("failed to negotiate protocol: %w", ctx.Err())
 	}
 
 	s.SetProtocol(selected)
@@ -738,7 +737,7 @@ func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 	log.Debugf("host %s dialing %s", h.ID(), p)
 	c, err := h.Network().DialPeer(ctx, p)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to dial: %w", err)
 	}
 
 	// TODO: Consider removing this? On one hand, it's nice because we can
@@ -749,7 +748,7 @@ func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 	select {
 	case <-h.ids.IdentifyWait(c):
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("identify failed to complete: %w", ctx.Err())
 	}
 
 	log.Debugf("host %s finished dialing %s", h.ID(), p)
@@ -815,26 +814,6 @@ func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	return addr
 }
 
-// dedupAddrs deduplicates addresses in place, leave only unique addresses.
-// It doesn't allocate.
-func dedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	if len(addrs) == 0 {
-		return addrs
-	}
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
-	idx := 1
-	for i := 1; i < len(addrs); i++ {
-		if !addrs[i-1].Equal(addrs[i]) {
-			addrs[idx] = addrs[i]
-			idx++
-		}
-	}
-	for i := idx; i < len(addrs); i++ {
-		addrs[i] = nil
-	}
-	return addrs[:idx]
-}
-
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
@@ -859,13 +838,12 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		finalAddrs = append(finalAddrs, resolved...)
 	}
 
-	finalAddrs = dedupAddrs(finalAddrs)
+	finalAddrs = ma.Unique(finalAddrs)
 
-	// natmgr is nil if we do not use nat option;
-	if h.natmgr != nil {
+	// use nat mappings if we have them
+	if h.natmgr != nil && h.natmgr.HasDiscoveredNAT() {
 		// We have successfully mapped ports on our NAT. Use those
 		// instead of observed addresses (mostly).
-
 		// Next, apply this mapping to our addresses.
 		for _, listen := range listenAddrs {
 			extMaddr := h.natmgr.GetMapping(listen)
@@ -929,7 +907,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		}
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
-	finalAddrs = dedupAddrs(finalAddrs)
+	finalAddrs = ma.Unique(finalAddrs)
 	finalAddrs = inferWebtransportAddrsFromQuic(finalAddrs)
 
 	return finalAddrs

@@ -30,12 +30,12 @@ type conn struct {
 	transport *transport
 	session   *webtransport.Session
 
-	scope network.ConnScope
+	scope network.ConnManagementScope
 }
 
 var _ tpt.CapableConn = &conn{}
 
-func newConn(tr *transport, sess *webtransport.Session, sconn *connSecurityMultiaddrs, scope network.ConnScope) *conn {
+func newConn(tr *transport, sess *webtransport.Session, sconn *connSecurityMultiaddrs, scope network.ConnManagementScope) *conn {
 	return &conn{
 		connSecurityMultiaddrs: sconn,
 		transport:              tr,
@@ -68,6 +68,7 @@ func (c *conn) allowWindowIncrease(size uint64) bool {
 // It must be called even if the peer closed the connection in order for
 // garbage collection to properly work in this package.
 func (c *conn) Close() error {
+	c.scope.Done()
 	c.transport.removeConn(c.session)
 	return c.session.CloseWithError(0, "")
 }

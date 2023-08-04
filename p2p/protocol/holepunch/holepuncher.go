@@ -101,10 +101,8 @@ func (hp *holePuncher) DirectConnect(p peer.ID) error {
 
 func (hp *holePuncher) directConnect(rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
-	for _, c := range hp.host.Network().ConnsToPeer(rp) {
-		if !isRelayAddress(c.RemoteMultiaddr()) {
-			return nil
-		}
+	if getDirectConnection(hp.host, rp) != nil {
+		return nil
 	}
 
 	// short-circuit hole punching if a direct dial works.
@@ -133,8 +131,8 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	log.Debugw("got inbound proxy conn", "peer", rp)
 
 	// hole punch
-	for i := 0; i < maxRetries; i++ {
-		addrs, rtt, err := hp.initiateHolePunch(rp)
+	for i := 1; i <= maxRetries; i++ {
+		addrs, obsAddrs, rtt, err := hp.initiateHolePunch(rp)
 		if err != nil {
 			log.Debugw("hole punching failed", "peer", rp, "error", err)
 			hp.tracer.ProtocolError(rp, err)
@@ -159,11 +157,15 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			hp.tracer.EndHolePunch(rp, dt, err)
 			if err == nil {
 				log.Debugw("hole punching with successful", "peer", rp, "time", dt)
+				hp.tracer.HolePunchFinished("initiator", i, addrs, obsAddrs, getDirectConnection(hp.host, rp))
 				return nil
 			}
 		case <-hp.ctx.Done():
 			timer.Stop()
 			return hp.ctx.Err()
+		}
+		if i == maxRetries {
+			hp.tracer.HolePunchFinished("initiator", maxRetries, addrs, obsAddrs, nil)
 		}
 	}
 	return fmt.Errorf("all retries for hole punch with peer %s failed", rp)
@@ -171,32 +173,32 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 
 // initiateHolePunch opens a new hole punching coordination stream,
 // exchanges the addresses and measures the RTT.
-func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, time.Duration, error) {
+func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multiaddr, time.Duration, error) {
 	hpCtx := network.WithUseTransient(hp.ctx, "hole-punch")
 	sCtx := network.WithNoDial(hpCtx, "hole-punch")
 
 	str, err := hp.host.NewStream(sCtx, rp, Protocol)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to open hole-punching stream: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to open hole-punching stream: %w", err)
 	}
 	defer str.Close()
 
-	addr, rtt, err := hp.initiateHolePunchImpl(str)
+	addr, obsAddr, rtt, err := hp.initiateHolePunchImpl(str)
 	if err != nil {
 		log.Debugf("%s", err)
 		str.Reset()
-		return addr, rtt, err
+		return addr, obsAddr, rtt, err
 	}
-	return addr, rtt, err
+	return addr, obsAddr, rtt, err
 }
 
-func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr, time.Duration, error) {
+func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr, []ma.Multiaddr, time.Duration, error) {
 	if err := str.Scope().SetService(ServiceName); err != nil {
-		return nil, 0, fmt.Errorf("error attaching stream to holepunch service: %s", err)
+		return nil, nil, 0, fmt.Errorf("error attaching stream to holepunch service: %s", err)
 	}
 
 	if err := str.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
-		return nil, 0, fmt.Errorf("error reserving memory for stream: %s", err)
+		return nil, nil, 0, fmt.Errorf("error reserving memory for stream: %s", err)
 	}
 	defer str.Scope().ReleaseMemory(maxMsgSize)
 
@@ -211,7 +213,7 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 		obsAddrs = hp.filter.FilterLocal(str.Conn().RemotePeer(), obsAddrs)
 	}
 	if len(obsAddrs) == 0 {
-		return nil, 0, errors.New("aborting hole punch initiation as we have no public address")
+		return nil, nil, 0, errors.New("aborting hole punch initiation as we have no public address")
 	}
 
 	start := time.Now()
@@ -220,17 +222,17 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 		ObsAddrs: addrsToBytes(obsAddrs),
 	}); err != nil {
 		str.Reset()
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 
 	// wait for a CONNECT message from the remote peer
 	var msg pb.HolePunch
 	if err := rd.ReadMsg(&msg); err != nil {
-		return nil, 0, fmt.Errorf("failed to read CONNECT message from remote peer: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to read CONNECT message from remote peer: %w", err)
 	}
 	rtt := time.Since(start)
 	if t := msg.GetType(); t != pb.HolePunch_CONNECT {
-		return nil, 0, fmt.Errorf("expect CONNECT message, got %s", t)
+		return nil, nil, 0, fmt.Errorf("expect CONNECT message, got %s", t)
 	}
 
 	addrs := removeRelayAddrs(addrsFromBytes(msg.ObsAddrs))
@@ -239,13 +241,13 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	}
 
 	if len(addrs) == 0 {
-		return nil, 0, errors.New("didn't receive any public addresses in CONNECT")
+		return nil, nil, 0, errors.New("didn't receive any public addresses in CONNECT")
 	}
 
 	if err := w.WriteMsg(&pb.HolePunch{Type: pb.HolePunch_SYNC.Enum()}); err != nil {
-		return nil, 0, fmt.Errorf("failed to send SYNC message for hole punching: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to send SYNC message for hole punching: %w", err)
 	}
-	return addrs, rtt, nil
+	return addrs, obsAddrs, rtt, nil
 }
 
 func (hp *holePuncher) Close() error {

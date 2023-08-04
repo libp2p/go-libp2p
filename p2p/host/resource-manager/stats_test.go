@@ -1,19 +1,17 @@
-package obs_test
+package rcmgr
 
 import (
 	"sync"
 	"testing"
 	"time"
 
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	"github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 var registerOnce sync.Once
 
 func TestTraceReporterStartAndClose(t *testing.T) {
-	rcmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(obs.StatsTraceReporter{}))
+	rcmgr, err := NewResourceManager(NewFixedLimiter(DefaultLimits.AutoScale()), WithTraceReporter(StatsTraceReporter{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,18 +19,18 @@ func TestTraceReporterStartAndClose(t *testing.T) {
 }
 
 func TestConsumeEvent(t *testing.T) {
-	evt := rcmgr.TraceEvt{
-		Type:     rcmgr.TraceBlockAddStreamEvt,
+	evt := TraceEvt{
+		Type:     TraceBlockAddStreamEvt,
 		Name:     "conn-1",
 		DeltaOut: 1,
 		Time:     time.Now().Format(time.RFC3339Nano),
 	}
 
 	registerOnce.Do(func() {
-		obs.MustRegisterWith(prometheus.DefaultRegisterer)
+		MustRegisterWith(prometheus.DefaultRegisterer)
 	})
 
-	str, err := obs.NewStatsTraceReporter()
+	str, err := NewStatsTraceReporter()
 	if err != nil {
 		t.Fatal(err)
 	}

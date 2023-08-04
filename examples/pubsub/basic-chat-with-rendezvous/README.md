@@ -23,10 +23,10 @@ go build .
 ./chat
 ```
 
-To change the topic name, use the `-topic` flag:
+To change the topic name, use the `-topicName` flag:
 
 ```shell
-go run . -topic=adifferenttopic
+go run . -topicName=adifferenttopic
 ```
 
 Try opening several terminals, each running the app. When you type a message and hit enter in one, it

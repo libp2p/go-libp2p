@@ -47,7 +47,7 @@ type Host interface {
 	// SetStreamHandler sets the protocol handler on the Host's Mux.
 	// This is equivalent to:
 	//   host.Mux().SetHandler(proto, handler)
-	// (Threadsafe)
+	// (Thread-safe)
 	SetStreamHandler(pid protocol.ID, handler network.StreamHandler)
 
 	// SetStreamHandlerMatch sets the protocol handler on the Host's Mux
@@ -61,7 +61,7 @@ type Host interface {
 	// NewStream opens a new stream to given peer p, and writes a p2p/protocol
 	// header with given ProtocolID. If there is no connection to p, attempts
 	// to create one. If ProtocolID is "", writes no header.
-	// (Threadsafe)
+	// (Thread-safe)
 	NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error)
 
 	// Close shuts down the host, its Network, and services.

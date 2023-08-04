@@ -104,7 +104,7 @@ func PublishQueryEvent(ctx context.Context, ev *QueryEvent) {
 }
 
 // SubscribesToQueryEvents returns true if the context subscribes to query
-// events. If this function returns falls, calling `PublishQueryEvent` on the
+// events. If this function returns false, calling `PublishQueryEvent` on the
 // context will be a no-op.
 func SubscribesToQueryEvents(ctx context.Context) bool {
 	return ctx.Value(routingQueryKey{}) != nil

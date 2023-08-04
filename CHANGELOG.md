@@ -1,4 +1,5 @@
 # Table Of Contents <!-- omit in toc -->
+- [v0.28.0](#v0280)
 - [v0.27.0](#v0270)
 - [v0.26.4](#v0264)
 - [v0.26.3](#v0263)
@@ -7,6 +8,73 @@
 - [v0.26.0](#v0260)
 - [v0.25.1](#v0251)
 - [v0.25.0](#v0250)
+
+# [v0.28.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.28.0)
+
+## 🔦 Highlights <!-- omit in toc -->
+
+### Smart Dialing <!-- omit in toc -->
+
+This release introduces smart dialing logic. Currently, libp2p dials all addresses of a remote peer in parallel, and
+aborts all outstanding dials as soon as the first one succeeds.
+Dialing many addresses in parallel creates a lot of churn on the client side, and unnecessary load on the network and
+on the server side, and is heavily discouraged by the networking community (see [RFC 8305](https://www.rfc-editor.org/rfc/rfc8305) for example).
+
+When connecting to a peer we first determine the order to dial its addresses. This ranking logic considers a number of corner cases
+described in detail in the documentation of the swarm package (`swarm.DefaultDialRanker`).
+At a high level, this is what happens:
+* If a peer offers a WebTransport and a QUIC address (on the same IP:port), the QUIC address is preferred.
+* If a peer has a QUIC and a TCP address, the QUIC address is dialed first. Only if the connection attempt doesn't succeed within 250ms, a TCP connection is started.
+
+Our measurements on the IPFS network show that for >90% of established libp2p connections, the first connection attempt succeeds,
+leading a dramatic decrease in the number of aborted connection attempts.
+
+We also added new metrics to the swarm Grafana dashboard, showing:
+* The number of connection attempts it took to establish a connection
+* The delay introduced by the ranking logic
+
+This feature should be safe to enable for nodes running in data centers and for most nodes in home networks.
+However, there are some (mostly home and corporate networks) that block all UDP traffic. If enabled, the current implementation
+of the smart dialing logic will lead to a regression, since it preferes QUIC addresses over TCP addresses. Nodes would still be
+able to connect, but connection establishment of the TCP connection would be delayed by 250ms.
+
+In a future release (see #1605 for details), we will introduce a feature called blackhole detection. By observing the outcome of
+QUIC connection attempts, we can determine if UDP traffic is blocked (namely, if all QUIC connection attempts fail), and stop
+dialing QUIC in this case altogether. Once this detection logic is in place, smart dialing will be enabled by default.
+
+### More Metrics! <!-- omit in toc -->
+Since the last release, we've added metrics for:
+* [Holepunching](https://github.com/libp2p/go-libp2p/pull/2246)
+* Smart Dialing (see above)
+
+### WebTransport <!-- omit in toc -->
+* [#2251](https://github.com/libp2p/go-libp2p/pull/2251): Infer public WebTransport address from `quic-v1` addresses if both transports are using the same port for both quic-v1 and WebTransport addresses.
+* [#2271](https://github.com/libp2p/go-libp2p/pull/2271): Only add certificate hashes to WebTransport mulitaddress if listening on WebTransport
+
+## Housekeeping updates <!-- omit in toc -->
+* Identify
+  * [#2303](https://github.com/libp2p/go-libp2p/pull/2303): Don't send default protocol version
+  * Prevent polluting PeerStore with local addrs
+    * [#2325](https://github.com/libp2p/go-libp2p/pull/2325): Don't save signed peer records
+    * [#2300](https://github.com/libp2p/go-libp2p/pull/2300): Filter received addresses based on the node's remote address
+* WebSocket
+  * [#2280](https://github.com/libp2p/go-libp2p/pull/2280): Reverted back to the Gorilla library for WebSocket
+* NAT
+  * [#2248](https://github.com/libp2p/go-libp2p/pull/2248): Move NAT mapping logic out of the host
+
+## 🐞 Bugfixes <!-- omit in toc -->
+* Identify
+  * [Reject signed peer records on peer ID mismatch](https://github.com/libp2p/go-libp2p/commit/8d771355b41297623e05b04a865d029a2522a074)
+  * [#2299](https://github.com/libp2p/go-libp2p/pull/2299): Avoid spuriously pushing updates
+* Swarm
+  * [#2322](https://github.com/libp2p/go-libp2p/pull/2322): Dedup addresses to dial
+  * [#2284](https://github.com/libp2p/go-libp2p/pull/2284): Change maps with multiaddress keys to use strings
+* QUIC
+  * [#2262](https://github.com/libp2p/go-libp2p/pull/2262): Prioritize listen connections for reuse
+  * [#2276](https://github.com/libp2p/go-libp2p/pull/2276): Don't panic when quic-go's accept call errors
+  * [#2263](https://github.com/libp2p/go-libp2p/pull/2263): Fix race condition when generating random holepunch packet
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.27.0...v0.28.0
 
 # [v0.27.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.27.0)
 
@@ -82,7 +150,7 @@ Since the last release, we've added additional metrics to different components.
 Metrics were added to:
 * [AutoNat](https://github.com/libp2p/go-libp2p/pull/2086): Current Reachability Status and Confidence, Client and Server DialResponses, Server DialRejections. The dashboard is [available here](https://github.com/libp2p/go-libp2p/blob/master/dashboards/autonat/autonat.json).
 * Swarm:
-  - [Early Muxer Selection](https://github.com/libp2p/go-libp2p/pull/2119): Added early_muxer label indicating whether a connection was established using early muxer selection. 
+  - [Early Muxer Selection](https://github.com/libp2p/go-libp2p/pull/2119): Added early_muxer label indicating whether a connection was established using early muxer selection.
   - [IP Version](https://github.com/libp2p/go-libp2p/pull/2114): Added ip_version label to connection metrics
 * Identify:
   - Metrics for Identify, IdentifyPush, PushesTriggered (https://github.com/libp2p/go-libp2p/pull/2069)
@@ -127,8 +195,8 @@ Fix some test-utils used by https://github.com/libp2p/go-libp2p-kad-dht
 ### Metrics <!-- omit in toc -->
 
 We've started instrumenting the entire stack. In this release, we're adding metrics for:
-* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in use: (https://github.com/libp2p/go-libp2p/blob/master/p2p/net/swarm/grafana-dashboards/swarm.json)
-* the event bus: tracking how different events are propagated through the stack and to external consumers (https://github.com/libp2p/go-libp2p/blob/master/p2p/host/eventbus/grafana-dashboards/eventbus.json)
+* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in use: (https://github.com/libp2p/go-libp2p/blob/master/dashboards/swarm/swarm.json)
+* the event bus: tracking how different events are propagated through the stack and to external consumers (https://github.com/libp2p/go-libp2p/blob/master/dashboards/eventbus/eventbus.json)
 
 Our metrics effort is still ongoing, see https://github.com/libp2p/go-libp2p/issues/1356 for progress. We'll add metrics and dashboards for more libp2p components in a future release.
 
@@ -155,7 +223,7 @@ We therefore concluded that it's safe to drop this code path altogether, and the
 * Introduces a new `ResourceLimits` type which uses `LimitVal` instead of ints so it can encode the above for the resources.
 * Changes `LimitConfig` to `PartialLimitConfig` and uses `ResourceLimits`. This along with the marshalling changes means you can now marshal the fact that some resource limit is set to block all.
   * Because the default is to use the defaults, this avoids the footgun of initializing the resource manager with 0 limits (that would block everything).
-  
+
 In general, you can go from a resource config with defaults to a concrete one with `.Build()`. e.g. `ResourceLimits.Build() => BaseLimit`, `PartialLimitConfig.Build() => ConcreteLimitConfig`, `LimitVal.Build() => int`. See PR #2000 for more details.
 
 If you're using the defaults for the resource manager, there should be no changes needed.

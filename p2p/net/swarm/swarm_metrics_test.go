@@ -78,6 +78,9 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		ma.StringCast("/ip4/1.2.3.4/udp/2345"),
 	}
 
+	bhfNames := []string{"udp", "ipv6", "tcp", "icmp"}
+	bhfState := []blackHoleState{blackHoleStateAllowed, blackHoleStateBlocked}
+
 	tests := map[string]func(){
 		"OpenedConnection": func() {
 			mt.OpenedConnection(randItem(directions), randItem(keys), randItem(connections), randItem(addrs))
@@ -88,7 +91,17 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		"CompletedHandshake": func() {
 			mt.CompletedHandshake(time.Duration(mrand.Intn(100))*time.Second, randItem(connections), randItem(addrs))
 		},
-		"FailedDialing": func() { mt.FailedDialing(randItem(addrs), randItem(errors)) },
+		"FailedDialing":    func() { mt.FailedDialing(randItem(addrs), randItem(errors)) },
+		"DialCompleted":    func() { mt.DialCompleted(mrand.Intn(2) == 1, mrand.Intn(10)) },
+		"DialRankingDelay": func() { mt.DialRankingDelay(time.Duration(mrand.Intn(1e10))) },
+		"UpdatedBlackHoleFilterState": func() {
+			mt.UpdatedBlackHoleFilterState(
+				randItem(bhfNames),
+				randItem(bhfState),
+				mrand.Intn(100),
+				mrand.Float64(),
+			)
+		},
 	}
 
 	for method, f := range tests {
