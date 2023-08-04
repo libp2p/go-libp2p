@@ -93,7 +93,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "HTTP preferred",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.HTTPHost) http.RoundTripper {
-				rt, err := clientHTTPHost.NewRoundTripper(clientStreamHost, peer.AddrInfo{
+				rt, err := clientHTTPHost.NewRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: serverMultiaddrs,
 				}, libp2phttp.RoundTripperPreferHTTPTransport)
@@ -104,7 +104,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "HTTP first",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.HTTPHost) http.RoundTripper {
-				rt, err := clientHTTPHost.NewRoundTripper(clientStreamHost, peer.AddrInfo{
+				rt, err := clientHTTPHost.NewRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHTTPAddr, serverHost.Addrs()[0]},
 				})
@@ -115,7 +115,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "No HTTP transport",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.HTTPHost) http.RoundTripper {
-				rt, err := clientHTTPHost.NewRoundTripper(clientStreamHost, peer.AddrInfo{
+				rt, err := clientHTTPHost.NewRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHost.Addrs()[0]},
 				})
@@ -127,7 +127,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "Stream transport first",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.HTTPHost) http.RoundTripper {
-				rt, err := clientHTTPHost.NewRoundTripper(clientStreamHost, peer.AddrInfo{
+				rt, err := clientHTTPHost.NewRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHost.Addrs()[0], serverHTTPAddr},
 				})
@@ -143,7 +143,7 @@ func TestRoundTrippers(t *testing.T) {
 					ID:    serverHost.ID(),
 					Addrs: serverHost.Addrs(),
 				})
-				rt, err := clientHTTPHost.NewRoundTripper(clientStreamHost, peer.AddrInfo{
+				rt, err := clientHTTPHost.NewRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHTTPAddr, serverHost.Addrs()[0]},
 				})
@@ -157,14 +157,14 @@ func TestRoundTrippers(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Start client
-			clientHost, err := libp2p.New(libp2p.NoListenAddrs)
+			clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs)
 			require.NoError(t, err)
-			defer clientHost.Close()
+			defer clientStreamHost.Close()
 
-			clientHttpHost, err := libp2phttp.New()
+			clientHttpHost, err := libp2phttp.New(libp2phttp.StreamHost(clientStreamHost))
 			require.NoError(t, err)
 
-			rt := tc.setupRoundTripper(t, clientHost, clientHttpHost)
+			rt := tc.setupRoundTripper(t, clientStreamHost, clientHttpHost)
 			if tc.expectStreamRoundTripper {
 				// Hack to get the private type of this roundtripper
 				typ := reflect.TypeOf(rt).String()
@@ -242,7 +242,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 			do: func(t *testing.T, request *http.Request) (*http.Response, error) {
 				clientHttpHost, err := libp2phttp.New()
 				require.NoError(t, err)
-				rt, err := clientHttpHost.NewRoundTripper(nil, peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
+				rt, err := clientHttpHost.NewRoundTripper(peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
 				require.NoError(t, err)
 
 				client := &http.Client{Transport: rt}
@@ -251,7 +251,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 			getWellKnown: func(t *testing.T) (libp2phttp.WellKnownProtoMap, error) {
 				clientHttpHost, err := libp2phttp.New()
 				require.NoError(t, err)
-				rt, err := clientHttpHost.NewRoundTripper(nil, peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
+				rt, err := clientHttpHost.NewRoundTripper(peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
 				require.NoError(t, err)
 				return clientHttpHost.GetAndStorePeerProtoMap(rt, "")
 			},

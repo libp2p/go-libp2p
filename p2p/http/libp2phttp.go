@@ -234,6 +234,10 @@ func (h *HTTPHost) Serve() error {
 
 		// get resolved port
 		_, port, err := net.SplitHostPort(l.Addr().String())
+		if err != nil {
+			closeAllListeners()
+			return err
+		}
 
 		var listenAddr ma.Multiaddr
 		if parsedAddr.useHTTPS && parsedAddr.sni != "" && parsedAddr.sni != host {
@@ -430,8 +434,8 @@ func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p proto
 }
 
 // NamespacedClient returns an http.Client that is scoped to the given protocol on the given server.
-func (h *HTTPHost) NamespacedClient(streamHost host.Host, p protocol.ID, server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.Client, error) {
-	rt, err := h.NewRoundTripper(streamHost, server, opts...)
+func (h *HTTPHost) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.Client, error) {
+	rt, err := h.NewRoundTripper(server, opts...)
 	if err != nil {
 		return http.Client{}, err
 	}
@@ -454,7 +458,7 @@ type RoundTripperOptsFn func(o roundTripperOpts) roundTripperOpts
 // NewRoundTripper returns an http.RoundTripper that can fulfill and HTTP
 // request to the given server. It may use an HTTP transport or a stream based
 // transport. It is valid to pass an empty server.ID and a nil streamHost.
-func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.RoundTripper, error) {
+func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.RoundTripper, error) {
 	options := roundTripperOpts{}
 	for _, o := range opts {
 		options = o(options)
@@ -498,8 +502,8 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 
 	// Do we have an existing connection to this peer?
 	existingStreamConn := false
-	if server.ID != "" && streamHost != nil {
-		existingStreamConn = len(streamHost.Network().ConnsToPeer(server.ID)) > 0
+	if server.ID != "" && h.streamHost != nil {
+		existingStreamConn = len(h.streamHost.Network().ConnsToPeer(server.ID)) > 0
 	}
 
 	if len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
@@ -532,20 +536,20 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 	}
 
 	// Otherwise use a stream based transport
-	if streamHost == nil {
+	if h.streamHost == nil {
 		return nil, fmt.Errorf("no http addresses for peer, and no stream host provided")
 	}
 	if !existingStreamConn {
 		if server.ID == "" {
 			return nil, fmt.Errorf("no http addresses for peer, and no server peer ID provided")
 		}
-		err := streamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHttpAddrs})
+		err := h.streamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHttpAddrs})
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to peer: %w", err)
 		}
 	}
 
-	return NewStreamRoundTripper(streamHost, server.ID), nil
+	return NewStreamRoundTripper(h.streamHost, server.ID), nil
 }
 
 type httpMultiaddr struct {
