@@ -26,11 +26,7 @@ func TestHTTPOverStreams(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	streamListener, err := libp2phttp.StreamHostListen(serverHost)
-	require.NoError(t, err)
-	defer streamListener.Close()
-
-	httpHost, err := libp2phttp.New()
+	httpHost, err := libp2phttp.New(libp2phttp.StreamHost(serverHost))
 	require.NoError(t, err)
 
 	httpHost.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +34,8 @@ func TestHTTPOverStreams(t *testing.T) {
 	}))
 
 	// Start server
-	go httpHost.Serve(streamListener)
+	go httpHost.Serve()
+	defer httpHost.Close()
 
 	// Start client
 	clientHost, err := libp2p.New(libp2p.NoListenAddrs)
@@ -72,7 +69,9 @@ func TestRoundTrippers(t *testing.T) {
 	require.NoError(t, err)
 	defer streamListener.Close()
 
-	httpHost, err := libp2phttp.New()
+	httpHost, err := libp2phttp.New(
+		libp2phttp.StreamHost(serverHost),
+		libp2phttp.ListenAddrs([]ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")}))
 	require.NoError(t, err)
 
 	httpHost.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,17 +79,11 @@ func TestRoundTrippers(t *testing.T) {
 	}))
 
 	// Start stream based server
-	go httpHost.Serve(streamListener)
-	// Start HTTP transport based server
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	go httpHost.Serve(l)
+	go httpHost.Serve()
+	defer httpHost.Close()
 
-	serverHTTPAddrParts := strings.Split(l.Addr().String(), ":")
-	require.Equal(t, 2, len(serverHTTPAddrParts))
-	serverHTTPAddr := ma.StringCast("/ip4/" + serverHTTPAddrParts[0] + "/tcp/" + serverHTTPAddrParts[1] + "/http")
-	serverMultiaddrs := serverHost.Addrs()
-	serverMultiaddrs = append(serverMultiaddrs, serverHTTPAddr)
+	serverMultiaddrs := httpHost.Addrs()
+	serverHTTPAddr := serverMultiaddrs[1]
 
 	testCases := []struct {
 		name                     string

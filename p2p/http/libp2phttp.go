@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -106,6 +107,17 @@ type HTTPHost struct {
 	httpRoundTripper *http.Transport
 	recentHTTPAddrs  *lru.Cache[peer.ID, httpAddr]
 	peerMetadata     *lru.Cache[peer.ID, WellKnownProtoMap]
+	streamHost       host.Host // may be nil
+	httpTransport    *httpTransport
+}
+
+type httpTransport struct {
+	requestedListenAddrs []ma.Multiaddr
+	listenAddrs          []ma.Multiaddr
+	tlsConfig            *tls.Config
+	listeners            []net.Listener
+	closeListeners       chan struct{}
+	waitingForListeners  chan struct{}
 }
 
 type httpAddr struct {
@@ -113,16 +125,6 @@ type httpAddr struct {
 	scheme string
 	sni    string
 	rt     http.RoundTripper // optional, if this needed its own transport
-}
-
-type HTTPHostOption func(*HTTPHost) error
-
-// WithTLSClientConfig sets the TLS client config for the native HTTP transport.
-func WithTLSClientConfig(tlsConfig *tls.Config) HTTPHostOption {
-	return func(h *HTTPHost) error {
-		h.httpRoundTripper.TLSClientConfig = tlsConfig
-		return nil
-	}
 }
 
 // New creates a new HTTPHost. Use HTTPHost.Serve to start serving HTTP requests (both over libp2p streams and HTTP transport).
@@ -146,6 +148,10 @@ func New(opts ...HTTPHostOption) (*HTTPHost, error) {
 		httpRoundTripper: httpRoundTripper,
 		recentHTTPAddrs:  recentHTTP,
 		peerMetadata:     peerMetadata,
+		httpTransport: &httpTransport{
+			closeListeners:      make(chan struct{}),
+			waitingForListeners: make(chan struct{}),
+		},
 	}
 	h.rootHandler.Handle("/.well-known/libp2p", &h.wk)
 	for _, opt := range opts {
@@ -158,18 +164,130 @@ func New(opts ...HTTPHostOption) (*HTTPHost, error) {
 	return h, nil
 }
 
-// Serve starts serving HTTP requests using the given listener. You may call this method multiple times with different listeners.
-func (h *HTTPHost) Serve(l net.Listener) error {
-	return http.Serve(l, &h.rootHandler)
+func (h *HTTPHost) Addrs() []ma.Multiaddr {
+	<-h.httpTransport.waitingForListeners
+	return h.httpTransport.listenAddrs
 }
 
-// ServeTLS starts serving TLS+HTTP requests using the given listener. You may call this method multiple times with different listeners.
-func (h *HTTPHost) ServeTLS(l net.Listener, c *tls.Config) error {
-	srv := http.Server{
-		Handler:   &h.rootHandler,
-		TLSConfig: c,
+var ErrNoListeners = errors.New("nothing to listen on")
+
+// Serve starts the HTTP transport listeners. Always returns a non-nil error.
+// If there are no listeners, returns ErrNoListeners.
+func (h *HTTPHost) Serve() error {
+	closedWaitingForListeners := false
+	defer func() {
+		if !closedWaitingForListeners {
+			close(h.httpTransport.waitingForListeners)
+		}
+	}()
+
+	if len(h.httpTransport.requestedListenAddrs) == 0 && h.streamHost == nil {
+		return ErrNoListeners
 	}
-	return srv.ServeTLS(l, "", "")
+
+	h.httpTransport.listeners = make([]net.Listener, 0, len(h.httpTransport.requestedListenAddrs)+1) // +1 for stream host
+
+	streamHostAddrsCount := 0
+	if h.streamHost != nil {
+		streamHostAddrsCount = len(h.streamHost.Addrs())
+	}
+	h.httpTransport.listenAddrs = make([]ma.Multiaddr, 0, len(h.httpTransport.requestedListenAddrs)+streamHostAddrsCount)
+
+	errCh := make(chan error)
+
+	if h.streamHost != nil {
+		listener, err := StreamHostListen(h.streamHost)
+		if err != nil {
+			return err
+		}
+		h.httpTransport.listeners = append(h.httpTransport.listeners, listener)
+		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, h.streamHost.Addrs()...)
+
+		go func() {
+			errCh <- http.Serve(listener, &h.rootHandler)
+		}()
+	}
+
+	closeAllListeners := func() {
+		for _, l := range h.httpTransport.listeners {
+			l.Close()
+		}
+	}
+
+	for _, addr := range h.httpTransport.requestedListenAddrs {
+		parsedAddr := parseMultiaddr(addr)
+		// resolve the host
+		ipaddr, err := net.ResolveIPAddr("ip", parsedAddr.host)
+		if err != nil {
+			closeAllListeners()
+			return err
+		}
+
+		host := ipaddr.String()
+		l, err := net.Listen("tcp", host+":"+parsedAddr.port)
+		fmt.Println("HTTPHost.Serve", err)
+		if err != nil {
+			closeAllListeners()
+			return err
+		}
+		h.httpTransport.listeners = append(h.httpTransport.listeners, l)
+
+		// get resolved port
+		_, port, err := net.SplitHostPort(l.Addr().String())
+
+		var listenAddr ma.Multiaddr
+		if parsedAddr.useHTTPS && parsedAddr.sni != "" && parsedAddr.sni != host {
+			listenAddr = ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/%s/http", host, port, parsedAddr.sni))
+		} else {
+			scheme := "http"
+			if parsedAddr.useHTTPS {
+				scheme = "https"
+			}
+			listenAddr = ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%s/%s", host, port, scheme))
+
+		}
+
+		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
+
+		if parsedAddr.useHTTPS {
+			go func() {
+				srv := http.Server{
+					Handler:   &h.rootHandler,
+					TLSConfig: h.httpTransport.tlsConfig,
+				}
+				errCh <- srv.ServeTLS(l, "", "")
+			}()
+		} else {
+			go func() {
+				errCh <- http.Serve(l, &h.rootHandler)
+			}()
+		}
+	}
+
+	close(h.httpTransport.waitingForListeners)
+	closedWaitingForListeners = true
+
+	expectedErrCount := len(h.httpTransport.listeners)
+	var err error
+	select {
+	case <-h.httpTransport.closeListeners:
+	case err = <-errCh:
+		expectedErrCount--
+	}
+
+	// Close all listeners
+	closeAllListeners()
+	for i := 0; i < expectedErrCount; i++ {
+		<-errCh
+	}
+	close(errCh)
+
+	return err
+}
+
+func (h *HTTPHost) Close() error {
+	close(h.httpTransport.closeListeners)
+	return nil
 }
 
 // SetHttpHandler sets the HTTP handler for a given protocol. Automatically
@@ -385,41 +503,20 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 	}
 
 	if len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
-		var useHTTPS bool
-		var host string
-		var port string
-		var sni string
-
-		ma.ForEach(httpAddrs[0], func(c ma.Component) bool {
-			p := c.Protocol()
-			if p.Code == ma.P_IP4 || p.Code == ma.P_IP6 || p.Code == ma.P_DNS || p.Code == ma.P_DNS4 || p.Code == ma.P_DNS6 {
-				host = c.Value()
-			} else if p.Code == ma.P_TCP || p.Code == ma.P_UDP {
-				port = c.Value()
-			} else if p.Code == ma.P_TLS {
-				useHTTPS = true
-			} else if p.Code == ma.P_SNI {
-				sni = c.Value()
-			}
-
-			return host == "" || port == "" || !useHTTPS || sni == ""
-		})
+		parsed := parseMultiaddr(httpAddrs[0])
 		scheme := "http"
-		if useHTTPS {
+		if parsed.useHTTPS {
 			scheme = "https"
-			if sni == "" {
-				sni = host
-			}
 		}
 
 		rt := h.httpRoundTripper
 		ownRoundtripper := false
-		if sni != host {
+		if parsed.sni != parsed.host {
 			// We have a different host and SNI (e.g. using an IP address but specifying a SNI)
 			// We need to make our own transport to support this.
 			rt = rt.Clone()
 			rt.TLSClientConfig = h.httpRoundTripper.TLSClientConfig.Clone()
-			rt.TLSClientConfig.ServerName = sni
+			rt.TLSClientConfig.ServerName = parsed.sni
 			ownRoundtripper = true
 		}
 
@@ -428,8 +525,8 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 			ownRoundtripper:  ownRoundtripper,
 			httpHost:         h,
 			server:           server.ID,
-			targetServerAddr: host + ":" + port,
-			sni:              sni,
+			targetServerAddr: parsed.host + ":" + parsed.port,
+			sni:              parsed.sni,
 			scheme:           scheme,
 		}, nil
 	}
@@ -449,6 +546,36 @@ func (h *HTTPHost) NewRoundTripper(streamHost host.Host, server peer.AddrInfo, o
 	}
 
 	return NewStreamRoundTripper(streamHost, server.ID), nil
+}
+
+type httpMultiaddr struct {
+	useHTTPS bool
+	host     string
+	port     string
+	sni      string
+}
+
+func parseMultiaddr(addr ma.Multiaddr) httpMultiaddr {
+	out := httpMultiaddr{}
+	ma.ForEach(addr, func(c ma.Component) bool {
+		p := c.Protocol()
+		if p.Code == ma.P_IP4 || p.Code == ma.P_IP6 || p.Code == ma.P_DNS || p.Code == ma.P_DNS4 || p.Code == ma.P_DNS6 {
+			out.host = c.Value()
+		} else if p.Code == ma.P_TCP || p.Code == ma.P_UDP {
+			out.port = c.Value()
+		} else if p.Code == ma.P_TLS {
+			out.useHTTPS = true
+		} else if p.Code == ma.P_SNI {
+			out.sni = c.Value()
+		}
+
+		return out.host == "" || out.port == "" || !out.useHTTPS || out.sni == ""
+	})
+
+	if out.useHTTPS && out.sni == "" {
+		out.sni = out.host
+	}
+	return out
 }
 
 func NewStreamRoundTripper(streamHost host.Host, server peer.ID) http.RoundTripper {
