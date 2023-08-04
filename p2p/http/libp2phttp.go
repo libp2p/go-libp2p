@@ -562,17 +562,17 @@ type httpMultiaddr struct {
 func parseMultiaddr(addr ma.Multiaddr) httpMultiaddr {
 	out := httpMultiaddr{}
 	ma.ForEach(addr, func(c ma.Component) bool {
-		p := c.Protocol()
-		if p.Code == ma.P_IP4 || p.Code == ma.P_IP6 || p.Code == ma.P_DNS || p.Code == ma.P_DNS4 || p.Code == ma.P_DNS6 {
+		switch c.Protocol().Code {
+		case ma.P_IP4, ma.P_IP6, ma.P_DNS, ma.P_DNS4, ma.P_DNS6:
 			out.host = c.Value()
-		} else if p.Code == ma.P_TCP || p.Code == ma.P_UDP {
+		case ma.P_TCP, ma.P_UDP:
 			out.port = c.Value()
-		} else if p.Code == ma.P_TLS {
+		case ma.P_TLS:
 			out.useHTTPS = true
-		} else if p.Code == ma.P_SNI {
+		case ma.P_SNI:
 			out.sni = c.Value()
-		}
 
+		}
 		return out.host == "" || out.port == "" || !out.useHTTPS || out.sni == ""
 	})
 
@@ -645,7 +645,8 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 		bytesRead += n
 		if err == io.EOF {
 			break
-		} else if err != nil {
+		}
+		if err != nil {
 			return nil, err
 		}
 		if bytesRead >= PeerMetadataLimit {
