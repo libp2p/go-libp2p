@@ -662,3 +662,14 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 
 	return meta, nil
 }
+
+// AddPeerMetadata adds a peer's protocol metadata to the http host. Useful if
+// you have out-of-band knowledge of a peer's protocol mapping.
+func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta WellKnownProtoMap) {
+	h.peerMetadata.Add(server, meta)
+}
+
+// RmPeerMetadata removes a peer's protocol metadata from the http host
+func (h *HTTPHost) RmPeerMetadata(server peer.ID, meta WellKnownProtoMap) {
+	h.peerMetadata.Remove(server)
+}
