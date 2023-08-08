@@ -99,10 +99,15 @@ type HTTPHost struct {
 	rootHandler      http.ServeMux
 	wk               WellKnownHandler
 	httpRoundTripper *http.Transport
-	recentHTTPAddrs  *lru.Cache[peer.ID, httpAddr]
-	peerMetadata     *lru.Cache[peer.ID, WellKnownProtoMap]
-	streamHost       host.Host // may be nil
-	httpTransport    *httpTransport
+	// recentHTTPAddrs is an lru cache of recently used HTTP addresses. This
+	// lets us know if we've recently connected to an HTTP endpoint and might
+	// have a warm idle connection for it (managed by the underlying HTTP
+	// roundtripper). In some cases, this lets us reuse our existing custom roundtripper (i.e. SNI != host).
+	recentHTTPAddrs *lru.Cache[peer.ID, httpAddr]
+	// peerMetadata is an lru cache of a peer's well-known protocol map.
+	peerMetadata  *lru.Cache[peer.ID, WellKnownProtoMap]
+	streamHost    host.Host // may be nil
+	httpTransport *httpTransport
 }
 
 type httpTransport struct {
