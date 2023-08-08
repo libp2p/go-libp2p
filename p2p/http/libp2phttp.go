@@ -32,12 +32,6 @@ const PeerMetadataLRUSize = 256   // How many different peer's metadata to keep 
 
 // TODOs:
 // - integrate with the conn gater and resource manager
-// - Support listenAddr option to accept a multiaddr to listen on (could handle h3 as well)
-// - Support withStreamHost option to accept a streamHost to listen on
-
-// Dev notes
-// Would be nice to have an .Addrs method on the httpHost
-// Would be nice to have the httpHost manage the listener (listenAddr option above)
 
 type WellKnownProtocolMeta struct {
 	Path string `json:"path"`
