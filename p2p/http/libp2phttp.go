@@ -31,6 +31,7 @@ const PeerMetadataLimit = 8 << 10 // 8KB
 const PeerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
 
 // TODOs:
+// - Error if we try to connect to a server over an HTTP transport and specify the server ID. We haven't implemented server peer id Auth yet.
 // - integrate with the conn gater and resource manager
 
 type WellKnownProtocolMeta struct {
@@ -472,7 +473,7 @@ type RoundTripperOptsFn func(o roundTripperOpts) roundTripperOpts
 
 // NewRoundTripper returns an http.RoundTripper that can fulfill and HTTP
 // request to the given server. It may use an HTTP transport or a stream based
-// transport. It is valid to pass an empty server.ID and a nil streamHost.
+// transport. It is valid to pass an empty server.ID.
 func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.RoundTripper, error) {
 	options := roundTripperOpts{}
 	for _, o := range opts {
