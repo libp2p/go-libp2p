@@ -31,7 +31,6 @@ const PeerMetadataLimit = 8 << 10 // 8KB
 const PeerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
 
 // TODOs:
-// - Error if we try to connect to a server over an HTTP transport and specify the server ID. We haven't implemented server peer id Auth yet.
 // - integrate with the conn gater and resource manager
 
 type WellKnownProtocolMeta struct {
@@ -125,6 +124,10 @@ type httpAddr struct {
 	scheme string
 	sni    string
 	rt     http.RoundTripper // optional, if this needed its own transport
+	// This is a temporary flag that lets us know if this round tripper can authenticate the server.
+	// Currently HTTP peer ID auth is not implemented, so if this roundtripper
+	// is a native HTTP transport, we can not authenticate the server's peer ID.
+	rtCanAuthenticateServer bool
 }
 
 // New creates a new HTTPHost. Use HTTPHost.Serve to start serving HTTP requests (both over libp2p streams and HTTP transport).
@@ -311,11 +314,6 @@ func (h *HTTPHost) SetHttpHandlerAtPath(p protocol.ID, path string, handler http
 	h.rootHandler.Handle(path, handler)
 }
 
-type roundTripperOpts struct {
-	// todo SkipClientAuth bool
-	preferHTTPTransport bool
-}
-
 type streamRoundTripper struct {
 	server peer.ID
 	h      host.Host
@@ -464,13 +462,6 @@ func (h *HTTPHost) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ..
 	return http.Client{Transport: &nrt}, nil
 }
 
-func RoundTripperPreferHTTPTransport(o roundTripperOpts) roundTripperOpts {
-	o.preferHTTPTransport = true
-	return o
-}
-
-type RoundTripperOptsFn func(o roundTripperOpts) roundTripperOpts
-
 // NewRoundTripper returns an http.RoundTripper that can fulfill and HTTP
 // request to the given server. It may use an HTTP transport or a stream based
 // transport. It is valid to pass an empty server.ID.
@@ -480,8 +471,12 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 		options = o(options)
 	}
 
-	// Do we have a recent HTTP transport connection to this peer?
-	if a, ok := h.recentHTTPAddrs.Get(server.ID); server.ID != "" && ok {
+	if options.ServerMustAuthenticatePeerID && server.ID == "" {
+		return nil, fmt.Errorf("server must authenticate peer ID, but no peer ID provided")
+	}
+
+	// Do we have a recent HTTP transport connection to this peer? And is it compatible with the ServerMustAuthenticate option?
+	if a, ok := h.recentHTTPAddrs.Get(server.ID); server.ID != "" && ok && (!options.ServerMustAuthenticatePeerID || (options.ServerMustAuthenticatePeerID && a.rtCanAuthenticateServer)) {
 		var rt http.RoundTripper = h.httpRoundTripper
 		ownRoundtripper := false
 		if a.rt != nil {
@@ -522,7 +517,8 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 		existingStreamConn = len(h.streamHost.Network().ConnsToPeer(server.ID)) > 0
 	}
 
-	if len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
+	// Currently the HTTP transport can not authenticate peer IDs.
+	if !options.ServerMustAuthenticatePeerID && len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
 		parsed := parseMultiaddr(httpAddrs[0])
 		scheme := "http"
 		if parsed.useHTTPS {
@@ -553,11 +549,11 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 
 	// Otherwise use a stream based transport
 	if h.streamHost == nil {
-		return nil, fmt.Errorf("no http addresses for peer, and no stream host provided")
+		return nil, fmt.Errorf("can not use the HTTP transport (either no address or PeerID auth is required), and no stream host provided")
 	}
 	if !existingStreamConn {
 		if server.ID == "" {
-			return nil, fmt.Errorf("no http addresses for peer, and no server peer ID provided")
+			return nil, fmt.Errorf("can not use the HTTP transport, and no server peer ID provided")
 		}
 		err := h.streamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHttpAddrs})
 		if err != nil {
