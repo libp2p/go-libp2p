@@ -30,6 +30,9 @@ const ProtocolIDForMultistreamSelect = "/http/1.1"
 const PeerMetadataLimit = 8 << 10 // 8KB
 const PeerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
 
+// The scheme we use internally to name a stream based roundtripper. This is only used locally.
+const libp2pStreamScheme = "libp2p-stream"
+
 // TODOs:
 // - integrate with the conn gater and resource manager
 
@@ -92,6 +95,14 @@ func (h *WellKnownHandler) RmProtocolMapping(p protocol.ID, path string) {
 	h.wellknownMapMu.Unlock()
 }
 
+// peerKey is the key used for a peer in the lru cache.
+type peerKey struct {
+	peerID peer.ID
+	addr   string // host:port
+	scheme string
+	sni    string
+}
+
 // HTTPHost is a libp2p host for request/responses with HTTP semantics. This is
 // in contrast to a stream-oriented host like the host.Host interface. Warning,
 // this is experimental. The API will likely change.
@@ -99,13 +110,14 @@ type HTTPHost struct {
 	rootHandler      http.ServeMux
 	wk               WellKnownHandler
 	httpRoundTripper *http.Transport
-	// recentHTTPAddrs is an lru cache of recently used HTTP addresses. This
-	// lets us know if we've recently connected to an HTTP endpoint and might
-	// have a warm idle connection for it (managed by the underlying HTTP
-	// roundtripper). In some cases, this lets us reuse our existing custom roundtripper (i.e. SNI != host).
-	recentHTTPAddrs *lru.Cache[peer.ID, httpAddr]
+	// recentRoundTrippers is an lru cache of recently used roundtrippers for a
+	// peer. This lets us know if we've recently connected to an HTTP endpoint
+	// and might have a warm idle connection for it (managed by the underlying
+	// HTTP roundtripper). In some cases, this lets us reuse our existing custom
+	// roundtripper (i.e. SNI != host).
+	recentRoundTrippers *lru.Cache[peerKey, roundTripperForServer]
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
-	peerMetadata  *lru.Cache[peer.ID, WellKnownProtoMap]
+	peerMetadata  *lru.Cache[peerKey, WellKnownProtoMap]
 	streamHost    host.Host // may be nil
 	httpTransport *httpTransport
 }
@@ -119,11 +131,11 @@ type httpTransport struct {
 	waitingForListeners  chan struct{}
 }
 
-type httpAddr struct {
+type roundTripperForServer struct {
 	addr   string
 	scheme string
 	sni    string
-	rt     http.RoundTripper // optional, if this needed its own transport
+	rt     http.RoundTripper // optional, if nil it's the hosts' http.RoundTripper
 	// This is a temporary flag that lets us know if this round tripper can authenticate the server.
 	// Currently HTTP peer ID auth is not implemented, so if this roundtripper
 	// is a native HTTP transport, we can not authenticate the server's peer ID.
@@ -138,19 +150,19 @@ func New(opts ...HTTPHostOption) (*HTTPHost, error) {
 		recentConnsLimit = 32
 	}
 
-	recentHTTP, err := lru.New[peer.ID, httpAddr](recentConnsLimit)
-	peerMetadata, err2 := lru.New[peer.ID, WellKnownProtoMap](PeerMetadataLRUSize)
+	recentHTTP, err := lru.New[peerKey, roundTripperForServer](recentConnsLimit)
+	peerMetadata, err2 := lru.New[peerKey, WellKnownProtoMap](PeerMetadataLRUSize)
 	if err != nil || err2 != nil {
 		// Only happens if size is < 1. We make sure to not do that, so this should never happen.
 		panic(err)
 	}
 
 	h := &HTTPHost{
-		wk:               WellKnownHandler{},
-		rootHandler:      http.ServeMux{},
-		httpRoundTripper: httpRoundTripper,
-		recentHTTPAddrs:  recentHTTP,
-		peerMetadata:     peerMetadata,
+		wk:                  WellKnownHandler{},
+		rootHandler:         http.ServeMux{},
+		httpRoundTripper:    httpRoundTripper,
+		recentRoundTrippers: recentHTTP,
+		peerMetadata:        peerMetadata,
 		httpTransport: &httpTransport{
 			closeListeners:      make(chan struct{}),
 			waitingForListeners: make(chan struct{}),
@@ -354,6 +366,7 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 }
 
 // roundTripperForSpecificHost is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
+// The underlying RoundTripper MUST be an HTTP Transport.
 type roundTripperForSpecificServer struct {
 	http.RoundTripper
 	ownRoundtripper  bool
@@ -362,6 +375,10 @@ type roundTripperForSpecificServer struct {
 	targetServerAddr string
 	sni              string
 	scheme           string
+	// This is a temporary flag that lets us know if this round tripper can authenticate the server.
+	// Currently HTTP peer ID auth is not implemented, so if this roundtripper
+	// is a native HTTP transport, we can not authenticate the server's peer ID.
+	rtCanAuthenticateServer bool
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -373,12 +390,22 @@ func (rt *roundTripperForSpecificServer) RoundTrip(r *http.Request) (*http.Respo
 	r.URL.Host = rt.targetServerAddr
 	r.Host = rt.sni
 	resp, err := rt.RoundTripper.RoundTrip(r)
-	if err == nil && rt.server != "" {
-		ha := httpAddr{addr: rt.targetServerAddr, scheme: rt.scheme, sni: rt.sni}
+	if err == nil {
+		ha := roundTripperForServer{
+			addr:                    rt.targetServerAddr,
+			scheme:                  rt.scheme,
+			sni:                     rt.sni,
+			rtCanAuthenticateServer: rt.rtCanAuthenticateServer,
+		}
 		if rt.ownRoundtripper {
 			ha.rt = rt.RoundTripper
 		}
-		rt.httpHost.recentHTTPAddrs.Add(rt.server, ha)
+		rt.httpHost.recentRoundTrippers.Add(peerKey{
+			peerID: rt.server,
+			addr:   rt.targetServerAddr,
+			scheme: rt.scheme,
+			sni:    rt.sni,
+		}, ha)
 	}
 	return resp, err
 }
@@ -475,25 +502,6 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 		return nil, fmt.Errorf("server must authenticate peer ID, but no peer ID provided")
 	}
 
-	// Do we have a recent HTTP transport connection to this peer? And is it compatible with the ServerMustAuthenticate option?
-	if a, ok := h.recentHTTPAddrs.Get(server.ID); server.ID != "" && ok && (!options.ServerMustAuthenticatePeerID || (options.ServerMustAuthenticatePeerID && a.rtCanAuthenticateServer)) {
-		var rt http.RoundTripper = h.httpRoundTripper
-		ownRoundtripper := false
-		if a.rt != nil {
-			ownRoundtripper = true
-			rt = a.rt
-		}
-		return &roundTripperForSpecificServer{
-			RoundTripper:     rt,
-			ownRoundtripper:  ownRoundtripper,
-			httpHost:         h,
-			server:           server.ID,
-			targetServerAddr: a.addr,
-			scheme:           a.scheme,
-			sni:              a.sni,
-		}, nil
-	}
-
 	httpAddrs := make([]ma.Multiaddr, 0, 1) // The common case of a single http address
 	nonHttpAddrs := make([]ma.Multiaddr, 0, len(server.Addrs))
 
@@ -501,13 +509,54 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 
 	for i, addr := range server.Addrs {
 		addr, isHttp := normalizeHTTPMultiaddr(addr)
+		var pk peerKey
 		if isHttp {
 			if i == 0 {
 				firstAddrIsHTTP = true
 			}
 			httpAddrs = append(httpAddrs, addr)
+
+			parsed := parseMultiaddr(addr)
+			pk = peerKey{
+				peerID: server.ID,
+				addr:   parsed.host + ":" + parsed.port,
+				scheme: "http",
+				sni:    parsed.sni,
+			}
+			if parsed.useHTTPS {
+				pk.scheme = "https"
+			}
 		} else {
 			nonHttpAddrs = append(nonHttpAddrs, addr)
+
+			pk = peerKey{
+				peerID: server.ID,
+				scheme: libp2pStreamScheme,
+			}
+		}
+
+		// Do we have recentRt recent transport for this peer? and is it compatible with the options?
+		if recentRt, ok := h.recentRoundTrippers.Get(pk); ok && (!options.ServerMustAuthenticatePeerID || (options.ServerMustAuthenticatePeerID && recentRt.rtCanAuthenticateServer)) {
+			var rt http.RoundTripper = h.httpRoundTripper
+			ownRoundtripper := false
+			if recentRt.rt != nil {
+				ownRoundtripper = true
+				rt = recentRt.rt
+			}
+			if recentRt.scheme == libp2pStreamScheme {
+				// This is a stream based roundtripper
+				return rt, nil
+			}
+			return &roundTripperForSpecificServer{
+				RoundTripper:            rt,
+				ownRoundtripper:         ownRoundtripper,
+				httpHost:                h,
+				server:                  server.ID,
+				targetServerAddr:        recentRt.addr,
+				scheme:                  recentRt.scheme,
+				sni:                     recentRt.sni,
+				rtCanAuthenticateServer: recentRt.rtCanAuthenticateServer,
+			}, nil
 		}
 	}
 
