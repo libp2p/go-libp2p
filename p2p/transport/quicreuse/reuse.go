@@ -126,9 +126,10 @@ type reuse struct {
 
 	statelessResetKey *quic.StatelessResetKey
 	metricsTracer     *metricsTracer
+	udpTransport      UDPTransport
 }
 
-func newReuse(srk *quic.StatelessResetKey, mt *metricsTracer) *reuse {
+func newReuse(srk *quic.StatelessResetKey, mt *metricsTracer, tr UDPTransport) *reuse {
 	r := &reuse{
 		unicast:           make(map[string]map[int]*refcountedTransport),
 		globalListeners:   make(map[int]*refcountedTransport),
@@ -137,6 +138,7 @@ func newReuse(srk *quic.StatelessResetKey, mt *metricsTracer) *reuse {
 		gcStopChan:        make(chan struct{}),
 		statelessResetKey: srk,
 		metricsTracer:     mt,
+		udpTransport:      tr,
 	}
 	go r.gc()
 	return r
@@ -314,7 +316,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		}
 	}
 
-	conn, err := listenAndOptimize(network, laddr)
+	conn, err := r.udpTransport.ListenPacket(network, laddr)
 	if err != nil {
 		return nil, err
 	}

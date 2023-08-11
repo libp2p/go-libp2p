@@ -1,7 +1,9 @@
 package testing
 
 import (
+	"context"
 	"crypto/rand"
+	"net"
 	"testing"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"tailscale.com/tstest/natlab"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -38,6 +41,8 @@ type config struct {
 	sk               crypto.PrivKey
 	swarmOpts        []swarm.Option
 	eventBus         event.Bus
+	quicListenAddr   ma.Multiaddr
+	udpTransport     quicreuse.UDPTransport
 	clock
 }
 
@@ -98,6 +103,18 @@ func OptConnGater(cg connmgr.ConnectionGater) Option {
 func OptPeerPrivateKey(sk crypto.PrivKey) Option {
 	return func(_ *testing.T, c *config) {
 		c.sk = sk
+	}
+}
+
+func OptQUICListenAddress(addr ma.Multiaddr) Option {
+	return func(_ *testing.T, c *config) {
+		c.quicListenAddr = addr
+	}
+}
+
+func OptUDPTransport(tr quicreuse.UDPTransport) Option {
+	return func(_ *testing.T, c *config) {
+		c.udpTransport = tr
 	}
 }
 
@@ -175,10 +192,11 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		}
 	}
 	if !cfg.disableQUIC {
-		reuse, err := quicreuse.NewConnManager([32]byte{})
+		reuse, err := quicreuse.NewConnManager([32]byte{}, quicreuse.WithUDPTransport(cfg.udpTransport))
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() { reuse.Close() })
 		quicTransport, err := quic.NewTransport(priv, reuse, nil, cfg.connectionGater, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -187,8 +205,14 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 			t.Fatal(err)
 		}
 		if !cfg.dialOnly {
-			if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic")); err != nil {
-				t.Fatal(err)
+			if cfg.quicListenAddr == nil {
+				if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic")); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := s.Listen(cfg.quicListenAddr); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}
 	}
@@ -196,6 +220,22 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		s.Peerstore().AddAddrs(id, s.ListenAddresses(), peerstore.PermanentAddrTTL)
 	}
 	return s
+}
+
+type udpTransport struct {
+	listenPacket func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
+}
+
+func (u udpTransport) ListenPacket(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+	return u.listenPacket(network, laddr)
+}
+
+func UDPTransport(m *natlab.Machine) quicreuse.UDPTransport {
+	tr := udpTransport{}
+	tr.listenPacket = func(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+		return m.ListenPacket(context.Background(), network, laddr.String())
+	}
+	return tr
 }
 
 // DivulgeAddresses adds swarm a's addresses to swarm b's peerstore.

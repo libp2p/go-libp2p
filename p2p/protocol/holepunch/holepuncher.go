@@ -129,7 +129,6 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	}
 
 	log.Debugw("got inbound proxy conn", "peer", rp)
-
 	// hole punch
 	for i := 1; i <= maxRetries; i++ {
 		addrs, obsAddrs, rtt, err := hp.initiateHolePunch(rp)
@@ -263,14 +262,12 @@ type netNotifiee holePuncher
 
 func (nn *netNotifiee) Connected(_ network.Network, conn network.Conn) {
 	hs := (*holePuncher)(nn)
-
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
 	if conn.Stat().Direction == network.DirInbound && isRelayAddress(conn.RemoteMultiaddr()) {
 		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
-
 			select {
 			// waiting for Identify here will allow us to access the peer's public and observed addresses
 			// that we can dial to for a hole punch.

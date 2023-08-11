@@ -26,8 +26,9 @@ type ConnManager struct {
 	quicListenersMu sync.Mutex
 	quicListeners   map[string]quicListenerEntry
 
-	srk quic.StatelessResetKey
-	mt  *metricsTracer
+	srk          quic.StatelessResetKey
+	mt           *metricsTracer
+	udpTransport UDPTransport
 }
 
 type quicListenerEntry struct {
@@ -67,12 +68,15 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 	if !cm.enableDraft29 {
 		serverConfig.Versions = []quic.VersionNumber{quic.Version1}
 	}
+	if cm.udpTransport == nil {
+		cm.udpTransport = defaultUDPTranport{}
+	}
 
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, cm.mt)
-		cm.reuseUDP6 = newReuse(&statelessResetKey, cm.mt)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, cm.mt, cm.udpTransport)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, cm.mt, cm.udpTransport)
 	}
 	return cm, nil
 }
@@ -244,6 +248,16 @@ func (c *ConnManager) Close() error {
 		return err
 	}
 	return c.reuseUDP4.Close()
+}
+
+type UDPTransport interface {
+	ListenPacket(network string, laddr *net.UDPAddr) (net.PacketConn, error)
+}
+
+type defaultUDPTranport struct{}
+
+func (defaultUDPTranport) ListenPacket(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+	return listenAndOptimize(network, laddr)
 }
 
 // listenAndOptimize same as net.ListenUDP, but also calls quic.OptimizeConn

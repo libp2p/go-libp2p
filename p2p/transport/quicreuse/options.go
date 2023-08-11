@@ -26,3 +26,10 @@ func EnableMetrics() Option {
 		return nil
 	}
 }
+
+func WithUDPTransport(tr UDPTransport) Option {
+	return func(m *ConnManager) error {
+		m.udpTransport = tr
+		return nil
+	}
+}

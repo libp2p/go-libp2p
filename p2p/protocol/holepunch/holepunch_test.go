@@ -2,7 +2,9 @@ package holepunch_test
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -13,12 +15,18 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/p2p/host/autonat"
+	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
+	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	holepunch_pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"tailscale.com/tstest/natlab"
 
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -510,4 +518,236 @@ func mkHostWithHolePunchSvc(t *testing.T, opts ...holepunch.Option) (host.Host, 
 	hps, err := holepunch.NewService(h, newMockIDService(t, h), opts...)
 	require.NoError(t, err)
 	return h, hps
+}
+
+func TestDirectConnect(t *testing.T) {
+	natFactory := NewNatHostFactory(t)
+
+	relay := natFactory.NewPublicHost(t)
+	natHost := natFactory.NewNATHost(t, relay)
+	publicHost := natFactory.NewPublicHost(t)
+	defer func() {
+		publicHost.Close()
+		natHost.Close()
+		relay.Close()
+		natFactory.Close()
+	}()
+	time.Sleep(7 * time.Second) // wait for publicHost to update identify snapshot
+
+	err := publicHost.Connect(context.Background(), peer.AddrInfo{ID: natHost.ID(), Addrs: []ma.Multiaddr{natHost.RelayAddr}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Eventually(t, func() bool {
+		conns := publicHost.Network().ConnsToPeer(natHost.ID())
+		for _, c := range conns {
+			if _, err := c.RemoteMultiaddr().ValueForProtocol(ma.P_CIRCUIT); err != nil {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func TestHolePunch(t *testing.T) {
+	natFactory := NewNatHostFactory(t)
+
+	relay := natFactory.NewPublicHost(t)
+	nh1 := natFactory.NewNATHost(t, relay)
+	nh2 := natFactory.NewNATHost(t, relay)
+	nh3 := natFactory.NewNATHost(t, relay)
+	defer func() {
+		nh3.Close()
+		nh2.Close()
+		nh1.Close()
+		relay.Close()
+		natFactory.Close()
+	}()
+
+	time.Sleep(1 * time.Second) // wait for holepunch service to start
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	err := nh1.Connect(ctx, peer.AddrInfo{ID: nh2.ID(), Addrs: []ma.Multiaddr{nh2.PublicAddr}})
+	if err == nil {
+		t.Fatalf("direct connection should not succeed")
+	}
+	cancel()
+
+	// use a new host(nh3) to ensure firewalls on both sides are blocking inbound packets
+	err = nh1.Connect(context.Background(), peer.AddrInfo{ID: nh3.ID(), Addrs: []ma.Multiaddr{nh3.RelayAddr}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Eventually(t, func() bool {
+		conns := nh1.Network().ConnsToPeer(nh3.ID())
+		for _, c := range conns {
+			if _, err := c.RemoteMultiaddr().ValueForProtocol(ma.P_CIRCUIT); err != nil {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+type NATHostFactory struct {
+	inet      *natlab.Network
+	initHosts []PublicHost
+	hostCnt   int
+	// nextPort is the port allocated to the next host created.
+	// This is required because quic-go doesn't allow two 0.0.0.0 listeners with the same port
+	// even if their underlying packet conns are different.
+	nextPort int
+}
+
+type NATHost struct {
+	host.Host
+	PublicAddr ma.Multiaddr // can only connect by holepunching
+	RelayAddr  ma.Multiaddr
+}
+
+type PublicHost struct {
+	host.Host
+	Addr ma.Multiaddr
+}
+
+func NewNatHostFactory(t *testing.T) *NATHostFactory {
+	inet := &natlab.Network{Prefix4: netip.MustParsePrefix("1.0.0.0/8")}
+	nf := &NATHostFactory{inet: inet, nextPort: 2000}
+	for i := 0; i < 10; i++ {
+		nf.initHosts = append(nf.initHosts, nf.NewPublicHost(t))
+	}
+
+	return nf
+}
+
+func (n *NATHostFactory) Close() {
+	for _, h := range n.initHosts {
+		h.Close()
+	}
+}
+
+func (n *NATHostFactory) NewNATHost(t *testing.T, relay PublicHost) NATHost {
+	hostID := n.hostCnt
+	n.hostCnt++
+
+	lan := &natlab.Network{Name: fmt.Sprintf("LAN-%d", hostID), Prefix4: netip.MustParsePrefix("192.168.0.0/24")}
+
+	nat := &natlab.Machine{Name: fmt.Sprintf("NAT-%d", hostID)}
+	natWAN := nat.Attach("wan", n.inet)
+	natLAN := nat.Attach(fmt.Sprintf("LAN-%d", hostID), lan)
+	nat.PacketHandler = &natlab.SNAT44{
+		Machine:           nat,
+		ExternalInterface: natWAN,
+		Firewall: &natlab.Firewall{
+			TrustedInterface: natLAN,
+		},
+	}
+	lan.SetDefaultGateway(natLAN)
+
+	m := &natlab.Machine{Name: fmt.Sprintf("host-%d", hostID), PacketHandler: &natlab.Firewall{}}
+	m.Attach("eth0", lan)
+	port := n.nextPort
+	n.nextPort++
+	swarm := swarmt.GenSwarm(
+		t,
+		swarmt.OptDisableTCP,
+		swarmt.OptQUICListenAddress(ma.StringCast(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", port))),
+		swarmt.OptUDPTransport(swarmt.UDPTransport(m)),
+	)
+	upgrader := swarmt.GenUpgrader(t, swarm, nil)
+	host, err := basichost.NewHost(swarm, &basichost.HostOpts{EnableRelayService: false, EnableHolePunching: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.AddTransport(host, upgrader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	autonat, err := autonat.New(host, autonat.WithReachability(network.ReachabilityPrivate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	host.SetAutoNat(autonat)
+
+	var ar *autorelay.AutoRelay
+	ar, err = autorelay.NewAutoRelay(host,
+		autorelay.WithStaticRelays([]peer.AddrInfo{{ID: relay.ID(), Addrs: []ma.Multiaddr{relay.Addr}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	arhost := autorelay.NewAutoRelayHost(host, ar)
+
+	host.Start()
+	arhost.Start()
+
+	for _, ph := range n.initHosts {
+		err := arhost.Connect(context.Background(), peer.AddrInfo{ID: ph.ID(), Addrs: []ma.Multiaddr{ph.Addr}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var publicAddr ma.Multiaddr
+	require.Eventually(t, func() bool {
+		for _, a := range host.IDService().OwnObservedAddrs() {
+			if manet.IsPublicAddr(a) {
+				publicAddr = a
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond)
+
+	var relayAddr ma.Multiaddr
+	require.Eventually(t, func() bool {
+		for _, a := range host.Addrs() {
+			if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+				relayAddr = a
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond)
+	return NATHost{Host: arhost, PublicAddr: publicAddr, RelayAddr: relayAddr}
+}
+
+func (n *NATHostFactory) NewPublicHost(t *testing.T) PublicHost {
+	hostID := n.hostCnt
+	n.hostCnt++
+	m := &natlab.Machine{Name: fmt.Sprintf("host-%d", hostID)}
+	mif := m.Attach("eth0", n.inet)
+	port := n.nextPort
+	n.nextPort++
+	swarm := swarmt.GenSwarm(
+		t,
+		swarmt.OptDisableTCP,
+		swarmt.OptQUICListenAddress(ma.StringCast(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", port))),
+		swarmt.OptUDPTransport(swarmt.UDPTransport(m)))
+	host, err := basichost.NewHost(swarm, &basichost.HostOpts{
+		EnableRelayService: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upgrader := swarmt.GenUpgrader(t, swarm, nil)
+	err = client.AddTransport(host, upgrader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	autonat, err := autonat.New(host, autonat.WithReachability(network.ReachabilityPublic))
+	if err != nil {
+		t.Fatal(err)
+	}
+	host.SetAutoNat(autonat)
+	host.Start()
+
+	// connect to some hosts so that Identify Service knows the public address
+	for _, ih := range n.initHosts {
+		err := host.Connect(context.Background(), peer.AddrInfo{ID: ih.ID(), Addrs: []ma.Multiaddr{ih.Addr}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return PublicHost{Host: host, Addr: ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", mif.V4().String(), port))}
 }
