@@ -307,6 +307,4 @@ func TestPlainOldHTTPServer(t *testing.T) {
 	}
 }
 
-// TODO test the recent roundtripper code
-
 // TODO test with tls

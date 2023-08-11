@@ -95,14 +95,6 @@ func (h *WellKnownHandler) RmProtocolMapping(p protocol.ID, path string) {
 	h.wellknownMapMu.Unlock()
 }
 
-// peerKey is the key used for a peer in the lru cache.
-type peerKey struct {
-	peerID peer.ID
-	addr   string // host:port
-	scheme string
-	sni    string
-}
-
 // HTTPHost is a libp2p host for request/responses with HTTP semantics. This is
 // in contrast to a stream-oriented host like the host.Host interface. Warning,
 // this is experimental. The API will likely change.
@@ -110,14 +102,8 @@ type HTTPHost struct {
 	rootHandler      http.ServeMux
 	wk               WellKnownHandler
 	httpRoundTripper *http.Transport
-	// recentRoundTrippers is an lru cache of recently used roundtrippers for a
-	// peer. This lets us know if we've recently connected to an HTTP endpoint
-	// and might have a warm idle connection for it (managed by the underlying
-	// HTTP roundtripper). In some cases, this lets us reuse our existing custom
-	// roundtripper (i.e. SNI != host).
-	recentRoundTrippers *lru.Cache[peerKey, roundTripperForServer]
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
-	peerMetadata  *lru.Cache[peerKey, WellKnownProtoMap]
+	peerMetadata  *lru.Cache[peer.ID, WellKnownProtoMap]
 	streamHost    host.Host // may be nil
 	httpTransport *httpTransport
 }
@@ -131,38 +117,20 @@ type httpTransport struct {
 	waitingForListeners  chan struct{}
 }
 
-type roundTripperForServer struct {
-	addr   string
-	scheme string
-	sni    string
-	rt     http.RoundTripper // optional, if nil it's the hosts' http.RoundTripper
-	// This is a temporary flag that lets us know if this round tripper can authenticate the server.
-	// Currently HTTP peer ID auth is not implemented, so if this roundtripper
-	// is a native HTTP transport, we can not authenticate the server's peer ID.
-	rtCanAuthenticateServer bool
-}
-
 // New creates a new HTTPHost. Use HTTPHost.Serve to start serving HTTP requests (both over libp2p streams and HTTP transport).
 func New(opts ...HTTPHostOption) (*HTTPHost, error) {
 	httpRoundTripper := http.DefaultTransport.(*http.Transport).Clone()
-	recentConnsLimit := httpRoundTripper.MaxIdleConns
-	if recentConnsLimit < 1 {
-		recentConnsLimit = 32
-	}
-
-	recentHTTP, err := lru.New[peerKey, roundTripperForServer](recentConnsLimit)
-	peerMetadata, err2 := lru.New[peerKey, WellKnownProtoMap](PeerMetadataLRUSize)
-	if err != nil || err2 != nil {
+	peerMetadata, err := lru.New[peer.ID, WellKnownProtoMap](PeerMetadataLRUSize)
+	if err != nil {
 		// Only happens if size is < 1. We make sure to not do that, so this should never happen.
 		panic(err)
 	}
 
 	h := &HTTPHost{
-		wk:                  WellKnownHandler{},
-		rootHandler:         http.ServeMux{},
-		httpRoundTripper:    httpRoundTripper,
-		recentRoundTrippers: recentHTTP,
-		peerMetadata:        peerMetadata,
+		wk:               WellKnownHandler{},
+		rootHandler:      http.ServeMux{},
+		httpRoundTripper: httpRoundTripper,
+		peerMetadata:     peerMetadata,
 		httpTransport: &httpTransport{
 			closeListeners:      make(chan struct{}),
 			waitingForListeners: make(chan struct{}),
@@ -326,9 +294,15 @@ func (h *HTTPHost) SetHttpHandlerAtPath(p protocol.ID, path string, handler http
 	h.rootHandler.Handle(path, handler)
 }
 
+// getPeerProtoMap lets RoundTrippers implement a specific way of caching a peer's protocol mapping.
+type getPeerProtoMap interface {
+	GetPeerProtoMap() (WellKnownProtoMap, error)
+}
+
 type streamRoundTripper struct {
-	server peer.ID
-	h      host.Host
+	server   peer.ID
+	h        host.Host
+	httpHost *HTTPHost
 }
 
 type streamReadCloser struct {
@@ -339,6 +313,10 @@ type streamReadCloser struct {
 func (s *streamReadCloser) Close() error {
 	s.s.Close()
 	return s.ReadCloser.Close()
+}
+
+func (rt *streamRoundTripper) GetPeerProtoMap(server peer.ID) (WellKnownProtoMap, error) {
+	return rt.httpHost.GetAndStorePeerProtoMap(rt, rt.server)
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -375,10 +353,30 @@ type roundTripperForSpecificServer struct {
 	targetServerAddr string
 	sni              string
 	scheme           string
-	// This is a temporary flag that lets us know if this round tripper can authenticate the server.
-	// Currently HTTP peer ID auth is not implemented, so if this roundtripper
-	// is a native HTTP transport, we can not authenticate the server's peer ID.
-	rtCanAuthenticateServer bool
+	cachedProtos     WellKnownProtoMap
+}
+
+func (rt *roundTripperForSpecificServer) GetPeerProtoMap() (WellKnownProtoMap, error) {
+	// Do we already have the peer's protocol mapping?
+	if rt.cachedProtos != nil {
+		return rt.cachedProtos, nil
+	}
+
+	// if the underlying roundtripper implements getPeerProtoMap, use that
+	if g, ok := rt.RoundTripper.(getPeerProtoMap); ok {
+		wk, err := g.GetPeerProtoMap()
+		if err == nil {
+			rt.cachedProtos = wk
+			return wk, nil
+		}
+	}
+
+	wk, err := rt.httpHost.GetAndStorePeerProtoMap(rt, rt.server)
+	if err == nil {
+		rt.cachedProtos = wk
+		return wk, nil
+	}
+	return wk, err
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -389,25 +387,7 @@ func (rt *roundTripperForSpecificServer) RoundTrip(r *http.Request) (*http.Respo
 	r.URL.Scheme = rt.scheme
 	r.URL.Host = rt.targetServerAddr
 	r.Host = rt.sni
-	resp, err := rt.RoundTripper.RoundTrip(r)
-	if err == nil {
-		ha := roundTripperForServer{
-			addr:                    rt.targetServerAddr,
-			scheme:                  rt.scheme,
-			sni:                     rt.sni,
-			rtCanAuthenticateServer: rt.rtCanAuthenticateServer,
-		}
-		if rt.ownRoundtripper {
-			ha.rt = rt.RoundTripper
-		}
-		rt.httpHost.recentRoundTrippers.Add(peerKey{
-			peerID: rt.server,
-			addr:   rt.targetServerAddr,
-			scheme: rt.scheme,
-			sni:    rt.sni,
-		}, ha)
-	}
-	return resp, err
+	return rt.RoundTripper.RoundTrip(r)
 }
 
 func (rt *roundTripperForSpecificServer) CloseIdleConnections() {
@@ -430,6 +410,14 @@ type namespacedRoundTripper struct {
 	http.RoundTripper
 	protocolPrefix    string
 	protocolPrefixRaw string
+}
+
+func (rt *namespacedRoundTripper) GetPeerProtoMap() (WellKnownProtoMap, error) {
+	if g, ok := rt.RoundTripper.(getPeerProtoMap); ok {
+		return g.GetPeerProtoMap()
+	}
+
+	return nil, fmt.Errorf("can not get peer protocol map. Inner roundtripper does not implement getPeerProtoMap")
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -474,7 +462,10 @@ func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p proto
 	}, nil
 }
 
-// NamespacedClient returns an http.Client that is scoped to the given protocol on the given server.
+// NamespacedClient returns an http.Client that is scoped to the given protocol
+// on the given server. It creates a new RoundTripper for each call. If you are
+// creating many namespaced clients, consider creating a round tripper directly
+// and namespacing that yourself.
 func (h *HTTPHost) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.Client, error) {
 	rt, err := h.NewRoundTripper(server, opts...)
 	if err != nil {
@@ -509,54 +500,13 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 
 	for i, addr := range server.Addrs {
 		addr, isHttp := normalizeHTTPMultiaddr(addr)
-		var pk peerKey
 		if isHttp {
 			if i == 0 {
 				firstAddrIsHTTP = true
 			}
 			httpAddrs = append(httpAddrs, addr)
-
-			parsed := parseMultiaddr(addr)
-			pk = peerKey{
-				peerID: server.ID,
-				addr:   parsed.host + ":" + parsed.port,
-				scheme: "http",
-				sni:    parsed.sni,
-			}
-			if parsed.useHTTPS {
-				pk.scheme = "https"
-			}
 		} else {
 			nonHttpAddrs = append(nonHttpAddrs, addr)
-
-			pk = peerKey{
-				peerID: server.ID,
-				scheme: libp2pStreamScheme,
-			}
-		}
-
-		// Do we have recentRt recent transport for this peer? and is it compatible with the options?
-		if recentRt, ok := h.recentRoundTrippers.Get(pk); ok && (!options.ServerMustAuthenticatePeerID || (options.ServerMustAuthenticatePeerID && recentRt.rtCanAuthenticateServer)) {
-			var rt http.RoundTripper = h.httpRoundTripper
-			ownRoundtripper := false
-			if recentRt.rt != nil {
-				ownRoundtripper = true
-				rt = recentRt.rt
-			}
-			if recentRt.scheme == libp2pStreamScheme {
-				// This is a stream based roundtripper
-				return rt, nil
-			}
-			return &roundTripperForSpecificServer{
-				RoundTripper:            rt,
-				ownRoundtripper:         ownRoundtripper,
-				httpHost:                h,
-				server:                  server.ID,
-				targetServerAddr:        recentRt.addr,
-				scheme:                  recentRt.scheme,
-				sni:                     recentRt.sni,
-				rtCanAuthenticateServer: recentRt.rtCanAuthenticateServer,
-			}, nil
 		}
 	}
 
@@ -676,7 +626,9 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 	return ma.Join(beforeHTTPS, tlsComponent, httpComponent, afterHTTPS), isHTTPMultiaddr
 }
 
-// ProtocolPathPrefix looks up the protocol path in the well-known mapping and returns it
+// ProtocolPathPrefix looks up the protocol path in the well-known mapping and
+// returns it. Will only store the peer's protocol mapping if the server ID is
+// provided.
 func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, server peer.ID) (WellKnownProtoMap, error) {
 	if meta, ok := h.peerMetadata.Get(server); server != "" && ok {
 		return meta, nil
