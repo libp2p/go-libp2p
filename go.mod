@@ -55,7 +55,7 @@ require (
 	go.uber.org/fx v1.20.0
 	go.uber.org/goleak v1.1.12
 	golang.org/x/crypto v0.11.0
-	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
+	golang.org/x/exp v0.0.0-20230811145659-89c5cff77bcb
 	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.10.0
 	golang.org/x/tools v0.11.0

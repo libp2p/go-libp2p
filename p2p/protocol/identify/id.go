@@ -1,7 +1,6 @@
 package identify
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -556,7 +555,9 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 
 func (ids *idService) updateSnapshot() (updated bool) {
 	addrs := ids.Host.Addrs()
-	slices.SortFunc(addrs, func(a, b ma.Multiaddr) bool { return bytes.Compare(a.Bytes(), b.Bytes()) == -1 })
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int {
+		return len(a.Bytes()) + len(b.Bytes())
+	})
 	protos := ids.Host.Mux().Protocols()
 	slices.Sort(protos)
 	snapshot := identifySnapshot{
