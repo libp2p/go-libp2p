@@ -3,6 +3,17 @@
 This directory contains prebuilt dashboards (provided as JSON files) for various components.
 For steps on how to import and use them [please read the official Grafana documentation.](https://grafana.com/docs/grafana/latest/dashboards/export-import/#import-dashboard)
 
+## Public dashboards
+
+You can check the following prebuilt dashboards in action:
+
+1. [AutoNAT](https://protocollabs.grafana.net/public-dashboards/fce8fdeb629742c89bd70f0ce38dfd97)
+2. [Auto Relay](https://protocollabs.grafana.net/public-dashboards/380d52aded12404e9cf6ceccb824b7f9)
+3. [Eventbus](https://protocollabs.grafana.net/public-dashboards/048029ac2d7e4a71b281ffea3535026e)
+4. [Identify](https://protocollabs.grafana.net/public-dashboards/96b70328253d47c0b352dfae06f12a1b)
+5. [Relay Service](https://protocollabs.grafana.net/public-dashboards/4a8cb5d245294893874ed65279b049be)
+6. [Swarm](https://protocollabs.grafana.net/public-dashboards/2bd3f1bee9964d40b6786fbe3eafd9fc)
+
 ## Using locally
 
 For local development and debugging, it can be useful to spin up a local Prometheus and Grafana instance.
