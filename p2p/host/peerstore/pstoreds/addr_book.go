@@ -14,7 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoreds/pb"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 
-	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/hashicorp/golang-lru/arc/v2"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	logging "github.com/ipfs/go-log/v2"
@@ -202,7 +202,7 @@ func NewAddrBook(ctx context.Context, store ds.Batching, opts Options) (ab *dsAd
 	}
 
 	if opts.CacheSize > 0 {
-		if ab.cache, err = lru.NewARC[peer.ID, *addrsRecord](int(opts.CacheSize)); err != nil {
+		if ab.cache, err = arc.NewARC[peer.ID, *addrsRecord](int(opts.CacheSize)); err != nil {
 			return nil, err
 		}
 	} else {
