@@ -61,7 +61,7 @@ func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method != "GET" {
+	if r.Method != http.MethodGet {
 		http.Error(w, "Only GET requests are supported", http.StatusMethodNotAllowed)
 		return
 	}
