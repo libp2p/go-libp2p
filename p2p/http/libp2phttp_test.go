@@ -52,7 +52,8 @@ func TestHTTPOverStreams(t *testing.T) {
 		Addrs: serverHost.Addrs(),
 	})
 
-	clientRT := libp2phttp.NewStreamRoundTripper(clientHost, serverHost.ID())
+	clientRT, err := (&libp2phttp.HTTPHost{StreamHost: clientHost}).NewRoundTripper(peer.AddrInfo{ID: serverHost.ID()})
+	require.NoError(t, err)
 
 	client := &http.Client{Transport: clientRT}
 
@@ -204,10 +205,10 @@ func TestRoundTrippers(t *testing.T) {
 			}
 
 			// Read the .well-known/libp2p resource
-			wk, err := clientHttpHost.GetAndStorePeerProtoMap(rt, serverHost.ID())
+			wk, err := rt.(libp2phttp.PeerMetadataGetter).GetPeerMetadata()
 			require.NoError(t, err)
 
-			expectedMap := make(libp2phttp.ProtocolMetaMap)
+			expectedMap := make(libp2phttp.PeerMeta)
 			expectedMap["/hello"] = libp2phttp.ProtocolMeta{Path: "/hello/"}
 			require.Equal(t, expectedMap, wk)
 		})
@@ -237,7 +238,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 	testCases := []struct {
 		name         string
 		do           func(*testing.T, *http.Request) (*http.Response, error)
-		getWellKnown func(*testing.T) (libp2phttp.ProtocolMetaMap, error)
+		getWellKnown func(*testing.T) (libp2phttp.PeerMeta, error)
 	}{
 		{
 			name: "using libp2phttp",
@@ -249,11 +250,11 @@ func TestPlainOldHTTPServer(t *testing.T) {
 				client := &http.Client{Transport: rt}
 				return client.Do(request)
 			},
-			getWellKnown: func(t *testing.T) (libp2phttp.ProtocolMetaMap, error) {
+			getWellKnown: func(t *testing.T) (libp2phttp.PeerMeta, error) {
 				var clientHttpHost libp2phttp.HTTPHost
 				rt, err := clientHttpHost.NewRoundTripper(peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
 				require.NoError(t, err)
-				return clientHttpHost.GetAndStorePeerProtoMap(rt, "")
+				return rt.(libp2phttp.PeerMetadataGetter).GetPeerMetadata()
 			},
 		},
 		{
@@ -266,7 +267,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 				client := http.Client{}
 				return client.Do(request)
 			},
-			getWellKnown: func(t *testing.T) (libp2phttp.ProtocolMetaMap, error) {
+			getWellKnown: func(t *testing.T) (libp2phttp.PeerMeta, error) {
 				client := http.Client{}
 				resp, err := client.Get("http://" + l.Addr().String() + "/.well-known/libp2p")
 				require.NoError(t, err)
@@ -274,7 +275,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 				b, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
 
-				var out libp2phttp.ProtocolMetaMap
+				var out libp2phttp.PeerMeta
 				err = json.Unmarshal(b, &out)
 				return out, err
 			},
@@ -300,7 +301,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 			protoMap, err := tc.getWellKnown(t)
 			require.NoError(t, err)
 
-			expectedMap := make(libp2phttp.ProtocolMetaMap)
+			expectedMap := make(libp2phttp.PeerMeta)
 			expectedMap[httpping.PingProtocolID] = libp2phttp.ProtocolMeta{Path: "/ping/"}
 			require.Equal(t, expectedMap, protoMap)
 		})

@@ -1,5 +1,5 @@
 // HTTP semantics with libp2p. Can use a libp2p stream transport or stock HTTP
-// transports. This API is experimental and will likely change soon. Implements libp2p spec #508.
+// transports. This API is experimental and will likely change soon. Implements [libp2p spec #508](https://github.com/libp2p/specs/pull/508).
 package libp2phttp
 
 import (
@@ -42,12 +42,12 @@ type ProtocolMeta struct {
 	Path string `json:"path"`
 }
 
-type ProtocolMetaMap map[protocol.ID]ProtocolMeta
+type PeerMeta map[protocol.ID]ProtocolMeta
 
 // WellKnownHandler is an http.Handler that serves the .well-known/libp2p resource
 type WellKnownHandler struct {
 	wellknownMapMu   sync.Mutex
-	wellKnownMapping ProtocolMetaMap
+	wellKnownMapping PeerMeta
 }
 
 // streamHostListen retuns a net.Listener that listens on libp2p streams for HTTP/1.1 messages.
@@ -121,7 +121,7 @@ type HTTPHost struct {
 
 	wk WellKnownHandler
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
-	peerMetadata *lru.Cache[peer.ID, ProtocolMetaMap]
+	peerMetadata *lru.Cache[peer.ID, PeerMeta]
 	// createHTTPTransport is used to lazily create the httpTransport in a thread-safe way.
 	createHTTPTransport sync.Once
 	httpTransport       *httpTransport
@@ -141,8 +141,8 @@ func newHTTPTransport() *httpTransport {
 	}
 }
 
-func newPeerMetadataCache() *lru.Cache[peer.ID, ProtocolMetaMap] {
-	peerMetadata, err := lru.New[peer.ID, ProtocolMetaMap](peerMetadataLRUSize)
+func newPeerMetadataCache() *lru.Cache[peer.ID, PeerMeta] {
+	peerMetadata, err := lru.New[peer.ID, PeerMeta](peerMetadataLRUSize)
 	if err != nil {
 		// Only happens if size is < 1. We make sure to not do that, so this should never happen.
 		panic(err)
@@ -331,9 +331,9 @@ func (h *HTTPHost) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http
 	h.ServeMux.Handle(path, http.StripPrefix(path, handler))
 }
 
-// getPeerProtoMap lets RoundTrippers implement a specific way of caching a peer's protocol mapping.
-type getPeerProtoMap interface {
-	GetPeerProtoMap() (ProtocolMetaMap, error)
+// PeerMetadataGetter lets RoundTrippers implement a specific way of caching a peer's protocol mapping.
+type PeerMetadataGetter interface {
+	GetPeerMetadata() (PeerMeta, error)
 }
 
 type streamRoundTripper struct {
@@ -352,8 +352,8 @@ func (s *streamReadCloser) Close() error {
 	return s.ReadCloser.Close()
 }
 
-func (rt *streamRoundTripper) GetPeerProtoMap(server peer.ID) (ProtocolMetaMap, error) {
-	return rt.httpHost.GetAndStorePeerProtoMap(rt, rt.server)
+func (rt *streamRoundTripper) GetPeerProtoMap() (PeerMeta, error) {
+	return rt.httpHost.getAndStorePeerMetadata(rt, rt.server)
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -390,25 +390,25 @@ type roundTripperForSpecificServer struct {
 	targetServerAddr string
 	sni              string
 	scheme           string
-	cachedProtos     ProtocolMetaMap
+	cachedProtos     PeerMeta
 }
 
-func (rt *roundTripperForSpecificServer) GetPeerProtoMap() (ProtocolMetaMap, error) {
+func (rt *roundTripperForSpecificServer) GetPeerProtoMap() (PeerMeta, error) {
 	// Do we already have the peer's protocol mapping?
 	if rt.cachedProtos != nil {
 		return rt.cachedProtos, nil
 	}
 
 	// if the underlying roundtripper implements getPeerProtoMap, use that
-	if g, ok := rt.RoundTripper.(getPeerProtoMap); ok {
-		wk, err := g.GetPeerProtoMap()
+	if g, ok := rt.RoundTripper.(PeerMetadataGetter); ok {
+		wk, err := g.GetPeerMetadata()
 		if err == nil {
 			rt.cachedProtos = wk
 			return wk, nil
 		}
 	}
 
-	wk, err := rt.httpHost.GetAndStorePeerProtoMap(rt, rt.server)
+	wk, err := rt.httpHost.getAndStorePeerMetadata(rt, rt.server)
 	if err == nil {
 		rt.cachedProtos = wk
 		return wk, nil
@@ -449,9 +449,9 @@ type namespacedRoundTripper struct {
 	protocolPrefixRaw string
 }
 
-func (rt *namespacedRoundTripper) GetPeerProtoMap() (ProtocolMetaMap, error) {
-	if g, ok := rt.RoundTripper.(getPeerProtoMap); ok {
-		return g.GetPeerProtoMap()
+func (rt *namespacedRoundTripper) GetPeerProtoMap() (PeerMeta, error) {
+	if g, ok := rt.RoundTripper.(PeerMetadataGetter); ok {
+		return g.GetPeerMetadata()
 	}
 
 	return nil, fmt.Errorf("can not get peer protocol map. Inner roundtripper does not implement getPeerProtoMap")
@@ -471,7 +471,7 @@ func (rt *namespacedRoundTripper) RoundTrip(r *http.Request) (*http.Response, er
 
 // NamespaceRoundTripper returns an http.RoundTripper that are scoped to the given protocol on the given server.
 func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p protocol.ID, server peer.ID) (namespacedRoundTripper, error) {
-	protos, err := h.GetAndStorePeerProtoMap(roundtripper, server)
+	protos, err := h.getAndStorePeerMetadata(roundtripper, server)
 	if err != nil {
 		return namespacedRoundTripper{}, err
 	}
@@ -502,8 +502,9 @@ func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p proto
 // NamespacedClient returns an http.Client that is scoped to the given protocol
 // on the given server. It creates a new RoundTripper for each call. If you are
 // creating many namespaced clients, consider creating a round tripper directly
-// and namespacing that yourself.
-func (h *HTTPHost) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.Client, error) {
+// and namespacing the roundripper yourself, then creating clients from the
+// namespace round tripper.
+func (h *HTTPHost) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...roundTripperOptsFn) (http.Client, error) {
 	rt, err := h.NewRoundTripper(server, opts...)
 	if err != nil {
 		return http.Client{}, err
@@ -520,7 +521,7 @@ func (h *HTTPHost) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ..
 // NewRoundTripper returns an http.RoundTripper that can fulfill and HTTP
 // request to the given server. It may use an HTTP transport or a stream based
 // transport. It is valid to pass an empty server.ID.
-func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOptsFn) (http.RoundTripper, error) {
+func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...roundTripperOptsFn) (http.RoundTripper, error) {
 	options := roundTripperOpts{}
 	for _, o := range opts {
 		options = o(options)
@@ -599,7 +600,7 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 		}
 	}
 
-	return NewStreamRoundTripper(h.StreamHost, server.ID), nil
+	return &streamRoundTripper{h: h.StreamHost, server: server.ID, httpHost: h}, nil
 }
 
 type httpMultiaddr struct {
@@ -630,10 +631,6 @@ func parseMultiaddr(addr ma.Multiaddr) httpMultiaddr {
 		out.sni = out.host
 	}
 	return out
-}
-
-func NewStreamRoundTripper(streamHost host.Host, server peer.ID) http.RoundTripper {
-	return &streamRoundTripper{h: streamHost, server: server}
 }
 
 var httpComponent, _ = ma.NewComponent("http", "")
@@ -671,7 +668,8 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 // ProtocolPathPrefix looks up the protocol path in the well-known mapping and
 // returns it. Will only store the peer's protocol mapping if the server ID is
 // provided.
-func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, server peer.ID) (ProtocolMetaMap, error) {
+func (h *HTTPHost) getAndStorePeerMetadata(roundtripper http.RoundTripper, server peer.ID) (PeerMeta, error) {
+	fmt.Println(h)
 	if h.peerMetadata == nil {
 		h.peerMetadata = newPeerMetadataCache()
 	}
@@ -712,7 +710,7 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 		}
 	}
 
-	meta := ProtocolMetaMap{}
+	meta := PeerMeta{}
 	json.Unmarshal(body[:bytesRead], &meta)
 	if server != "" {
 		h.peerMetadata.Add(server, meta)
@@ -723,7 +721,7 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 
 // AddPeerMetadata adds a peer's protocol metadata to the http host. Useful if
 // you have out-of-band knowledge of a peer's protocol mapping.
-func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta ProtocolMetaMap) {
+func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta PeerMeta) {
 	if h.peerMetadata == nil {
 		h.peerMetadata = newPeerMetadataCache()
 	}
@@ -731,7 +729,7 @@ func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta ProtocolMetaMap) {
 }
 
 // GetPeerMetadata gets a peer's cached protocol metadata from the http host.
-func (h *HTTPHost) GetPeerMetadata(server peer.ID) (ProtocolMetaMap, bool) {
+func (h *HTTPHost) GetPeerMetadata(server peer.ID) (PeerMeta, bool) {
 	if h.peerMetadata == nil {
 		return nil, false
 	}
@@ -739,7 +737,7 @@ func (h *HTTPHost) GetPeerMetadata(server peer.ID) (ProtocolMetaMap, bool) {
 }
 
 // RemovePeerMetadata removes a peer's protocol metadata from the http host
-func (h *HTTPHost) RemovePeerMetadata(server peer.ID, meta ProtocolMetaMap) {
+func (h *HTTPHost) RemovePeerMetadata(server peer.ID, meta PeerMeta) {
 	if h.peerMetadata == nil {
 		return
 	}
