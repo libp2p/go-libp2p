@@ -36,16 +36,18 @@ const peerMetadataLRUSize = 256   // How many different peer's metadata to keep 
 // TODOs:
 // - integrate with the conn gater and resource manager
 
-type WellKnownProtocolMeta struct {
+// ProtocolMeta is metadata about a protocol.
+type ProtocolMeta struct {
+	// Path defines the HTTP Path prefix used for this protocol
 	Path string `json:"path"`
 }
 
-type WellKnownProtoMap map[protocol.ID]WellKnownProtocolMeta
+type ProtocolMetaMap map[protocol.ID]ProtocolMeta
 
 // WellKnownHandler is an http.Handler that serves the .well-known/libp2p resource
 type WellKnownHandler struct {
 	wellknownMapMu   sync.Mutex
-	wellKnownMapping WellKnownProtoMap
+	wellKnownMapping ProtocolMetaMap
 }
 
 // StreamHostListen retuns a net.Listener that listens on libp2p streams for HTTP/1.1 messages.
@@ -79,10 +81,10 @@ func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(mapping)
 }
 
-func (h *WellKnownHandler) AddProtocolMapping(p protocol.ID, protocolMeta WellKnownProtocolMeta) {
+func (h *WellKnownHandler) AddProtocolMapping(p protocol.ID, protocolMeta ProtocolMeta) {
 	h.wellknownMapMu.Lock()
 	if h.wellKnownMapping == nil {
-		h.wellKnownMapping = make(map[protocol.ID]WellKnownProtocolMeta)
+		h.wellKnownMapping = make(map[protocol.ID]ProtocolMeta)
 	}
 	h.wellKnownMapping[p] = protocolMeta
 	h.wellknownMapMu.Unlock()
@@ -119,7 +121,7 @@ type HTTPHost struct {
 
 	wk WellKnownHandler
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
-	peerMetadata *lru.Cache[peer.ID, WellKnownProtoMap]
+	peerMetadata *lru.Cache[peer.ID, ProtocolMetaMap]
 	// createHTTPTransport is used to lazily create the httpTransport in a thread-safe way.
 	createHTTPTransport sync.Once
 	httpTransport       *httpTransport
@@ -139,8 +141,8 @@ func newHTTPTransport() *httpTransport {
 	}
 }
 
-func newPeerMetadataCache() *lru.Cache[peer.ID, WellKnownProtoMap] {
-	peerMetadata, err := lru.New[peer.ID, WellKnownProtoMap](peerMetadataLRUSize)
+func newPeerMetadataCache() *lru.Cache[peer.ID, ProtocolMetaMap] {
+	peerMetadata, err := lru.New[peer.ID, ProtocolMetaMap](peerMetadataLRUSize)
 	if err != nil {
 		// Only happens if size is < 1. We make sure to not do that, so this should never happen.
 		panic(err)
@@ -322,13 +324,13 @@ func (h *HTTPHost) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http
 		// We are nesting this handler under this path, so it should end with a slash.
 		path += "/"
 	}
-	h.wk.AddProtocolMapping(p, path)
+	h.wk.AddProtocolMapping(p, ProtocolMeta{Path: path})
 	h.ServeMux.Handle(path, handler)
 }
 
 // getPeerProtoMap lets RoundTrippers implement a specific way of caching a peer's protocol mapping.
 type getPeerProtoMap interface {
-	GetPeerProtoMap() (WellKnownProtoMap, error)
+	GetPeerProtoMap() (ProtocolMetaMap, error)
 }
 
 type streamRoundTripper struct {
@@ -347,7 +349,7 @@ func (s *streamReadCloser) Close() error {
 	return s.ReadCloser.Close()
 }
 
-func (rt *streamRoundTripper) GetPeerProtoMap(server peer.ID) (WellKnownProtoMap, error) {
+func (rt *streamRoundTripper) GetPeerProtoMap(server peer.ID) (ProtocolMetaMap, error) {
 	return rt.httpHost.GetAndStorePeerProtoMap(rt, rt.server)
 }
 
@@ -385,10 +387,10 @@ type roundTripperForSpecificServer struct {
 	targetServerAddr string
 	sni              string
 	scheme           string
-	cachedProtos     WellKnownProtoMap
+	cachedProtos     ProtocolMetaMap
 }
 
-func (rt *roundTripperForSpecificServer) GetPeerProtoMap() (WellKnownProtoMap, error) {
+func (rt *roundTripperForSpecificServer) GetPeerProtoMap() (ProtocolMetaMap, error) {
 	// Do we already have the peer's protocol mapping?
 	if rt.cachedProtos != nil {
 		return rt.cachedProtos, nil
@@ -444,7 +446,7 @@ type namespacedRoundTripper struct {
 	protocolPrefixRaw string
 }
 
-func (rt *namespacedRoundTripper) GetPeerProtoMap() (WellKnownProtoMap, error) {
+func (rt *namespacedRoundTripper) GetPeerProtoMap() (ProtocolMetaMap, error) {
 	if g, ok := rt.RoundTripper.(getPeerProtoMap); ok {
 		return g.GetPeerProtoMap()
 	}
@@ -666,7 +668,7 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 // ProtocolPathPrefix looks up the protocol path in the well-known mapping and
 // returns it. Will only store the peer's protocol mapping if the server ID is
 // provided.
-func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, server peer.ID) (WellKnownProtoMap, error) {
+func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, server peer.ID) (ProtocolMetaMap, error) {
 	if h.peerMetadata == nil {
 		h.peerMetadata = newPeerMetadataCache()
 	}
@@ -707,7 +709,7 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 		}
 	}
 
-	meta := WellKnownProtoMap{}
+	meta := ProtocolMetaMap{}
 	json.Unmarshal(body[:bytesRead], &meta)
 	if server != "" {
 		h.peerMetadata.Add(server, meta)
@@ -718,15 +720,23 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 
 // AddPeerMetadata adds a peer's protocol metadata to the http host. Useful if
 // you have out-of-band knowledge of a peer's protocol mapping.
-func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta WellKnownProtoMap) {
+func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta ProtocolMetaMap) {
 	if h.peerMetadata == nil {
 		h.peerMetadata = newPeerMetadataCache()
 	}
 	h.peerMetadata.Add(server, meta)
 }
 
+// GetPeerMetadata gets a peer's cached protocol metadata from the http host.
+func (h *HTTPHost) GetPeerMetadata(server peer.ID) (ProtocolMetaMap, bool) {
+	if h.peerMetadata == nil {
+		return nil, false
+	}
+	return h.peerMetadata.Get(server)
+}
+
 // RemovePeerMetadata removes a peer's protocol metadata from the http host
-func (h *HTTPHost) RemovePeerMetadata(server peer.ID, meta WellKnownProtoMap) {
+func (h *HTTPHost) RemovePeerMetadata(server peer.ID, meta ProtocolMetaMap) {
 	if h.peerMetadata == nil {
 		return
 	}
