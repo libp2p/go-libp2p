@@ -27,8 +27,7 @@ func TestHTTPOverStreams(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	httpHost, err := libp2phttp.New(libp2phttp.StreamHost(serverHost))
-	require.NoError(t, err)
+	httpHost := libp2phttp.HTTPHost{StreamHost: serverHost}
 
 	httpHost.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("hello"))
@@ -70,10 +69,10 @@ func TestRoundTrippers(t *testing.T) {
 	require.NoError(t, err)
 	defer streamListener.Close()
 
-	httpHost, err := libp2phttp.New(
-		libp2phttp.StreamHost(serverHost),
-		libp2phttp.ListenAddrs([]ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")}))
-	require.NoError(t, err)
+	httpHost := libp2phttp.HTTPHost{
+		StreamHost:  serverHost,
+		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
 
 	httpHost.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("hello"))
@@ -162,8 +161,7 @@ func TestRoundTrippers(t *testing.T) {
 			require.NoError(t, err)
 			defer clientStreamHost.Close()
 
-			clientHttpHost, err := libp2phttp.New(libp2phttp.StreamHost(clientStreamHost))
-			require.NoError(t, err)
+			clientHttpHost := &libp2phttp.HTTPHost{StreamHost: clientStreamHost}
 
 			rt := tc.setupRoundTripper(t, clientStreamHost, clientHttpHost)
 			if tc.expectStreamRoundTripper {
@@ -181,7 +179,7 @@ func TestRoundTrippers(t *testing.T) {
 					var resp *http.Response
 					var err error
 					if tc {
-						h, err := libp2phttp.New()
+						var h libp2phttp.HTTPHost
 						require.NoError(t, err)
 						nrt, err := h.NamespaceRoundTripper(rt, "/hello", serverHost.ID())
 						require.NoError(t, err)
@@ -240,8 +238,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 		{
 			name: "using libp2phttp",
 			do: func(t *testing.T, request *http.Request) (*http.Response, error) {
-				clientHttpHost, err := libp2phttp.New()
-				require.NoError(t, err)
+				var clientHttpHost libp2phttp.HTTPHost
 				rt, err := clientHttpHost.NewRoundTripper(peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
 				require.NoError(t, err)
 
@@ -249,8 +246,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 				return client.Do(request)
 			},
 			getWellKnown: func(t *testing.T) (libp2phttp.WellKnownProtoMap, error) {
-				clientHttpHost, err := libp2phttp.New()
-				require.NoError(t, err)
+				var clientHttpHost libp2phttp.HTTPHost
 				rt, err := clientHttpHost.NewRoundTripper(peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
 				require.NoError(t, err)
 				return clientHttpHost.GetAndStorePeerProtoMap(rt, "")
@@ -306,3 +302,27 @@ func TestPlainOldHTTPServer(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTPHostNoConstructor(t *testing.T) {
+	server := libp2phttp.HTTPHost{
+		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+	server.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
+	go func() {
+		server.Serve()
+	}()
+	defer server.Close()
+
+	c := libp2phttp.HTTPHost{}
+	client, err := c.NamespacedClient("/hello", peer.AddrInfo{Addrs: server.Addrs()})
+	require.NoError(t, err)
+	resp, err := client.Get("/")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, "hello", string(body), "expected response from server")
+}
+
+// TODO tls test

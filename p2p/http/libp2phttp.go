@@ -93,58 +93,59 @@ func (h *WellKnownHandler) RmProtocolMapping(p protocol.ID, path string) {
 }
 
 // HTTPHost is a libp2p host for request/responses with HTTP semantics. This is
-// in contrast to a stream-oriented host like the host.Host interface. Warning,
-// this is experimental. The API will likely change.
+// in contrast to a stream-oriented host like the host.Host interface. Its
+// zero-value (&HTTPHost{}) is usable. Do not copy by value.
+// See examples for usage.
+//
+//	Warning, this is experimental. The API will likely change.
 type HTTPHost struct {
-	rootHandler      http.ServeMux
-	wk               WellKnownHandler
-	httpRoundTripper *http.Transport
+	// StreamHost is a stream based libp2p host used to do HTTP over libp2p streams. May be nil
+	StreamHost host.Host
+	// ListenAddrs are the requested addresses to listen on. Multiaddrs must be a valid HTTP(s) multiaddr.
+	ListenAddrs []ma.Multiaddr
+	// TLSConfig is the TLS config for the server to use
+	TLSConfig *tls.Config
+	// ServeMux is the http.ServeMux used by the server to serve requests
+	ServeMux http.ServeMux
+
+	// DefaultClientRoundTripper is the default http.RoundTripper for clients
+	DefaultClientRoundTripper *http.Transport
+
+	wk WellKnownHandler
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
-	peerMetadata  *lru.Cache[peer.ID, WellKnownProtoMap]
-	streamHost    host.Host // may be nil
-	httpTransport *httpTransport
+	peerMetadata *lru.Cache[peer.ID, WellKnownProtoMap]
+	// createHttpTransport is used to lazily create the httpTransport in a thread-safe way.
+	createHttpTransport sync.Once
+	httpTransport       *httpTransport
 }
 
 type httpTransport struct {
-	requestedListenAddrs []ma.Multiaddr
-	listenAddrs          []ma.Multiaddr
-	tlsConfig            *tls.Config
-	listeners            []net.Listener
-	closeListeners       chan struct{}
-	waitingForListeners  chan struct{}
+	listenAddrs         []ma.Multiaddr
+	listeners           []net.Listener
+	closeListeners      chan struct{}
+	waitingForListeners chan struct{}
 }
 
-// New creates a new HTTPHost. Use HTTPHost.Serve to start serving HTTP requests (both over libp2p streams and HTTP transport).
-func New(opts ...HTTPHostOption) (*HTTPHost, error) {
-	httpRoundTripper := http.DefaultTransport.(*http.Transport).Clone()
+func newHttpTransport() *httpTransport {
+	return &httpTransport{
+		closeListeners:      make(chan struct{}),
+		waitingForListeners: make(chan struct{}),
+	}
+}
+
+func newPeerMetadataCache() *lru.Cache[peer.ID, WellKnownProtoMap] {
 	peerMetadata, err := lru.New[peer.ID, WellKnownProtoMap](peerMetadataLRUSize)
 	if err != nil {
 		// Only happens if size is < 1. We make sure to not do that, so this should never happen.
 		panic(err)
 	}
-
-	h := &HTTPHost{
-		wk:               WellKnownHandler{},
-		rootHandler:      http.ServeMux{},
-		httpRoundTripper: httpRoundTripper,
-		peerMetadata:     peerMetadata,
-		httpTransport: &httpTransport{
-			closeListeners:      make(chan struct{}),
-			waitingForListeners: make(chan struct{}),
-		},
-	}
-	h.rootHandler.Handle("/.well-known/libp2p", &h.wk)
-	for _, opt := range opts {
-		err := opt(h)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return h, nil
+	return peerMetadata
 }
 
 func (h *HTTPHost) Addrs() []ma.Multiaddr {
+	h.createHttpTransport.Do(func() {
+		h.httpTransport = newHttpTransport()
+	})
 	<-h.httpTransport.waitingForListeners
 	return h.httpTransport.listenAddrs
 }
@@ -154,6 +155,20 @@ var ErrNoListeners = errors.New("nothing to listen on")
 // Serve starts the HTTP transport listeners. Always returns a non-nil error.
 // If there are no listeners, returns ErrNoListeners.
 func (h *HTTPHost) Serve() error {
+	// assert that each addr contains a /http component
+	for _, addr := range h.ListenAddrs {
+		_, isHTTP := normalizeHTTPMultiaddr(addr)
+		if !isHTTP {
+			return fmt.Errorf("address %s does not contain a /http or /https component", addr)
+		}
+	}
+
+	h.ServeMux.Handle("/.well-known/libp2p", &h.wk)
+
+	h.createHttpTransport.Do(func() {
+		h.httpTransport = newHttpTransport()
+	})
+
 	closedWaitingForListeners := false
 	defer func() {
 		if !closedWaitingForListeners {
@@ -161,30 +176,30 @@ func (h *HTTPHost) Serve() error {
 		}
 	}()
 
-	if len(h.httpTransport.requestedListenAddrs) == 0 && h.streamHost == nil {
+	if len(h.ListenAddrs) == 0 && h.StreamHost == nil {
 		return ErrNoListeners
 	}
 
-	h.httpTransport.listeners = make([]net.Listener, 0, len(h.httpTransport.requestedListenAddrs)+1) // +1 for stream host
+	h.httpTransport.listeners = make([]net.Listener, 0, len(h.ListenAddrs)+1) // +1 for stream host
 
 	streamHostAddrsCount := 0
-	if h.streamHost != nil {
-		streamHostAddrsCount = len(h.streamHost.Addrs())
+	if h.StreamHost != nil {
+		streamHostAddrsCount = len(h.StreamHost.Addrs())
 	}
-	h.httpTransport.listenAddrs = make([]ma.Multiaddr, 0, len(h.httpTransport.requestedListenAddrs)+streamHostAddrsCount)
+	h.httpTransport.listenAddrs = make([]ma.Multiaddr, 0, len(h.ListenAddrs)+streamHostAddrsCount)
 
 	errCh := make(chan error)
 
-	if h.streamHost != nil {
-		listener, err := StreamHostListen(h.streamHost)
+	if h.StreamHost != nil {
+		listener, err := StreamHostListen(h.StreamHost)
 		if err != nil {
 			return err
 		}
 		h.httpTransport.listeners = append(h.httpTransport.listeners, listener)
-		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, h.streamHost.Addrs()...)
+		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, h.StreamHost.Addrs()...)
 
 		go func() {
-			errCh <- http.Serve(listener, &h.rootHandler)
+			errCh <- http.Serve(listener, &h.ServeMux)
 		}()
 	}
 
@@ -194,7 +209,7 @@ func (h *HTTPHost) Serve() error {
 		}
 	}
 
-	for _, addr := range h.httpTransport.requestedListenAddrs {
+	for _, addr := range h.ListenAddrs {
 		parsedAddr := parseMultiaddr(addr)
 		// resolve the host
 		ipaddr, err := net.ResolveIPAddr("ip", parsedAddr.host)
@@ -205,7 +220,6 @@ func (h *HTTPHost) Serve() error {
 
 		host := ipaddr.String()
 		l, err := net.Listen("tcp", host+":"+parsedAddr.port)
-		fmt.Println("HTTPHost.Serve", err)
 		if err != nil {
 			closeAllListeners()
 			return err
@@ -236,14 +250,14 @@ func (h *HTTPHost) Serve() error {
 		if parsedAddr.useHTTPS {
 			go func() {
 				srv := http.Server{
-					Handler:   &h.rootHandler,
-					TLSConfig: h.httpTransport.tlsConfig,
+					Handler:   &h.ServeMux,
+					TLSConfig: h.TLSConfig,
 				}
 				errCh <- srv.ServeTLS(l, "", "")
 			}()
 		} else {
 			go func() {
-				errCh <- http.Serve(l, &h.rootHandler)
+				errCh <- http.Serve(l, &h.ServeMux)
 			}()
 		}
 	}
@@ -270,14 +284,18 @@ func (h *HTTPHost) Serve() error {
 }
 
 func (h *HTTPHost) Close() error {
+	h.createHttpTransport.Do(func() {
+		h.httpTransport = newHttpTransport()
+	})
 	close(h.httpTransport.closeListeners)
 	return nil
 }
 
 // SetHttpHandler sets the HTTP handler for a given protocol. Automatically
 // manages the .well-known/libp2p mapping.
+// TODO should this strip the prefix? I think so
 func (h *HTTPHost) SetHttpHandler(p protocol.ID, handler http.Handler) {
-	h.SetHttpHandlerAtPath(p, string(p)+"/", handler)
+	h.SetHttpHandlerAtPath(p, string(p), handler)
 }
 
 // SetHttpHandlerAtPath sets the HTTP handler for a given protocol using the
@@ -288,7 +306,7 @@ func (h *HTTPHost) SetHttpHandlerAtPath(p protocol.ID, path string, handler http
 		path += "/"
 	}
 	h.wk.AddProtocolMapping(p, path)
-	h.rootHandler.Handle(path, handler)
+	h.ServeMux.Handle(path, handler)
 }
 
 // getPeerProtoMap lets RoundTrippers implement a specific way of caching a peer's protocol mapping.
@@ -509,8 +527,8 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 
 	// Do we have an existing connection to this peer?
 	existingStreamConn := false
-	if server.ID != "" && h.streamHost != nil {
-		existingStreamConn = len(h.streamHost.Network().ConnsToPeer(server.ID)) > 0
+	if server.ID != "" && h.StreamHost != nil {
+		existingStreamConn = len(h.StreamHost.Network().ConnsToPeer(server.ID)) > 0
 	}
 
 	// Currently the HTTP transport can not authenticate peer IDs.
@@ -521,13 +539,15 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 			scheme = "https"
 		}
 
-		rt := h.httpRoundTripper
+		rt := h.DefaultClientRoundTripper
+		if rt == nil {
+			rt = http.DefaultTransport.(*http.Transport)
+		}
 		ownRoundtripper := false
 		if parsed.sni != parsed.host {
 			// We have a different host and SNI (e.g. using an IP address but specifying a SNI)
 			// We need to make our own transport to support this.
 			rt = rt.Clone()
-			rt.TLSClientConfig = h.httpRoundTripper.TLSClientConfig.Clone()
 			rt.TLSClientConfig.ServerName = parsed.sni
 			ownRoundtripper = true
 		}
@@ -544,20 +564,20 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 	}
 
 	// Otherwise use a stream based transport
-	if h.streamHost == nil {
+	if h.StreamHost == nil {
 		return nil, fmt.Errorf("can not use the HTTP transport (either no address or PeerID auth is required), and no stream host provided")
 	}
 	if !existingStreamConn {
 		if server.ID == "" {
 			return nil, fmt.Errorf("can not use the HTTP transport, and no server peer ID provided")
 		}
-		err := h.streamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHttpAddrs})
+		err := h.StreamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHttpAddrs})
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to peer: %w", err)
 		}
 	}
 
-	return NewStreamRoundTripper(h.streamHost, server.ID), nil
+	return NewStreamRoundTripper(h.StreamHost, server.ID), nil
 }
 
 type httpMultiaddr struct {
@@ -627,6 +647,9 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 // returns it. Will only store the peer's protocol mapping if the server ID is
 // provided.
 func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, server peer.ID) (WellKnownProtoMap, error) {
+	if h.peerMetadata == nil {
+		h.peerMetadata = newPeerMetadataCache()
+	}
 	if meta, ok := h.peerMetadata.Get(server); server != "" && ok {
 		return meta, nil
 	}
@@ -676,10 +699,16 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 // AddPeerMetadata adds a peer's protocol metadata to the http host. Useful if
 // you have out-of-band knowledge of a peer's protocol mapping.
 func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta WellKnownProtoMap) {
+	if h.peerMetadata == nil {
+		h.peerMetadata = newPeerMetadataCache()
+	}
 	h.peerMetadata.Add(server, meta)
 }
 
 // RmPeerMetadata removes a peer's protocol metadata from the http host
 func (h *HTTPHost) RmPeerMetadata(server peer.ID, meta WellKnownProtoMap) {
+	if h.peerMetadata == nil {
+		return
+	}
 	h.peerMetadata.Remove(server)
 }
