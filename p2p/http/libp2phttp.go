@@ -71,25 +71,24 @@ func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mapping, err := json.Marshal(h.wellKnownMapping)
 	h.wellknownMapMu.Unlock()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Marshal error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/json")
 	w.Header().Add("Content-Length", strconv.Itoa(len(mapping)))
-	w.WriteHeader(http.StatusOK)
 	w.Write(mapping)
 }
 
-func (h *WellKnownHandler) AddProtocolMapping(p protocol.ID, path string) {
+func (h *WellKnownHandler) AddProtocolMapping(p protocol.ID, protocolMeta WellKnownProtocolMeta) {
 	h.wellknownMapMu.Lock()
 	if h.wellKnownMapping == nil {
 		h.wellKnownMapping = make(map[protocol.ID]WellKnownProtocolMeta)
 	}
-	h.wellKnownMapping[p] = WellKnownProtocolMeta{Path: path}
+	h.wellKnownMapping[p] = protocolMeta
 	h.wellknownMapMu.Unlock()
 }
 
-func (h *WellKnownHandler) RmProtocolMapping(p protocol.ID, path string) {
+func (h *WellKnownHandler) RemoveProtocolMapping(p protocol.ID) {
 	h.wellknownMapMu.Lock()
 	if h.wellKnownMapping != nil {
 		delete(h.wellKnownMapping, p)
@@ -723,8 +722,8 @@ func (h *HTTPHost) AddPeerMetadata(server peer.ID, meta WellKnownProtoMap) {
 	h.peerMetadata.Add(server, meta)
 }
 
-// RmPeerMetadata removes a peer's protocol metadata from the http host
-func (h *HTTPHost) RmPeerMetadata(server peer.ID, meta WellKnownProtoMap) {
+// RemovePeerMetadata removes a peer's protocol metadata from the http host
+func (h *HTTPHost) RemovePeerMetadata(server peer.ID, meta WellKnownProtoMap) {
 	if h.peerMetadata == nil {
 		return
 	}
