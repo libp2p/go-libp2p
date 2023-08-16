@@ -27,11 +27,8 @@ import (
 )
 
 const ProtocolIDForMultistreamSelect = "/http/1.1"
-const PeerMetadataLimit = 8 << 10 // 8KB
-const PeerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
-
-// The scheme we use internally to name a stream based roundtripper. This is only used locally.
-const libp2pStreamScheme = "libp2p-stream"
+const peerMetadataLimit = 8 << 10 // 8KB
+const peerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
 
 // TODOs:
 // - integrate with the conn gater and resource manager
@@ -120,7 +117,7 @@ type httpTransport struct {
 // New creates a new HTTPHost. Use HTTPHost.Serve to start serving HTTP requests (both over libp2p streams and HTTP transport).
 func New(opts ...HTTPHostOption) (*HTTPHost, error) {
 	httpRoundTripper := http.DefaultTransport.(*http.Transport).Clone()
-	peerMetadata, err := lru.New[peer.ID, WellKnownProtoMap](PeerMetadataLRUSize)
+	peerMetadata, err := lru.New[peer.ID, WellKnownProtoMap](peerMetadataLRUSize)
 	if err != nil {
 		// Only happens if size is < 1. We make sure to not do that, so this should never happen.
 		panic(err)
@@ -651,7 +648,7 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	body := [PeerMetadataLimit]byte{}
+	body := [peerMetadataLimit]byte{}
 	bytesRead := 0
 	for {
 		n, err := resp.Body.Read(body[bytesRead:])
@@ -662,7 +659,7 @@ func (h *HTTPHost) GetAndStorePeerProtoMap(roundtripper http.RoundTripper, serve
 		if err != nil {
 			return nil, err
 		}
-		if bytesRead >= PeerMetadataLimit {
+		if bytesRead >= peerMetadataLimit {
 			return nil, fmt.Errorf("peer metadata too large")
 		}
 	}
