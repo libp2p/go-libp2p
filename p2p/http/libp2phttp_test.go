@@ -3,14 +3,21 @@ package libp2phttp_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	host "github.com/libp2p/go-libp2p/core/host"
@@ -303,7 +310,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 	}
 }
 
-func TestHTTPHostNoConstructor(t *testing.T) {
+func TestHTTPHostZeroValue(t *testing.T) {
 	server := libp2phttp.HTTPHost{
 		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
@@ -325,4 +332,62 @@ func TestHTTPHostNoConstructor(t *testing.T) {
 	require.Equal(t, "hello", string(body), "expected response from server")
 }
 
-// TODO tls test
+func TestHTTPS(t *testing.T) {
+	server := libp2phttp.HTTPHost{
+		TLSConfig:   selfSignedTLSConfig(t),
+		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+	server.SetHttpHandler(httpping.PingProtocolID, httpping.Ping{})
+	go func() {
+		server.Serve()
+	}()
+	defer server.Close()
+
+	clientTransport := http.DefaultTransport.(*http.Transport).Clone()
+	clientTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	client := libp2phttp.HTTPHost{
+		DefaultClientRoundTripper: clientTransport,
+	}
+	httpClient, err := client.NamespacedClient(httpping.PingProtocolID, peer.AddrInfo{Addrs: server.Addrs()})
+	require.NoError(t, err)
+	err = httpping.SendPing(httpClient)
+	require.NoError(t, err)
+}
+
+func selfSignedTLSConfig(t *testing.T) *tls.Config {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	notBefore := time.Now()
+	notAfter := notBefore.Add(365 * 24 * time.Hour)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	require.NoError(t, err)
+
+	certTemplate := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Test"},
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	cert := tls.Certificate{
+		Certificate: [][]byte{derBytes},
+		PrivateKey:  priv,
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+	return tlsConfig
+}
