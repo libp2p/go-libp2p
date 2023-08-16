@@ -117,6 +117,7 @@ func TestIsWebtransportMultiaddr(t *testing.T) {
 		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport/certhash/" + fooHash, want: true, certhashCount: 1},
 		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport/certhash/" + fooHash + "/certhash/" + barHash, want: true, certhashCount: 2},
 		{addr: "/dns4/example.com/udp/60042/quic-v1/webtransport/certhash/" + fooHash, want: true, certhashCount: 1},
+		{addr: "/dns4/example.com/tcp/60042/quic-v1/webtransport/certhash/" + fooHash, want: false},
 		{addr: "/dns4/example.com/udp/60042/webrtc/certhash/" + fooHash, want: false},
 	}
 
