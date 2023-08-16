@@ -29,7 +29,7 @@ func BenchmarkMetricsConnOpen(b *testing.B) {
 	}
 	_, pub, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(b, err)
-	quicAddr := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
+	quicAddr := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 	tcpAddr := ma.StringCast("/ip4/1.2.3.4/tcp/1/")
 	tr := NewMetricsTracer()
 	for i := 0; i < b.N; i++ {

@@ -35,8 +35,8 @@ type connTestCase struct {
 }
 
 var connTestCases = []*connTestCase{
-	{"reuseport_on", []quicreuse.Option{quicreuse.DisableDraft29()}},
-	{"reuseport_off", []quicreuse.Option{quicreuse.DisableReuseport(), quicreuse.DisableDraft29()}},
+	{"reuseport_on", []quicreuse.Option{}},
+	{"reuseport_off", []quicreuse.Option{quicreuse.DisableReuseport()}},
 }
 
 func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
@@ -673,111 +673,4 @@ func TestHolePunching(t *testing.T) {
 	ln2.Close()
 	<-done1
 	<-done2
-}
-
-func TestGetErrorWhenListeningWithDraft29WhenDisabled(t *testing.T) {
-	_, serverKey := createPeer(t)
-
-	t1, err := NewTransport(serverKey, newConnManager(t, quicreuse.DisableDraft29()), nil, nil, nil)
-	require.NoError(t, err)
-	defer t1.(io.Closer).Close()
-	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
-	require.NoError(t, err)
-	_, err = t1.Listen(laddr)
-	require.Error(t, err)
-}
-
-func TestClientCanDialDifferentQUICVersions(t *testing.T) {
-	type testCase struct {
-		name                  string
-		serverDisablesDraft29 bool
-	}
-
-	testCases := []testCase{
-		{
-			name:                  "Client dials quic-v1 on a quic-v1 only server",
-			serverDisablesDraft29: true,
-		},
-		{
-			name:                  "Client dials both draft 29 and v1 on server that supports both",
-			serverDisablesDraft29: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			serverID, serverKey := createPeer(t)
-			_, clientKey := createPeer(t)
-
-			var serverOpts []quicreuse.Option
-			if tc.serverDisablesDraft29 {
-				serverOpts = append(serverOpts, quicreuse.DisableDraft29())
-			}
-
-			t1, err := NewTransport(serverKey, newConnManager(t, serverOpts...), nil, nil, nil)
-			require.NoError(t, err)
-			defer t1.(io.Closer).Close()
-			laddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
-			ln1, err := t1.Listen(laddr)
-			require.NoError(t, err)
-			t.Cleanup(func() { ln1.Close() })
-
-			mas := []ma.Multiaddr{ln1.Multiaddr()}
-			var ln2 tpt.Listener
-			if !tc.serverDisablesDraft29 {
-				laddrDraft29 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic")
-				ln2, err = t1.Listen(laddrDraft29)
-				require.NoError(t, err)
-				t.Cleanup(func() { ln2.Close() })
-				mas = append(mas, ln2.Multiaddr())
-			}
-
-			t2, err := NewTransport(clientKey, newConnManager(t), nil, nil, nil)
-			require.NoError(t, err)
-			defer t2.(io.Closer).Close()
-
-			ctx := context.Background()
-
-			for _, a := range mas {
-				_, v, err := quicreuse.FromQuicMultiaddr(a)
-				require.NoError(t, err)
-
-				done := make(chan struct{})
-				go func() {
-					defer close(done)
-					var conn tpt.CapableConn
-					var err error
-					if v == quic.Version1 {
-						conn, err = ln1.Accept()
-					} else if v == quic.VersionDraft29 {
-						conn, err = ln2.Accept()
-					} else {
-						panic("unexpected version")
-					}
-					require.NoError(t, err)
-
-					_, versionConnLocal, err := quicreuse.FromQuicMultiaddr(conn.LocalMultiaddr())
-					require.NoError(t, err)
-					_, versionConnRemote, err := quicreuse.FromQuicMultiaddr(conn.RemoteMultiaddr())
-					require.NoError(t, err)
-
-					require.Equal(t, v, versionConnLocal)
-					require.Equal(t, v, versionConnRemote)
-				}()
-
-				conn, err := t2.Dial(ctx, a, serverID)
-				require.NoError(t, err)
-				_, versionConnLocal, err := quicreuse.FromQuicMultiaddr(conn.LocalMultiaddr())
-				require.NoError(t, err)
-				_, versionConnRemote, err := quicreuse.FromQuicMultiaddr(conn.RemoteMultiaddr())
-				require.NoError(t, err)
-
-				require.Equal(t, v, versionConnLocal)
-				require.Equal(t, v, versionConnRemote)
-
-				<-done
-				conn.Close()
-			}
-		})
-	}
 }

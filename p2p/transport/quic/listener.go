@@ -29,9 +29,6 @@ type listener struct {
 func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (listener, error) {
 	localMultiaddrs := make(map[quic.VersionNumber]ma.Multiaddr)
 	for _, addr := range ln.Multiaddrs() {
-		if _, err := addr.ValueForProtocol(ma.P_QUIC); err == nil {
-			localMultiaddrs[quic.VersionDraft29] = addr
-		}
 		if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 			localMultiaddrs[quic.Version1] = addr
 		}

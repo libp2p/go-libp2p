@@ -100,7 +100,7 @@ func TestDialAddressSelection(t *testing.T) {
 	require.NoError(t, s.AddTransport(circuitTr))
 
 	require.Equal(t, tcpTr, s.TransportForDialing(ma.StringCast("/ip4/127.0.0.1/tcp/1234")))
-	require.Equal(t, quicTr, s.TransportForDialing(ma.StringCast("/ip4/127.0.0.1/udp/1234/quic")))
+	require.Equal(t, quicTr, s.TransportForDialing(ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")))
 	require.Equal(t, circuitTr, s.TransportForDialing(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic/p2p-circuit/p2p/%s", id))))
 	require.Equal(t, webtransportTr, s.TransportForDialing(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/%s", certHash))))
 	require.Nil(t, s.TransportForDialing(ma.StringCast("/ip4/1.2.3.4")))

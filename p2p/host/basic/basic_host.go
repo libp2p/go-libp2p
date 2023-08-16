@@ -942,17 +942,17 @@ func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 				// Remove certhashes
 				addr, _ = ma.SplitLast(addr)
 			}
-			webtransportAddrs[addr.String()] = struct{}{}
+			webtransportAddrs[string(addr.Bytes())] = struct{}{}
 			// Remove webtransport component, now it's a multiaddr that ends in /quic-v1
 			addr, _ = ma.SplitLast(addr)
 		}
 
 		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
-			addrStr := addr.String()
-			if _, ok := quicOrWebtransportAddrs[addrStr]; ok {
+			bytes := addr.Bytes()
+			if _, ok := quicOrWebtransportAddrs[string(bytes)]; ok {
 				foundSameListeningAddr = true
 			} else {
-				quicOrWebtransportAddrs[addrStr] = struct{}{}
+				quicOrWebtransportAddrs[string(bytes)] = struct{}{}
 			}
 		}
 	}
@@ -974,7 +974,7 @@ func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
 			// Convert quic to webtransport
 			addr = addr.Encapsulate(wtComponent)
-			if _, ok := webtransportAddrs[addr.String()]; ok {
+			if _, ok := webtransportAddrs[string(addr.Bytes())]; ok {
 				// We already have this address
 				continue
 			}

@@ -263,15 +263,15 @@ func TestAddrResolutionRecursive(t *testing.T) {
 }
 
 func TestAddrsForDialFiltering(t *testing.T) {
-	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
+	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 	q1v1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 	wt1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1/webtransport/")
 
-	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic")
+	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 	q2v1 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 	wt2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1/webtransport/")
 
-	q3 := ma.StringCast("/ip4/1.2.3.4/udp/3/quic")
+	q3 := ma.StringCast("/ip4/1.2.3.4/udp/3/quic-v1")
 
 	t1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
 	ws1 := ma.StringCast("/ip4/1.2.3.4/tcp/1/ws")

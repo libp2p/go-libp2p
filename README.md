@@ -18,6 +18,7 @@
 - [Roadmap](#roadmap)
 - [Usage](#usage)
   - [Examples](#examples)
+  - [Dashboards](#dashboards)
 - [Contribute](#contribute)
   - [Supported Go Versions](#supported-go-versions)
 - [Notable Users](#notable-users)
@@ -53,6 +54,13 @@ import "github.com/libp2p/go-libp2p"
 ## Examples
 
 Examples can be found in the [examples folder](examples).
+
+## Dashboards
+
+We provide prebuilt Grafana dashboards so that applications can better monitor libp2p in production.
+You can find the [dashboard JSON files here](https://github.com/libp2p/go-libp2p/tree/master/dashboards).
+
+We also have live [Public Dashboards](https://github.com/libp2p/go-libp2p/tree/master/dashboards/README.md#public-dashboards) that you can check out to see real time monitoring in action.
 
 
 # Contribute

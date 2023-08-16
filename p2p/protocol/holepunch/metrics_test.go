@@ -24,10 +24,8 @@ func TestHolePunchOutcomeCounter(t *testing.T) {
 	t1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
 	t2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
 
-	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
-	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic")
-
 	q1v1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
+	q2v1 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 
 	type testcase struct {
 		name       string
@@ -39,35 +37,34 @@ func TestHolePunchOutcomeCounter(t *testing.T) {
 	testcases := []testcase{
 		{
 			name:       "connection success",
-			theirAddrs: []ma.Multiaddr{t1, q1},
-			ourAddrs:   []ma.Multiaddr{t2, q2},
+			theirAddrs: []ma.Multiaddr{t1, q1v1},
+			ourAddrs:   []ma.Multiaddr{t2, q2v1},
 			conn:       &mockConnMultiaddrs{local: t1, remote: t2},
 			result: map[[3]string]int{
-				[...]string{"ip4", "tcp", "success"}:    1,
-				[...]string{"ip4", "quic", "cancelled"}: 1,
+				[...]string{"ip4", "tcp", "success"}:       1,
+				[...]string{"ip4", "quic-v1", "cancelled"}: 1,
 			},
 		},
 		{
 			name:       "connection failed",
 			theirAddrs: []ma.Multiaddr{t1},
-			ourAddrs:   []ma.Multiaddr{t2, q2},
+			ourAddrs:   []ma.Multiaddr{t2, q2v1},
 			conn:       nil,
 			result: map[[3]string]int{
-				[...]string{"ip4", "tcp", "failed"}:               1,
-				[...]string{"ip4", "quic", "no_suitable_address"}: 1,
+				[...]string{"ip4", "tcp", "failed"}:                  1,
+				[...]string{"ip4", "quic-v1", "no_suitable_address"}: 1,
 			},
 		},
 		{
 			name:       "no_suitable_address",
-			theirAddrs: []ma.Multiaddr{t1, q1},
-			ourAddrs:   []ma.Multiaddr{t2, q2, q1v1},
-			conn:       &mockConnMultiaddrs{local: q1, remote: q2},
+			theirAddrs: []ma.Multiaddr{t1, q1v1},
+			ourAddrs:   []ma.Multiaddr{t2, q2v1},
+			conn:       &mockConnMultiaddrs{local: q1v1, remote: q2v1},
 			result: map[[3]string]int{
-				[...]string{"ip4", "tcp", "cancelled"}:               1,
-				[...]string{"ip4", "quic", "failed"}:                 0,
-				[...]string{"ip4", "quic", "success"}:                1,
-				[...]string{"ip4", "tcp", "success"}:                 0,
-				[...]string{"ip4", "quic-v1", "no_suitable_address"}: 1,
+				[...]string{"ip4", "tcp", "cancelled"}:   1,
+				[...]string{"ip4", "quic-v1", "failed"}:  0,
+				[...]string{"ip4", "quic-v1", "success"}: 1,
+				[...]string{"ip4", "tcp", "success"}:     0,
 			},
 		},
 	}
