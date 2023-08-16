@@ -58,10 +58,12 @@ func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	accepts := r.Header.Get("Accept")
 	if accepts != "" && !(strings.Contains(accepts, "application/json") || strings.Contains(accepts, "*/*")) {
 		http.Error(w, "Only application/json is supported", http.StatusNotAcceptable)
+		return
 	}
 
 	if r.Method != "GET" {
 		http.Error(w, "Only GET requests are supported", http.StatusMethodNotAllowed)
+		return
 	}
 
 	// Return a JSON object with the well-known protocols

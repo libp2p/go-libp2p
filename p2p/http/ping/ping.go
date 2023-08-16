@@ -28,7 +28,6 @@ func (Ping) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.Itoa(pingSize))
-	w.WriteHeader(http.StatusOK)
 	w.Write(body[:])
 }
 
