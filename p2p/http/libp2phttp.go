@@ -352,7 +352,7 @@ func (s *streamReadCloser) Close() error {
 	return s.ReadCloser.Close()
 }
 
-func (rt *streamRoundTripper) GetPeerProtoMap() (PeerMeta, error) {
+func (rt *streamRoundTripper) GetPeerMetadata() (PeerMeta, error) {
 	return rt.httpHost.getAndStorePeerMetadata(rt, rt.server)
 }
 
@@ -393,13 +393,13 @@ type roundTripperForSpecificServer struct {
 	cachedProtos     PeerMeta
 }
 
-func (rt *roundTripperForSpecificServer) GetPeerProtoMap() (PeerMeta, error) {
+func (rt *roundTripperForSpecificServer) GetPeerMetadata() (PeerMeta, error) {
 	// Do we already have the peer's protocol mapping?
 	if rt.cachedProtos != nil {
 		return rt.cachedProtos, nil
 	}
 
-	// if the underlying roundtripper implements getPeerProtoMap, use that
+	// if the underlying roundtripper implements GetPeerMetadata, use that
 	if g, ok := rt.RoundTripper.(PeerMetadataGetter); ok {
 		wk, err := g.GetPeerMetadata()
 		if err == nil {
@@ -449,12 +449,12 @@ type namespacedRoundTripper struct {
 	protocolPrefixRaw string
 }
 
-func (rt *namespacedRoundTripper) GetPeerProtoMap() (PeerMeta, error) {
+func (rt *namespacedRoundTripper) GetPeerMetadata() (PeerMeta, error) {
 	if g, ok := rt.RoundTripper.(PeerMetadataGetter); ok {
 		return g.GetPeerMetadata()
 	}
 
-	return nil, fmt.Errorf("can not get peer protocol map. Inner roundtripper does not implement getPeerProtoMap")
+	return nil, fmt.Errorf("can not get peer protocol map. Inner roundtripper does not implement GetPeerMetadata")
 }
 
 // RoundTrip implements http.RoundTripper.
