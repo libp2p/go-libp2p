@@ -104,7 +104,7 @@ func TestRoundTrippers(t *testing.T) {
 				rt, err := clientHTTPHost.NewRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: serverMultiaddrs,
-				}, libp2phttp.RoundTripperPreferHTTPTransport)
+				}, libp2phttp.PreferHTTPTransport)
 				require.NoError(t, err)
 				return rt
 			},

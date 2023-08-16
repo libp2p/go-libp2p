@@ -8,7 +8,7 @@ type roundTripperOpts struct {
 	ServerMustAuthenticatePeerID bool
 }
 
-func RoundTripperPreferHTTPTransport(o roundTripperOpts) roundTripperOpts {
+func PreferHTTPTransport(o roundTripperOpts) roundTripperOpts {
 	o.preferHTTPTransport = true
 	return o
 }
