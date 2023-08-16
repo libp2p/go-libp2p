@@ -54,6 +54,7 @@ var (
 
 // AddrsFactory functions can be passed to New in order to override
 // addresses returned by Addrs.
+// AddrsFactories must not keep a reference to the returned slice.
 type AddrsFactory func([]ma.Multiaddr) []ma.Multiaddr
 
 // BasicHost is the basic implementation of the host.Host interface. This
@@ -778,11 +779,6 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 	if !ok {
 		return addrs
 	}
-
-	// Copy addrs slice since we'll be modifying it.
-	addrsOld := addrs
-	addrs = make([]ma.Multiaddr, len(addrsOld))
-	copy(addrs, addrsOld)
 
 	for i, addr := range addrs {
 		if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n == 0 {
