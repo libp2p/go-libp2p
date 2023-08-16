@@ -312,20 +312,23 @@ func (h *HTTPHost) Close() error {
 
 // SetHTTPHandler sets the HTTP handler for a given protocol. Automatically
 // manages the .well-known/libp2p mapping.
-// TODO should this strip the prefix? I think so
+// http.StripPrefix is called on the handler, so the handler will be unaware of
+// it's prefix path.
 func (h *HTTPHost) SetHTTPHandler(p protocol.ID, handler http.Handler) {
 	h.SetHTTPHandlerAtPath(p, string(p), handler)
 }
 
 // SetHTTPHandlerAtPath sets the HTTP handler for a given protocol using the
 // given path. Automatically manages the .well-known/libp2p mapping.
+// http.StripPrefix is called on the handler, so the handler will be unaware of
+// it's prefix path.
 func (h *HTTPHost) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Handler) {
 	if path[len(path)-1] != '/' {
 		// We are nesting this handler under this path, so it should end with a slash.
 		path += "/"
 	}
 	h.wk.AddProtocolMapping(p, ProtocolMeta{Path: path})
-	h.ServeMux.Handle(path, handler)
+	h.ServeMux.Handle(path, http.StripPrefix(path, handler))
 }
 
 // getPeerProtoMap lets RoundTrippers implement a specific way of caching a peer's protocol mapping.
