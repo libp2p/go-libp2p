@@ -36,7 +36,7 @@ func TestHTTPOverStreams(t *testing.T) {
 
 	httpHost := libp2phttp.HTTPHost{StreamHost: serverHost}
 
-	httpHost.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHost.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
@@ -81,7 +81,7 @@ func TestRoundTrippers(t *testing.T) {
 		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
-	httpHost.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHost.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
@@ -314,7 +314,7 @@ func TestHTTPHostZeroValue(t *testing.T) {
 	server := libp2phttp.HTTPHost{
 		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
-	server.SetHttpHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
+	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
 	go func() {
 		server.Serve()
 	}()
@@ -337,7 +337,7 @@ func TestHTTPS(t *testing.T) {
 		TLSConfig:   selfSignedTLSConfig(t),
 		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
-	server.SetHttpHandler(httpping.PingProtocolID, httpping.Ping{})
+	server.SetHTTPHandler(httpping.PingProtocolID, httpping.Ping{})
 	go func() {
 		server.Serve()
 	}()

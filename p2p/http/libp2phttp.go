@@ -114,8 +114,8 @@ type HTTPHost struct {
 	wk WellKnownHandler
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
 	peerMetadata *lru.Cache[peer.ID, WellKnownProtoMap]
-	// createHttpTransport is used to lazily create the httpTransport in a thread-safe way.
-	createHttpTransport sync.Once
+	// createHTTPTransport is used to lazily create the httpTransport in a thread-safe way.
+	createHTTPTransport sync.Once
 	httpTransport       *httpTransport
 }
 
@@ -126,7 +126,7 @@ type httpTransport struct {
 	waitingForListeners chan struct{}
 }
 
-func newHttpTransport() *httpTransport {
+func newHTTPTransport() *httpTransport {
 	return &httpTransport{
 		closeListeners:      make(chan struct{}),
 		waitingForListeners: make(chan struct{}),
@@ -143,8 +143,8 @@ func newPeerMetadataCache() *lru.Cache[peer.ID, WellKnownProtoMap] {
 }
 
 func (h *HTTPHost) Addrs() []ma.Multiaddr {
-	h.createHttpTransport.Do(func() {
-		h.httpTransport = newHttpTransport()
+	h.createHTTPTransport.Do(func() {
+		h.httpTransport = newHTTPTransport()
 	})
 	<-h.httpTransport.waitingForListeners
 	return h.httpTransport.listenAddrs
@@ -165,8 +165,8 @@ func (h *HTTPHost) Serve() error {
 
 	h.ServeMux.Handle("/.well-known/libp2p", &h.wk)
 
-	h.createHttpTransport.Do(func() {
-		h.httpTransport = newHttpTransport()
+	h.createHTTPTransport.Do(func() {
+		h.httpTransport = newHTTPTransport()
 	})
 
 	closedWaitingForListeners := false
@@ -284,23 +284,23 @@ func (h *HTTPHost) Serve() error {
 }
 
 func (h *HTTPHost) Close() error {
-	h.createHttpTransport.Do(func() {
-		h.httpTransport = newHttpTransport()
+	h.createHTTPTransport.Do(func() {
+		h.httpTransport = newHTTPTransport()
 	})
 	close(h.httpTransport.closeListeners)
 	return nil
 }
 
-// SetHttpHandler sets the HTTP handler for a given protocol. Automatically
+// SetHTTPHandler sets the HTTP handler for a given protocol. Automatically
 // manages the .well-known/libp2p mapping.
 // TODO should this strip the prefix? I think so
-func (h *HTTPHost) SetHttpHandler(p protocol.ID, handler http.Handler) {
-	h.SetHttpHandlerAtPath(p, string(p), handler)
+func (h *HTTPHost) SetHTTPHandler(p protocol.ID, handler http.Handler) {
+	h.SetHTTPHandlerAtPath(p, string(p), handler)
 }
 
-// SetHttpHandlerAtPath sets the HTTP handler for a given protocol using the
+// SetHTTPHandlerAtPath sets the HTTP handler for a given protocol using the
 // given path. Automatically manages the .well-known/libp2p mapping.
-func (h *HTTPHost) SetHttpHandlerAtPath(p protocol.ID, path string, handler http.Handler) {
+func (h *HTTPHost) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Handler) {
 	if path[len(path)-1] != '/' {
 		// We are nesting this handler under this path, so it should end with a slash.
 		path += "/"
@@ -509,19 +509,19 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 	}
 
 	httpAddrs := make([]ma.Multiaddr, 0, 1) // The common case of a single http address
-	nonHttpAddrs := make([]ma.Multiaddr, 0, len(server.Addrs))
+	nonHTTPAddrs := make([]ma.Multiaddr, 0, len(server.Addrs))
 
 	firstAddrIsHTTP := false
 
 	for i, addr := range server.Addrs {
-		addr, isHttp := normalizeHTTPMultiaddr(addr)
-		if isHttp {
+		addr, isHTTP := normalizeHTTPMultiaddr(addr)
+		if isHTTP {
 			if i == 0 {
 				firstAddrIsHTTP = true
 			}
 			httpAddrs = append(httpAddrs, addr)
 		} else {
-			nonHttpAddrs = append(nonHttpAddrs, addr)
+			nonHTTPAddrs = append(nonHTTPAddrs, addr)
 		}
 	}
 
@@ -571,7 +571,7 @@ func (h *HTTPHost) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOpt
 		if server.ID == "" {
 			return nil, fmt.Errorf("can not use the HTTP transport, and no server peer ID provided")
 		}
-		err := h.StreamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHttpAddrs})
+		err := h.StreamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHTTPAddrs})
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to peer: %w", err)
 		}
