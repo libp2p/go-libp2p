@@ -50,8 +50,8 @@ type WellKnownHandler struct {
 	wellKnownMapping ProtocolMetaMap
 }
 
-// StreamHostListen retuns a net.Listener that listens on libp2p streams for HTTP/1.1 messages.
-func StreamHostListen(streamHost host.Host) (net.Listener, error) {
+// streamHostListen retuns a net.Listener that listens on libp2p streams for HTTP/1.1 messages.
+func streamHostListen(streamHost host.Host) (net.Listener, error) {
 	return gostream.Listen(streamHost, ProtocolIDForMultistreamSelect)
 }
 
@@ -199,7 +199,7 @@ func (h *HTTPHost) Serve() error {
 	errCh := make(chan error)
 
 	if h.StreamHost != nil {
-		listener, err := StreamHostListen(h.StreamHost)
+		listener, err := streamHostListen(h.StreamHost)
 		if err != nil {
 			return err
 		}

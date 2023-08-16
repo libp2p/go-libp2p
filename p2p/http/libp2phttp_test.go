@@ -72,10 +72,6 @@ func TestRoundTrippers(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	streamListener, err := libp2phttp.StreamHostListen(serverHost)
-	require.NoError(t, err)
-	defer streamListener.Close()
-
 	httpHost := libp2phttp.HTTPHost{
 		ServeInsecureHTTP: true,
 		StreamHost:        serverHost,
