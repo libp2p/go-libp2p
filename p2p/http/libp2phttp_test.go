@@ -16,6 +16,7 @@ import (
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2phttp "github.com/libp2p/go-libp2p/p2p/http"
+	httpping "github.com/libp2p/go-libp2p/p2p/http/ping"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -211,14 +212,13 @@ func TestRoundTrippers(t *testing.T) {
 	}
 }
 
-// TODO test with a native Go HTTP server
 func TestPlainOldHTTPServer(t *testing.T) {
 	mux := http.NewServeMux()
 	wk := libp2phttp.WellKnownHandler{}
 	mux.Handle("/.well-known/libp2p", &wk)
 
-	mux.Handle("/ping/", libp2phttp.Ping{})
-	wk.AddProtocolMapping(libp2phttp.PingProtocolID, "/ping/")
+	mux.Handle("/ping/", httpping.Ping{})
+	wk.AddProtocolMapping(httpping.PingProtocolID, "/ping/")
 
 	server := &http.Server{Addr: "127.0.0.1:0", Handler: mux}
 
@@ -301,10 +301,8 @@ func TestPlainOldHTTPServer(t *testing.T) {
 			require.NoError(t, err)
 
 			expectedMap := make(libp2phttp.WellKnownProtoMap)
-			expectedMap[libp2phttp.PingProtocolID] = libp2phttp.WellKnownProtocolMeta{Path: "/ping/"}
+			expectedMap[httpping.PingProtocolID] = libp2phttp.WellKnownProtocolMeta{Path: "/ping/"}
 			require.Equal(t, expectedMap, protoMap)
 		})
 	}
 }
-
-// TODO test with tls

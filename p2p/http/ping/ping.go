@@ -1,4 +1,4 @@
-package libp2phttp
+package httpping
 
 import (
 	"bytes"
