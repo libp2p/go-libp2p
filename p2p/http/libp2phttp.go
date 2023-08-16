@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	logging "github.com/ipfs/go-log/v2"
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -25,6 +26,8 @@ import (
 	gostream "github.com/libp2p/go-libp2p/p2p/gostream"
 	ma "github.com/multiformats/go-multiaddr"
 )
+
+var log = logging.Logger("libp2phttp")
 
 const ProtocolIDForMultistreamSelect = "/http/1.1"
 const peerMetadataLimit = 8 << 10 // 8KB
@@ -105,6 +108,8 @@ type HTTPHost struct {
 	ListenAddrs []ma.Multiaddr
 	// TLSConfig is the TLS config for the server to use
 	TLSConfig *tls.Config
+	// ServeInsecureHTTP indicates if the server should serve unencrypted HTTP requests over TCP.
+	ServeInsecureHTTP bool
 	// ServeMux is the http.ServeMux used by the server to serve requests
 	ServeMux http.ServeMux
 
@@ -245,8 +250,6 @@ func (h *HTTPHost) Serve() error {
 
 		}
 
-		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
-
 		if parsedAddr.useHTTPS {
 			go func() {
 				srv := http.Server{
@@ -255,15 +258,25 @@ func (h *HTTPHost) Serve() error {
 				}
 				errCh <- srv.ServeTLS(l, "", "")
 			}()
-		} else {
+			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
+		} else if h.ServeInsecureHTTP {
 			go func() {
 				errCh <- http.Serve(l, &h.ServeMux)
 			}()
+			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
+		} else {
+			// We are not serving insecure HTTP
+			log.Warnf("Not serving insecure HTTP on %s. Prefer an HTTPS endpoint.", listenAddr)
 		}
 	}
 
 	close(h.httpTransport.waitingForListeners)
 	closedWaitingForListeners = true
+
+	if len(h.httpTransport.listeners) == 0 || len(h.httpTransport.listenAddrs) == 0 {
+		closeAllListeners()
+		return ErrNoListeners
+	}
 
 	expectedErrCount := len(h.httpTransport.listeners)
 	var err error
@@ -595,7 +608,7 @@ func parseMultiaddr(addr ma.Multiaddr) httpMultiaddr {
 			out.host = c.Value()
 		case ma.P_TCP, ma.P_UDP:
 			out.port = c.Value()
-		case ma.P_TLS:
+		case ma.P_TLS, ma.P_HTTPS:
 			out.useHTTPS = true
 		case ma.P_SNI:
 			out.sni = c.Value()
@@ -615,7 +628,7 @@ func NewStreamRoundTripper(streamHost host.Host, server peer.ID) http.RoundTripp
 }
 
 var httpComponent, _ = ma.NewComponent("http", "")
-var tlsComponent, _ = ma.NewComponent("http", "")
+var tlsComponent, _ = ma.NewComponent("tls", "")
 
 // normalizeHTTPMultiaddr converts an https multiaddr to a tls/http one.
 // Returns a bool indicating if the input multiaddr has an http (or https) component.
@@ -639,6 +652,9 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 	}
 
 	_, afterHTTPS := ma.SplitFirst(afterIncludingHTTPS)
+	if afterHTTPS == nil {
+		return ma.Join(beforeHTTPS, tlsComponent, httpComponent), isHTTPMultiaddr
+	}
 
 	return ma.Join(beforeHTTPS, tlsComponent, httpComponent, afterHTTPS), isHTTPMultiaddr
 }

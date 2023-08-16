@@ -77,8 +77,9 @@ func TestRoundTrippers(t *testing.T) {
 	defer streamListener.Close()
 
 	httpHost := libp2phttp.HTTPHost{
-		StreamHost:  serverHost,
-		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+		ServeInsecureHTTP: true,
+		StreamHost:        serverHost,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
 	httpHost.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +313,8 @@ func TestPlainOldHTTPServer(t *testing.T) {
 
 func TestHTTPHostZeroValue(t *testing.T) {
 	server := libp2phttp.HTTPHost{
-		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+		ServeInsecureHTTP: true,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
 	go func() {
@@ -335,7 +337,7 @@ func TestHTTPHostZeroValue(t *testing.T) {
 func TestHTTPS(t *testing.T) {
 	server := libp2phttp.HTTPHost{
 		TLSConfig:   selfSignedTLSConfig(t),
-		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+		ListenAddrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/https")},
 	}
 	server.SetHTTPHandler(httpping.PingProtocolID, httpping.Ping{})
 	go func() {
