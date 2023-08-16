@@ -669,7 +669,6 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 // returns it. Will only store the peer's protocol mapping if the server ID is
 // provided.
 func (h *HTTPHost) getAndStorePeerMetadata(roundtripper http.RoundTripper, server peer.ID) (PeerMeta, error) {
-	fmt.Println(h)
 	if h.peerMetadata == nil {
 		h.peerMetadata = newPeerMetadataCache()
 	}
