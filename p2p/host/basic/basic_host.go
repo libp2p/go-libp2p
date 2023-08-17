@@ -792,10 +792,11 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 				continue
 			}
 			addrWithCerthash, added := tpt.AddCertHashes(addr)
-			addrs[i] = addrWithCerthash
 			if !added {
 				log.Debug("Couldn't add certhashes to webtransport multiaddr because we aren't listening on webtransport")
+				continue
 			}
+			addrs[i] = addrWithCerthash
 		}
 	}
 	return addrs

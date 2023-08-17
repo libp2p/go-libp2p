@@ -839,6 +839,11 @@ func TestInferWebtransportAddrsFromQuic(t *testing.T) {
 			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport"},
 		},
 		{
+			name: "Happy Path With CertHashes",
+			in:   []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport/certhash/uEgNmb28/certhash/uEgNmb28", "/ip4/1.2.3.4/udp/9999/quic-v1"},
+			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport/certhash/uEgNmb28/certhash/uEgNmb28", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport"},
+		},
+		{
 			name: "Already discovered",
 			in:   []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport"},
 			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport"},
@@ -877,9 +882,6 @@ func TestInferWebtransportAddrsFromQuic(t *testing.T) {
 			sort.StringSlice(tc.in).Sort()
 			sort.StringSlice(tc.out).Sort()
 			min := make([]ma.Multiaddr, 0, len(tc.in))
-			sort.Slice(tc.in, func(i, j int) bool {
-				return tc.in[i] < tc.in[j]
-			})
 			for _, addr := range tc.in {
 				min = append(min, ma.StringCast(addr))
 			}
