@@ -380,7 +380,7 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	return resp, nil
 }
 
-// roundTripperForSpecificHost is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
+// roundTripperForSpecificServer is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
 // The underlying RoundTripper MUST be an HTTP Transport.
 type roundTripperForSpecificServer struct {
 	http.RoundTripper
