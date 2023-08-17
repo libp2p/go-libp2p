@@ -289,7 +289,6 @@ func testUpdateTTLs(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
 			AssertAddressesEqual(t, addrs1[1:], m.Addrs(ids[0]))
 			AssertAddressesEqual(t, addrs2[1:], m.Addrs(ids[1]))
 		})
-
 	}
 }
 

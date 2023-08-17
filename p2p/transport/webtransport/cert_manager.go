@@ -18,8 +18,10 @@ import (
 // Allow for a bit of clock skew.
 // When we generate a certificate, the NotBefore time is set to clockSkewAllowance before the current time.
 // Similarly, we stop using a certificate one clockSkewAllowance before its expiry time.
-const clockSkewAllowance = time.Hour
-const validityMinusTwoSkew = certValidity - (2 * clockSkewAllowance)
+const (
+	clockSkewAllowance   = time.Hour
+	validityMinusTwoSkew = certValidity - (2 * clockSkewAllowance)
+)
 
 type certConfig struct {
 	tlsConf *tls.Config

@@ -125,20 +125,18 @@ var (
 	}, []string{"dir", "scope", "resource"})
 )
 
-var (
-	memDistribution = []float64{
-		1 << 10,   // 1KB
-		4 << 10,   // 4KB
-		32 << 10,  // 32KB
-		1 << 20,   // 1MB
-		32 << 20,  // 32MB
-		256 << 20, // 256MB
-		512 << 20, // 512MB
-		1 << 30,   // 1GB
-		2 << 30,   // 2GB
-		4 << 30,   // 4GB
-	}
-)
+var memDistribution = []float64{
+	1 << 10,   // 1KB
+	4 << 10,   // 4KB
+	32 << 10,  // 32KB
+	1 << 20,   // 1MB
+	32 << 20,  // 32MB
+	256 << 20, // 256MB
+	512 << 20, // 512MB
+	1 << 30,   // 1GB
+	2 << 30,   // 2GB
+	4 << 30,   // 4GB
+}
 
 func MustRegisterWith(reg prometheus.Registerer) {
 	metricshelper.RegisterCollectors(reg,

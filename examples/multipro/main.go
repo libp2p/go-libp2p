@@ -31,7 +31,7 @@ func main() {
 	run(h1, h2, done)
 }
 
-// helper method - create a lib-p2p host to listen on a port
+// helper method - create a lib-p2p host to listen on a port.
 func makeRandomNode(port int, done chan bool) *Node {
 	// Ignoring most errors for brevity
 	// See echo example for more details and better implementation

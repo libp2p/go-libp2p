@@ -97,14 +97,16 @@ func TestAllowedWithPeer(t *testing.T) {
 			allowlist:         []string{"/ip4/1.2.3.0/ipcidr/24"},
 			endpoint:          multiaddrA,
 			peer:              peerA,
-		}, {
+		},
+		{
 			name:              "allowed. right network, right peer",
 			isConnAllowed:     true,
 			isAllowedWithPeer: true,
 			allowlist:         []string{"/ip4/1.2.3.0/ipcidr/24" + "/p2p/" + peerA.String()},
 			endpoint:          multiaddrA,
 			peer:              peerA,
-		}, {
+		},
+		{
 			name:              "allowed. right network, no peer",
 			isConnAllowed:     true,
 			isAllowedWithPeer: true,
@@ -174,7 +176,6 @@ func TestAllowedWithPeer(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestRemoved(t *testing.T) {

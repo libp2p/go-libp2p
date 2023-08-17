@@ -268,6 +268,7 @@ func (m *metricsConnTracer) ClosedConnection(e error) {
 	}
 	connErrors.WithLabelValues(side, desc).Inc()
 }
+
 func (m *metricsConnTracer) SentPacket(hdr *logging.ExtendedHeader, size logging.ByteCount, _ *logging.AckFrame, _ []logging.Frame) {
 	bytesTransferred.WithLabelValues("sent").Add(float64(size))
 	sentPackets.WithLabelValues(m.getEncLevel(logging.PacketTypeFromHeader(&hdr.Header))).Inc()

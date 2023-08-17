@@ -93,7 +93,6 @@ func TestECDSAMarshalLoop(t *testing.T) {
 	if !pub.Equals(pubNew) || !pubNew.Equals(pub) {
 		t.Fatal("keys are not equal")
 	}
-
 }
 
 func TestECDSAPublicKeyFromPubKey(t *testing.T) {

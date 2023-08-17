@@ -9,13 +9,17 @@ import (
 // Interface assertions commented out to avoid introducing hard dependencies to protobuf.
 // var _ proto.Marshaler = (*ID)(nil)
 // var _ proto.Unmarshaler = (*ID)(nil)
-var _ json.Marshaler = (*ID)(nil)
-var _ json.Unmarshaler = (*ID)(nil)
+var (
+	_ json.Marshaler   = (*ID)(nil)
+	_ json.Unmarshaler = (*ID)(nil)
+)
 
-var _ encoding.BinaryMarshaler = (*ID)(nil)
-var _ encoding.BinaryUnmarshaler = (*ID)(nil)
-var _ encoding.TextMarshaler = (*ID)(nil)
-var _ encoding.TextUnmarshaler = (*ID)(nil)
+var (
+	_ encoding.BinaryMarshaler   = (*ID)(nil)
+	_ encoding.BinaryUnmarshaler = (*ID)(nil)
+	_ encoding.TextMarshaler     = (*ID)(nil)
+	_ encoding.TextUnmarshaler   = (*ID)(nil)
+)
 
 func (id ID) Marshal() ([]byte, error) {
 	return []byte(id), nil

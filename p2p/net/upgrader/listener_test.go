@@ -79,7 +79,7 @@ func TestAcceptMultipleConns(t *testing.T) {
 func TestConnectionsClosedIfNotAccepted(t *testing.T) {
 	require := require.New(t)
 
-	var timeout = 100 * time.Millisecond
+	timeout := 100 * time.Millisecond
 	if os.Getenv("CI") != "" {
 		timeout = 500 * time.Millisecond
 	}
@@ -206,7 +206,7 @@ func TestListenerCloseClosesQueued(t *testing.T) {
 }
 
 func TestConcurrentAccept(t *testing.T) {
-	var num = 3 * upgrader.AcceptQueueLength
+	num := 3 * upgrader.AcceptQueueLength
 
 	blockingMuxer := newBlockingMuxer()
 	id, u := createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "blockingMuxer", Muxer: blockingMuxer}}, nil, nil)

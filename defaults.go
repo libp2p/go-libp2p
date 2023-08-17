@@ -66,7 +66,7 @@ var DefaultPeerstore Option = func(cfg *Config) error {
 	return cfg.Apply(Peerstore(ps))
 }
 
-// RandomIdentity generates a random identity. (default behaviour)
+// RandomIdentity generates a random identity. (default behaviour).
 var RandomIdentity = func(cfg *Config) error {
 	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
@@ -113,7 +113,7 @@ var DefaultResourceManager = func(cfg *Config) error {
 	return cfg.Apply(ResourceManager(mgr))
 }
 
-// DefaultConnectionManager creates a default connection manager
+// DefaultConnectionManager creates a default connection manager.
 var DefaultConnectionManager = func(cfg *Config) error {
 	mgr, err := connmgr.NewConnManager(160, 192)
 	if err != nil {
@@ -123,12 +123,12 @@ var DefaultConnectionManager = func(cfg *Config) error {
 	return cfg.Apply(ConnectionManager(mgr))
 }
 
-// DefaultMultiaddrResolver creates a default connection manager
+// DefaultMultiaddrResolver creates a default connection manager.
 var DefaultMultiaddrResolver = func(cfg *Config) error {
 	return cfg.Apply(MultiaddrResolver(madns.DefaultResolver))
 }
 
-// DefaultPrometheusRegisterer configures libp2p to use the default registerer
+// DefaultPrometheusRegisterer configures libp2p to use the default registerer.
 var DefaultPrometheusRegisterer = func(cfg *Config) error {
 	return cfg.Apply(PrometheusRegisterer(prometheus.DefaultRegisterer))
 }

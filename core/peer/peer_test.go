@@ -15,9 +15,11 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
-var gen1 keyset // generated
-var gen2 keyset // generated
-var man keyset  // manual
+var (
+	gen1 keyset // generated
+	gen2 keyset // generated
+	man  keyset // manual
+)
 
 func hash(b []byte) []byte {
 	h, _ := mh.Sum(b, mh.SHA2_256, -1)
@@ -122,7 +124,6 @@ func TestIDMatchesPublicKey(t *testing.T) {
 }
 
 func TestIDMatchesPrivateKey(t *testing.T) {
-
 	test := func(ks keyset) {
 		p1, err := Decode(ks.hpkp)
 		if err != nil {
@@ -270,8 +271,9 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-var hpkpMan = `QmcJeseojbPW9hSejUM1sQ1a2QmbrryPK4Z8pWbRUPaYEn`
-var skManBytes = `
+var (
+	hpkpMan    = `QmcJeseojbPW9hSejUM1sQ1a2QmbrryPK4Z8pWbRUPaYEn`
+	skManBytes = `
 CAASqAkwggSkAgEAAoIBAQC3hjPtPli71gFNzGJ6rUhYdb65BDwW7IrniEaZKi6z
 tW4Iz0MouEJY8GPG1iQfqZKp5w9H2ENh4I1bk2dsezrJ7Nneg4Eqd78CmeHTAgaP
 3PKsxohdMo/TOFNxwl8SkEF8FyVbio2TCoijYNHUuprZuq7MPEAJYr3Z1eEkM/xR
@@ -298,3 +300,4 @@ tGrTrmsynBjt2wKBgErdYe+zZ2Wo+wXQGAoZi4pfcwiw4a97Kdh0dx+WZz7acHms
 h+V20VRmEHm5h8WnJ/Wv5uK94t6NY17wzjQ7y2BN5mY5cA2cZAcpeqtv/N06tH4S
 cn1UEuRB8VpwkjaPUNZhqtYK40qff2OTdJy8taFtQiN7fz9euWTC78zjph2s
 `
+)

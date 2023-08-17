@@ -95,7 +95,8 @@ func (b *fixedBackoff) Reset() {}
 // timeUnits are the units of time the polynomial is evaluated in
 // polyCoefs is the array of polynomial coefficients from [c0, c1, ... cn]
 func NewPolynomialBackoff(min, max time.Duration, jitter Jitter,
-	timeUnits time.Duration, polyCoefs []float64, rngSrc rand.Source) BackoffFactory {
+	timeUnits time.Duration, polyCoefs []float64, rngSrc rand.Source,
+) BackoffFactory {
 	rng := rand.New(&lockedSource{src: rngSrc})
 	return func() BackoffStrategy {
 		return &polynomialBackoff{
@@ -144,7 +145,8 @@ func (b *polynomialBackoff) Delay() time.Duration {
 // jitter is the function for adding randomness around the backoff
 // timeUnits are the units of time the base^x is evaluated in
 func NewExponentialBackoff(min, max time.Duration, jitter Jitter,
-	timeUnits time.Duration, base float64, offset time.Duration, rngSrc rand.Source) BackoffFactory {
+	timeUnits time.Duration, base float64, offset time.Duration, rngSrc rand.Source,
+) BackoffFactory {
 	rng := rand.New(&lockedSource{src: rngSrc})
 	return func() BackoffStrategy {
 		return &exponentialBackoff{

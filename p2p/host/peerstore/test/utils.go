@@ -59,7 +59,7 @@ func AddressProducer(ctx context.Context, b *testing.B, addrs chan *peerpair, ad
 }
 
 func GenerateAddrs(count int) []ma.Multiaddr {
-	var addrs = make([]ma.Multiaddr, count)
+	addrs := make([]ma.Multiaddr, count)
 	for i := 0; i < count; i++ {
 		addrs[i] = Multiaddr(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1111", i))
 	}
@@ -67,7 +67,7 @@ func GenerateAddrs(count int) []ma.Multiaddr {
 }
 
 func GeneratePeerIDs(count int) []peer.ID {
-	var ids = make([]peer.ID, count)
+	ids := make([]peer.ID, count)
 	for i := 0; i < count; i++ {
 		ids[i], _ = pt.RandPeerID()
 	}

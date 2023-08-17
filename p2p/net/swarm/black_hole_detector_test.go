@@ -11,7 +11,7 @@ import (
 func TestBlackHoleFilterReset(t *testing.T) {
 	n := 10
 	bhf := &blackHoleFilter{n: n, minSuccesses: 2, name: "test"}
-	var i = 0
+	i := 0
 	// calls up to n should be probing
 	for i = 1; i <= n; i++ {
 		if bhf.HandleRequest() != blackHoleResultProbing {
@@ -139,7 +139,6 @@ func TestBlackHoleDetectorProbes(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func TestBlackHoleDetectorAddrFiltering(t *testing.T) {
@@ -166,8 +165,10 @@ func TestBlackHoleDetectorAddrFiltering(t *testing.T) {
 		return bhd
 	}
 
-	allInput := []ma.Multiaddr{udp6Pub, udp6Pri, upd4Pub, udp4Pri, tcp6Pub, tcp6Pri,
-		tcp4Pub, tcp4Pri}
+	allInput := []ma.Multiaddr{
+		udp6Pub, udp6Pri, upd4Pub, udp4Pri, tcp6Pub, tcp6Pri,
+		tcp4Pub, tcp4Pri,
+	}
 
 	udpBlockedOutput := []ma.Multiaddr{udp6Pri, udp4Pri, tcp6Pub, tcp6Pri, tcp4Pub, tcp4Pri}
 	bhd := makeBHD(true, false)

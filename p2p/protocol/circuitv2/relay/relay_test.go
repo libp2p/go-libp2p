@@ -355,5 +355,4 @@ func TestRelayLimitData(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("expected to read 0 bytes but read %d", n)
 	}
-
 }

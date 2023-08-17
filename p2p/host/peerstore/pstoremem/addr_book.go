@@ -73,8 +73,10 @@ type memoryAddrBook struct {
 	clock      clock
 }
 
-var _ pstore.AddrBook = (*memoryAddrBook)(nil)
-var _ pstore.CertifiedAddrBook = (*memoryAddrBook)(nil)
+var (
+	_ pstore.AddrBook          = (*memoryAddrBook)(nil)
+	_ pstore.CertifiedAddrBook = (*memoryAddrBook)(nil)
+)
 
 func NewAddrBook() *memoryAddrBook {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,7 +86,8 @@ func NewAddrBook() *memoryAddrBook {
 			for i := range ret {
 				ret[i] = &addrSegment{
 					addrs:             make(map[peer.ID]map[string]*expiringAddr),
-					signedPeerRecords: make(map[peer.ID]*peerRecordState)}
+					signedPeerRecords: make(map[peer.ID]*peerRecordState),
+				}
 			}
 			return ret
 		}(),

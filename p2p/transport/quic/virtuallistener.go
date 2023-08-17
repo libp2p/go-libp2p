@@ -110,7 +110,6 @@ func (r *acceptLoopRunner) innerAccept(l *listener, expectedVersion quic.Version
 	}
 
 	conn, err := l.Accept()
-
 	if err != nil {
 		r.sendErrAndClose(err)
 		return nil, err

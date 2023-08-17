@@ -147,7 +147,6 @@ func main() {
 	}
 
 	host, err := libp2p.New(options...)
-
 	if err != nil {
 		log.Fatalf("failed to instantiate libp2p instance: %s", err)
 	}

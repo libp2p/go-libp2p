@@ -110,7 +110,6 @@ func TestScaling(t *testing.T) {
 		require.Equal(t, 20+4*2, scaled.service["B"].Streams)
 		require.Equal(t, int64(200+4*3), scaled.service["B"].Memory)
 		require.Equal(t, 400, scaled.service["B"].FD)
-
 	})
 }
 

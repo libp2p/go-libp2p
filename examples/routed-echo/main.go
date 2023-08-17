@@ -164,7 +164,6 @@ func main() {
 	// it should be handled on host A by the handler we set above because
 	// we use the same /echo/1.0.0 protocol
 	s, err := ha.NewStream(context.Background(), peerid, "/echo/1.0.0")
-
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -182,7 +181,7 @@ func main() {
 	log.Printf("read reply: %q\n", out)
 }
 
-// doEcho reads a line of data from a stream and writes it back
+// doEcho reads a line of data from a stream and writes it back.
 func doEcho(s network.Stream) error {
 	buf := bufio.NewReader(s)
 	str, err := buf.ReadString('\n')

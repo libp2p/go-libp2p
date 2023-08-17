@@ -70,7 +70,7 @@ func ListenAddrs(addrs ...ma.Multiaddr) Option {
 // * Peer ID
 // * Host
 // * Network
-// * Peerstore
+// * Peerstore.
 func Security(name string, constructor interface{}) Option {
 	return func(cfg *Config) error {
 		if cfg.Insecure {
@@ -141,7 +141,7 @@ func QUICReuse(constructor interface{}, opts ...quicreuse.Option) Option {
 // * Private Key
 // * Public Key
 // * Address filter (filter.Filter)
-// * Peerstore
+// * Peerstore.
 func Transport(constructor interface{}, opts ...interface{}) Option {
 	return func(cfg *Config) error {
 		// generate a random identifier, so that fx can associate the constructor with its options
@@ -272,7 +272,7 @@ func AddrsFactory(factory config.AddrsFactory) Option {
 // This option only configures libp2p to accept inbound connections from relays
 // and make outbound connections_through_ relays when requested by the remote peer.
 // This option supports both circuit v1 and v2 connections.
-// (default: enabled)
+// (default: enabled).
 func EnableRelay() Option {
 	return func(cfg *Config) error {
 		cfg.RelayCustom = true
@@ -311,7 +311,7 @@ func EnableRelayService(opts ...relayv2.Option) Option {
 // This subsystem performs automatic address rewriting to advertise relay addresses when it
 // detects that the node is publicly unreachable (e.g. behind a NAT).
 //
-// Deprecated: Use EnableAutoRelayWithStaticRelays or EnableAutoRelayWithPeerSource
+// Deprecated: Use EnableAutoRelayWithStaticRelays or EnableAutoRelayWithPeerSource.
 func EnableAutoRelay(opts ...autorelay.Option) Option {
 	return func(cfg *Config) error {
 		cfg.EnableAutoRelay = true
@@ -486,7 +486,7 @@ func ProtocolVersion(s string) Option {
 	}
 }
 
-// UserAgent sets the libp2p user-agent sent along with the identify protocol
+// UserAgent sets the libp2p user-agent sent along with the identify protocol.
 func UserAgent(userAgent string) Option {
 	return func(cfg *Config) error {
 		cfg.UserAgent = userAgent
@@ -494,7 +494,7 @@ func UserAgent(userAgent string) Option {
 	}
 }
 
-// MultiaddrResolver sets the libp2p dns resolver
+// MultiaddrResolver sets the libp2p dns resolver.
 func MultiaddrResolver(rslv *madns.Resolver) Option {
 	return func(cfg *Config) error {
 		cfg.MultiaddrResolver = rslv
@@ -551,7 +551,7 @@ func WithDialTimeout(t time.Duration) Option {
 	}
 }
 
-// DisableMetrics configures libp2p to disable prometheus metrics
+// DisableMetrics configures libp2p to disable prometheus metrics.
 func DisableMetrics() Option {
 	return func(cfg *Config) error {
 		cfg.DisableMetrics = true
@@ -559,7 +559,7 @@ func DisableMetrics() Option {
 	}
 }
 
-// PrometheusRegisterer configures libp2p to use reg as the Registerer for all metrics subsystems
+// PrometheusRegisterer configures libp2p to use reg as the Registerer for all metrics subsystems.
 func PrometheusRegisterer(reg prometheus.Registerer) Option {
 	return func(cfg *Config) error {
 		if cfg.DisableMetrics {
@@ -579,7 +579,7 @@ func PrometheusRegisterer(reg prometheus.Registerer) Option {
 // DialRanker configures libp2p to use d as the dial ranker. To enable smart
 // dialing use `swarm.DefaultDialRanker`. use `swarm.NoDelayDialRanker` to
 // disable smart dialing.
-// Deprecated: use SwarmOpts(swarm.WithDialRanker(d)) instead
+// Deprecated: use SwarmOpts(swarm.WithDialRanker(d)) instead.
 func DialRanker(d network.DialRanker) Option {
 	return func(cfg *Config) error {
 		if cfg.DialRanker != nil {
@@ -590,7 +590,7 @@ func DialRanker(d network.DialRanker) Option {
 	}
 }
 
-// SwarmOpts configures libp2p to use swarm with opts
+// SwarmOpts configures libp2p to use swarm with opts.
 func SwarmOpts(opts ...swarm.Option) Option {
 	return func(cfg *Config) error {
 		cfg.SwarmOpts = opts

@@ -17,8 +17,10 @@ import (
 
 const maxMessageSize = 4096
 
-var DialTimeout = time.Minute
-var DialRelayTimeout = 5 * time.Second
+var (
+	DialTimeout      = time.Minute
+	DialRelayTimeout = 5 * time.Second
+)
 
 // relay protocol errors; used for signalling deduplication
 type relayError struct {

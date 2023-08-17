@@ -144,7 +144,6 @@ func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-
 			if shouldRecordObservation(h, h, c, tc.addr) != tc.want {
 				t.Fatalf("%s %s", tc.addr, tc.failureReason)
 			}

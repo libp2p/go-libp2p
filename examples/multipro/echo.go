@@ -16,8 +16,10 @@ import (
 )
 
 // pattern: /protocol-name/request-or-response-message/version
-const echoRequest = "/echo/echoreq/0.0.1"
-const echoResponse = "/echo/echoresp/0.0.1"
+const (
+	echoRequest  = "/echo/echoreq/0.0.1"
+	echoResponse = "/echo/echoresp/0.0.1"
+)
 
 type EchoProtocol struct {
 	node     *Node                      // local host
@@ -36,9 +38,8 @@ func NewEchoProtocol(node *Node, done chan bool) *EchoProtocol {
 	return &e
 }
 
-// remote peer requests handler
+// remote peer requests handler.
 func (e *EchoProtocol) onEchoRequest(s network.Stream) {
-
 	// get request data
 	data := &pb.EchoRequest{}
 	buf, err := io.ReadAll(s)
@@ -71,7 +72,8 @@ func (e *EchoProtocol) onEchoRequest(s network.Stream) {
 
 	resp := &pb.EchoResponse{
 		MessageData: e.node.NewMessageData(data.MessageData.Id, false),
-		Message:     data.Message}
+		Message:     data.Message,
+	}
 
 	// sign the data
 	signature, err := e.node.signProtoMessage(resp)
@@ -91,9 +93,8 @@ func (e *EchoProtocol) onEchoRequest(s network.Stream) {
 	e.done <- true
 }
 
-// remote echo response handler
+// remote echo response handler.
 func (e *EchoProtocol) onEchoResponse(s network.Stream) {
-
 	data := &pb.EchoResponse{}
 	buf, err := io.ReadAll(s)
 	if err != nil {
@@ -142,7 +143,8 @@ func (e *EchoProtocol) Echo(host host.Host) bool {
 	// create message data
 	req := &pb.EchoRequest{
 		MessageData: e.node.NewMessageData(uuid.New().String(), false),
-		Message:     fmt.Sprintf("Echo from %s", e.node.ID())}
+		Message:     fmt.Sprintf("Echo from %s", e.node.ID()),
+	}
 
 	signature, err := e.node.signProtoMessage(req)
 	if err != nil {

@@ -295,7 +295,6 @@ func (as *AmbientAutoNAT) handleDialResponse(dialErr error) {
 
 // recordObservation updates NAT status and confidence
 func (as *AmbientAutoNAT) recordObservation(observation network.Reachability) {
-
 	currentStatus := *as.status.Load()
 
 	if observation == network.ReachabilityPublic {

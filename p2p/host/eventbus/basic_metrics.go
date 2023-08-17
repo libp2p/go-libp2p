@@ -63,7 +63,6 @@ var (
 
 // MetricsTracer tracks metrics for the eventbus subsystem
 type MetricsTracer interface {
-
 	// EventEmitted counts the total number of events grouped by event type
 	EventEmitted(typ reflect.Type)
 

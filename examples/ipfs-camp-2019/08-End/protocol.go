@@ -8,9 +8,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
-	"time"
-
 	"strings"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"

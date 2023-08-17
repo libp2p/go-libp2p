@@ -9,9 +9,7 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-var (
-	quicV1MA = ma.StringCast("/quic-v1")
-)
+var quicV1MA = ma.StringCast("/quic-v1")
 
 func ToQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, error) {
 	udpMA, err := manet.FromNetAddr(na)

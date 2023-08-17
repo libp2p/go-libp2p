@@ -27,7 +27,7 @@ type Expectation interface {
 }
 
 // Run executes the function f and captures any output written using Go's standard log. Each sequence
-// of expected messages is then
+// of expected messages is then.
 func (h *LogHarness) Run(t *testing.T, f func()) {
 	// Capture raw log output
 	fl := log.Flags()
@@ -42,7 +42,7 @@ func (h *LogHarness) Run(t *testing.T, f func()) {
 	}
 }
 
-// Expect adds an expectation to the default sequence that the log contains a line equal to s
+// Expect adds an expectation to the default sequence that the log contains a line equal to s.
 func (h *LogHarness) Expect(s string) {
 	if len(h.sequences) == 0 {
 		h.sequences = append(h.sequences, &Sequence{name: ""})
@@ -50,7 +50,7 @@ func (h *LogHarness) Expect(s string) {
 	h.sequences[0].Expect(s)
 }
 
-// ExpectPrefix adds an to the default sequence expectation that the log contains a line starting with s
+// ExpectPrefix adds an to the default sequence expectation that the log contains a line starting with s.
 func (h *LogHarness) ExpectPrefix(s string) {
 	if len(h.sequences) == 0 {
 		h.sequences = append(h.sequences, &Sequence{name: ""})
@@ -58,7 +58,7 @@ func (h *LogHarness) ExpectPrefix(s string) {
 	h.sequences[0].ExpectPrefix(s)
 }
 
-// NewSequence creates a new sequence of expected log messages
+// NewSequence creates a new sequence of expected log messages.
 func (h *LogHarness) NewSequence(name string) *Sequence {
 	seq := &Sequence{name: name}
 	h.sequences = append(h.sequences, seq)
@@ -111,12 +111,12 @@ exploop:
 	}
 }
 
-// Expect adds an expectation that the log contains a line equal to s
+// Expect adds an expectation that the log contains a line equal to s.
 func (seq *Sequence) Expect(s string) {
 	seq.exp = append(seq.exp, text(s))
 }
 
-// ExpectPrefix adds an expectation that the log contains a line starting with s
+// ExpectPrefix adds an expectation that the log contains a line starting with s.
 func (seq *Sequence) ExpectPrefix(s string) {
 	seq.exp = append(seq.exp, prefix(s))
 }

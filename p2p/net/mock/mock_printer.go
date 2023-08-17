@@ -27,7 +27,6 @@ func (p *printer) MocknetLinks(mn Mocknet) {
 }
 
 func (p *printer) NetworkConns(ni network.Network) {
-
 	fmt.Fprintf(p.w, "%s connected to:\n", ni.LocalPeer())
 	for _, c := range ni.Conns() {
 		fmt.Fprintf(p.w, "\t%s (addr: %s)\n", c.RemotePeer(), c.RemoteMultiaddr())

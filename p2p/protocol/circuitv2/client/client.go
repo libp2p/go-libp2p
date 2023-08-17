@@ -36,8 +36,10 @@ type Client struct {
 	hopCount    map[peer.ID]int
 }
 
-var _ io.Closer = &Client{}
-var _ transport.Transport = &Client{}
+var (
+	_ io.Closer           = &Client{}
+	_ transport.Transport = &Client{}
+)
 
 type accept struct {
 	conn          *Conn

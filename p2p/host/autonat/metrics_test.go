@@ -23,7 +23,8 @@ func BenchmarkClientDialResponse(b *testing.B) {
 	b.ReportAllocs()
 	mt := NewMetricsTracer()
 	statuses := []pb.Message_ResponseStatus{
-		pb.Message_OK, pb.Message_E_DIAL_ERROR, pb.Message_E_DIAL_REFUSED, pb.Message_E_BAD_REQUEST}
+		pb.Message_OK, pb.Message_E_DIAL_ERROR, pb.Message_E_DIAL_REFUSED, pb.Message_E_BAD_REQUEST,
+	}
 	for i := 0; i < b.N; i++ {
 		mt.ReceivedDialResponse(statuses[i%len(statuses)])
 	}
@@ -33,7 +34,8 @@ func BenchmarkServerDialResponse(b *testing.B) {
 	b.ReportAllocs()
 	mt := NewMetricsTracer()
 	statuses := []pb.Message_ResponseStatus{
-		pb.Message_OK, pb.Message_E_DIAL_ERROR, pb.Message_E_DIAL_REFUSED, pb.Message_E_BAD_REQUEST}
+		pb.Message_OK, pb.Message_E_DIAL_ERROR, pb.Message_E_DIAL_REFUSED, pb.Message_E_BAD_REQUEST,
+	}
 	for i := 0; i < b.N; i++ {
 		mt.OutgoingDialResponse(statuses[i%len(statuses)])
 	}

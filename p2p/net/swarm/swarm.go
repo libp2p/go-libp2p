@@ -528,7 +528,6 @@ func isBetterConn(a, b *Conn) bool {
 
 // bestConnToPeer returns the best connection to peer.
 func (s *Swarm) bestConnToPeer(p peer.ID) *Conn {
-
 	// TODO: Prefer some transports over others.
 	// For now, prefers direct connections over Relayed connections.
 	// For tie-breaking, select the newest non-closed connection with the most streams.
@@ -719,8 +718,10 @@ func (s *Swarm) ResourceManager() network.ResourceManager {
 }
 
 // Swarm is a Network.
-var _ network.Network = (*Swarm)(nil)
-var _ transport.TransportNetwork = (*Swarm)(nil)
+var (
+	_ network.Network            = (*Swarm)(nil)
+	_ transport.TransportNetwork = (*Swarm)(nil)
+)
 
 type connWithMetrics struct {
 	transport.CapableConn

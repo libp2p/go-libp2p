@@ -272,15 +272,17 @@ type ScopeStat struct {
 // NullResourceManager is a stub for tests and initialization of default values
 type NullResourceManager struct{}
 
-var _ ResourceScope = (*NullScope)(nil)
-var _ ResourceScopeSpan = (*NullScope)(nil)
-var _ ServiceScope = (*NullScope)(nil)
-var _ ProtocolScope = (*NullScope)(nil)
-var _ PeerScope = (*NullScope)(nil)
-var _ ConnManagementScope = (*NullScope)(nil)
-var _ ConnScope = (*NullScope)(nil)
-var _ StreamManagementScope = (*NullScope)(nil)
-var _ StreamScope = (*NullScope)(nil)
+var (
+	_ ResourceScope         = (*NullScope)(nil)
+	_ ResourceScopeSpan     = (*NullScope)(nil)
+	_ ServiceScope          = (*NullScope)(nil)
+	_ ProtocolScope         = (*NullScope)(nil)
+	_ PeerScope             = (*NullScope)(nil)
+	_ ConnManagementScope   = (*NullScope)(nil)
+	_ ConnScope             = (*NullScope)(nil)
+	_ StreamManagementScope = (*NullScope)(nil)
+	_ StreamScope           = (*NullScope)(nil)
+)
 
 // NullScope is a stub for tests and initialization of default values
 type NullScope struct{}
@@ -288,24 +290,31 @@ type NullScope struct{}
 func (n *NullResourceManager) ViewSystem(f func(ResourceScope) error) error {
 	return f(&NullScope{})
 }
+
 func (n *NullResourceManager) ViewTransient(f func(ResourceScope) error) error {
 	return f(&NullScope{})
 }
+
 func (n *NullResourceManager) ViewService(svc string, f func(ServiceScope) error) error {
 	return f(&NullScope{})
 }
+
 func (n *NullResourceManager) ViewProtocol(p protocol.ID, f func(ProtocolScope) error) error {
 	return f(&NullScope{})
 }
+
 func (n *NullResourceManager) ViewPeer(p peer.ID, f func(PeerScope) error) error {
 	return f(&NullScope{})
 }
+
 func (n *NullResourceManager) OpenConnection(dir Direction, usefd bool, endpoint multiaddr.Multiaddr) (ConnManagementScope, error) {
 	return &NullScope{}, nil
 }
+
 func (n *NullResourceManager) OpenStream(p peer.ID, dir Direction) (StreamManagementScope, error) {
 	return &NullScope{}, nil
 }
+
 func (n *NullResourceManager) Close() error {
 	return nil
 }

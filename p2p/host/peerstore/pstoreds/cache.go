@@ -12,8 +12,7 @@ type cache[K comparable, V any] interface {
 }
 
 // noopCache is a dummy implementation that's used when the cache is disabled.
-type noopCache[K comparable, V any] struct {
-}
+type noopCache[K comparable, V any] struct{}
 
 var _ cache[int, int] = (*noopCache[int, int])(nil)
 

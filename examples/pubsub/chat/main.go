@@ -86,7 +86,7 @@ func shortID(p peer.ID) string {
 	return pretty[len(pretty)-8:]
 }
 
-// discoveryNotifee gets notified when we find a new peer via mDNS discovery
+// discoveryNotifee gets notified when we find a new peer via mDNS discovery.
 type discoveryNotifee struct {
 	h host.Host
 }

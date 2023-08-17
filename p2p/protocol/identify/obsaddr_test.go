@@ -369,7 +369,6 @@ func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("did not get Symmetric NAT event")
 	}
-
 }
 
 func TestEmitNATDeviceTypeCone(t *testing.T) {

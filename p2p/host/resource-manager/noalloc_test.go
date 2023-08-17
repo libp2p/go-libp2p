@@ -56,7 +56,6 @@ func randomTraceEvt(rng *rand.Rand) TraceEvt {
 		FD:         rng.Intn(100),
 		Time:       time.Now().Format(time.RFC3339Nano),
 	}
-
 }
 
 var regOnce sync.Once

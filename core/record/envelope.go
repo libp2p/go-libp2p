@@ -44,9 +44,11 @@ type Envelope struct {
 	unmarshalOnce  sync.Once
 }
 
-var ErrEmptyDomain = errors.New("envelope domain must not be empty")
-var ErrEmptyPayloadType = errors.New("payloadType must not be empty")
-var ErrInvalidSignature = errors.New("invalid signature or incorrect domain")
+var (
+	ErrEmptyDomain      = errors.New("envelope domain must not be empty")
+	ErrEmptyPayloadType = errors.New("payloadType must not be empty")
+	ErrInvalidSignature = errors.New("invalid signature or incorrect domain")
+)
 
 // Seal marshals the given Record, places the marshaled bytes inside an Envelope,
 // and signs with the given private key.

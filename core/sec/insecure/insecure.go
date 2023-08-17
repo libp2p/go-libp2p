@@ -229,5 +229,7 @@ func (ic *Conn) ConnState() network.ConnectionState {
 	return network.ConnectionState{}
 }
 
-var _ sec.SecureTransport = (*Transport)(nil)
-var _ sec.SecureConn = (*Conn)(nil)
+var (
+	_ sec.SecureTransport = (*Transport)(nil)
+	_ sec.SecureConn      = (*Conn)(nil)
+)

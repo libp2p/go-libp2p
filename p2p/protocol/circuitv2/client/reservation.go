@@ -39,7 +39,6 @@ type Reservation struct {
 
 // ReservationError is the error returned on failure to reserve a slot in the relay
 type ReservationError struct {
-
 	// Status is the status returned by the relay for rejecting the reservation
 	// request. It is set to pbv2.Status_CONNECTION_FAILED on other failures
 	Status pbv2.Status
@@ -96,7 +95,8 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 		return nil, ReservationError{
 			Status: pbv2.Status_MALFORMED_MESSAGE,
 			Reason: fmt.Sprintf("unexpected relay response: not a status message (%d)", msg.GetType()),
-			err:    err}
+			err:    err,
+		}
 	}
 
 	if status := msg.GetStatus(); status != pbv2.Status_OK {

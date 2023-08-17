@@ -38,6 +38,7 @@ func (dt *dummyTransport) Proxy() bool {
 func (dt *dummyTransport) Protocols() []int {
 	return dt.protocols
 }
+
 func (dt *dummyTransport) Close() error {
 	dt.closed = true
 	return nil

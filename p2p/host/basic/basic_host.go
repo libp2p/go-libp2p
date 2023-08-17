@@ -253,7 +253,8 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if opts.EnableHolePunching {
 		if opts.EnableMetrics {
 			hpOpts := []holepunch.Option{
-				holepunch.WithMetricsTracer(holepunch.NewMetricsTracer(holepunch.WithRegisterer(opts.PrometheusRegisterer)))}
+				holepunch.WithMetricsTracer(holepunch.NewMetricsTracer(holepunch.WithRegisterer(opts.PrometheusRegisterer))),
+			}
 			opts.HolePunchingOptions = append(hpOpts, opts.HolePunchingOptions...)
 
 		}
@@ -291,7 +292,8 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			// Prefer explicitly provided metrics tracer
 			metricsOpt := []relayv2.Option{
 				relayv2.WithMetricsTracer(
-					relayv2.NewMetricsTracer(relayv2.WithRegisterer(opts.PrometheusRegisterer)))}
+					relayv2.NewMetricsTracer(relayv2.WithRegisterer(opts.PrometheusRegisterer))),
+			}
 			opts.RelayServiceOpts = append(metricsOpt, opts.RelayServiceOpts...)
 		}
 		h.relayManager = relaysvc.NewRelayManager(h, opts.RelayServiceOpts...)

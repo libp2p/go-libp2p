@@ -47,7 +47,6 @@ type PeerRouting interface {
 
 // ValueStore is a basic Put/Get interface.
 type ValueStore interface {
-
 	// PutValue adds value corresponding to given Key.
 	PutValue(context.Context, string, []byte, ...Option) error
 

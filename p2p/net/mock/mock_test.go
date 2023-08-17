@@ -301,7 +301,6 @@ func TestNetworkSetup(t *testing.T) {
 	if _, err := n2.NewStream(ctx, p3); err != nil {
 		t.Error(err)
 	}
-
 }
 
 func TestStreams(t *testing.T) {
@@ -347,7 +346,6 @@ func TestStreams(t *testing.T) {
 	if !bytes.Equal(b, []byte("boop")) {
 		panic("bytes mismatch 2")
 	}
-
 }
 
 func TestAdding(t *testing.T) {
@@ -429,7 +427,6 @@ func TestAdding(t *testing.T) {
 	if !bytes.Equal(b, []byte("boop")) {
 		t.Error("bytes mismatch 2")
 	}
-
 }
 
 func TestRateLimiting(t *testing.T) {
@@ -536,6 +533,7 @@ func TestLimitedStreams(t *testing.T) {
 		t.Fatal("Expected 2ish seconds but got ", time.Since(before))
 	}
 }
+
 func TestFuzzManyPeers(t *testing.T) {
 	peerCount := 500
 	if race.WithRace() {

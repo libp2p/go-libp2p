@@ -91,7 +91,6 @@ func testDecodeB64(t *testing.T, windows bool) {
 			t.Fatal("byte was wrong")
 		}
 	}
-
 }
 
 func TestDecodeBin(t *testing.T) {
@@ -118,5 +117,4 @@ func testDecodeBin(t *testing.T, windows bool) {
 			t.Fatal("byte was wrong")
 		}
 	}
-
 }

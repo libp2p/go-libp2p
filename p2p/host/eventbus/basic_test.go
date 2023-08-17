@@ -16,8 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type EventA struct{}
-type EventB int
+type (
+	EventA struct{}
+	EventB int
+)
 
 func getN() int {
 	n := 50000

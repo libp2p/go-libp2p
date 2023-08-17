@@ -24,7 +24,7 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
-// designed to be shared between all app protocols
+// designed to be shared between all app protocols.
 type MessageData struct {
 	// shared between all requests
 	ClientVersion        string   `protobuf:"bytes,1,opt,name=clientVersion,proto3" json:"clientVersion,omitempty"`
@@ -112,7 +112,7 @@ func (m *MessageData) GetSign() []byte {
 	return nil
 }
 
-// a protocol define a set of reuqest and responses
+// a protocol define a set of reuqest and responses.
 type PingRequest struct {
 	MessageData *MessageData `protobuf:"bytes,1,opt,name=messageData" json:"messageData,omitempty"`
 	// method specific data
@@ -207,7 +207,7 @@ func (m *PingResponse) GetMessage() string {
 	return ""
 }
 
-// a protocol define a set of reuqest and responses
+// a protocol define a set of reuqest and responses.
 type EchoRequest struct {
 	MessageData *MessageData `protobuf:"bytes,1,opt,name=messageData" json:"messageData,omitempty"`
 	// method specific data

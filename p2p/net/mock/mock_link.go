@@ -21,9 +21,11 @@ type link struct {
 }
 
 func newLink(mn *mocknet, opts LinkOptions) *link {
-	l := &link{mock: mn,
+	l := &link{
+		mock:        mn,
 		opts:        opts,
-		ratelimiter: NewRateLimiter(opts.Bandwidth)}
+		ratelimiter: NewRateLimiter(opts.Bandwidth),
+	}
 	return l
 }
 

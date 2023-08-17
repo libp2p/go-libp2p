@@ -9,13 +9,17 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-var loopbackV4, _ = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/0")
-var loopbackV6, _ = ma.NewMultiaddr("/ip6/::1/tcp/0")
-var unspecV6, _ = ma.NewMultiaddr("/ip6/::/tcp/0")
-var unspecV4, _ = ma.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+var (
+	loopbackV4, _ = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/0")
+	loopbackV6, _ = ma.NewMultiaddr("/ip6/::1/tcp/0")
+	unspecV6, _   = ma.NewMultiaddr("/ip6/::/tcp/0")
+	unspecV4, _   = ma.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+)
 
-var globalV4 ma.Multiaddr
-var globalV6 ma.Multiaddr
+var (
+	globalV4 ma.Multiaddr
+	globalV6 ma.Multiaddr
+)
 
 func init() {
 	addrs, err := manet.InterfaceMultiaddrs()

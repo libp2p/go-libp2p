@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-// SetDefaultServiceLimits sets the default limits for bundled libp2p services
+// SetDefaultServiceLimits sets the default limits for bundled libp2p services.
 func SetDefaultServiceLimits(config *rcmgr.ScalingLimitConfig) {
 	// identify
 	config.AddServiceLimit(

@@ -24,7 +24,6 @@ type HandlerFunc = multistream.HandlerFunc[ID]
 // The handlers are checked in order of registration; if multiple handlers are
 // eligible, only the first to be registered will be invoked.
 type Router interface {
-
 	// AddHandler registers the given handler to be invoked for
 	// an exact literal match of the given protocol ID string.
 	AddHandler(protocol ID, handler HandlerFunc)

@@ -198,7 +198,7 @@ func checkSecureAndUpgrade(dir network.Direction, gater connmgr.ConnectionGater,
 // addConnPair adds connection to both peernets at the same time
 // must be followerd by pn1.addConn(c1) and pn2.addConn(c2)
 func addConnPair(pn1, pn2 *peernet, c1, c2 *conn) {
-	var l1, l2 = pn1, pn2 // peernets in lock order
+	l1, l2 := pn1, pn2 // peernets in lock order
 	// bytes compare as string compare is lexicographical
 	if bytes.Compare([]byte(l1.LocalPeer()), []byte(l2.LocalPeer())) > 0 {
 		l1, l2 = l2, l1

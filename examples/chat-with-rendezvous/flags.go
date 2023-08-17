@@ -10,7 +10,7 @@ import (
 	maddr "github.com/multiformats/go-multiaddr"
 )
 
-// A new type we need for writing a custom flag parser
+// A new type we need for writing a custom flag parser.
 type addrList []maddr.Multiaddr
 
 func (al *addrList) String() string {

@@ -26,7 +26,7 @@ func init() {
 
 func qloggerForDir(qlogDir string, p logging.Perspective, ci quic.ConnectionID) logging.ConnectionTracer {
 	// create the QLOGDIR, if it doesn't exist
-	if err := os.MkdirAll(qlogDir, 0777); err != nil {
+	if err := os.MkdirAll(qlogDir, 0o777); err != nil {
 		log.Errorf("creating the QLOGDIR failed: %s", err)
 		return nil
 	}

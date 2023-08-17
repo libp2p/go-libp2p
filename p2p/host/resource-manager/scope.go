@@ -46,8 +46,10 @@ type resourceScope struct {
 	metrics *metrics // metrics collection
 }
 
-var _ network.ResourceScope = (*resourceScope)(nil)
-var _ network.ResourceScopeSpan = (*resourceScope)(nil)
+var (
+	_ network.ResourceScope     = (*resourceScope)(nil)
+	_ network.ResourceScopeSpan = (*resourceScope)(nil)
+)
 
 func newResourceScope(limit Limit, edges []*resourceScope, name string, trace *trace, metrics *metrics) *resourceScope {
 	for _, e := range edges {

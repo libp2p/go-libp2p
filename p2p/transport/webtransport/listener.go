@@ -18,8 +18,10 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-const queueLen = 16
-const handshakeTimeout = 10 * time.Second
+const (
+	queueLen         = 16
+	handshakeTimeout = 10 * time.Second
+)
 
 type listener struct {
 	transport       *transport

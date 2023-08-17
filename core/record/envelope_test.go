@@ -164,6 +164,7 @@ func (r failingRecord) MarshalRecord() ([]byte, error) {
 	}
 	return nil, errors.New("marshal failed")
 }
+
 func (r failingRecord) UnmarshalRecord(data []byte) error {
 	if r.allowUnmarshal {
 		return nil
@@ -172,9 +173,7 @@ func (r failingRecord) UnmarshalRecord(data []byte) error {
 }
 
 func TestSealFailsIfRecordMarshalFails(t *testing.T) {
-	var (
-		priv, _, err = test.RandTestKeyPair(crypto.Ed25519, 256)
-	)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 
 	if err != nil {
 		t.Fatal(err)
@@ -190,9 +189,7 @@ func TestConsumeEnvelopeFailsIfEnvelopeUnmarshalFails(t *testing.T) {
 }
 
 func TestConsumeEnvelopeFailsIfRecordUnmarshalFails(t *testing.T) {
-	var (
-		priv, _, err = test.RandTestKeyPair(crypto.Ed25519, 256)
-	)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 
 	if err != nil {
 		t.Fatal(err)
@@ -210,9 +207,7 @@ func TestConsumeEnvelopeFailsIfRecordUnmarshalFails(t *testing.T) {
 }
 
 func TestConsumeTypedEnvelopeFailsIfRecordUnmarshalFails(t *testing.T) {
-	var (
-		priv, _, err = test.RandTestKeyPair(crypto.Ed25519, 256)
-	)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 
 	if err != nil {
 		t.Fatal(err)

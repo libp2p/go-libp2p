@@ -247,7 +247,6 @@ func TestFailuresOnInitiator(t *testing.T) {
 				require.Contains(t, err.Error(), tc.errMsg)
 			}
 		})
-
 	}
 }
 
@@ -361,7 +360,6 @@ func TestFailuresOnResponder(t *testing.T) {
 			require.Len(t, errs, 1)
 			require.Contains(t, errs[0], tc.errMsg)
 		})
-
 	}
 }
 

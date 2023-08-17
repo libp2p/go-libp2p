@@ -16,8 +16,10 @@ var maxRsaKeyBits = 8192
 
 // ErrRsaKeyTooSmall is returned when trying to generate or parse an RSA key
 // that's smaller than MinRsaKeyBits bits. In test
-var ErrRsaKeyTooSmall error
-var ErrRsaKeyTooBig error = fmt.Errorf("rsa keys must be <= %d bits", maxRsaKeyBits)
+var (
+	ErrRsaKeyTooSmall error
+	ErrRsaKeyTooBig   error = fmt.Errorf("rsa keys must be <= %d bits", maxRsaKeyBits)
+)
 
 func init() {
 	if _, ok := os.LookupEnv(WeakRsaKeyEnv); ok {

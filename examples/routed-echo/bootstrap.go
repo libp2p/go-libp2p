@@ -34,7 +34,7 @@ var (
 	LOCAL_PEER_ENDPOINT = "http://localhost:5001/api/v0/id"
 )
 
-// Borrowed from ipfs code to parse the results of the command `ipfs id`
+// Borrowed from ipfs code to parse the results of the command `ipfs id`.
 type IdOutput struct {
 	ID              string
 	PublicKey       string
@@ -43,7 +43,7 @@ type IdOutput struct {
 	ProtocolVersion string
 }
 
-// quick and dirty function to get the local ipfs daemons address for bootstrapping
+// quick and dirty function to get the local ipfs daemons address for bootstrapping.
 func getLocalPeerInfo() []peer.AddrInfo {
 	resp, err := http.PostForm(LOCAL_PEER_ENDPOINT, nil)
 	if err != nil {
@@ -81,7 +81,7 @@ func convertPeers(peers []string) []peer.AddrInfo {
 	return pinfos
 }
 
-// This code is borrowed from the go-ipfs bootstrap process
+// This code is borrowed from the go-ipfs bootstrap process.
 func bootstrapConnect(ctx context.Context, ph host.Host, peers []peer.AddrInfo) error {
 	if len(peers) < 1 {
 		return errors.New("not enough bootstrap peers")

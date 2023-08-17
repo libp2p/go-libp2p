@@ -97,7 +97,6 @@ func toIPNet(ma multiaddr.Multiaddr) (*net.IPNet, peer.ID, error) {
 
 	_, ipnet, err := net.ParseCIDR(ipString + "/" + mask)
 	return ipnet, allowedPeer, err
-
 }
 
 // Add takes a multiaddr and adds it to the allowlist. The multiaddr should be

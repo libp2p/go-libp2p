@@ -62,7 +62,6 @@ type UpdatedAddress struct {
 // This record can be shared with other peers to inform them of what we believe are our diallable addresses
 // a secure and authenticated way.
 type EvtLocalAddressesUpdated struct {
-
 	// Diffs indicates whether this event contains a diff of the Host's previous
 	// address set.
 	Diffs bool

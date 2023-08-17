@@ -16,8 +16,10 @@ import (
 )
 
 // ID is the protocol ID for noise
-const ID = "/noise"
-const maxProtoNum = 100
+const (
+	ID          = "/noise"
+	maxProtoNum = 100
+)
 
 type Transport struct {
 	protocolID protocol.ID

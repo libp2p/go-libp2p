@@ -92,5 +92,4 @@ func TestSecp256k1MarshalLoop(t *testing.T) {
 	if !pub.Equals(pubNew) || !pubNew.Equals(pub) {
 		t.Fatal("keys are not equal")
 	}
-
 }

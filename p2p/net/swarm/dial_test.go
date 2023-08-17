@@ -534,7 +534,6 @@ func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {
 		t.Fatal(err)
 	}
 	return addrs, lst
-
 }
 
 func TestDialSimultaneousJoin(t *testing.T) {

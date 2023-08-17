@@ -183,7 +183,7 @@ func runSender(ctx context.Context, ha host.Host, targetPeer string) {
 	log.Printf("read reply: %q\n", out)
 }
 
-// doEcho reads a line of data a stream and writes it back
+// doEcho reads a line of data a stream and writes it back.
 func doEcho(s network.Stream) error {
 	buf := bufio.NewReader(s)
 	str, err := buf.ReadString('\n')

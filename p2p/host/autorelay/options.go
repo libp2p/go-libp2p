@@ -55,9 +55,7 @@ var defaultConfig = config{
 	minInterval:     30 * time.Second,
 }
 
-var (
-	errAlreadyHavePeerSource = errors.New("can only use a single WithPeerSource or WithStaticRelays")
-)
+var errAlreadyHavePeerSource = errors.New("can only use a single WithPeerSource or WithStaticRelays")
 
 type Option func(*config) error
 
@@ -200,9 +198,11 @@ var _ ClockWithInstantTimer = RealClock{}
 func (RealClock) Now() time.Time {
 	return time.Now()
 }
+
 func (RealClock) Since(t time.Time) time.Duration {
 	return time.Since(t)
 }
+
 func (RealClock) InstantTimer(when time.Time) InstantTimer {
 	t := time.NewTimer(time.Until(when))
 	return &RealTimer{t}

@@ -19,9 +19,7 @@ import (
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 )
 
-var (
-	topicNameFlag = flag.String("topicName", "applesauce", "name of topic to join")
-)
+var topicNameFlag = flag.String("topicName", "applesauce", "name of topic to join")
 
 func main() {
 	flag.Parse()

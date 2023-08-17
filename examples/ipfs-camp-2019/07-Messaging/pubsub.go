@@ -19,7 +19,6 @@ func pubsubMessageHandler(id peer.ID, msg *SendMessage) {
 }
 
 func pubsubUpdateHandler(id peer.ID, msg *UpdatePeer) {
-
 }
 
 func pubsubHandler(ctx context.Context, sub *pubsub.Subscription) {

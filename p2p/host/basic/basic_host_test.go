@@ -574,7 +574,8 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 		Current: []event.UpdatedAddress{
 			{Action: event.Added, Address: ma.StringCast("/ip4/1.2.3.4/tcp/1234")},
 		},
-		Removed: []event.UpdatedAddress{}}
+		Removed: []event.UpdatedAddress{},
+	}
 
 	// assert we get expected event
 	evt := waitForAddrChangeEvent(ctx, sub, t)
@@ -892,7 +893,5 @@ func TestInferWebtransportAddrsFromQuic(t *testing.T) {
 			}
 			require.Equal(t, tc.out, outStr)
 		})
-
 	}
-
 }

@@ -535,7 +535,6 @@ func TestResolveMultiaddr(t *testing.T) {
 
 	for unresolved, expectedMA := range testCases {
 		t.Run(unresolved, func(t *testing.T) {
-
 			m1 := ma.StringCast(unresolved)
 			wsTpt := WebsocketTransport{}
 			ctx := context.Background()

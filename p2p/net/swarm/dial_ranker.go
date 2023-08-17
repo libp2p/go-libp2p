@@ -87,8 +87,8 @@ func DefaultDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 // offset is used to delay all addresses by a fixed duration. This is useful for delaying all relay
 // addresses relative to direct addresses.
 func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.Duration,
-	offset time.Duration) []network.AddrDelay {
-
+	offset time.Duration,
+) []network.AddrDelay {
 	sort.Slice(addrs, func(i, j int) bool { return score(addrs[i]) < score(addrs[j]) })
 
 	// If the first address is (QUIC, IPv6), make the second address (QUIC, IPv4).

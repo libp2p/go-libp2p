@@ -13,8 +13,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-var circuitProtocol = ma.ProtocolWithCode(ma.P_CIRCUIT)
-var circuitAddr = ma.Cast(circuitProtocol.VCode)
+var (
+	circuitProtocol = ma.ProtocolWithCode(ma.P_CIRCUIT)
+	circuitAddr     = ma.Cast(circuitProtocol.VCode)
+)
 
 // AddTransport constructs a new p2p-circuit/v2 client and adds it as a transport to the
 // host network
@@ -45,8 +47,10 @@ func AddTransport(h host.Host, upgrader transport.Upgrader) error {
 }
 
 // Transport interface
-var _ transport.Transport = (*Client)(nil)
-var _ io.Closer = (*Client)(nil)
+var (
+	_ transport.Transport = (*Client)(nil)
+	_ io.Closer           = (*Client)(nil)
+)
 
 func (c *Client) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
 	connScope, err := c.host.Network().ResourceManager().OpenConnection(network.DirOutbound, false, a)

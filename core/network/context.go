@@ -10,17 +10,21 @@ import (
 // each independently.
 var DialPeerTimeout = 60 * time.Second
 
-type noDialCtxKey struct{}
-type dialPeerTimeoutCtxKey struct{}
-type forceDirectDialCtxKey struct{}
-type useTransientCtxKey struct{}
-type simConnectCtxKey struct{ isClient bool }
+type (
+	noDialCtxKey          struct{}
+	dialPeerTimeoutCtxKey struct{}
+	forceDirectDialCtxKey struct{}
+	useTransientCtxKey    struct{}
+	simConnectCtxKey      struct{ isClient bool }
+)
 
-var noDial = noDialCtxKey{}
-var forceDirectDial = forceDirectDialCtxKey{}
-var useTransient = useTransientCtxKey{}
-var simConnectIsServer = simConnectCtxKey{}
-var simConnectIsClient = simConnectCtxKey{isClient: true}
+var (
+	noDial             = noDialCtxKey{}
+	forceDirectDial    = forceDirectDialCtxKey{}
+	useTransient       = useTransientCtxKey{}
+	simConnectIsServer = simConnectCtxKey{}
+	simConnectIsClient = simConnectCtxKey{isClient: true}
+)
 
 // EXPERIMENTAL
 // WithForceDirectDial constructs a new context with an option that instructs the network

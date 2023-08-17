@@ -20,12 +20,16 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-const certValidityPeriod = 100 * 365 * 24 * time.Hour // ~100 years
-const certificatePrefix = "libp2p-tls-handshake:"
-const alpn string = "libp2p"
+const (
+	certValidityPeriod        = 100 * 365 * 24 * time.Hour // ~100 years
+	certificatePrefix         = "libp2p-tls-handshake:"
+	alpn               string = "libp2p"
+)
 
-var extensionID = getPrefixedExtensionID([]int{1, 1})
-var extensionCritical bool // so we can mark the extension critical in tests
+var (
+	extensionID       = getPrefixedExtensionID([]int{1, 1})
+	extensionCritical bool // so we can mark the extension critical in tests
+)
 
 type signedKey struct {
 	PubKey    []byte

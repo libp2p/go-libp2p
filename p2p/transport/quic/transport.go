@@ -395,5 +395,4 @@ func (t *transport) CloseVirtualListener(l *virtualListener) error {
 	}
 
 	return nil
-
 }

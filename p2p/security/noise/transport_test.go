@@ -588,7 +588,6 @@ func TestEarlyDataRejected(t *testing.T) {
 		clientErr, serverErr := handshake(t, sendingEDH, receivingEDH)
 		require.Error(t, clientErr)
 		require.EqualError(t, serverErr, "nope")
-
 	})
 
 	t.Run("server sending", func(t *testing.T) {

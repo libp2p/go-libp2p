@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// FindFreePort attempts to find an unused tcp port
+// FindFreePort attempts to find an unused tcp port.
 func FindFreePort(t *testing.T, host string, maxAttempts int) (int, error) {
 	t.Helper()
 

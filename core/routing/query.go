@@ -40,12 +40,14 @@ type QueryEvent struct {
 	Extra     string
 }
 
-type routingQueryKey struct{}
-type eventChannel struct {
-	mu  sync.Mutex
-	ctx context.Context
-	ch  chan<- *QueryEvent
-}
+type (
+	routingQueryKey struct{}
+	eventChannel    struct {
+		mu  sync.Mutex
+		ctx context.Context
+		ch  chan<- *QueryEvent
+	}
+)
 
 // waitThenClose is spawned in a goroutine when the channel is registered. This
 // safely cleans up the channel when the context has been canceled.

@@ -204,7 +204,6 @@ func testResourceManagerDialDenied(t *testing.T, tc *connTestCase) {
 
 	_, err = clientTransport.Dial(context.Background(), target, p)
 	require.ErrorIs(t, err, rerr)
-
 }
 
 func TestResourceManagerAcceptDenied(t *testing.T) {

@@ -82,9 +82,11 @@ type transport struct {
 	conns  map[uint64]*conn // using quic-go's ConnectionTracingKey as map key
 }
 
-var _ tpt.Transport = &transport{}
-var _ tpt.Resolver = &transport{}
-var _ io.Closer = &transport{}
+var (
+	_ tpt.Transport = &transport{}
+	_ tpt.Resolver  = &transport{}
+	_ io.Closer     = &transport{}
+)
 
 func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {

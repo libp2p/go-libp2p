@@ -65,7 +65,8 @@ func usedRelays(h host.Host) []peer.ID {
 }
 
 func newPrivateNode(t *testing.T, peerSource func(context.Context, int) <-chan peer.AddrInfo,
-	opts ...autorelay.Option) host.Host {
+	opts ...autorelay.Option,
+) host.Host {
 	t.Helper()
 	h, err := libp2p.New(
 		libp2p.ForceReachabilityPrivate(),

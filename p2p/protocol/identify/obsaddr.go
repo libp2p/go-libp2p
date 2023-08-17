@@ -63,7 +63,6 @@ type observedAddr struct {
 }
 
 func (oa *observedAddr) activated() bool {
-
 	// We only activate if other peers observed the same address
 	// of ours at least 4 times. SeenBy peers are removed by GC if
 	// they say the address more than ttl*ActivationThresh
@@ -530,7 +529,8 @@ func (oas *ObservedAddrManager) emitAllNATTypes() {
 // returns true along with the new NAT device type if the NAT device type for the given protocol has changed.
 // returns false otherwise.
 func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, protoCode int, transportProto network.NATTransportProtocol,
-	currentNATType network.NATDeviceType) (bool, network.NATDeviceType) {
+	currentNATType network.NATDeviceType,
+) (bool, network.NATDeviceType) {
 	now := time.Now()
 	seenBy := make(map[string]struct{})
 	cnt := 0

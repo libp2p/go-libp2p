@@ -125,8 +125,8 @@ func generate() {
 		if err != nil {
 			panic(err)
 		}
-		os.WriteFile(fname(tc.keyType, "pub"), pubb, 0666)
-		os.WriteFile(fname(tc.keyType, "priv"), privb, 0666)
-		os.WriteFile(fname(tc.keyType, "sig"), sig, 0666)
+		os.WriteFile(fname(tc.keyType, "pub"), pubb, 0o666)
+		os.WriteFile(fname(tc.keyType, "priv"), privb, 0o666)
+		os.WriteFile(fname(tc.keyType, "sig"), sig, 0o666)
 	}
 }

@@ -249,9 +249,7 @@ func SubtestStreamOpenStress(t *testing.T, ta, tb transport.Transport, maddr ma.
 		count = 1000
 	}
 
-	var (
-		connA, connB transport.CapableConn
-	)
+	var connA, connB transport.CapableConn
 
 	accepted := make(chan error, 1)
 	go func() {
@@ -370,7 +368,6 @@ func SubtestStreamReset(t *testing.T, ta, tb transport.Transport, maddr ma.Multi
 		if err == nil {
 			t.Error("should have failed to write")
 		}
-
 	}()
 
 	muxb, err := tb.Dial(context.Background(), l.Multiaddr(), peerA)

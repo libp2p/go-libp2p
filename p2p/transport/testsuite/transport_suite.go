@@ -168,9 +168,7 @@ func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiadd
 	}
 	defer list.Close()
 
-	var (
-		connA, connB transport.CapableConn
-	)
+	var connA, connB transport.CapableConn
 	defer func() {
 		if connA != nil {
 			connA.Close()

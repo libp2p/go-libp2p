@@ -113,7 +113,7 @@ func (ui *ChatUI) Run() error {
 	return ui.app.Run()
 }
 
-// end signals the event loop to exit gracefully
+// end signals the event loop to exit gracefully.
 func (ui *ChatUI) end() {
 	ui.doneCh <- struct{}{}
 }

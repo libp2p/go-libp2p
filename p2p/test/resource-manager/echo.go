@@ -19,9 +19,7 @@ const (
 	EchoProtoID = "/test/echo"
 )
 
-var (
-	echoLog = logging.Logger("echo")
-)
+var echoLog = logging.Logger("echo")
 
 type Echo struct {
 	Host host.Host

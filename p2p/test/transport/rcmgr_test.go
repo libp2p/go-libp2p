@@ -24,7 +24,6 @@ func TestResourceManagerIsUsed(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			for _, testDialer := range []bool{true, false} {
 				t.Run(tc.Name+fmt.Sprintf(" test_dialer=%v", testDialer), func(t *testing.T) {
-
 					var reservedMemory, releasedMemory atomic.Int32
 					defer func() {
 						require.Equal(t, reservedMemory.Load(), releasedMemory.Load())

@@ -265,7 +265,8 @@ func (m *metricsTracer) DialRankingDelay(d time.Duration) {
 }
 
 func (m *metricsTracer) UpdatedBlackHoleFilterState(name string, state blackHoleState,
-	nextProbeAfter int, successFraction float64) {
+	nextProbeAfter int, successFraction float64,
+) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 

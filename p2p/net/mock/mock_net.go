@@ -323,7 +323,6 @@ func (mn *mocknet) LinkNets(n1, n2 network.Network) (Link, error) {
 }
 
 func (mn *mocknet) Unlink(l2 Link) error {
-
 	l, ok := l2.(*link)
 	if !ok {
 		return fmt.Errorf("only links from mocknet are supported")
@@ -353,7 +352,6 @@ func (mn *mocknet) UnlinkNets(n1, n2 network.Network) error {
 
 // get from the links map. and lazily construct.
 func (mn *mocknet) linksMapGet(p1, p2 peer.ID) map[*link]struct{} {
-
 	l1, found := mn.links[p1]
 	if !found {
 		mn.links[p1] = map[peer.ID]map[*link]struct{}{}

@@ -105,7 +105,6 @@ func makeAutoNAT(t *testing.T, ash host.Host) (host.Host, AutoNAT) {
 func identifyAsServer(server, recip host.Host) {
 	recip.Peerstore().AddAddrs(server.ID(), server.Addrs(), time.Minute)
 	recip.Peerstore().AddProtocols(server.ID(), AutoNATProto)
-
 }
 
 func connect(t *testing.T, a, b host.Host) {

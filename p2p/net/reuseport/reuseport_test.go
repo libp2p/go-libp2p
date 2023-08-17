@@ -46,5 +46,4 @@ func TestReuseError(t *testing.T) {
 			t.Fatalf("expected %t for %#v", v, k)
 		}
 	}
-
 }

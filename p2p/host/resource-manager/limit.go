@@ -105,6 +105,7 @@ func valueOrBlockAll(n int) LimitVal {
 	}
 	return LimitVal(n)
 }
+
 func valueOrBlockAll64(n int64) LimitVal64 {
 	if n == 0 {
 		return BlockAllLimit64

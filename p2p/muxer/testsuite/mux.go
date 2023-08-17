@@ -23,8 +23,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var randomness []byte
-var Subtests map[string]TransportTest
+var (
+	randomness []byte
+	Subtests   map[string]TransportTest
+)
 
 func init() {
 	// read 1MB of randomness
@@ -312,7 +314,6 @@ func SubtestStress(t *testing.T, opt Options) {
 	for err := range errs {
 		t.Error(err)
 	}
-
 }
 
 func tcpPipe(t *testing.T) (net.Conn, net.Conn) {

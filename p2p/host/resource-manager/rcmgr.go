@@ -105,8 +105,10 @@ type connectionScope struct {
 	endpoint      multiaddr.Multiaddr
 }
 
-var _ network.ConnScope = (*connectionScope)(nil)
-var _ network.ConnManagementScope = (*connectionScope)(nil)
+var (
+	_ network.ConnScope           = (*connectionScope)(nil)
+	_ network.ConnManagementScope = (*connectionScope)(nil)
+)
 
 type streamScope struct {
 	*resourceScope
@@ -121,8 +123,10 @@ type streamScope struct {
 	peerSvcScope   *resourceScope
 }
 
-var _ network.StreamScope = (*streamScope)(nil)
-var _ network.StreamManagementScope = (*streamScope)(nil)
+var (
+	_ network.StreamScope           = (*streamScope)(nil)
+	_ network.StreamManagementScope = (*streamScope)(nil)
+)
 
 type Option func(*resourceManager) error
 
@@ -648,7 +652,6 @@ func (s *connectionScope) PeerScope() network.PeerScope {
 // Happens when we first allowlisted this connection due to its IP, but later
 // discovered that the peer id not what we expected.
 func (s *connectionScope) transferAllowedToStandard() (err error) {
-
 	systemScope := s.rcmgr.system.resourceScope
 	transientScope := s.rcmgr.transient.resourceScope
 

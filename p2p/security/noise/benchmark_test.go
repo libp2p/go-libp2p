@@ -131,7 +131,8 @@ func sink(dst io.WriteCloser, src io.Reader, done chan<- error, buf []byte) {
 }
 
 func pipeRandom(src rand.Source, w io.WriteCloser, r io.Reader, n int64, plainTextBuf []byte,
-	writeTo io.Writer) error {
+	writeTo io.Writer,
+) error {
 	rnd := rand.New(src)
 	lr := io.LimitReader(rnd, n)
 
@@ -207,7 +208,6 @@ func BenchmarkTransfer1MB(b *testing.B) {
 			benchDataTransfer(setupEnv(b), 1024*1024, bc.m)
 		})
 	}
-
 }
 
 func BenchmarkTransfer100MB(b *testing.B) {

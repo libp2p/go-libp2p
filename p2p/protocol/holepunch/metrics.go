@@ -106,7 +106,8 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 //   - no_suitable_address:
 //     The peer reported no address with the same transport as this address
 func (mt *metricsTracer) HolePunchFinished(side string, numAttempts int,
-	remoteAddrs []ma.Multiaddr, localAddrs []ma.Multiaddr, directConn network.ConnMultiaddrs) {
+	remoteAddrs []ma.Multiaddr, localAddrs []ma.Multiaddr, directConn network.ConnMultiaddrs,
+) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
@@ -168,7 +169,7 @@ func (mt *metricsTracer) HolePunchFinished(side string, numAttempts int,
 }
 
 func getNumAttemptString(numAttempt int) string {
-	var attemptStr = [...]string{"0", "1", "2", "3", "4", "5"}
+	attemptStr := [...]string{"0", "1", "2", "3", "4", "5"}
 	if numAttempt > 5 {
 		return "> 5"
 	}

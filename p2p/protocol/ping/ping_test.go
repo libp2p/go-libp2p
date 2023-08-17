@@ -53,5 +53,4 @@ func testPing(t *testing.T, ps *ping.PingService, p peer.ID) {
 			t.Fatal("failed to receive ping")
 		}
 	}
-
 }

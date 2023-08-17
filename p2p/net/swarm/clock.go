@@ -40,9 +40,11 @@ var _ Clock = RealClock{}
 func (RealClock) Now() time.Time {
 	return time.Now()
 }
+
 func (RealClock) Since(t time.Time) time.Duration {
 	return time.Since(t)
 }
+
 func (RealClock) InstantTimer(when time.Time) InstantTimer {
 	t := time.NewTimer(time.Until(when))
 	return &RealTimer{t}

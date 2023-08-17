@@ -164,8 +164,10 @@ func (rc realclock) After(d time.Duration) <-chan time.Time {
 	return time.After(d)
 }
 
-var _ pstore.AddrBook = (*dsAddrBook)(nil)
-var _ pstore.CertifiedAddrBook = (*dsAddrBook)(nil)
+var (
+	_ pstore.AddrBook          = (*dsAddrBook)(nil)
+	_ pstore.CertifiedAddrBook = (*dsAddrBook)(nil)
+)
 
 // NewAddrBook initializes a new datastore-backed address book. It serves as a drop-in replacement for pstoremem
 // (memory-backed peerstore), and works with any datastore implementing the ds.Batching interface.

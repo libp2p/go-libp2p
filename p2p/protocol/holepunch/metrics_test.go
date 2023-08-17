@@ -17,7 +17,6 @@ func getCounterValue(t *testing.T, counter *prometheus.CounterVec, labels ...str
 		return 0
 	}
 	return int(*m.Counter.Value)
-
 }
 
 func TestHolePunchOutcomeCounter(t *testing.T) {

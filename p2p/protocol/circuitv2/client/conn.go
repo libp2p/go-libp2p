@@ -16,8 +16,10 @@ import (
 // HopTagWeight is the connection manager weight for connections carrying relay hop streams
 var HopTagWeight = 5
 
-type statLimitDuration struct{}
-type statLimitData struct{}
+type (
+	statLimitDuration struct{}
+	statLimitData     struct{}
+)
 
 var (
 	StatLimitDuration = statLimitDuration{}

@@ -271,5 +271,4 @@ func main() {
 		_ = NewProxyService(host, nil, "")
 		<-make(chan struct{}) // hang forever
 	}
-
 }

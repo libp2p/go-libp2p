@@ -266,7 +266,7 @@ func TestDialWorkerLoopConcurrentFailure(t *testing.T) {
 	go worker.loop()
 
 	const dials = 100
-	var errTimeout = errors.New("timed out!")
+	errTimeout := errors.New("timed out!")
 	var wg sync.WaitGroup
 	resch := make(chan dialResponse, dials)
 	for i := 0; i < dials; i++ {
@@ -360,7 +360,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 	go worker.loop()
 
 	const dials = 100
-	var errTimeout = errors.New("timed out!")
+	errTimeout := errors.New("timed out!")
 	var wg sync.WaitGroup
 	resch := make(chan dialResponse, dials)
 	for i := 0; i < dials; i++ {
@@ -968,7 +968,7 @@ func TestDialWorkerLoopHolePunching(t *testing.T) {
 		for i := 0; i < len(addrs); i++ {
 			delay := 10 * time.Second
 			if addrs[i].Equal(t1) {
-				//fire t1 immediately
+				// fire t1 immediately
 				delay = 0
 			} else if addrs[i].Equal(t2) {
 				// delay t2 by 100ms

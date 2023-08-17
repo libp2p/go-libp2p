@@ -662,7 +662,6 @@ func TestPeerProtectionMultipleTags(t *testing.T) {
 			t.Error("protected connection was closed by connection manager")
 		}
 	}
-
 }
 
 func TestPeerProtectionIdempotent(t *testing.T) {
@@ -809,7 +808,7 @@ func (m mockConn) Scope() network.ConnScope                              { panic
 func (m mockConn) ConnState() network.ConnectionState                    { return network.ConnectionState{} }
 
 func makeSegmentsWithPeerInfos(peerInfos peerInfos) *segments {
-	var s = func() *segments {
+	s := func() *segments {
 		ret := segments{}
 		for i := range ret.buckets {
 			ret.buckets[i] = &segment{
@@ -847,12 +846,14 @@ func TestPeerInfoSorting(t *testing.T) {
 	})
 
 	t.Run("prefer peers with no streams", func(t *testing.T) {
-		p1 := &peerInfo{id: peer.ID("peer1"),
+		p1 := &peerInfo{
+			id: peer.ID("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 0}}: time.Now(),
 			},
 		}
-		p2 := &peerInfo{id: peer.ID("peer2"),
+		p2 := &peerInfo{
+			id: peer.ID("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 1}}: time.Now(),
 			},

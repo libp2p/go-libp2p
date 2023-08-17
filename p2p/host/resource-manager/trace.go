@@ -317,7 +317,7 @@ func (t *trace) Start(limits Limiter) error {
 	t.ctx, t.cancel = context.WithCancel(context.Background())
 
 	if t.path != "" {
-		out, err := os.OpenFile(t.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		out, err := os.OpenFile(t.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 		if err != nil {
 			return nil
 		}

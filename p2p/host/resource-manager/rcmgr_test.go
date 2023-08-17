@@ -153,7 +153,6 @@ func TestResourceManager(t *testing.T) {
 			},
 		}),
 	)
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -972,7 +971,6 @@ func TestResourceManager(t *testing.T) {
 	if lenSvcPeer != 0 {
 		t.Fatal("service peers were not gc'ed")
 	}
-
 }
 
 func TestResourceManagerWithAllowlist(t *testing.T) {

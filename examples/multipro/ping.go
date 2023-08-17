@@ -17,10 +17,12 @@ import (
 )
 
 // pattern: /protocol-name/request-or-response-message/version
-const pingRequest = "/ping/pingreq/0.0.1"
-const pingResponse = "/ping/pingresp/0.0.1"
+const (
+	pingRequest  = "/ping/pingreq/0.0.1"
+	pingResponse = "/ping/pingresp/0.0.1"
+)
 
-// PingProtocol type
+// PingProtocol type.
 type PingProtocol struct {
 	node     *Node // local host
 	mu       sync.Mutex
@@ -35,9 +37,8 @@ func NewPingProtocol(node *Node, done chan bool) *PingProtocol {
 	return p
 }
 
-// remote peer requests handler
+// remote peer requests handler.
 func (p *PingProtocol) onPingRequest(s network.Stream) {
-
 	// get request data
 	data := &p2p.PingRequest{}
 	buf, err := io.ReadAll(s)
@@ -67,8 +68,10 @@ func (p *PingProtocol) onPingRequest(s network.Stream) {
 	// generate response message
 	log.Printf("%s: Sending ping response to %s. Message id: %s...", s.Conn().LocalPeer(), s.Conn().RemotePeer(), data.MessageData.Id)
 
-	resp := &p2p.PingResponse{MessageData: p.node.NewMessageData(data.MessageData.Id, false),
-		Message: fmt.Sprintf("Ping response from %s", p.node.ID())}
+	resp := &p2p.PingResponse{
+		MessageData: p.node.NewMessageData(data.MessageData.Id, false),
+		Message:     fmt.Sprintf("Ping response from %s", p.node.ID()),
+	}
 
 	// sign the data
 	signature, err := p.node.signProtoMessage(resp)
@@ -89,7 +92,7 @@ func (p *PingProtocol) onPingRequest(s network.Stream) {
 	p.done <- true
 }
 
-// remote ping response handler
+// remote ping response handler.
 func (p *PingProtocol) onPingResponse(s network.Stream) {
 	data := &p2p.PingResponse{}
 	buf, err := io.ReadAll(s)
@@ -135,8 +138,10 @@ func (p *PingProtocol) Ping(host host.Host) bool {
 	log.Printf("%s: Sending ping to: %s....", p.node.ID(), host.ID())
 
 	// create message data
-	req := &p2p.PingRequest{MessageData: p.node.NewMessageData(uuid.New().String(), false),
-		Message: fmt.Sprintf("Ping from %s", p.node.ID())}
+	req := &p2p.PingRequest{
+		MessageData: p.node.NewMessageData(uuid.New().String(), false),
+		Message:     fmt.Sprintf("Ping from %s", p.node.ID()),
+	}
 
 	// sign the data
 	signature, err := p.node.signProtoMessage(req)

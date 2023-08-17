@@ -29,7 +29,6 @@ var (
 // an instance of the Record type that you'd like the Envelope's payload to be
 // unmarshaled into.
 type Record interface {
-
 	// Domain is the "signature domain" used when signing and verifying a particular
 	// Record type. The Domain string should be unique to your Record type, and all
 	// instances of the Record type must have the same Domain string.
