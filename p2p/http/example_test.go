@@ -13,12 +13,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type IPFSGatewayHandler struct{}
-
-func (IPFSGatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-}
-
 func ExampleHTTPHost_withAStockGoHTTPClient() {
 	server := libp2phttp.HTTPHost{
 		ServeInsecureHTTP: true, // For our example, we'll allow insecure HTTP
