@@ -3,7 +3,7 @@ name: Go Checks
 on:
   pull_request:
   push:
-    branches: ["master","release-v018","release-v022","release-v023","release-v026","release-v027","release-v028","release-v029"]
+    branches: ["master","release-v0[0-9][0-9]"]
   workflow_dispatch:
 
 permissions:
