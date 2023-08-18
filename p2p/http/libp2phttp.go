@@ -107,7 +107,9 @@ func (h *WellKnownHandler) RemoveProtocolMapping(p protocol.ID) {
 type HTTPHost struct {
 	// StreamHost is a stream based libp2p host used to do HTTP over libp2p streams. May be nil
 	StreamHost host.Host
-	// ListenAddrs are the requested addresses to listen on. Multiaddrs must be a valid HTTP(s) multiaddr.
+	// ListenAddrs are the requested addresses to listen on. Multiaddrs must be
+	// a valid HTTP(s) multiaddr. Only multiaddrs for an HTTP transport are
+	// supported (must end with /http or /https).
 	ListenAddrs []ma.Multiaddr
 	// TLSConfig is the TLS config for the server to use
 	TLSConfig *tls.Config
@@ -156,6 +158,14 @@ func (h *HTTPHost) Addrs() []ma.Multiaddr {
 	})
 	<-h.httpTransport.waitingForListeners
 	return h.httpTransport.listenAddrs
+}
+
+// ID returns the peer ID of the underlying stream host, or the zero value if there is no stream host.
+func (h *HTTPHost) PeerID() peer.ID {
+	if h.StreamHost != nil {
+		return h.StreamHost.ID()
+	}
+	return ""
 }
 
 var ErrNoListeners = errors.New("nothing to listen on")
