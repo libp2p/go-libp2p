@@ -188,7 +188,7 @@ func TestRoundTrippers(t *testing.T) {
 						require.NoError(t, err)
 						nrt, err := h.NamespaceRoundTripper(rt, "/hello", serverHost.ID())
 						require.NoError(t, err)
-						client := &http.Client{Transport: &nrt}
+						client := &http.Client{Transport: nrt}
 						resp, err = client.Get("/")
 						require.NoError(t, err)
 					} else {

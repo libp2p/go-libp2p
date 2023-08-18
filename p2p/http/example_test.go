@@ -117,3 +117,205 @@ func ExampleHTTPHost_overLibp2pStreams() {
 
 	// Output: Hello HTTP
 }
+
+func ExampleHTTPHost_Serve() {
+	server := libp2phttp.HTTPHost{
+		ServeInsecureHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50221/http")},
+	}
+
+	go server.Serve()
+	defer server.Close()
+
+	fmt.Println(server.Addrs())
+
+	// Output: [/ip4/127.0.0.1/tcp/50221/http]
+}
+
+func ExampleHTTPHost_SetHTTPHandler() {
+	server := libp2phttp.HTTPHost{
+		ServeInsecureHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50222/http")},
+	}
+
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Hello World"))
+	}))
+
+	go server.Serve()
+	defer server.Close()
+
+	port, err := server.Addrs()[0].ValueForProtocol(ma.P_TCP)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := http.Get("http://127.0.0.1:" + port + "/hello/1/")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(respBody))
+
+	// Output: Hello World
+}
+
+func ExampleHTTPHost_SetHTTPHandlerAtPath() {
+	server := libp2phttp.HTTPHost{
+		ServeInsecureHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50224/http")},
+	}
+
+	server.SetHTTPHandlerAtPath("/hello/1", "/other-place/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Hello World"))
+	}))
+
+	go server.Serve()
+	defer server.Close()
+
+	port, err := server.Addrs()[0].ValueForProtocol(ma.P_TCP)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := http.Get("http://127.0.0.1:" + port + "/other-place/")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(respBody))
+
+	// Output: Hello World
+}
+
+func ExampleHTTPHost_NamespacedClient() {
+	var client libp2phttp.HTTPHost
+
+	// Create the server
+	server := libp2phttp.HTTPHost{
+		ServeInsecureHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50221/http")},
+	}
+
+	server.SetHTTPHandlerAtPath("/hello/1", "/other-place/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Hello World"))
+	}))
+
+	go server.Serve()
+	defer server.Close()
+
+	// Create an http.Client that is namespaced to this protocol.
+	httpClient, err := client.NamespacedClient("/hello/1", peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := httpClient.Get("/")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(respBody))
+
+	// Output: Hello World
+}
+
+func ExampleHTTPHost_NamespaceRoundTripper() {
+	var client libp2phttp.HTTPHost
+
+	// Create the server
+	server := libp2phttp.HTTPHost{
+		ServeInsecureHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50223/http")},
+	}
+
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Hello World"))
+	}))
+
+	go server.Serve()
+	defer server.Close()
+
+	// Create an http.Roundtripper for the server
+	rt, err := client.NewRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Namespace this roundtripper to a specific protocol
+	rt, err = client.NamespaceRoundTripper(rt, "/hello/1", server.PeerID())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := (&http.Client{Transport: rt}).Get("/")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(respBody))
+
+	// Output: Hello World
+}
+
+func ExampleHTTPHost_NewRoundTripper() {
+	var client libp2phttp.HTTPHost
+
+	// Create the server
+	server := libp2phttp.HTTPHost{
+		ServeInsecureHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50225/http")},
+	}
+
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Hello World"))
+	}))
+
+	go server.Serve()
+	defer server.Close()
+
+	// Create an http.Roundtripper for the server
+	rt, err := client.NewRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := (&http.Client{Transport: rt}).Get("/hello/1")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(respBody))
+
+	// Output: Hello World
+}

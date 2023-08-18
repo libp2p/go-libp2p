@@ -480,15 +480,15 @@ func (rt *namespacedRoundTripper) RoundTrip(r *http.Request) (*http.Response, er
 }
 
 // NamespaceRoundTripper returns an http.RoundTripper that are scoped to the given protocol on the given server.
-func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p protocol.ID, server peer.ID) (namespacedRoundTripper, error) {
+func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p protocol.ID, server peer.ID) (*namespacedRoundTripper, error) {
 	protos, err := h.getAndStorePeerMetadata(roundtripper, server)
 	if err != nil {
-		return namespacedRoundTripper{}, err
+		return &namespacedRoundTripper{}, err
 	}
 
 	v, ok := protos[p]
 	if !ok {
-		return namespacedRoundTripper{}, fmt.Errorf("no protocol %s for server %s", p, server)
+		return &namespacedRoundTripper{}, fmt.Errorf("no protocol %s for server %s", p, server)
 	}
 
 	path := v.Path
@@ -499,10 +499,10 @@ func (h *HTTPHost) NamespaceRoundTripper(roundtripper http.RoundTripper, p proto
 
 	u, err := url.Parse(path)
 	if err != nil {
-		return namespacedRoundTripper{}, fmt.Errorf("invalid path %s for protocol %s for server %s", v.Path, p, server)
+		return &namespacedRoundTripper{}, fmt.Errorf("invalid path %s for protocol %s for server %s", v.Path, p, server)
 	}
 
-	return namespacedRoundTripper{
+	return &namespacedRoundTripper{
 		RoundTripper:      roundtripper,
 		protocolPrefix:    u.Path,
 		protocolPrefixRaw: u.RawPath,
@@ -525,7 +525,7 @@ func (h *HTTPHost) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ..
 		return http.Client{}, err
 	}
 
-	return http.Client{Transport: &nrt}, nil
+	return http.Client{Transport: nrt}, nil
 }
 
 // NewRoundTripper returns an http.RoundTripper that can fulfill and HTTP
