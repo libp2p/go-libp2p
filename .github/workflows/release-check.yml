@@ -1,13 +1,19 @@
-# File managed by web3-bot. DO NOT EDIT.
-# See https://github.com/protocol/.github/ for details.
-
 name: Release Checker
+
 on:
   pull_request_target:
     paths: [ 'version.json' ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release-check:
-    uses: protocol/.github/.github/workflows/release-check.yml@master
-    with:
-      go-version: 1.20.x
+    uses: pl-strflt/uci/.github/workflows/release-check.yml@v0.0
