@@ -1,6 +1,6 @@
 module github.com/libp2p/go-libp2p/examples
 
-go 1.19
+go 1.20
 
 require (
 	github.com/gogo/protobuf v1.3.2
