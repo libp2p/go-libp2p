@@ -61,7 +61,7 @@ func ExampleHTTPHost_withAStockGoHTTPClient() {
 	// Output: Hello HTTP
 }
 
-func ExampleHTTPHost_ListenOnHTTPTransportAndStreams() {
+func ExampleHTTPHost_listenOnHTTPTransportAndStreams() {
 	serverStreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/50124/quic-v1"))
 	if err != nil {
 		log.Fatal(err)
