@@ -1,6 +1,6 @@
 module github.com/libp2p/go-libp2p/examples/pubsub/chat
 
-go 1.19
+go 1.20
 
 require (
 	github.com/gdamore/tcell/v2 v2.5.2
