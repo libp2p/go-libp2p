@@ -1,6 +1,6 @@
 module github.com/libp2p/go-libp2p/examples/pubsub/chat
 
-go 1.19
+go 1.20
 
 require (
 	github.com/libp2p/go-libp2p v0.28.0
