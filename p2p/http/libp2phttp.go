@@ -333,7 +333,7 @@ func (h *HTTPHost) SetHTTPHandler(p protocol.ID, handler http.Handler) {
 // http.StripPrefix is called on the handler, so the handler will be unaware of
 // it's prefix path.
 func (h *HTTPHost) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Handler) {
-	if path[len(path)-1] != '/' {
+	if path == "" || path[len(path)-1] != '/' {
 		// We are nesting this handler under this path, so it should end with a slash.
 		path += "/"
 	}
