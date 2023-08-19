@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 
@@ -318,4 +319,35 @@ func ExampleHTTPHost_NewRoundTripper() {
 	fmt.Println(string(respBody))
 
 	// Output: Hello World
+}
+
+func ExampleWellKnownHandler() {
+	var h libp2phttp.WellKnownHandler
+	h.AddProtocolMapping("/hello/1", libp2phttp.ProtocolMeta{
+		Path: "/hello-path/",
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer listener.Close()
+	// Serve `.well-known/libp2p`. Note, this is handled automatically if you use the HTTPHost.
+	go http.Serve(listener, &h)
+
+	// Get the `.well-known/libp2p` resource
+	resp, err := http.Get("http://" + listener.Addr().String() + "/.well-known/libp2p")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(string(respBody))
+	// Output: {"/hello/1":{"path":"/hello-path/"}}
+
 }
