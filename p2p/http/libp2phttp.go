@@ -323,7 +323,7 @@ func (h *HTTPHost) Close() error {
 // SetHTTPHandler sets the HTTP handler for a given protocol. Automatically
 // manages the .well-known/libp2p mapping.
 // http.StripPrefix is called on the handler, so the handler will be unaware of
-// it's prefix path.
+// its prefix path.
 func (h *HTTPHost) SetHTTPHandler(p protocol.ID, handler http.Handler) {
 	h.SetHTTPHandlerAtPath(p, string(p), handler)
 }
@@ -331,7 +331,7 @@ func (h *HTTPHost) SetHTTPHandler(p protocol.ID, handler http.Handler) {
 // SetHTTPHandlerAtPath sets the HTTP handler for a given protocol using the
 // given path. Automatically manages the .well-known/libp2p mapping.
 // http.StripPrefix is called on the handler, so the handler will be unaware of
-// it's prefix path.
+// its prefix path.
 func (h *HTTPHost) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Handler) {
 	if path == "" || path[len(path)-1] != '/' {
 		// We are nesting this handler under this path, so it should end with a slash.
