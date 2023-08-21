@@ -121,7 +121,9 @@ type Host struct {
 	// DefaultClientRoundTripper is the default http.RoundTripper for clients
 	DefaultClientRoundTripper *http.Transport
 
-	wk WellKnownHandler
+	// WellKnownHandler is the http handler for the `.well-known/libp2p` resource
+	WellKnownHandler WellKnownHandler
+
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
 	peerMetadata *lru.Cache[peer.ID, PeerMeta]
 	// createHTTPTransport is used to lazily create the httpTransport in a thread-safe way.
@@ -181,7 +183,7 @@ func (h *Host) Serve() error {
 		}
 	}
 
-	h.ServeMux.Handle("/.well-known/libp2p", &h.wk)
+	h.ServeMux.Handle("/.well-known/libp2p", &h.WellKnownHandler)
 
 	h.createHTTPTransport.Do(func() {
 		h.httpTransport = newHTTPTransport()
@@ -337,7 +339,7 @@ func (h *Host) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Han
 		// We are nesting this handler under this path, so it should end with a slash.
 		path += "/"
 	}
-	h.wk.AddProtocolMapping(p, ProtocolMeta{Path: path})
+	h.WellKnownHandler.AddProtocolMapping(p, ProtocolMeta{Path: path})
 	h.ServeMux.Handle(path, http.StripPrefix(path, handler))
 }
 
