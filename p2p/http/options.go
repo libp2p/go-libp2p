@@ -1,6 +1,6 @@
 package libp2phttp
 
-type roundTripperOptsFn func(o roundTripperOpts) roundTripperOpts
+type RoundTripperOption func(o roundTripperOpts) roundTripperOpts
 
 type roundTripperOpts struct {
 	// todo SkipClientAuth bool
