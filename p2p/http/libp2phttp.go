@@ -131,7 +131,7 @@ type Host struct {
 	// with other nodes.
 	WellKnownHandler WellKnownHandler
 
-	// peerMetadata is an lru cache of a peer's well-known protocol map.
+	// peerMetadata is an LRU cache of a peer's well-known protocol map.
 	peerMetadata *lru.Cache[peer.ID, PeerMeta]
 	// createHTTPTransport is used to lazily create the httpTransport in a thread-safe way.
 	createHTTPTransport sync.Once
