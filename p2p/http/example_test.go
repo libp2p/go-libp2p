@@ -323,7 +323,7 @@ func ExampleHost_NewRoundTripper() {
 
 func ExampleWellKnownHandler() {
 	var h libp2phttp.WellKnownHandler
-	h.AddProtocolMapping("/hello/1", libp2phttp.ProtocolMeta{
+	h.AddProtocolMeta("/hello/1", libp2phttp.ProtocolMeta{
 		Path: "/hello-path/",
 	})
 

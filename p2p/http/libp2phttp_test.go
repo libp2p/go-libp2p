@@ -221,7 +221,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 	mux.Handle("/.well-known/libp2p", &wk)
 
 	mux.Handle("/ping/", httpping.Ping{})
-	wk.AddProtocolMapping(httpping.PingProtocolID, libp2phttp.ProtocolMeta{Path: "/ping/"})
+	wk.AddProtocolMeta(httpping.PingProtocolID, libp2phttp.ProtocolMeta{Path: "/ping/"})
 
 	server := &http.Server{Addr: "127.0.0.1:0", Handler: mux}
 

@@ -81,7 +81,7 @@ func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(mapping)
 }
 
-func (h *WellKnownHandler) AddProtocolMapping(p protocol.ID, protocolMeta ProtocolMeta) {
+func (h *WellKnownHandler) AddProtocolMeta(p protocol.ID, protocolMeta ProtocolMeta) {
 	h.wellknownMapMu.Lock()
 	if h.wellKnownMapping == nil {
 		h.wellKnownMapping = make(map[protocol.ID]ProtocolMeta)
@@ -90,7 +90,7 @@ func (h *WellKnownHandler) AddProtocolMapping(p protocol.ID, protocolMeta Protoc
 	h.wellknownMapMu.Unlock()
 }
 
-func (h *WellKnownHandler) RemoveProtocolMapping(p protocol.ID) {
+func (h *WellKnownHandler) RemoveProtocolMeta(p protocol.ID) {
 	h.wellknownMapMu.Lock()
 	if h.wellKnownMapping != nil {
 		delete(h.wellKnownMapping, p)
@@ -115,13 +115,18 @@ type Host struct {
 	TLSConfig *tls.Config
 	// ServeInsecureHTTP indicates if the server should serve unencrypted HTTP requests over TCP.
 	ServeInsecureHTTP bool
-	// ServeMux is the http.ServeMux used by the server to serve requests
+	// ServeMux is the http.ServeMux used by the server to serve requests. The
+	// zero value is a new serve mux. Users may manually add handlers to this
+	// mux instead of using `SetHTTPHandler`, but if they do, they should also
+	// update the WellKnownHandler's protocol mapping.
 	ServeMux http.ServeMux
 
 	// DefaultClientRoundTripper is the default http.RoundTripper for clients
 	DefaultClientRoundTripper *http.Transport
 
-	// WellKnownHandler is the http handler for the `.well-known/libp2p` resource
+	// WellKnownHandler is the http handler for the `.well-known/libp2p`
+	// resource. It is responsible for sharing this node's protocol metadata
+	// with other nodes.
 	WellKnownHandler WellKnownHandler
 
 	// peerMetadata is an lru cache of a peer's well-known protocol map.
@@ -339,7 +344,7 @@ func (h *Host) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Han
 		// We are nesting this handler under this path, so it should end with a slash.
 		path += "/"
 	}
-	h.WellKnownHandler.AddProtocolMapping(p, ProtocolMeta{Path: path})
+	h.WellKnownHandler.AddProtocolMeta(p, ProtocolMeta{Path: path})
 	h.ServeMux.Handle(path, http.StripPrefix(path, handler))
 }
 
