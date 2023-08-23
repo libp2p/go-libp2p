@@ -105,7 +105,7 @@ type Host struct {
 	// StreamHost is a stream based libp2p host used to do HTTP over libp2p streams. May be nil
 	StreamHost host.Host
 	// ListenAddrs are the requested addresses to listen on. Multiaddrs must be
-	// a valid HTTP(s) multiaddr. Only multiaddrs for an HTTP transport are
+	// valid HTTP(s) multiaddr. Only multiaddrs for an HTTP transport are
 	// supported (must end with /http or /https).
 	ListenAddrs []ma.Multiaddr
 	// TLSConfig is the TLS config for the server to use
