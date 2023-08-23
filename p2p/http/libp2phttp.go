@@ -33,9 +33,6 @@ const ProtocolIDForMultistreamSelect = "/http/1.1"
 const peerMetadataLimit = 8 << 10 // 8KB
 const peerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
 
-// TODOs:
-// - integrate with the conn gater and resource manager
-
 // ProtocolMeta is metadata about a protocol.
 type ProtocolMeta struct {
 	// Path defines the HTTP Path prefix used for this protocol
