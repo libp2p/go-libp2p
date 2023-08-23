@@ -52,7 +52,7 @@ type CapableConn interface {
 // For a conceptual overview, see https://docs.libp2p.io/concepts/transport/
 type Transport interface {
 	// Dial dials a remote peer. It should try to reuse local listener
-	// addresses if possible but it may choose not to.
+	// addresses if possible, but it may choose not to.
 	Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (CapableConn, error)
 
 	// CanDial returns true if this transport knows how to dial the given

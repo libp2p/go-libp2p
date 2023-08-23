@@ -29,7 +29,7 @@ func BenchmarkMetricsConnOpen(b *testing.B) {
 	}
 	_, pub, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(b, err)
-	quicAddr := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
+	quicAddr := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 	tcpAddr := ma.StringCast("/ip4/1.2.3.4/tcp/1/")
 	tr := NewMetricsTracer()
 	for i := 0; i < b.N; i++ {
@@ -53,7 +53,7 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		{StreamMultiplexer: "yamux", Security: "tls", Transport: "tcp", UsedEarlyMuxerNegotiation: true},
 		{StreamMultiplexer: "yamux", Security: "noise", Transport: "tcp", UsedEarlyMuxerNegotiation: false},
 		{StreamMultiplexer: "", Security: "", Transport: "quic"},
-		{StreamMultiplexer: "mplex", Security: "noise", Transport: "tcp"},
+		{StreamMultiplexer: "another-yamux", Security: "noise", Transport: "tcp"},
 	}
 
 	directions := []network.Direction{network.DirInbound, network.DirOutbound}
@@ -78,6 +78,9 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		ma.StringCast("/ip4/1.2.3.4/udp/2345"),
 	}
 
+	bhfNames := []string{"udp", "ipv6", "tcp", "icmp"}
+	bhfState := []blackHoleState{blackHoleStateAllowed, blackHoleStateBlocked}
+
 	tests := map[string]func(){
 		"OpenedConnection": func() {
 			mt.OpenedConnection(randItem(directions), randItem(keys), randItem(connections), randItem(addrs))
@@ -91,6 +94,14 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		"FailedDialing":    func() { mt.FailedDialing(randItem(addrs), randItem(errors)) },
 		"DialCompleted":    func() { mt.DialCompleted(mrand.Intn(2) == 1, mrand.Intn(10)) },
 		"DialRankingDelay": func() { mt.DialRankingDelay(time.Duration(mrand.Intn(1e10))) },
+		"UpdatedBlackHoleFilterState": func() {
+			mt.UpdatedBlackHoleFilterState(
+				randItem(bhfNames),
+				randItem(bhfState),
+				mrand.Intn(100),
+				mrand.Float64(),
+			)
+		},
 	}
 
 	for method, f := range tests {

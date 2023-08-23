@@ -123,6 +123,25 @@ func TestLimitConfigRoundTrip(t *testing.T) {
 	require.Equal(t, concreteCfg, concreteCfgRT)
 }
 
+func TestDefaultsDontChange(t *testing.T) {
+	concrete := DefaultLimits.Scale(8<<30, 16<<10) // 8GB, 16k fds
+	jsonBytes, err := json.MarshalIndent(concrete.ToPartialLimitConfig(), "", "  ")
+	require.NoError(t, err)
+
+	// Uncomment to update the defaults file
+	// err = os.WriteFile("limit_config_test_default.json", jsonBytes, 0644)
+	// require.NoError(t, err)
+
+	defaultsFromFile, err := os.ReadFile("limit_config_test_default.json")
+	require.NoError(t, err)
+
+	// replace crlf with lf because of windows
+	defaultsFromFile = bytes.ReplaceAll(defaultsFromFile, []byte("\r\n"), []byte("\n"))
+	jsonBytes = bytes.ReplaceAll(jsonBytes, []byte("\r\n"), []byte("\n"))
+
+	require.Equal(t, string(defaultsFromFile), string(jsonBytes))
+}
+
 func TestReadmeLimitConfigSerialization(t *testing.T) {
 	noisyNeighbor, _ := peer.Decode("QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf")
 	cfg := PartialLimitConfig{

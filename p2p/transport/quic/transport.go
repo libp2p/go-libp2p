@@ -190,11 +190,11 @@ func (t *transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID
 	if err != nil {
 		return nil, err
 	}
-	pconn, err := t.connManager.Dial(network, addr)
+	tr, err := t.connManager.TransportForDial(network, addr)
 	if err != nil {
 		return nil, err
 	}
-	defer pconn.DecreaseCount()
+	defer tr.DecreaseCount()
 
 	ctx, cancel := context.WithTimeout(ctx, HolePunchTimeout)
 	defer cancel()
@@ -227,7 +227,7 @@ loop:
 			punchErr = err
 			break
 		}
-		if _, err := pconn.WriteTo(payload, addr); err != nil {
+		if _, err := tr.WriteTo(payload, addr); err != nil {
 			punchErr = err
 			break
 		}

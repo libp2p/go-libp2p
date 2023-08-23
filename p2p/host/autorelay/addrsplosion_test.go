@@ -11,14 +11,14 @@ func TestCleanupAddrs(t *testing.T) {
 	t.Run("with no addrplosion", func(t *testing.T) {
 		addrs := makeAddrList(
 			"/ip4/127.0.0.1/tcp/4001",
-			"/ip4/127.0.0.1/udp/4002/quic",
+			"/ip4/127.0.0.1/udp/4002/quic-v1",
 			"/ip4/1.2.3.4/tcp/4001",
-			"/ip4/1.2.3.4/udp/4002/quic",
+			"/ip4/1.2.3.4/udp/4002/quic-v1",
 			"/dnsaddr/somedomain.com/tcp/4002/ws",
 		)
 		clean := makeAddrList(
 			"/ip4/1.2.3.4/tcp/4001",
-			"/ip4/1.2.3.4/udp/4002/quic",
+			"/ip4/1.2.3.4/udp/4002/quic-v1",
 			"/dnsaddr/somedomain.com/tcp/4002/ws",
 		)
 		require.ElementsMatch(t, clean, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
@@ -32,11 +32,11 @@ func TestCleanupAddrs(t *testing.T) {
 			"/ip4/1.2.3.4/tcp/33333",
 			"/ip4/1.2.3.4/tcp/33334",
 			"/ip4/1.2.3.4/tcp/33335",
-			"/ip4/1.2.3.4/udp/4002/quic",
+			"/ip4/1.2.3.4/udp/4002/quic-v1",
 		)
 		clean := makeAddrList(
 			"/ip4/1.2.3.4/tcp/4001",
-			"/ip4/1.2.3.4/udp/4002/quic",
+			"/ip4/1.2.3.4/udp/4002/quic-v1",
 		)
 		require.ElementsMatch(t, clean, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
 	})
@@ -48,11 +48,11 @@ func TestCleanupAddrs(t *testing.T) {
 			"/ip4/1.2.3.4/tcp/33333",
 			"/ip4/1.2.3.4/tcp/33334",
 			"/ip4/1.2.3.4/tcp/33335",
-			"/ip4/1.2.3.4/udp/4002/quic",
+			"/ip4/1.2.3.4/udp/4002/quic-v1",
 		)
 		clean := makeAddrList(
 			"/ip4/1.2.3.4/tcp/4001",
-			"/ip4/1.2.3.4/udp/4002/quic",
+			"/ip4/1.2.3.4/udp/4002/quic-v1",
 		)
 		require.ElementsMatch(t, clean, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
 	})
@@ -75,7 +75,7 @@ func TestCleanupAddrs(t *testing.T) {
 		// test with a squeaky clean address set
 		addrs := makeAddrList(
 			"/ip4/1.2.3.4/tcp/4001",
-			"/ip4/1.2.3.4/udp/4001/quic",
+			"/ip4/1.2.3.4/udp/4001/quic-v1",
 		)
 		require.ElementsMatch(t, addrs, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
 	})

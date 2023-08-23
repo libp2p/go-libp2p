@@ -47,15 +47,10 @@ limits := cfg.Build(scaledDefaultLimits)
 // The resource manager expects a limiter, se we create one from our limits.
 limiter := rcmgr.NewFixedLimiter(limits)
 
-// (Optional if you want metrics)
-rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)
-str, err := rcmgrObs.NewStatsTraceReporter()
-if err != nil {
-  panic(err)
-}
-
+// Metrics are enabled by default. If you want to disable metrics, use the 
+// WithMetricsDisabled option
 // Initialize the resource manager
-rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithMetricsDisabled())
 if err != nil {
   panic(err)
 }
@@ -332,7 +327,7 @@ and streams.
 ### Scaling Limits
 
 When building software that is supposed to run on many different kind of machines,
-with various memory and CPU configurations, it is desireable to have limits that
+with various memory and CPU configurations, it is desirable to have limits that
 scale with the size of the machine.
 
 This is done using the `ScalingLimitConfig`. For every scope, this configuration
@@ -495,7 +490,7 @@ or any other platform that can scrape a prometheus endpoint.
 
 There is also an included Grafana dashboard to help kickstart your
 observability into the resource manager. Find more information about it at
-[here](./obs/grafana-dashboards/README.md).
+[here](./../../../dashboards/resource-manager/README.md).
 
 ## Allowlisting multiaddrs to mitigate eclipse attacks
 

@@ -15,8 +15,6 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-var quicListen = quic.Listen // so we can mock it in tests
-
 type Listener interface {
 	Accept(context.Context) (quic.Connection, error)
 	Addr() net.Addr
@@ -30,37 +28,31 @@ type protoConf struct {
 	allowWindowIncrease func(conn quic.Connection, delta uint64) bool
 }
 
-type connListener struct {
-	l       quic.Listener
-	conn    pConn
-	running chan struct{}
-	addrs   []ma.Multiaddr
+type quicListener struct {
+	l         *quic.Listener
+	transport refCountedQuicTransport
+	running   chan struct{}
+	addrs     []ma.Multiaddr
 
 	protocolsMu sync.Mutex
 	protocols   map[string]protoConf
 }
 
-func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*connListener, error) {
+func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quicListener, error) {
 	localMultiaddrs := make([]ma.Multiaddr, 0, 2)
-	a, err := ToQuicMultiaddr(c.LocalAddr(), quic.Version1)
+	a, err := ToQuicMultiaddr(tr.LocalAddr(), quic.Version1)
 	if err != nil {
 		return nil, err
 	}
 	localMultiaddrs = append(localMultiaddrs, a)
-	if enableDraft29 {
-		a, err := ToQuicMultiaddr(c.LocalAddr(), quic.VersionDraft29)
-		if err != nil {
-			return nil, err
-		}
-		localMultiaddrs = append(localMultiaddrs, a)
-	}
-	cl := &connListener{
+	cl := &quicListener{
 		protocols: map[string]protoConf{},
 		running:   make(chan struct{}),
-		conn:      c,
+		transport: tr,
 		addrs:     localMultiaddrs,
 	}
 	tlsConf := &tls.Config{
+		SessionTicketsDisabled: true, // This is set for the config for client, but we set it here as well: https://github.com/quic-go/quic-go/issues/4029
 		GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
 			cl.protocolsMu.Lock()
 			defer cl.protocolsMu.Unlock()
@@ -78,7 +70,7 @@ func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*con
 	}
 	quicConf := quicConfig.Clone()
 	quicConf.AllowConnectionWindowIncrease = cl.allowWindowIncrease
-	ln, err := quicListen(c, tlsConf, quicConf)
+	ln, err := tr.Listen(tlsConf, quicConf)
 	if err != nil {
 		return nil, err
 	}
@@ -87,18 +79,18 @@ func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*con
 	return cl, nil
 }
 
-func (l *connListener) allowWindowIncrease(conn quic.Connection, delta uint64) bool {
+func (l *quicListener) allowWindowIncrease(conn quic.Connection, delta uint64) bool {
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
-	conf, ok := l.protocols[conn.ConnectionState().TLS.ConnectionState.NegotiatedProtocol]
+	conf, ok := l.protocols[conn.ConnectionState().TLS.NegotiatedProtocol]
 	if !ok {
 		return false
 	}
 	return conf.allowWindowIncrease(conn, delta)
 }
 
-func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (Listener, error) {
+func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (Listener, error) {
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
@@ -130,9 +122,9 @@ func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 	return ln, nil
 }
 
-func (l *connListener) Run() error {
+func (l *quicListener) Run() error {
 	defer close(l.running)
-	defer l.conn.DecreaseCount()
+	defer l.transport.DecreaseCount()
 	for {
 		conn, err := l.l.Accept(context.Background())
 		if err != nil {
@@ -154,7 +146,7 @@ func (l *connListener) Run() error {
 	}
 }
 
-func (l *connListener) Close() error {
+func (l *quicListener) Close() error {
 	err := l.l.Close()
 	<-l.running // wait for Run to return
 	return err

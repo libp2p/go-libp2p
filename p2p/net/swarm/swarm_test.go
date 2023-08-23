@@ -390,7 +390,7 @@ func TestTypedNilConn(t *testing.T) {
 
 func TestPreventDialListenAddr(t *testing.T) {
 	s := GenSwarm(t, OptDialOnly)
-	if err := s.Listen(ma.StringCast("/ip4/0.0.0.0/udp/0/quic")); err != nil {
+	if err := s.Listen(ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1")); err != nil {
 		t.Fatal(err)
 	}
 	addrs, err := s.InterfaceListenAddresses()

@@ -1,0 +1,22 @@
+{
+  "ignorePatterns": [
+    {
+        "pattern": "^http://localhost"
+    },
+    {
+        "pattern": "^https://twitter.com/"
+    },
+    {
+        "pattern": "^https://opensource.org/"
+    }
+  ],
+  "aliveStatusCodes": [200],
+  "httpHeaders": [
+    {
+      "urls": ["https://docs.github.com/"],
+      "headers": {
+        "Accept-Encoding": "*"
+      }
+    }
+  ]
+}

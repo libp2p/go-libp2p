@@ -89,17 +89,23 @@ func IsWebtransportMultiaddr(multiaddr ma.Multiaddr) (bool, int) {
 	certhashCount := 0
 
 	ma.ForEach(multiaddr, func(c ma.Component) bool {
-		if c.Protocol().Code == ma.P_QUIC_V1 && state == init {
-			state = foundUDP
-		}
-		if c.Protocol().Code == ma.P_QUIC_V1 && state == foundUDP {
-			state = foundQuicV1
-		}
-		if c.Protocol().Code == ma.P_WEBTRANSPORT && state == foundQuicV1 {
-			state = foundWebTransport
-		}
-		if c.Protocol().Code == ma.P_CERTHASH && state == foundWebTransport {
-			certhashCount++
+		switch c.Protocol().Code {
+		case ma.P_UDP:
+			if state == init {
+				state = foundUDP
+			}
+		case ma.P_QUIC_V1:
+			if state == foundUDP {
+				state = foundQuicV1
+			}
+		case ma.P_WEBTRANSPORT:
+			if state == foundQuicV1 {
+				state = foundWebTransport
+			}
+		case ma.P_CERTHASH:
+			if state == foundWebTransport {
+				certhashCount++
+			}
 		}
 		return true
 	})

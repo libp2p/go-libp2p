@@ -14,14 +14,14 @@ func TestNoCoverNoAllocMetrics(t *testing.T) {
 	addrs1 := [][]ma.Multiaddr{
 		{
 			ma.StringCast("/ip4/0.0.0.0/tcp/1"),
-			ma.StringCast("/ip4/1.2.3.4/udp/2/quic"),
+			ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1"),
 		},
 		nil,
 	}
 	addrs2 := [][]ma.Multiaddr{
 		{
 			ma.StringCast("/ip4/1.2.3.4/tcp/3"),
-			ma.StringCast("/ip4/1.2.3.4/udp/4/quic"),
+			ma.StringCast("/ip4/1.2.3.4/udp/4/quic-v1"),
 		},
 		nil,
 	}

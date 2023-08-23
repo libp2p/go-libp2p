@@ -50,6 +50,14 @@ func NewMockClock() *MockClock {
 	return &MockClock{now: time.Unix(0, 0), advanceBySem: make(chan struct{}, 1)}
 }
 
+// InstantTimer implements a timer that triggers at a fixed instant in time as opposed to after a
+// fixed duration from the moment of creation/reset.
+//
+// In test environments, when using a Timer which fires after a duration, there is a race between
+// the goroutine moving time forward using `clock.Advanceby` and the goroutine resetting the
+// timer by doing `timer.Reset(desiredInstant.Sub(time.Now()))`. The value of
+// `desiredInstance.sub(time.Now())` is different depending on whether `clock.AdvanceBy` finishes
+// before or after the timer reset.
 func (c *MockClock) InstantTimer(when time.Time) *mockInstantTimer {
 	c.mu.Lock()
 	defer c.mu.Unlock()

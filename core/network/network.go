@@ -6,10 +6,8 @@
 package network
 
 import (
-	"bytes"
 	"context"
 	"io"
-	"sort"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -36,10 +34,12 @@ const (
 	DirOutbound
 )
 
+const unrecognized = "(unrecognized)"
+
 func (d Direction) String() string {
 	str := [...]string{"Unknown", "Inbound", "Outbound"}
 	if d < 0 || int(d) >= len(str) {
-		return "(unrecognized)"
+		return unrecognized
 	}
 	return str[d]
 }
@@ -66,7 +66,7 @@ const (
 func (c Connectedness) String() string {
 	str := [...]string{"NotConnected", "Connected", "CanConnect", "CannotConnect"}
 	if c < 0 || int(c) >= len(str) {
-		return "(unrecognized)"
+		return unrecognized
 	}
 	return str[c]
 }
@@ -93,7 +93,7 @@ const (
 func (r Reachability) String() string {
 	str := [...]string{"Unknown", "Public", "Private"}
 	if r < 0 || int(r) >= len(str) {
-		return "(unrecognized)"
+		return unrecognized
 	}
 	return str[r]
 }
@@ -130,7 +130,7 @@ type Network interface {
 	io.Closer
 
 	// SetStreamHandler sets the handler for new streams opened by the
-	// remote side. This operation is threadsafe.
+	// remote side. This operation is thread-safe.
 	SetStreamHandler(StreamHandler)
 
 	// NewStream returns a new stream to given peer p.
@@ -196,23 +196,3 @@ type AddrDelay struct {
 
 // DialRanker provides a schedule of dialing the provided addresses
 type DialRanker func([]ma.Multiaddr) []AddrDelay
-
-// DedupAddrs deduplicates addresses in place, leave only unique addresses.
-// It doesn't allocate.
-func DedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	if len(addrs) == 0 {
-		return addrs
-	}
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
-	idx := 1
-	for i := 1; i < len(addrs); i++ {
-		if !addrs[i-1].Equal(addrs[i]) {
-			addrs[idx] = addrs[i]
-			idx++
-		}
-	}
-	for i := idx; i < len(addrs); i++ {
-		addrs[i] = nil
-	}
-	return addrs[:idx]
-}

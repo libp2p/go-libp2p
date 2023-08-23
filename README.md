@@ -13,18 +13,17 @@
   <a href="https://marcopolo.github.io/FlakyTests/"><img src="https://marcopolo.github.io/FlakyTests/current-score.svg"/></a>
 </p>
 
-# Table of Contents
-
+# Table of Contents <!-- omit in toc -->
 - [Background](#background)
 - [Roadmap](#roadmap)
 - [Usage](#usage)
   - [Examples](#examples)
-- [Development](#development)
-  - [Tests](#tests)
+  - [Dashboards](#dashboards)
 - [Contribute](#contribute)
-- [Supported Go Versions](#supported-go-versions)
+  - [Supported Go Versions](#supported-go-versions)
+- [Notable Users](#notable-users)
 
-## Background
+# Background
 
 [libp2p](https://github.com/libp2p/specs) is a networking stack and library modularized out of [The IPFS Project](https://github.com/ipfs/ipfs), and bundled separately for other tools to use.
 >
@@ -37,12 +36,12 @@ To learn more, check out the following resources:
 - [**js-libp2p implementation**](https://github.com/libp2p/js-libp2p)
 - [**rust-libp2p implementation**](https://github.com/libp2p/rust-libp2p)
 
-## Roadmap
+# Roadmap
 
 Our roadmap for go-libp2p can be found here: https://github.com/libp2p/go-libp2p/blob/master/ROADMAP.md
-This document represents current projects the go-libp2p team is focused on and provides an estimation of completion targets. It is a completementary roadmap to the overarching libp2p project roadmap: https://github.com/libp2p/specs/blob/master/ROADMAP.md
+This document represents current projects the go-libp2p team is focused on and provides an estimation of completion targets. It is a complementary roadmap to the overarching libp2p project roadmap: https://github.com/libp2p/specs/blob/master/ROADMAP.md
 
-## Usage
+# Usage
 
 This repository (`go-libp2p`) serves as the entrypoint to the universe of packages that compose the Go implementation of the libp2p stack.
 
@@ -52,25 +51,32 @@ You can start using go-libp2p in your Go application simply by adding imports fr
 import "github.com/libp2p/go-libp2p"
 ```
 
-### Examples
+## Examples
 
 Examples can be found in the [examples folder](examples).
+
+## Dashboards
+
+We provide prebuilt Grafana dashboards so that applications can better monitor libp2p in production.
+You can find the [dashboard JSON files here](https://github.com/libp2p/go-libp2p/tree/master/dashboards).
+
+We also have live [Public Dashboards](https://github.com/libp2p/go-libp2p/tree/master/dashboards/README.md#public-dashboards) that you can check out to see real time monitoring in action.
 
 
 # Contribute
 
-go-libp2p is part of [The IPFS Project](https://github.com/ipfs/ipfs), and is MIT-licensed open source software. We welcome contributions big and small! Take a look at the [community contributing notes](https://github.com/ipfs/community/blob/master/CONTRIBUTING.md). Please make sure to check the [issues](https://github.com/ipfs/go-libp2p/issues). Search the closed ones before reporting things, and help us with the open ones.
+go-libp2p is MIT-licensed open source software. We welcome contributions big and small! Take a look at the [community contributing notes](https://github.com/ipfs/community/blob/master/CONTRIBUTING.md). Please make sure to check the [issues](https://github.com/libp2p/go-libp2p/issues). Search the closed ones before reporting things, and help us with the open ones.
 
 Guidelines:
 
 - read the [libp2p spec](https://github.com/libp2p/specs)
-- ask questions or talk about things in  our [discussion forums](https://discuss.libp2p.io), or open an [issue](https://github.com/libp2p/go-libp2p/issues) for bug reports, or #libp2p on freenode.
+- ask questions or talk about things in our [discussion forums](https://discuss.libp2p.io), or open an [issue](https://github.com/libp2p/go-libp2p/issues) for bug reports, or #libp2p-implementers on [Filecoin slack](https://filecoin.io/slack).
 - ensure you are able to contribute (no legal issues please -- we use the DCO)
-- get in touch with @marten-seemann about how best to contribute
+- get in touch with @libp2p/go-libp2p-maintainers about how best to contribute
 - have fun!
 
 There's a few things you can do right now to help out:
- - Go through the modules below and **check out existing issues**. This would be especially useful for modules in active development. Some knowledge of IPFS/libp2p may be required, as well as the infrasture behind it - for instance, you may need to read up on p2p and more complex operations like muxing to be able to help technically.
+ - Go through the modules below and **check out existing issues**. This would be especially useful for modules in active development. Some knowledge of IPFS/libp2p may be required, as well as the infrastructure behind it - for instance, you may need to read up on p2p and more complex operations like muxing to be able to help technically.
  - **Perform code reviews**.
  - **Add tests**. There can never be enough tests.
 
@@ -99,4 +105,4 @@ Some notable users of go-libp2p are:
 - [Kairos](https://github.com/kairos-io/kairos) - A Kubernetes-focused, Cloud Native Linux meta-distribution.
 - [Oasis Core](https://github.com/oasisprotocol/oasis-core) - The consensus and runtime layers of the [Oasis protocol](https://oasisprotocol.org/).
 
-Please open a pull request if you want your project to be added here.
+Please open a pull request if you want your project (min. 250 GitHub stars) to be added here.

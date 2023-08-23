@@ -90,7 +90,7 @@ type PrivKey interface {
 	GetPublic() PubKey
 }
 
-// PubKey is a public key that can be used to verifiy data signed with the corresponding private key
+// PubKey is a public key that can be used to verify data signed with the corresponding private key
 type PubKey interface {
 	Key
 
@@ -106,7 +106,7 @@ func GenerateKeyPair(typ, bits int) (PrivKey, PubKey, error) {
 	return GenerateKeyPairWithReader(typ, bits, rand.Reader)
 }
 
-// GenerateKeyPairWithReader returns a keypair of the given type and bitsize
+// GenerateKeyPairWithReader returns a keypair of the given type and bit-size
 func GenerateKeyPairWithReader(typ, bits int, src io.Reader) (PrivKey, PubKey, error) {
 	switch typ {
 	case RSA:

@@ -30,13 +30,10 @@ func TestQUICProtocol(t *testing.T) {
 	defer tr.(io.Closer).Close()
 
 	protocols := tr.Protocols()
-	if len(protocols) > 2 {
-		t.Fatalf("expected at most two protocols, got %v", protocols)
+	if len(protocols) > 1 {
+		t.Fatalf("expected at most one protocol, got %v", protocols)
 	}
-	if protocols[0] != ma.P_QUIC {
-		t.Fatalf("expected the supported protocol to be draft 29 QUIC, got %d", protocols[0])
-	}
-	if protocols[1] != ma.P_QUIC_V1 {
+	if protocols[0] != ma.P_QUIC_V1 {
 		t.Fatalf("expected the supported protocol to be QUIC v1, got %d", protocols[0])
 	}
 }
@@ -48,11 +45,11 @@ func TestCanDial(t *testing.T) {
 	invalid := []string{
 		"/ip4/127.0.0.1/udp/1234",
 		"/ip4/5.5.5.5/tcp/1234",
-		"/dns/google.com/udp/443/quic",
+		"/dns/google.com/udp/443/quic-v1",
 	}
 	valid := []string{
-		"/ip4/127.0.0.1/udp/1234/quic",
-		"/ip4/5.5.5.5/udp/0/quic",
+		"/ip4/127.0.0.1/udp/1234/quic-v1",
+		"/ip4/5.5.5.5/udp/0/quic-v1",
 	}
 	for _, s := range invalid {
 		invalidAddr, err := ma.NewMultiaddr(s)

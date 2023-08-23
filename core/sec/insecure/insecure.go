@@ -1,4 +1,4 @@
-// Package insecure provides an insecure, unencrypted implementation of the the SecureConn and SecureTransport interfaces.
+// Package insecure provides an insecure, unencrypted implementation of the SecureConn and SecureTransport interfaces.
 //
 // Recommended only for testing and other non-production usage.
 package insecure

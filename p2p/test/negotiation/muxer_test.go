@@ -11,7 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
-	"github.com/libp2p/go-libp2p/p2p/muxer/mplex"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
@@ -21,8 +20,8 @@ import (
 )
 
 var (
-	yamuxOpt = libp2p.Muxer("/yamux", yamux.DefaultTransport)
-	mplexOpt = libp2p.Muxer("/mplex", mplex.DefaultTransport)
+	yamuxOpt        = libp2p.Muxer("/yamux", yamux.DefaultTransport)
+	anotherYamuxOpt = libp2p.Muxer("/another-yamux", yamux.DefaultTransport)
 )
 
 type testcase struct {
@@ -43,32 +42,32 @@ func TestMuxerNegotiation(t *testing.T) {
 	testcases := []testcase{
 		{
 			Name:             "server and client have the same preference",
-			ServerPreference: []libp2p.Option{yamuxOpt, mplexOpt},
-			ClientPreference: []libp2p.Option{yamuxOpt, mplexOpt},
+			ServerPreference: []libp2p.Option{yamuxOpt, anotherYamuxOpt},
+			ClientPreference: []libp2p.Option{yamuxOpt, anotherYamuxOpt},
 			Expected:         "/yamux",
 		},
 		{
 			Name:             "client only supports one muxer",
-			ServerPreference: []libp2p.Option{yamuxOpt, mplexOpt},
+			ServerPreference: []libp2p.Option{yamuxOpt, anotherYamuxOpt},
 			ClientPreference: []libp2p.Option{yamuxOpt},
 			Expected:         "/yamux",
 		},
 		{
 			Name:             "server only supports one muxer",
 			ServerPreference: []libp2p.Option{yamuxOpt},
-			ClientPreference: []libp2p.Option{mplexOpt, yamuxOpt},
+			ClientPreference: []libp2p.Option{anotherYamuxOpt, yamuxOpt},
 			Expected:         "/yamux",
 		},
 		{
 			Name:             "client preference preferred",
-			ServerPreference: []libp2p.Option{yamuxOpt, mplexOpt},
-			ClientPreference: []libp2p.Option{mplexOpt, yamuxOpt},
-			Expected:         "/mplex",
+			ServerPreference: []libp2p.Option{yamuxOpt, anotherYamuxOpt},
+			ClientPreference: []libp2p.Option{anotherYamuxOpt, yamuxOpt},
+			Expected:         "/another-yamux",
 		},
 		{
 			Name:             "no preference overlap",
 			ServerPreference: []libp2p.Option{yamuxOpt},
-			ClientPreference: []libp2p.Option{mplexOpt},
+			ClientPreference: []libp2p.Option{anotherYamuxOpt},
 			Error:            "failed to negotiate stream multiplexer: protocols not supported",
 		},
 	}

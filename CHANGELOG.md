@@ -14,15 +14,38 @@
 ## 🔦 Highlights <!-- omit in toc -->
 
 ### Smart Dialing <!-- omit in toc -->
-* When connecting to a peer we now do [happy eyeballs](https://www.rfc-editor.org/rfc/rfc8305) like dial prioritisation to prefer QUIC addresses over TCP addresses. We dial the QUIC address first and wait 250ms to dial the TCP address of the peer.
-* In our experiments we've seen little impact on latencies up to 80th percentile. 90th and 95th percentile latencies are impacted. For details see discussion on the [PR](https://github.com/libp2p/go-libp2p/pull/2260#issuecomment-1528848170).
-* For details of the address ranking logic see godoc for `swarm.DefaultDialRanker`.
-* To disable smart dialing and keep the old behaviour use the
-`libp2p.NoDelayNetworkDialRanker` option.
+
+This release introduces smart dialing logic. Currently, libp2p dials all addresses of a remote peer in parallel, and
+aborts all outstanding dials as soon as the first one succeeds.
+Dialing many addresses in parallel creates a lot of churn on the client side, and unnecessary load on the network and
+on the server side, and is heavily discouraged by the networking community (see [RFC 8305](https://www.rfc-editor.org/rfc/rfc8305) for example).
+
+When connecting to a peer we first determine the order to dial its addresses. This ranking logic considers a number of corner cases
+described in detail in the documentation of the swarm package (`swarm.DefaultDialRanker`).
+At a high level, this is what happens:
+* If a peer offers a WebTransport and a QUIC address (on the same IP:port), the QUIC address is preferred.
+* If a peer has a QUIC and a TCP address, the QUIC address is dialed first. Only if the connection attempt doesn't succeed within 250ms, a TCP connection is started.
+
+Our measurements on the IPFS network show that for >90% of established libp2p connections, the first connection attempt succeeds,
+leading a dramatic decrease in the number of aborted connection attempts.
+
+We also added new metrics to the swarm Grafana dashboard, showing:
+* The number of connection attempts it took to establish a connection
+* The delay introduced by the ranking logic
+
+This feature should be safe to enable for nodes running in data centers and for most nodes in home networks.
+However, there are some (mostly home and corporate networks) that block all UDP traffic. If enabled, the current implementation
+of the smart dialing logic will lead to a regression, since it preferes QUIC addresses over TCP addresses. Nodes would still be
+able to connect, but connection establishment of the TCP connection would be delayed by 250ms.
+
+In a future release (see #1605 for details), we will introduce a feature called blackhole detection. By observing the outcome of
+QUIC connection attempts, we can determine if UDP traffic is blocked (namely, if all QUIC connection attempts fail), and stop
+dialing QUIC in this case altogether. Once this detection logic is in place, smart dialing will be enabled by default.
 
 ### More Metrics! <!-- omit in toc -->
 Since the last release, we've added metrics for:
 * [Holepunching](https://github.com/libp2p/go-libp2p/pull/2246)
+* Smart Dialing (see above)
 
 ### WebTransport <!-- omit in toc -->
 * [#2251](https://github.com/libp2p/go-libp2p/pull/2251): Infer public WebTransport address from `quic-v1` addresses if both transports are using the same port for both quic-v1 and WebTransport addresses.
@@ -172,8 +195,8 @@ Fix some test-utils used by https://github.com/libp2p/go-libp2p-kad-dht
 ### Metrics <!-- omit in toc -->
 
 We've started instrumenting the entire stack. In this release, we're adding metrics for:
-* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in use: (https://github.com/libp2p/go-libp2p/blob/master/p2p/net/swarm/grafana-dashboards/swarm.json)
-* the event bus: tracking how different events are propagated through the stack and to external consumers (https://github.com/libp2p/go-libp2p/blob/master/p2p/host/eventbus/grafana-dashboards/eventbus.json)
+* the swarm: tracking incoming and outgoing connections, transports, security protocols and stream multiplexers in use: (https://github.com/libp2p/go-libp2p/blob/master/dashboards/swarm/swarm.json)
+* the event bus: tracking how different events are propagated through the stack and to external consumers (https://github.com/libp2p/go-libp2p/blob/master/dashboards/eventbus/eventbus.json)
 
 Our metrics effort is still ongoing, see https://github.com/libp2p/go-libp2p/issues/1356 for progress. We'll add metrics and dashboards for more libp2p components in a future release.
 

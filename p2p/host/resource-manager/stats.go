@@ -1,9 +1,8 @@
-package obs
+package rcmgr
 
 import (
 	"strings"
 
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/metricshelper"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -74,7 +73,7 @@ var (
 	previousPeerStreamsOutbound = previousPeerStreams.With(prometheus.Labels{"dir": "outbound"})
 
 	// Memory
-	memory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	memoryTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricNamespace,
 		Name:      "memory",
 		Help:      "Amount of memory reserved as reported to the Resource Manager",
@@ -142,7 +141,7 @@ var (
 )
 
 func MustRegisterWith(reg prometheus.Registerer) {
-	reg.MustRegister(
+	metricshelper.RegisterCollectors(reg,
 		conns,
 		peerConns,
 		previousPeerConns,
@@ -151,7 +150,7 @@ func MustRegisterWith(reg prometheus.Registerer) {
 
 		previousPeerStreams,
 
-		memory,
+		memoryTotal,
 		peerMemory,
 		previousPeerMemory,
 		connMemory,
@@ -159,6 +158,13 @@ func MustRegisterWith(reg prometheus.Registerer) {
 		fds,
 		blockedResources,
 	)
+}
+
+func WithMetricsDisabled() Option {
+	return func(r *resourceManager) error {
+		r.disableMetrics = true
+		return nil
+	}
 }
 
 // StatsTraceReporter reports stats on the resource manager using its traces.
@@ -169,7 +175,7 @@ func NewStatsTraceReporter() (StatsTraceReporter, error) {
 	return StatsTraceReporter{}, nil
 }
 
-func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
+func (r StatsTraceReporter) ConsumeEvent(evt TraceEvt) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
@@ -177,10 +183,10 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 }
 
 // Separate func so that we can test that this function does not allocate. The syncPool may allocate.
-func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags *[]string) {
+func (r StatsTraceReporter) consumeEventWithLabelSlice(evt TraceEvt, tags *[]string) {
 	switch evt.Type {
-	case rcmgr.TraceAddStreamEvt, rcmgr.TraceRemoveStreamEvt:
-		if p := rcmgr.PeerStrInScopeName(evt.Name); p != "" {
+	case TraceAddStreamEvt, TraceRemoveStreamEvt:
+		if p := PeerStrInScopeName(evt.Name); p != "" {
 			// Aggregated peer stats. Counts how many peers have N number of streams open.
 			// Uses two buckets aggregations. One to count how many streams the
 			// peer has now. The other to count the negative value, or how many
@@ -210,11 +216,11 @@ func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags 
 			}
 		} else {
 			if evt.DeltaOut != 0 {
-				if rcmgr.IsSystemScope(evt.Name) || rcmgr.IsTransientScope(evt.Name) {
+				if IsSystemScope(evt.Name) || IsTransientScope(evt.Name) {
 					*tags = (*tags)[:0]
 					*tags = append(*tags, "outbound", evt.Name, "")
 					streams.WithLabelValues(*tags...).Set(float64(evt.StreamsOut))
-				} else if proto := rcmgr.ParseProtocolScopeName(evt.Name); proto != "" {
+				} else if proto := ParseProtocolScopeName(evt.Name); proto != "" {
 					*tags = (*tags)[:0]
 					*tags = append(*tags, "outbound", "protocol", proto)
 					streams.WithLabelValues(*tags...).Set(float64(evt.StreamsOut))
@@ -227,11 +233,11 @@ func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags 
 			}
 
 			if evt.DeltaIn != 0 {
-				if rcmgr.IsSystemScope(evt.Name) || rcmgr.IsTransientScope(evt.Name) {
+				if IsSystemScope(evt.Name) || IsTransientScope(evt.Name) {
 					*tags = (*tags)[:0]
 					*tags = append(*tags, "inbound", evt.Name, "")
 					streams.WithLabelValues(*tags...).Set(float64(evt.StreamsIn))
-				} else if proto := rcmgr.ParseProtocolScopeName(evt.Name); proto != "" {
+				} else if proto := ParseProtocolScopeName(evt.Name); proto != "" {
 					*tags = (*tags)[:0]
 					*tags = append(*tags, "inbound", "protocol", proto)
 					streams.WithLabelValues(*tags...).Set(float64(evt.StreamsIn))
@@ -244,8 +250,8 @@ func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags 
 			}
 		}
 
-	case rcmgr.TraceAddConnEvt, rcmgr.TraceRemoveConnEvt:
-		if p := rcmgr.PeerStrInScopeName(evt.Name); p != "" {
+	case TraceAddConnEvt, TraceRemoveConnEvt:
+		if p := PeerStrInScopeName(evt.Name); p != "" {
 			// Aggregated peer stats. Counts how many peers have N number of connections.
 			// Uses two buckets aggregations. One to count how many streams the
 			// peer has now. The other to count the negative value, or how many
@@ -274,31 +280,31 @@ func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags 
 				}
 			}
 		} else {
-			if rcmgr.IsConnScope(evt.Name) {
+			if IsConnScope(evt.Name) {
 				// Not measuring this. I don't think it's useful.
 				break
 			}
 
-			if rcmgr.IsSystemScope(evt.Name) {
+			if IsSystemScope(evt.Name) {
 				connsInboundSystem.Set(float64(evt.ConnsIn))
 				connsOutboundSystem.Set(float64(evt.ConnsOut))
-			} else if rcmgr.IsTransientScope(evt.Name) {
+			} else if IsTransientScope(evt.Name) {
 				connsInboundTransient.Set(float64(evt.ConnsIn))
 				connsOutboundTransient.Set(float64(evt.ConnsOut))
 			}
 
 			// Represents the delta in fds
 			if evt.Delta != 0 {
-				if rcmgr.IsSystemScope(evt.Name) {
+				if IsSystemScope(evt.Name) {
 					fdsSystem.Set(float64(evt.FD))
-				} else if rcmgr.IsTransientScope(evt.Name) {
+				} else if IsTransientScope(evt.Name) {
 					fdsTransient.Set(float64(evt.FD))
 				}
 			}
 		}
 
-	case rcmgr.TraceReserveMemoryEvt, rcmgr.TraceReleaseMemoryEvt:
-		if p := rcmgr.PeerStrInScopeName(evt.Name); p != "" {
+	case TraceReserveMemoryEvt, TraceReleaseMemoryEvt:
+		if p := PeerStrInScopeName(evt.Name); p != "" {
 			oldMem := evt.Memory - evt.Delta
 			if oldMem != evt.Memory {
 				if oldMem != 0 {
@@ -308,7 +314,7 @@ func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags 
 					peerMemory.Observe(float64(evt.Memory))
 				}
 			}
-		} else if rcmgr.IsConnScope(evt.Name) {
+		} else if IsConnScope(evt.Name) {
 			oldMem := evt.Memory - evt.Delta
 			if oldMem != evt.Memory {
 				if oldMem != 0 {
@@ -319,14 +325,14 @@ func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags 
 				}
 			}
 		} else {
-			if rcmgr.IsSystemScope(evt.Name) || rcmgr.IsTransientScope(evt.Name) {
+			if IsSystemScope(evt.Name) || IsTransientScope(evt.Name) {
 				*tags = (*tags)[:0]
 				*tags = append(*tags, evt.Name, "")
-				memory.WithLabelValues(*tags...).Set(float64(evt.Memory))
-			} else if proto := rcmgr.ParseProtocolScopeName(evt.Name); proto != "" {
+				memoryTotal.WithLabelValues(*tags...).Set(float64(evt.Memory))
+			} else if proto := ParseProtocolScopeName(evt.Name); proto != "" {
 				*tags = (*tags)[:0]
 				*tags = append(*tags, "protocol", proto)
-				memory.WithLabelValues(*tags...).Set(float64(evt.Memory))
+				memoryTotal.WithLabelValues(*tags...).Set(float64(evt.Memory))
 			} else {
 				// Not measuring connscope, servicepeer and protocolpeer. Lots of data, and
 				// you can use aggregated peer stats + service stats to infer
@@ -335,11 +341,11 @@ func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags 
 			}
 		}
 
-	case rcmgr.TraceBlockAddConnEvt, rcmgr.TraceBlockAddStreamEvt, rcmgr.TraceBlockReserveMemoryEvt:
+	case TraceBlockAddConnEvt, TraceBlockAddStreamEvt, TraceBlockReserveMemoryEvt:
 		var resource string
-		if evt.Type == rcmgr.TraceBlockAddConnEvt {
+		if evt.Type == TraceBlockAddConnEvt {
 			resource = "connection"
-		} else if evt.Type == rcmgr.TraceBlockAddStreamEvt {
+		} else if evt.Type == TraceBlockAddStreamEvt {
 			resource = "stream"
 		} else {
 			resource = "memory"

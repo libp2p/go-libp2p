@@ -64,3 +64,52 @@ func TestConnectednessEventsSingleConn(t *testing.T) {
 	checkEvent(t, sub1, event.EvtPeerConnectednessChanged{Peer: s2.LocalPeer(), Connectedness: network.NotConnected})
 	checkEvent(t, sub2, event.EvtPeerConnectednessChanged{Peer: s1.LocalPeer(), Connectedness: network.NotConnected})
 }
+
+func TestNoDeadlockWhenConsumingConnectednessEvents(t *testing.T) {
+	dialerEventBus := eventbus.NewBus()
+	dialer := swarmt.GenSwarm(t, swarmt.OptDialOnly, swarmt.EventBus(dialerEventBus))
+	defer dialer.Close()
+
+	listener := swarmt.GenSwarm(t, swarmt.OptDialOnly)
+	addrsToListen := []ma.Multiaddr{
+		ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+	}
+
+	if err := listener.Listen(addrsToListen...); err != nil {
+		t.Fatal(err)
+	}
+	listenedAddrs := listener.ListenAddresses()
+
+	dialer.Peerstore().AddAddrs(listener.LocalPeer(), listenedAddrs, time.Hour)
+
+	sub, err := dialerEventBus.Subscribe(new(event.EvtPeerConnectednessChanged))
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// A slow consumer
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-sub.Out():
+				time.Sleep(100 * time.Millisecond)
+				// Do something with the swarm that needs the conns lock
+				_ = dialer.ConnsToPeer(listener.LocalPeer())
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+
+	for i := 0; i < 10; i++ {
+		// Connect and disconnect to trigger a bunch of events
+		_, err := dialer.DialPeer(context.Background(), listener.LocalPeer())
+		require.NoError(t, err)
+		dialer.ClosePeer(listener.LocalPeer())
+	}
+
+	// The test should finish without deadlocking
+}

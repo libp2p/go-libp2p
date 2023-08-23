@@ -13,7 +13,7 @@ type RawJSON string
 // EXPERIMENTAL: this will likely be removed if/when the DHT event types are
 // hoisted to core, and the DHT event system is reconciled with the eventbus.
 type GenericDHTEvent struct {
-	// Type is the type of the DHT event that occured.
+	// Type is the type of the DHT event that occurred.
 	Type string
 
 	// Raw is the raw JSON representation of the event payload.

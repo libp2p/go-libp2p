@@ -9,31 +9,28 @@ import (
 
 	golog "github.com/ipfs/go-log/v2"
 	"github.com/klauspost/compress/zstd"
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/qlog"
 )
 
 var log = golog.Logger("quic-utils")
 
-// QLOGTracer holds a qlog tracer, if qlogging is enabled (enabled using the QLOGDIR environment variable).
-// Otherwise it is nil.
-var qlogTracer logging.Tracer
+// QLOGTracer holds a qlog tracer dir, if qlogging is enabled (enabled using the QLOGDIR environment variable).
+// Otherwise it is an empty string.
+var qlogTracerDir string
 
 func init() {
-	if qlogDir := os.Getenv("QLOGDIR"); len(qlogDir) > 0 {
-		qlogTracer = initQlogger(qlogDir)
-	}
+	qlogTracerDir = os.Getenv("QLOGDIR")
 }
 
-func initQlogger(qlogDir string) logging.Tracer {
-	return qlog.NewTracer(func(role logging.Perspective, connID []byte) io.WriteCloser {
-		// create the QLOGDIR, if it doesn't exist
-		if err := os.MkdirAll(qlogDir, 0777); err != nil {
-			log.Errorf("creating the QLOGDIR failed: %s", err)
-			return nil
-		}
-		return newQlogger(qlogDir, role, connID)
-	})
+func qloggerForDir(qlogDir string, p logging.Perspective, ci quic.ConnectionID) logging.ConnectionTracer {
+	// create the QLOGDIR, if it doesn't exist
+	if err := os.MkdirAll(qlogDir, 0777); err != nil {
+		log.Errorf("creating the QLOGDIR failed: %s", err)
+		return nil
+	}
+	return qlog.NewConnectionTracer(newQlogger(qlogDir, p, ci), p, ci)
 }
 
 // The qlogger logs qlog events to a temporary file: .<name>.qlog.swp.
@@ -46,14 +43,14 @@ type qlogger struct {
 	*bufio.Writer          // buffering the f
 }
 
-func newQlogger(qlogDir string, role logging.Perspective, connID []byte) io.WriteCloser {
+func newQlogger(qlogDir string, role logging.Perspective, connID quic.ConnectionID) io.WriteCloser {
 	t := time.Now().UTC().Format("2006-01-02T15-04-05.999999999UTC")
 	r := "server"
 	if role == logging.PerspectiveClient {
 		r = "client"
 	}
-	finalFilename := fmt.Sprintf("%s%clog_%s_%s_%x.qlog.zst", qlogDir, os.PathSeparator, t, r, connID)
-	filename := fmt.Sprintf("%s%c.log_%s_%s_%x.qlog.swp", qlogDir, os.PathSeparator, t, r, connID)
+	finalFilename := fmt.Sprintf("%s%clog_%s_%s_%s.qlog.zst", qlogDir, os.PathSeparator, t, r, connID)
+	filename := fmt.Sprintf("%s%c.log_%s_%s_%s.qlog.swp", qlogDir, os.PathSeparator, t, r, connID)
 	f, err := os.Create(filename)
 	if err != nil {
 		log.Errorf("unable to create qlog file %s: %s", filename, err)

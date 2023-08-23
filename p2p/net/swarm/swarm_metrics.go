@@ -85,6 +85,30 @@ var (
 			Buckets:   []float64{0.001, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 2},
 		},
 	)
+	blackHoleFilterState = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "black_hole_filter_state",
+			Help:      "State of the black hole filter",
+		},
+		[]string{"name"},
+	)
+	blackHoleFilterSuccessFraction = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "black_hole_filter_success_fraction",
+			Help:      "Fraction of successful dials among the last n requests",
+		},
+		[]string{"name"},
+	)
+	blackHoleFilterNextRequestAllowedAfter = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "black_hole_filter_next_request_allowed_after",
+			Help:      "Number of requests after which the next request will be allowed",
+		},
+		[]string{"name"},
+	)
 	collectors = []prometheus.Collector{
 		connsOpened,
 		keyTypes,
@@ -94,6 +118,9 @@ var (
 		connHandshakeLatency,
 		dialsPerPeer,
 		dialRankingDelay,
+		blackHoleFilterSuccessFraction,
+		blackHoleFilterState,
+		blackHoleFilterNextRequestAllowedAfter,
 	}
 )
 
@@ -104,6 +131,7 @@ type MetricsTracer interface {
 	FailedDialing(ma.Multiaddr, error)
 	DialCompleted(success bool, totalDials int)
 	DialRankingDelay(d time.Duration)
+	UpdatedBlackHoleFilterState(name string, state blackHoleState, nextProbeAfter int, successFraction float64)
 }
 
 type metricsTracer struct{}
@@ -234,4 +262,16 @@ func (m *metricsTracer) DialCompleted(success bool, totalDials int) {
 
 func (m *metricsTracer) DialRankingDelay(d time.Duration) {
 	dialRankingDelay.Observe(d.Seconds())
+}
+
+func (m *metricsTracer) UpdatedBlackHoleFilterState(name string, state blackHoleState,
+	nextProbeAfter int, successFraction float64) {
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, name)
+
+	blackHoleFilterState.WithLabelValues(*tags...).Set(float64(state))
+	blackHoleFilterSuccessFraction.WithLabelValues(*tags...).Set(successFraction)
+	blackHoleFilterNextRequestAllowedAfter.WithLabelValues(*tags...).Set(float64(nextProbeAfter))
 }

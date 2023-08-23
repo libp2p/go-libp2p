@@ -28,7 +28,7 @@ import (
 //	                   +--------------------------->  Stream
 //
 // The basic resources accounted by the ResourceManager include memory, streams, connections,
-// and file  descriptors. These account for both space and time used by
+// and file descriptors. These account for both space and time used by
 // the stack, as each resource has a direct effect on the system
 // availability and performance.
 //
@@ -69,7 +69,7 @@ import (
 //     service scope using the ResourceManager interface.
 //   - Applications that want to account for their network resource usage can reserve memory,
 //     typically using a span, directly in the System or a Service scope; they can also
-//     opt to use appropriate steam scopes for streams that they create or own.
+//     opt to use appropriate stream scopes for streams that they create or own.
 //
 // User Serviceable Parts: the user has the option to specify their own implementation of the
 // interface. We provide a canonical implementation in the go-libp2p-resource-manager package.
@@ -77,8 +77,7 @@ import (
 // or dynamic.
 //
 // WARNING The ResourceManager interface is considered experimental and subject to change
-//
-//	in subsequent releases.
+// in subsequent releases.
 type ResourceManager interface {
 	ResourceScopeViewer
 
@@ -102,7 +101,7 @@ type ResourceManager interface {
 // ResourceScopeViewer is a mixin interface providing view methods for accessing top level
 // scopes.
 type ResourceScopeViewer interface {
-	// ViewSystem views the system wide resource scope.
+	// ViewSystem views the system-wide resource scope.
 	// The system scope is the top level scope that accounts for global
 	// resource usage at all levels of the system. This scope constrains all
 	// other scopes and institutes global hard limits.
@@ -110,7 +109,7 @@ type ResourceScopeViewer interface {
 
 	// ViewTransient views the transient (DMZ) resource scope.
 	// The transient scope accounts for resources that are in the process of
-	// full establishment.  For instance, a new connection prior to the
+	// full establishment. For instance, a new connection prior to the
 	// handshake does not belong to any peer, but it still needs to be
 	// constrained as this opens an avenue for attacks in transient resource
 	// usage. Similarly, a stream that has not negotiated a protocol yet is
@@ -134,7 +133,7 @@ const (
 	// Reservation PriorityMedium is a reservation priority that indicates a reservation if the scope
 	// memory utilization is at 60% or less.
 	ReservationPriorityMedium uint8 = 152
-	// ReservationPriorityHigh is a reservation prioirity that indicates a reservation if the scope
+	// ReservationPriorityHigh is a reservation priority that indicates a reservation if the scope
 	// memory utilization is at 80% or less.
 	ReservationPriorityHigh uint8 = 203
 	// ReservationPriorityAlways is a reservation priority that indicates a reservation if there is
@@ -155,7 +154,7 @@ type ResourceScope interface {
 	// For instance, a muxer growing a window buffer will use a low priority and only grow the buffer
 	// if there is no memory pressure in the system.
 	//
-	// The are 4 predefined priority levels, Low, Medium, High and Always,
+	// There are 4 predefined priority levels, Low, Medium, High and Always,
 	// capturing common patterns, but the user is free to use any granularity applicable to his case.
 	ReserveMemory(size int, prio uint8) error
 
@@ -218,7 +217,7 @@ type ConnManagementScope interface {
 	ResourceScopeSpan
 
 	// PeerScope returns the peer scope associated with this connection.
-	// It returns nil if the connection is not yet asociated with any peer.
+	// It returns nil if the connection is not yet associated with any peer.
 	PeerScope() PeerScope
 
 	// SetPeer sets the peer for a previously unassociated connection

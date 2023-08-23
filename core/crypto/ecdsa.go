@@ -12,8 +12,7 @@ import (
 
 	pb "github.com/libp2p/go-libp2p/core/crypto/pb"
 	"github.com/libp2p/go-libp2p/core/internal/catch"
-
-	"github.com/minio/sha256-simd"
+	"github.com/libp2p/go-libp2p/internal/sha256"
 )
 
 // ECDSAPrivateKey is an implementation of an ECDSA private key
@@ -49,7 +48,7 @@ func GenerateECDSAKeyPair(src io.Reader) (PrivKey, PubKey, error) {
 	return GenerateECDSAKeyPairWithCurve(ECDSACurve, src)
 }
 
-// GenerateECDSAKeyPairWithCurve generates a new ecdsa private and public key with a speicified curve
+// GenerateECDSAKeyPairWithCurve generates a new ecdsa private and public key with a specified curve
 func GenerateECDSAKeyPairWithCurve(curve elliptic.Curve, src io.Reader) (PrivKey, PubKey, error) {
 	priv, err := ecdsa.GenerateKey(curve, src)
 	if err != nil {

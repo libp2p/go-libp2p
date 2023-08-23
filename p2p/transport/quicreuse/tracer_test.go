@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +31,7 @@ func getFile(t *testing.T, dir string) os.FileInfo {
 
 func TestSaveQlog(t *testing.T) {
 	qlogDir := createLogDir(t)
-	logger := newQlogger(qlogDir, logging.PerspectiveServer, []byte{0xde, 0xad, 0xbe, 0xef})
+	logger := newQlogger(qlogDir, logging.PerspectiveServer, quic.ConnectionIDFromBytes([]byte{0xde, 0xad, 0xbe, 0xef}))
 	file := getFile(t, qlogDir)
 	require.Equal(t, string(file.Name()[0]), ".")
 	require.Truef(t, strings.HasSuffix(file.Name(), ".qlog.swp"), "expected %s to have the .qlog.swp file ending", file.Name())
@@ -45,7 +46,7 @@ func TestSaveQlog(t *testing.T) {
 
 func TestQlogBuffering(t *testing.T) {
 	qlogDir := createLogDir(t)
-	logger := newQlogger(qlogDir, logging.PerspectiveServer, []byte("connid"))
+	logger := newQlogger(qlogDir, logging.PerspectiveServer, quic.ConnectionIDFromBytes([]byte("connid")))
 	initialSize := getFile(t, qlogDir).Size()
 	// Do a small write.
 	// Since the writter is buffered, this should not be written to disk yet.
@@ -60,7 +61,7 @@ func TestQlogBuffering(t *testing.T) {
 
 func TestQlogCompression(t *testing.T) {
 	qlogDir := createLogDir(t)
-	logger := newQlogger(qlogDir, logging.PerspectiveServer, []byte("connid"))
+	logger := newQlogger(qlogDir, logging.PerspectiveServer, quic.ConnectionIDFromBytes([]byte("connid")))
 	logger.Write([]byte("foobar"))
 	require.NoError(t, logger.Close())
 	compressed, err := os.ReadFile(qlogDir + "/" + getFile(t, qlogDir).Name())

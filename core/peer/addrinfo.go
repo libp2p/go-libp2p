@@ -47,7 +47,7 @@ func AddrInfosFromP2pAddrs(maddrs ...ma.Multiaddr) ([]AddrInfo, error) {
 // SplitAddr splits a p2p Multiaddr into a transport multiaddr and a peer ID.
 //
 // * Returns a nil transport if the address only contains a /p2p part.
-// * Returns a empty peer ID if the address doesn't contain a /p2p part.
+// * Returns an empty peer ID if the address doesn't contain a /p2p part.
 func SplitAddr(m ma.Multiaddr) (transport ma.Multiaddr, id ID) {
 	if m == nil {
 		return nil, ""

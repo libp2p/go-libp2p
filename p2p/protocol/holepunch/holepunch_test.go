@@ -102,6 +102,10 @@ func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 }
 
 func TestDirectDialWorks(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("modifying manet.Private4 is racy")
+	}
+
 	// mark all addresses as public
 	cpy := manet.Private4
 	manet.Private4 = []*net.IPNet{}

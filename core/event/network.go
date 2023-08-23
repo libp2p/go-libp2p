@@ -22,7 +22,7 @@ import (
 //   - It's possible to have _multiple_ connections to a given peer.
 //   - Both libp2p and networks are asynchronous.
 //
-// This means that all of the following situations are possible:
+// This means that all the following situations are possible:
 //
 // A connection is cut and is re-established:
 //
@@ -46,9 +46,9 @@ import (
 //
 // Explanation: There were two connections and one was cut. This connection
 // might have been in active use but neither peer will observe a change in
-// "connectedness". Peers should always make sure to re-try network requests.
+// "connectedness". Peers should always make sure to retry network requests.
 type EvtPeerConnectednessChanged struct {
-	// Peer is the remote peer who's connectedness has changed.
+	// Peer is the remote peer whose connectedness has changed.
 	Peer peer.ID
 	// Connectedness is the new connectedness state.
 	Connectedness network.Connectedness

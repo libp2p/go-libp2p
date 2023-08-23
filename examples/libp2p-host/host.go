@@ -1,3 +1,5 @@
+//go:build !go1.21
+
 package main
 
 import (
@@ -22,7 +24,7 @@ func main() {
 
 func run() {
 	// The context governs the lifetime of the libp2p node.
-	// Cancelling it will stop the the host.
+	// Cancelling it will stop the host.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

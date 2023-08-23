@@ -26,6 +26,7 @@ import (
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
@@ -124,7 +125,9 @@ type Config struct {
 	DisableMetrics       bool
 	PrometheusRegisterer prometheus.Registerer
 
-	NoDelayNetworkDialRanker bool
+	DialRanker network.DialRanker
+
+	SwarmOpts []swarm.Option
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -136,8 +139,8 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	if pnet.ForcePrivateNetwork && len(cfg.PSK) == 0 {
 		log.Error("tried to create a libp2p node with no Private" +
 			" Network Protector but usage of Private Networks" +
-			" is forced by the enviroment")
-		// Note: This is *also* checked the upgrader itself so it'll be
+			" is forced by the environment")
+		// Note: This is *also* checked the upgrader itself, so it'll be
 		// enforced even *if* you don't use the libp2p constructor.
 		return nil, pnet.ErrNotInPrivateNetwork
 	}
@@ -159,7 +162,7 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 		return nil, err
 	}
 
-	opts := make([]swarm.Option, 0, 6)
+	opts := cfg.SwarmOpts
 	if cfg.Reporter != nil {
 		opts = append(opts, swarm.WithMetrics(cfg.Reporter))
 	}
@@ -175,9 +178,10 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	if cfg.MultiaddrResolver != nil {
 		opts = append(opts, swarm.WithMultiaddrResolver(cfg.MultiaddrResolver))
 	}
-	if cfg.NoDelayNetworkDialRanker {
-		opts = append(opts, swarm.WithNoDialDelay())
+	if cfg.DialRanker != nil {
+		opts = append(opts, swarm.WithDialRanker(cfg.DialRanker))
 	}
+
 	if enableMetrics {
 		opts = append(opts,
 			swarm.WithMetricsTracer(swarm.NewMetricsTracer(swarm.WithRegisterer(cfg.PrometheusRegisterer))))
@@ -297,6 +301,10 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		return nil, err
 	}
 
+	if !cfg.DisableMetrics {
+		rcmgr.MustRegisterWith(cfg.PrometheusRegisterer)
+	}
+
 	h, err := bhost.NewHost(swrm, &bhost.HostOpts{
 		EventBus:             eventBus,
 		ConnManager:          cfg.ConnManager,
@@ -398,7 +406,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		}
 
 		// Pull out the pieces of the config that we _actually_ care about.
-		// Specifically, don't setup things like autorelay, listeners,
+		// Specifically, don't set up things like autorelay, listeners,
 		// identify, etc.
 		autoNatCfg := Config{
 			Transports:         cfg.Transports,
@@ -410,6 +418,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			Reporter:           cfg.Reporter,
 			PeerKey:            autonatPrivKey,
 			Peerstore:          ps,
+			DialRanker:         swarm.NoDelayDialRanker,
 		}
 
 		dialer, err := autoNatCfg.makeSwarm(eventbus.NewBus(), false)

@@ -29,6 +29,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	mockClock "github.com/benbjohnson/clock"
+	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
@@ -560,6 +561,9 @@ func TestSendPush(t *testing.T) {
 }
 
 func TestLargeIdentifyMessage(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("setting peerstore.RecentlyConnectedAddrTTL is racy")
+	}
 	oldTTL := peerstore.RecentlyConnectedAddrTTL
 	peerstore.RecentlyConnectedAddrTTL = 500 * time.Millisecond
 	t.Cleanup(func() { peerstore.RecentlyConnectedAddrTTL = oldTTL })
@@ -742,10 +746,10 @@ func TestLargePushMessage(t *testing.T) {
 }
 
 func TestIdentifyResponseReadTimeout(t *testing.T) {
-	timeout := identify.StreamReadTimeout
-	identify.StreamReadTimeout = 100 * time.Millisecond
+	timeout := identify.Timeout
+	identify.Timeout = 100 * time.Millisecond
 	defer func() {
-		identify.StreamReadTimeout = timeout
+		identify.Timeout = timeout
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -788,10 +792,10 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 }
 
 func TestIncomingIDStreamsTimeout(t *testing.T) {
-	timeout := identify.StreamReadTimeout
-	identify.StreamReadTimeout = 100 * time.Millisecond
+	timeout := identify.Timeout
+	identify.Timeout = 100 * time.Millisecond
 	defer func() {
-		identify.StreamReadTimeout = timeout
+		identify.Timeout = timeout
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -39,7 +39,7 @@ type Record interface {
 	// (see https://github.com/multiformats/multicodec).
 	// When a Record is put into an Envelope (see record.Seal), the Codec value will be used
 	// as the Envelope's PayloadType. When the Envelope is later unsealed, the PayloadType
-	// will be used to lookup the correct Record type to unmarshal the Envelope payload into.
+	// will be used to look up the correct Record type to unmarshal the Envelope payload into.
 	Codec() []byte
 
 	// MarshalRecord converts a Record instance to a []byte, so that it can be used as an

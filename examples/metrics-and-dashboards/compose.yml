@@ -1,0 +1,15 @@
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../examples/metrics-and-dashboards/prometheus.yml:/etc/prometheus/prometheus.yml
+  go-libp2p-node:
+    build:
+      context: ../examples/metrics-and-dashboards/
+      dockerfile: go-libp2p-node.Dockerfile
+    ports:
+      - 5001:5001
+    expose:
+      - 5001

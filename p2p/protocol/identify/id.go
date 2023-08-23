@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"sync"
 	"time"
 
@@ -47,8 +46,7 @@ const ServiceName = "libp2p.identify"
 
 const maxPushConcurrency = 32
 
-// StreamReadTimeout is the read timeout on all incoming Identify family streams.
-var StreamReadTimeout = 60 * time.Second
+var Timeout = 60 * time.Second // timeout on all incoming Identify interactions
 
 const (
 	legacyIDSize = 2 * 1024 // 2k Bytes
@@ -410,11 +408,14 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 }
 
 func (ids *idService) identifyConn(c network.Conn) error {
-	s, err := c.NewStream(network.WithUseTransient(context.TODO(), "identify"))
+	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+	defer cancel()
+	s, err := c.NewStream(network.WithUseTransient(ctx, "identify"))
 	if err != nil {
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return err
 	}
+	s.SetDeadline(time.Now().Add(Timeout))
 
 	if err := s.SetProtocol(ID); err != nil {
 		log.Warnf("error setting identify protocol for stream: %s", err)
@@ -433,6 +434,7 @@ func (ids *idService) identifyConn(c network.Conn) error {
 
 // handlePush handles incoming identify push streams
 func (ids *idService) handlePush(s network.Stream) {
+	s.SetDeadline(time.Now().Add(Timeout))
 	ids.handleIdentifyResponse(s, true)
 }
 
@@ -494,8 +496,6 @@ func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) erro
 	}
 	defer s.Scope().ReleaseMemory(signedIDSize)
 
-	_ = s.SetReadDeadline(time.Now().Add(StreamReadTimeout))
-
 	c := s.Conn()
 
 	r := pbio.NewDelimitedReader(s, signedIDSize)
@@ -556,9 +556,9 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 
 func (ids *idService) updateSnapshot() (updated bool) {
 	addrs := ids.Host.Addrs()
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) == -1 })
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
 	protos := ids.Host.Mux().Protocols()
-	sort.Slice(protos, func(i, j int) bool { return protos[i] < protos[j] })
+	slices.Sort(protos)
 	snapshot := identifySnapshot{
 		addrs:     addrs,
 		protocols: protos,

@@ -263,15 +263,15 @@ func TestAddrResolutionRecursive(t *testing.T) {
 }
 
 func TestAddrsForDialFiltering(t *testing.T) {
-	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
+	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 	q1v1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 	wt1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1/webtransport/")
 
-	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic")
+	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 	q2v1 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 	wt2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1/webtransport/")
 
-	q3 := ma.StringCast("/ip4/1.2.3.4/udp/3/quic")
+	q3 := ma.StringCast("/ip4/1.2.3.4/udp/3/quic-v1")
 
 	t1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
 	ws1 := ma.StringCast("/ip4/1.2.3.4/tcp/1/ws")
@@ -328,5 +328,48 @@ func TestAddrsForDialFiltering(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBlackHoledAddrBlocked(t *testing.T) {
+	resolver, err := madns.NewResolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestSwarmWithResolver(t, resolver)
+	defer s.Close()
+
+	n := 3
+	s.bhd.ipv6 = &blackHoleFilter{n: n, minSuccesses: 1, name: "IPv6"}
+
+	// all dials to the address will fail. RFC6666 Discard Prefix
+	addr := ma.StringCast("/ip6/0100::1/tcp/54321/")
+
+	p, err := test.RandPeerID()
+	if err != nil {
+		t.Error(err)
+	}
+	s.Peerstore().AddAddr(p, addr, peerstore.PermanentAddrTTL)
+
+	// do 1 extra dial to ensure that the blackHoleDetector state is updated since it
+	// happens in a different goroutine
+	for i := 0; i < n+1; i++ {
+		s.backf.Clear(p)
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		conn, err := s.DialPeer(ctx, p)
+		if err == nil || conn != nil {
+			t.Fatalf("expected dial to fail")
+		}
+		cancel()
+	}
+	s.backf.Clear(p)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	conn, err := s.DialPeer(ctx, p)
+	if conn != nil {
+		t.Fatalf("expected dial to be blocked")
+	}
+	if err != ErrNoGoodAddresses {
+		t.Fatalf("expected to receive an error of type *DialError, got %s of type %T", err, err)
 	}
 }

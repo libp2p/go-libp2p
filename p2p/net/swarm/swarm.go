@@ -100,19 +100,33 @@ func WithResourceManager(m network.ResourceManager) Option {
 	}
 }
 
-// WithNoDialDelay configures swarm to dial all addresses for a peer without
-// any delay
-func WithNoDialDelay() Option {
+// WithDialRanker configures swarm to use d as the DialRanker
+func WithDialRanker(d network.DialRanker) Option {
 	return func(s *Swarm) error {
-		s.dialRanker = noDelayRanker
+		if d == nil {
+			return errors.New("swarm: dial ranker cannot be nil")
+		}
+		s.dialRanker = d
 		return nil
 	}
 }
 
-// WithDialRanker configures swarm to use d as the DialRanker
-func WithDialRanker(d network.DialRanker) Option {
+// WithUDPBlackHoleConfig configures swarm to use c as the config for UDP black hole detection
+// n is the size of the sliding window used to evaluate black hole state
+// min is the minimum number of successes out of n required to not block requests
+func WithUDPBlackHoleConfig(enabled bool, n, min int) Option {
 	return func(s *Swarm) error {
-		s.dialRanker = d
+		s.udpBlackHoleConfig = blackHoleConfig{Enabled: enabled, N: n, MinSuccesses: min}
+		return nil
+	}
+}
+
+// WithIPv6BlackHoleConfig configures swarm to use c as the config for IPv6 black hole detection
+// n is the size of the sliding window used to evaluate black hole state
+// min is the minimum number of successes out of n required to not block requests
+func WithIPv6BlackHoleConfig(enabled bool, n, min int) Option {
+	return func(s *Swarm) error {
+		s.ipv6BlackHoleConfig = blackHoleConfig{Enabled: enabled, N: n, MinSuccesses: min}
 		return nil
 	}
 }
@@ -182,6 +196,10 @@ type Swarm struct {
 	metricsTracer MetricsTracer
 
 	dialRanker network.DialRanker
+
+	udpBlackHoleConfig  blackHoleConfig
+	ipv6BlackHoleConfig blackHoleConfig
+	bhd                 *blackHoleDetector
 }
 
 // NewSwarm constructs a Swarm.
@@ -201,6 +219,12 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 		dialTimeoutLocal: defaultDialTimeoutLocal,
 		maResolver:       madns.DefaultResolver,
 		dialRanker:       DefaultDialRanker,
+
+		// A black hole is a binary property. On a network if UDP dials are blocked or there is
+		// no IPv6 connectivity, all dials will fail. So a low success rate of 5 out 100 dials
+		// is good enough.
+		udpBlackHoleConfig:  blackHoleConfig{Enabled: true, N: 100, MinSuccesses: 5},
+		ipv6BlackHoleConfig: blackHoleConfig{Enabled: true, N: 100, MinSuccesses: 5},
 	}
 
 	s.conns.m = make(map[peer.ID][]*Conn)
@@ -218,8 +242,12 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 	}
 
 	s.dsync = newDialSync(s.dialWorkerLoop)
+
 	s.limiter = newDialLimiter(s.dialAddr)
 	s.backf.init(s.ctx)
+
+	s.bhd = newBlackHoleDetector(s.udpBlackHoleConfig, s.ipv6BlackHoleConfig, s.metricsTracer)
+
 	return s, nil
 }
 
@@ -349,12 +377,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	}
 
 	c.streams.m = make(map[*Stream]struct{})
-	if len(s.conns.m[p]) == 0 { // first connection
-		s.emitter.Emit(event.EvtPeerConnectednessChanged{
-			Peer:          p,
-			Connectedness: network.Connected,
-		})
-	}
+	isFirstConnection := len(s.conns.m[p]) == 0
 	s.conns.m[p] = append(s.conns.m[p], c)
 
 	// Add two swarm refs:
@@ -366,6 +389,15 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	// Disconnect notifications until after the Connect notifications done.
 	c.notifyLk.Lock()
 	s.conns.Unlock()
+
+	// Emit event after releasing `s.conns` lock so that a consumer can still
+	// use swarm methods that need the `s.conns` lock.
+	if isFirstConnection {
+		s.emitter.Emit(event.EvtPeerConnectednessChanged{
+			Peer:          p,
+			Connectedness: network.Connected,
+		})
+	}
 
 	s.notifyAll(func(f network.Notifiee) {
 		f.Connected(s, c)
@@ -646,25 +678,32 @@ func (s *Swarm) removeConn(c *Conn) {
 	p := c.RemotePeer()
 
 	s.conns.Lock()
-	defer s.conns.Unlock()
 
 	cs := s.conns.m[p]
+
+	if len(cs) == 1 {
+		delete(s.conns.m, p)
+		s.conns.Unlock()
+
+		// Emit event after releasing `s.conns` lock so that a consumer can still
+		// use swarm methods that need the `s.conns` lock.
+		s.emitter.Emit(event.EvtPeerConnectednessChanged{
+			Peer:          p,
+			Connectedness: network.NotConnected,
+		})
+		return
+	}
+
+	defer s.conns.Unlock()
+
 	for i, ci := range cs {
 		if ci == c {
-			if len(cs) == 1 {
-				delete(s.conns.m, p)
-				s.emitter.Emit(event.EvtPeerConnectednessChanged{
-					Peer:          p,
-					Connectedness: network.NotConnected,
-				})
-			} else {
-				// NOTE: We're intentionally preserving order.
-				// This way, connections to a peer are always
-				// sorted oldest to newest.
-				copy(cs[i:], cs[i+1:])
-				cs[len(cs)-1] = nil
-				s.conns.m[p] = cs[:len(cs)-1]
-			}
+			// NOTE: We're intentionally preserving order.
+			// This way, connections to a peer are always
+			// sorted oldest to newest.
+			copy(cs[i:], cs[i+1:])
+			cs[len(cs)-1] = nil
+			s.conns.m[p] = cs[:len(cs)-1]
 			break
 		}
 	}
@@ -704,3 +743,12 @@ func (c connWithMetrics) Close() error {
 	c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
 	return c.CapableConn.Close()
 }
+
+func (c connWithMetrics) Stat() network.ConnStats {
+	if cs, ok := c.CapableConn.(network.ConnStat); ok {
+		return cs.Stat()
+	}
+	return network.ConnStats{}
+}
+
+var _ network.ConnStat = connWithMetrics{}

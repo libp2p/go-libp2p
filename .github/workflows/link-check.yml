@@ -1,0 +1,17 @@
+name: Markdown Link Checking
+on:
+  pull_request:
+  push:
+    branches:
+      - "master"
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'   # show only broken links
+          use-verbose-mode: 'yes'
+          config-file: .github/workflows/markdown-links-config.json # for removing any false positives

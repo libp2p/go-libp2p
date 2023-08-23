@@ -10,6 +10,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/connmgr"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -19,14 +20,24 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+type PeerOptions struct {
+	// ps is the Peerstore to use when adding peer. If nil, a default peerstore will be created.
+	ps peerstore.Peerstore
+
+	// gater is the ConnectionGater to use when adding a peer. If nil, no connection gater will be used.
+	gater connmgr.ConnectionGater
+}
+
 type Mocknet interface {
 	// GenPeer generates a peer and its network.Network in the Mocknet
 	GenPeer() (host.Host, error)
+	GenPeerWithOptions(PeerOptions) (host.Host, error)
 
 	// AddPeer adds an existing peer. we need both a privkey and addr.
 	// ID is derived from PrivKey
 	AddPeer(ic.PrivKey, ma.Multiaddr) (host.Host, error)
 	AddPeerWithPeerstore(peer.ID, peerstore.Peerstore) (host.Host, error)
+	AddPeerWithOptions(peer.ID, PeerOptions) (host.Host, error)
 
 	// retrieve things (with randomized iteration order)
 	Peers() []peer.ID

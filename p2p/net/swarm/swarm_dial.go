@@ -39,6 +39,9 @@ var (
 	// been dialed too frequently
 	ErrDialBackoff = errors.New("dial backoff")
 
+	// ErrDialRefusedBlackHole is returned when we are in a black holed environment
+	ErrDialRefusedBlackHole = errors.New("dial refused because of black hole")
+
 	// ErrDialToSelf is returned if we attempt to dial our own peer
 	ErrDialToSelf = errors.New("dial to self attempted")
 
@@ -75,33 +78,12 @@ const ConcurrentFdDials = 160
 // per peer
 var DefaultPerPeerRateLimit = 8
 
-// dialbackoff is a struct used to avoid over-dialing the same, dead peers.
-// Whenever we totally time out on a peer (all three attempts), we add them
-// to dialbackoff. Then, whenevers goroutines would _wait_ (dialsync), they
-// check dialbackoff. If it's there, they don't wait and exit promptly with
-// an error. (the single goroutine that is actually dialing continues to
-// dial). If a dial is successful, the peer is removed from backoff.
-// Example:
-//
-//  for {
-//  	if ok, wait := dialsync.Lock(p); !ok {
-//  		if backoff.Backoff(p) {
-//  			return errDialFailed
-//  		}
-//  		<-wait
-//  		continue
-//  	}
-//  	defer dialsync.Unlock(p)
-//  	c, err := actuallyDial(p)
-//  	if err != nil {
-//  		dialbackoff.AddBackoff(p)
-//  		continue
-//  	}
-//  	dialbackoff.Clear(p)
-//  }
-//
-
-// DialBackoff is a type for tracking peer dial backoffs.
+// DialBackoff is a type for tracking peer dial backoffs. Dialbackoff is used to
+// avoid over-dialing the same, dead peers. Whenever we totally time out on all
+// addresses of a peer, we add the addresses to DialBackoff. Then, whenever we
+// attempt to dial the peer again, we check each address for backoff. If it's on
+// backoff, we don't dial the address and exit promptly. If a dial is
+// successful, the peer and all its addresses are removed from backoff.
 //
 // * It's safe to use its zero value.
 // * It's thread-safe.
@@ -139,8 +121,8 @@ func (db *DialBackoff) background(ctx context.Context) {
 // Backoff returns whether the client should backoff from dialing
 // peer p at address addr
 func (db *DialBackoff) Backoff(p peer.ID, addr ma.Multiaddr) (backoff bool) {
-	db.lock.Lock()
-	defer db.lock.Unlock()
+	db.lock.RLock()
+	defer db.lock.RUnlock()
 
 	ap, found := db.entries[p][string(addr.Bytes())]
 	return found && time.Now().Before(ap.until)
@@ -155,9 +137,7 @@ var BackoffCoef = time.Second
 // BackoffMax is the maximum backoff time (default: 5m).
 var BackoffMax = time.Minute * 5
 
-// AddBackoff lets other nodes know that we've entered backoff with
-// peer p, so dialers should not wait unnecessarily. We still will
-// attempt to dial with one goroutine, in case we get through.
+// AddBackoff adds peer's address to backoff.
 //
 // Backoff is not exponential, it's quadratic and computed according to the
 // following formula:
@@ -335,7 +315,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 	if forceDirect, _ := network.GetForceDirectDial(ctx); forceDirect {
 		goodAddrs = ma.FilterAddrs(goodAddrs, s.nonProxyAddr)
 	}
-	goodAddrs = network.DedupAddrs(goodAddrs)
+	goodAddrs = ma.Unique(goodAddrs)
 
 	if len(goodAddrs) == 0 {
 		return nil, ErrNoGoodAddresses
@@ -457,8 +437,12 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 
 	// filter addresses we cannot dial
 	addrs = ma.FilterAddrs(addrs, s.canDial)
+
 	// filter low priority addresses among the addresses we can dial
 	addrs = filterLowPriorityAddresses(addrs)
+
+	// remove black holed addrs
+	addrs = s.bhd.FilterAddrs(addrs)
 
 	return ma.FilterAddrs(addrs,
 		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
@@ -507,6 +491,12 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 
 	start := time.Now()
 	connC, err := tpt.Dial(ctx, addr, p)
+
+	// We're recording any error as a failure here.
+	// Notably, this also applies to cancelations (i.e. if another dial attempt was faster).
+	// This is ok since the black hole detector uses a very low threshold (5%).
+	s.bhd.RecordResult(addr, err == nil)
+
 	if err != nil {
 		if s.metricsTracer != nil {
 			s.metricsTracer.FailedDialing(addr, err)
