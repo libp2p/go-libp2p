@@ -3063,7 +3063,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "libp2p Swarm",
+  "title": "go-libp2p Swarm",
   "uid": "a15PyhO4z",
   "version": 6,
   "weekStart": ""
