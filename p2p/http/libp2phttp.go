@@ -113,15 +113,20 @@ type Host struct {
 	ListenAddrs []ma.Multiaddr
 	// TLSConfig is the TLS config for the server to use
 	TLSConfig *tls.Config
-	// ServeInsecureHTTP indicates if the server should serve unencrypted HTTP requests over TCP.
-	ServeInsecureHTTP bool
+	// InsecureAllowHTTP indicates if the server is allowed to serve unencrypted
+	// HTTP requests over TCP.
+	InsecureAllowHTTP bool
 	// ServeMux is the http.ServeMux used by the server to serve requests. The
 	// zero value is a new serve mux. Users may manually add handlers to this
 	// mux instead of using `SetHTTPHandler`, but if they do, they should also
 	// update the WellKnownHandler's protocol mapping.
 	ServeMux http.ServeMux
 
-	// DefaultClientRoundTripper is the default http.RoundTripper for clients
+	// DefaultClientRoundTripper is the default http.RoundTripper for clients to
+	// use when making requests over an HTTP transport. This must be an
+	// `*http.Transport` type so that the transport can be cloned and the
+	// `TLSClientConfig` field can be configured. If unset, it will create a new
+	// `http.Transport` on first use.
 	DefaultClientRoundTripper *http.Transport
 
 	// WellKnownHandler is the http handler for the `.well-known/libp2p`
@@ -133,7 +138,10 @@ type Host struct {
 	peerMetadata *lru.Cache[peer.ID, PeerMeta]
 	// createHTTPTransport is used to lazily create the httpTransport in a thread-safe way.
 	createHTTPTransport sync.Once
-	httpTransport       *httpTransport
+	// createDefaultClientRoundTripper is used to lazily create the default
+	// client round tripper in a thread-safe way.
+	createDefaultClientRoundTripper sync.Once
+	httpTransport                   *httpTransport
 }
 
 type httpTransport struct {
@@ -277,7 +285,7 @@ func (h *Host) Serve() error {
 					errCh <- srv.ServeTLS(l, "", "")
 				}()
 				h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
-			} else if h.ServeInsecureHTTP {
+			} else if h.InsecureAllowHTTP {
 				go func() {
 					errCh <- http.Serve(l, &h.ServeMux)
 				}()
@@ -579,10 +587,12 @@ func (h *Host) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOption)
 			scheme = "https"
 		}
 
+		h.createDefaultClientRoundTripper.Do(func() {
+			if h.DefaultClientRoundTripper == nil {
+				h.DefaultClientRoundTripper = &http.Transport{}
+			}
+		})
 		rt := h.DefaultClientRoundTripper
-		if rt == nil {
-			rt = http.DefaultTransport.(*http.Transport)
-		}
 		ownRoundtripper := false
 		if parsed.sni != parsed.host {
 			// We have a different host and SNI (e.g. using an IP address but specifying a SNI)

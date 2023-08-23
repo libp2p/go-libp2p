@@ -74,7 +74,7 @@ func TestRoundTrippers(t *testing.T) {
 	require.NoError(t, err)
 
 	httpHost := libp2phttp.Host{
-		ServeInsecureHTTP: true,
+		InsecureAllowHTTP: true,
 		StreamHost:        serverHost,
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
@@ -310,7 +310,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 
 func TestHostZeroValue(t *testing.T) {
 	server := libp2phttp.Host{
-		ServeInsecureHTTP: true,
+		InsecureAllowHTTP: true,
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
