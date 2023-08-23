@@ -730,13 +730,30 @@ func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server pe
 	return meta, nil
 }
 
-// AddPeerMetadata adds a peer's protocol metadata to the http host. Useful if
+// SetPeerMetadata adds a peer's protocol metadata to the http host. Useful if
+// you have out-of-band knowledge of a peer's protocol mapping.
+func (h *Host) SetPeerMetadata(server peer.ID, meta PeerMeta) {
+	if h.peerMetadata == nil {
+		h.peerMetadata = newPeerMetadataCache()
+	}
+	h.peerMetadata.Add(server, meta)
+}
+
+// AddPeerMetadata merges the given peer's protocol metadata to the http host. Useful if
 // you have out-of-band knowledge of a peer's protocol mapping.
 func (h *Host) AddPeerMetadata(server peer.ID, meta PeerMeta) {
 	if h.peerMetadata == nil {
 		h.peerMetadata = newPeerMetadataCache()
 	}
-	h.peerMetadata.Add(server, meta)
+	origMeta, ok := h.peerMetadata.Get(server)
+	if !ok {
+		h.peerMetadata.Add(server, meta)
+		return
+	}
+	for proto, m := range meta {
+		origMeta[proto] = m
+	}
+	h.peerMetadata.Add(server, origMeta)
 }
 
 // GetPeerMetadata gets a peer's cached protocol metadata from the http host.
@@ -748,7 +765,7 @@ func (h *Host) GetPeerMetadata(server peer.ID) (PeerMeta, bool) {
 }
 
 // RemovePeerMetadata removes a peer's protocol metadata from the http host
-func (h *Host) RemovePeerMetadata(server peer.ID, meta PeerMeta) {
+func (h *Host) RemovePeerMetadata(server peer.ID) {
 	if h.peerMetadata == nil {
 		return
 	}
