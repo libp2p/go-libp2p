@@ -148,13 +148,6 @@ type httpTransport struct {
 	waitingForListeners chan struct{}
 }
 
-func newHTTPTransport() *httpTransport {
-	return &httpTransport{
-		closeListeners:      make(chan struct{}),
-		waitingForListeners: make(chan struct{}),
-	}
-}
-
 func newPeerMetadataCache() *lru.Cache[peer.ID, PeerMeta] {
 	peerMetadata, err := lru.New[peer.ID, PeerMeta](peerMetadataLRUSize)
 	if err != nil {
@@ -164,10 +157,17 @@ func newPeerMetadataCache() *lru.Cache[peer.ID, PeerMeta] {
 	return peerMetadata
 }
 
-func (h *Host) Addrs() []ma.Multiaddr {
+func (h *Host) httpTransportInit() {
 	h.createHTTPTransport.Do(func() {
-		h.httpTransport = newHTTPTransport()
+		h.httpTransport = &httpTransport{
+			closeListeners:      make(chan struct{}),
+			waitingForListeners: make(chan struct{}),
+		}
 	})
+}
+
+func (h *Host) Addrs() []ma.Multiaddr {
+	h.httpTransportInit()
 	<-h.httpTransport.waitingForListeners
 	return h.httpTransport.listenAddrs
 }
@@ -195,9 +195,7 @@ func (h *Host) Serve() error {
 
 	h.ServeMux.Handle("/.well-known/libp2p", &h.WellKnownHandler)
 
-	h.createHTTPTransport.Do(func() {
-		h.httpTransport = newHTTPTransport()
-	})
+	h.httpTransportInit()
 
 	closedWaitingForListeners := false
 	defer func() {
@@ -325,9 +323,7 @@ func (h *Host) Serve() error {
 }
 
 func (h *Host) Close() error {
-	h.createHTTPTransport.Do(func() {
-		h.httpTransport = newHTTPTransport()
-	})
+	h.httpTransportInit()
 	close(h.httpTransport.closeListeners)
 	return nil
 }
