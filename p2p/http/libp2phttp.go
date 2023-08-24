@@ -523,7 +523,7 @@ func (h *Host) NamespaceRoundTripper(roundtripper http.RoundTripper, p protocol.
 // and namespacing the roundripper yourself, then creating clients from the
 // namespace round tripper.
 func (h *Host) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...RoundTripperOption) (http.Client, error) {
-	rt, err := h.NewRoundTripper(server, opts...)
+	rt, err := h.NewConstrainedRoundTripper(server, opts...)
 	if err != nil {
 		return http.Client{}, err
 	}
@@ -536,10 +536,10 @@ func (h *Host) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...Rou
 	return http.Client{Transport: nrt}, nil
 }
 
-// NewRoundTripper returns an http.RoundTripper that can fulfill and HTTP
+// NewConstrainedRoundTripper returns an http.RoundTripper that can fulfill and HTTP
 // request to the given server. It may use an HTTP transport or a stream based
 // transport. It is valid to pass an empty server.ID.
-func (h *Host) NewRoundTripper(server peer.AddrInfo, opts ...RoundTripperOption) (http.RoundTripper, error) {
+func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTripperOption) (http.RoundTripper, error) {
 	options := roundTripperOpts{}
 	for _, o := range opts {
 		options = o(options)

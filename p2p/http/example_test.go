@@ -257,7 +257,7 @@ func ExampleHost_NamespaceRoundTripper() {
 	defer server.Close()
 
 	// Create an http.Roundtripper for the server
-	rt, err := client.NewRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	rt, err := client.NewConstrainedRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func ExampleHost_NamespaceRoundTripper() {
 	// Output: Hello World
 }
 
-func ExampleHost_NewRoundTripper() {
+func ExampleHost_NewConstrainedRoundTripper() {
 	var client libp2phttp.Host
 
 	// Create the server
@@ -301,7 +301,7 @@ func ExampleHost_NewRoundTripper() {
 	defer server.Close()
 
 	// Create an http.Roundtripper for the server
-	rt, err := client.NewRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	rt, err := client.NewConstrainedRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
 	if err != nil {
 		log.Fatal(err)
 	}
