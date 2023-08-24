@@ -1,6 +1,7 @@
 package libp2pquic
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -9,6 +10,7 @@ import (
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -38,6 +40,14 @@ func TestQUICProtocol(t *testing.T) {
 	}
 }
 
+func TestDialQUICDraft29(t *testing.T) {
+	tr := getTransport(t)
+	defer tr.(io.Closer).Close()
+
+	_, err := tr.Dial(context.Background(), ma.StringCast("/ip4/127.0.0.1/udp/1234/quic"), "")
+	require.ErrorIs(t, err, quicreuse.ErrQUICDraft29)
+}
+
 func TestCanDial(t *testing.T) {
 	tr := getTransport(t)
 	defer tr.(io.Closer).Close()
@@ -45,6 +55,7 @@ func TestCanDial(t *testing.T) {
 	invalid := []string{
 		"/ip4/127.0.0.1/udp/1234",
 		"/ip4/5.5.5.5/tcp/1234",
+		"/ip4/127.0.0.1/udp/1234/quic",
 		"/dns/google.com/udp/443/quic-v1",
 	}
 	valid := []string{

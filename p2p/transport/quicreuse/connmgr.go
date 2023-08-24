@@ -169,10 +169,13 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 	quicConf := c.clientConfig.Clone()
 	quicConf.AllowConnectionWindowIncrease = allowWindowIncrease
 
-	if v == quic.Version1 {
+	switch v {
+	case quic.Version1:
 		// The endpoint has explicit support for QUIC v1, so we'll only use that version.
 		quicConf.Versions = []quic.VersionNumber{quic.Version1}
-	} else {
+	case quicDraft29:
+		return nil, ErrQUICDraft29
+	default:
 		return nil, errors.New("unknown QUIC version")
 	}
 
