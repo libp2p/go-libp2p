@@ -113,11 +113,12 @@ type Host struct {
 	// InsecureAllowHTTP indicates if the server is allowed to serve unencrypted
 	// HTTP requests over TCP.
 	InsecureAllowHTTP bool
-	// ServeMux is the http.ServeMux used by the server to serve requests. The
-	// zero value is a new serve mux. Users may manually add handlers to this
+	// ServeMux is the http.ServeMux used by the server to serve requests. If nil,
+	// new serve mux will be allocated. Users may manually add handlers to this
 	// mux instead of using `SetHTTPHandler`, but if they do, they should also
 	// update the WellKnownHandler's protocol mapping.
-	ServeMux http.ServeMux
+	ServeMux           *http.ServeMux
+	initializeServeMux sync.Once
 
 	// DefaultClientRoundTripper is the default http.RoundTripper for clients to
 	// use when making requests over an HTTP transport. This must be an
@@ -166,6 +167,12 @@ func (h *Host) httpTransportInit() {
 	})
 }
 
+func (h *Host) serveMuxInit() {
+	h.initializeServeMux.Do(func() {
+		h.ServeMux = http.NewServeMux()
+	})
+}
+
 func (h *Host) Addrs() []ma.Multiaddr {
 	h.httpTransportInit()
 	<-h.httpTransport.waitingForListeners
@@ -193,6 +200,7 @@ func (h *Host) Serve() error {
 		}
 	}
 
+	h.serveMuxInit()
 	h.ServeMux.Handle("/.well-known/libp2p", &h.WellKnownHandler)
 
 	h.httpTransportInit()
@@ -227,7 +235,7 @@ func (h *Host) Serve() error {
 		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, h.StreamHost.Addrs()...)
 
 		go func() {
-			errCh <- http.Serve(listener, &h.ServeMux)
+			errCh <- http.Serve(listener, h.ServeMux)
 		}()
 	}
 
@@ -274,7 +282,7 @@ func (h *Host) Serve() error {
 			if parsedAddr.useHTTPS {
 				go func() {
 					srv := http.Server{
-						Handler:   &h.ServeMux,
+						Handler:   h.ServeMux,
 						TLSConfig: h.TLSConfig,
 					}
 					errCh <- srv.ServeTLS(l, "", "")
@@ -282,7 +290,7 @@ func (h *Host) Serve() error {
 				h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 			} else if h.InsecureAllowHTTP {
 				go func() {
-					errCh <- http.Serve(l, &h.ServeMux)
+					errCh <- http.Serve(l, h.ServeMux)
 				}()
 				h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 			} else {
@@ -346,6 +354,7 @@ func (h *Host) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Han
 		path += "/"
 	}
 	h.WellKnownHandler.AddProtocolMeta(p, ProtocolMeta{Path: path})
+	h.serveMuxInit()
 	h.ServeMux.Handle(path, http.StripPrefix(path, handler))
 }
 
