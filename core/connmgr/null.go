@@ -21,4 +21,5 @@ func (NullConnMgr) Notifee() network.Notifiee                { return network.Gl
 func (NullConnMgr) Protect(peer.ID, string)                  {}
 func (NullConnMgr) Unprotect(peer.ID, string) bool           { return false }
 func (NullConnMgr) IsProtected(peer.ID, string) bool         { return false }
+func (NullConnMgr) CheckLimit(l GetterConnLimit) error       { return nil }
 func (NullConnMgr) Close() error                             { return nil }

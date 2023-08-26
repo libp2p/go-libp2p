@@ -74,6 +74,10 @@ type ConnManager interface {
 	// then it will return true if the peer is protected for any tag
 	IsProtected(id peer.ID, tag string) (protected bool)
 
+	// CheckLimit will return an error if the connection manager's internal
+	// connection limit exceeds the provided system limit.
+	CheckLimit(l GetterConnLimit) error
+
 	// Close closes the connection manager and stops background processes.
 	Close() error
 }
@@ -88,4 +92,10 @@ type TagInfo struct {
 
 	// Conns maps connection ids (such as remote multiaddr) to their creation time.
 	Conns map[string]time.Time
+}
+
+// GetterConnLimit provides access to a component's total connection limit.
+type GetterConnLimit interface {
+	// GetConnLimit returns the total connection limit of the implementing component.
+	GetConnLimit() int
 }

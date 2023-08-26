@@ -966,3 +966,24 @@ func TestSafeConcurrency(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+func TestCheckLimit(t *testing.T) {
+	low, hi := 1, 2
+	cm, err := NewConnManager(low, hi)
+	require.NoError(t, err)
+
+	err = cm.CheckLimit(testLimitGetter{hi + 1})
+	require.NoError(t, err)
+	err = cm.CheckLimit(testLimitGetter{hi})
+	require.NoError(t, err)
+	err = cm.CheckLimit(testLimitGetter{hi - 1})
+	require.Error(t, err)
+}
+
+type testLimitGetter struct {
+	limit int
+}
+
+func (g testLimitGetter) GetConnLimit() int {
+	return g.limit
+}
