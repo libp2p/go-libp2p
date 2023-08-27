@@ -201,7 +201,7 @@ var transportsToTest = []TransportTestCase{
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
-				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::/udp/0/quic-v1/webtransport"))
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1/webtransport"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
