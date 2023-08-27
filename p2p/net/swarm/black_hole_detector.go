@@ -144,6 +144,13 @@ func (b *blackHoleFilter) updateState() {
 	}
 }
 
+func (b *blackHoleFilter) State() blackHoleState {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.state
+}
+
 func (b *blackHoleFilter) trackMetrics() {
 	if b.metricsTracer == nil {
 		return
@@ -242,6 +249,27 @@ func (d *blackHoleDetector) RecordResult(addr ma.Multiaddr, success bool) {
 	if d.ipv6 != nil && isProtocolAddr(addr, ma.P_IP6) {
 		d.ipv6.RecordResult(success)
 	}
+}
+
+func (d *blackHoleDetector) State(addr ma.Multiaddr) blackHoleState {
+	if !manet.IsPublicAddr(addr) {
+		return blackHoleStateAllowed
+	}
+
+	if d.udp != nil && isProtocolAddr(addr, ma.P_UDP) {
+		udpState := d.udp.State()
+		if udpState != blackHoleStateAllowed {
+			return udpState
+		}
+	}
+
+	if d.ipv6 != nil && isProtocolAddr(addr, ma.P_IP6) {
+		ipv6State := d.ipv6.State()
+		if ipv6State != blackHoleStateAllowed {
+			return ipv6State
+		}
+	}
+	return blackHoleStateAllowed
 }
 
 // blackHoleConfig is the config used for black hole detection

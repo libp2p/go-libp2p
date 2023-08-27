@@ -17,6 +17,9 @@ func TestBlackHoleFilterReset(t *testing.T) {
 		if bhf.HandleRequest() != blackHoleResultProbing {
 			t.Fatalf("expected calls up to n to be probes")
 		}
+		if bhf.State() != blackHoleStateProbing {
+			t.Fatalf("expected state to be probing got %s", bhf.State())
+		}
 		bhf.RecordResult(false)
 	}
 
@@ -26,6 +29,9 @@ func TestBlackHoleFilterReset(t *testing.T) {
 		if (i%n == 0 && result != blackHoleResultProbing) || (i%n != 0 && result != blackHoleResultBlocked) {
 			t.Fatalf("expected every nth dial to be a probe")
 		}
+		if bhf.State() != blackHoleStateBlocked {
+			t.Fatalf("expected state to be blocked, got %s", bhf.State())
+		}
 	}
 
 	bhf.RecordResult(true)
@@ -34,12 +40,18 @@ func TestBlackHoleFilterReset(t *testing.T) {
 		if bhf.HandleRequest() != blackHoleResultProbing {
 			t.Fatalf("expected black hole detector state to reset after success")
 		}
+		if bhf.State() != blackHoleStateProbing {
+			t.Fatalf("expected state to be probing got %s", bhf.State())
+		}
 		bhf.RecordResult(false)
 	}
 
 	// next call should be blocked
 	if bhf.HandleRequest() != blackHoleResultBlocked {
 		t.Fatalf("expected dial to be blocked")
+		if bhf.State() != blackHoleStateBlocked {
+			t.Fatalf("expected state to be blocked, got %s", bhf.State())
+		}
 	}
 }
 

@@ -417,6 +417,26 @@ func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, 
 	return nil
 }
 
+func (s *Swarm) CanDial(p peer.ID, addr ma.Multiaddr) network.Dialability {
+	dialable, _ := s.filterKnownUndialables(p, []ma.Multiaddr{addr})
+	if len(dialable) == 0 {
+		return network.DialabilityUndialable
+	}
+
+	bhState := s.bhd.State(addr)
+	switch bhState {
+	case blackHoleStateAllowed:
+		return network.DialabilityDialable
+	case blackHoleStateProbing:
+		return network.DialabilityUnknown
+	case blackHoleStateBlocked:
+		return network.DialabilityUndialable
+	default:
+		log.Errorf("SWARM BUG: unhandled black hole state for dilability check %s", bhState)
+		return network.DialabilityUnknown
+	}
+}
+
 func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 	t := s.TransportForDialing(addr)
 	return !t.Proxy()
