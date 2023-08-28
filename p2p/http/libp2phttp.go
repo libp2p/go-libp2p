@@ -113,10 +113,10 @@ type Host struct {
 	// InsecureAllowHTTP indicates if the server is allowed to serve unencrypted
 	// HTTP requests over TCP.
 	InsecureAllowHTTP bool
-	// ServeMux is the http.ServeMux used by the server to serve requests. If nil,
-	// new serve mux will be allocated. Users may manually add handlers to this
-	// mux instead of using `SetHTTPHandler`, but if they do, they should also
-	// update the WellKnownHandler's protocol mapping.
+	// ServeMux is the http.ServeMux used by the server to serve requests. If
+	// nil, a new serve mux will be created. Users may manually add handlers to
+	// this mux instead of using `SetHTTPHandler`, but if they do, they should
+	// also update the WellKnownHandler's protocol mapping.
 	ServeMux           *http.ServeMux
 	initializeServeMux sync.Once
 
@@ -129,7 +129,9 @@ type Host struct {
 
 	// WellKnownHandler is the http handler for the `.well-known/libp2p`
 	// resource. It is responsible for sharing this node's protocol metadata
-	// with other nodes.
+	// with other nodes. Users only care about this if they set their own
+	// ServeMux with pre-existing routes. By default, new protocols are added
+	// here when a user calls `SetHTTPHandler` or `SetHTTPHandlerAtPath`.
 	WellKnownHandler WellKnownHandler
 
 	// peerMetadata is an LRU cache of a peer's well-known protocol map.
@@ -276,7 +278,6 @@ func (h *Host) Serve() error {
 					scheme = "https"
 				}
 				listenAddr = ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%s/%s", host, port, scheme))
-
 			}
 
 			if parsedAddr.useHTTPS {
