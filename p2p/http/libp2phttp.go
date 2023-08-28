@@ -191,6 +191,61 @@ func (h *Host) PeerID() peer.ID {
 
 var ErrNoListeners = errors.New("nothing to listen on")
 
+func (h *Host) setupListeners(listenerErrCh chan error) error {
+	for _, addr := range h.ListenAddrs {
+		parsedAddr := parseMultiaddr(addr)
+		// resolve the host
+		ipaddr, err := net.ResolveIPAddr("ip", parsedAddr.host)
+		if err != nil {
+			return err
+		}
+
+		host := ipaddr.String()
+		l, err := net.Listen("tcp", host+":"+parsedAddr.port)
+		if err != nil {
+			return err
+		}
+		h.httpTransport.listeners = append(h.httpTransport.listeners, l)
+
+		// get resolved port
+		_, port, err := net.SplitHostPort(l.Addr().String())
+		if err != nil {
+			return err
+		}
+
+		var listenAddr ma.Multiaddr
+		if parsedAddr.useHTTPS && parsedAddr.sni != "" && parsedAddr.sni != host {
+			listenAddr = ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/%s/http", host, port, parsedAddr.sni))
+		} else {
+			scheme := "http"
+			if parsedAddr.useHTTPS {
+				scheme = "https"
+			}
+			listenAddr = ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%s/%s", host, port, scheme))
+		}
+
+		if parsedAddr.useHTTPS {
+			go func() {
+				srv := http.Server{
+					Handler:   h.ServeMux,
+					TLSConfig: h.TLSConfig,
+				}
+				listenerErrCh <- srv.ServeTLS(l, "", "")
+			}()
+			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
+		} else if h.InsecureAllowHTTP {
+			go func() {
+				listenerErrCh <- http.Serve(l, h.ServeMux)
+			}()
+			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
+		} else {
+			// We are not serving insecure HTTP
+			log.Warnf("Not serving insecure HTTP on %s. Prefer an HTTPS endpoint.", listenAddr)
+		}
+	}
+	return nil
+}
+
 // Serve starts the HTTP transport listeners. Always returns a non-nil error.
 // If there are no listeners, returns ErrNoListeners.
 func (h *Host) Serve() error {
@@ -247,60 +302,7 @@ func (h *Host) Serve() error {
 		}
 	}
 
-	err := func() error {
-		for _, addr := range h.ListenAddrs {
-			parsedAddr := parseMultiaddr(addr)
-			// resolve the host
-			ipaddr, err := net.ResolveIPAddr("ip", parsedAddr.host)
-			if err != nil {
-				return err
-			}
-
-			host := ipaddr.String()
-			l, err := net.Listen("tcp", host+":"+parsedAddr.port)
-			if err != nil {
-				return err
-			}
-			h.httpTransport.listeners = append(h.httpTransport.listeners, l)
-
-			// get resolved port
-			_, port, err := net.SplitHostPort(l.Addr().String())
-			if err != nil {
-				return err
-			}
-
-			var listenAddr ma.Multiaddr
-			if parsedAddr.useHTTPS && parsedAddr.sni != "" && parsedAddr.sni != host {
-				listenAddr = ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/%s/http", host, port, parsedAddr.sni))
-			} else {
-				scheme := "http"
-				if parsedAddr.useHTTPS {
-					scheme = "https"
-				}
-				listenAddr = ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%s/%s", host, port, scheme))
-			}
-
-			if parsedAddr.useHTTPS {
-				go func() {
-					srv := http.Server{
-						Handler:   h.ServeMux,
-						TLSConfig: h.TLSConfig,
-					}
-					errCh <- srv.ServeTLS(l, "", "")
-				}()
-				h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
-			} else if h.InsecureAllowHTTP {
-				go func() {
-					errCh <- http.Serve(l, h.ServeMux)
-				}()
-				h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
-			} else {
-				// We are not serving insecure HTTP
-				log.Warnf("Not serving insecure HTTP on %s. Prefer an HTTPS endpoint.", listenAddr)
-			}
-		}
-		return nil
-	}()
+	err := h.setupListeners(errCh)
 	if err != nil {
 		closeAllListeners()
 		return err
