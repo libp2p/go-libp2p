@@ -3,9 +3,8 @@ package libp2phttp
 type RoundTripperOption func(o roundTripperOpts) roundTripperOpts
 
 type roundTripperOpts struct {
-	// todo SkipClientAuth bool
 	preferHTTPTransport          bool
-	ServerMustAuthenticatePeerID bool
+	serverMustAuthenticatePeerID bool
 }
 
 // PreferHTTPTransport tells the roundtripper constructor to prefer using an
@@ -20,6 +19,6 @@ func PreferHTTPTransport(o roundTripperOpts) roundTripperOpts {
 // authenticate the Server's PeerID. Note: this currently means we can not use a
 // native HTTP transport (HTTP peer id authentication is not yet implemented: https://github.com/libp2p/specs/pull/564).
 func ServerMustAuthenticatePeerID(o roundTripperOpts) roundTripperOpts {
-	o.ServerMustAuthenticatePeerID = true
+	o.serverMustAuthenticatePeerID = true
 	return o
 }

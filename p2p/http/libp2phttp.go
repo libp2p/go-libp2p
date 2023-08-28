@@ -478,6 +478,8 @@ func (rt *roundTripperForSpecificServer) CloseIdleConnections() {
 	// connections
 }
 
+// namespacedRoundTripper is a round tripper that prefixes all requests with a
+// given path prefix. It is used to namespace requests to a specific protocol.
 type namespacedRoundTripper struct {
 	http.RoundTripper
 	protocolPrefix    string
@@ -556,13 +558,20 @@ func (h *Host) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...Rou
 // NewConstrainedRoundTripper returns an http.RoundTripper that can fulfill and HTTP
 // request to the given server. It may use an HTTP transport or a stream based
 // transport. It is valid to pass an empty server.ID.
+// If there are multiple addresses for the server, it will pick the best
+// transport (stream vs standard HTTP) using the following rules:
+//   - If PreferHTTPTransport is set, use the HTTP transport.
+//   - If ServerMustAuthenticatePeerID is set, use the stream transport, as the
+//     HTTP transport does not do peer id auth yet.
+//   - If we already have a connection on a stream transport, use that.
+//   - Otherwise, if we have both, use the HTTP transport.
 func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTripperOption) (http.RoundTripper, error) {
 	options := roundTripperOpts{}
 	for _, o := range opts {
 		options = o(options)
 	}
 
-	if options.ServerMustAuthenticatePeerID && server.ID == "" {
+	if options.serverMustAuthenticatePeerID && server.ID == "" {
 		return nil, fmt.Errorf("server must authenticate peer ID, but no peer ID provided")
 	}
 
@@ -590,7 +599,7 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 	}
 
 	// Currently the HTTP transport can not authenticate peer IDs.
-	if !options.ServerMustAuthenticatePeerID && len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
+	if !options.serverMustAuthenticatePeerID && len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
 		parsed := parseMultiaddr(httpAddrs[0])
 		scheme := "http"
 		if parsed.useHTTPS {
