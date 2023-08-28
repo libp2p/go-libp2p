@@ -406,6 +406,7 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		}
 	}()
 
+	// TODO: Adhere to the request.Context
 	resp, err := http.ReadResponse(bufio.NewReader(s), r)
 	if err != nil {
 		return nil, err
