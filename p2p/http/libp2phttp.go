@@ -739,7 +739,10 @@ func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server pe
 	}
 
 	meta := PeerMeta{}
-	json.Unmarshal(body[:bytesRead], &meta)
+	err = json.Unmarshal(body[:bytesRead], &meta)
+	if err != nil {
+		return nil, err
+	}
 	if server != "" {
 		h.peerMetadata.Add(server, meta)
 	}
