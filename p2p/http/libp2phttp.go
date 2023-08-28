@@ -722,24 +722,11 @@ func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server pe
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	body := [peerMetadataLimit]byte{}
-	bytesRead := 0
-	for {
-		n, err := resp.Body.Read(body[bytesRead:])
-		bytesRead += n
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		if bytesRead >= peerMetadataLimit {
-			return nil, fmt.Errorf("peer metadata too large")
-		}
-	}
-
 	meta := PeerMeta{}
-	err = json.Unmarshal(body[:bytesRead], &meta)
+	err = json.NewDecoder(&io.LimitedReader{
+		R: resp.Body,
+		N: 8 << 10,
+	}).Decode(&meta)
 	if err != nil {
 		return nil, err
 	}
