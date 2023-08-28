@@ -4,7 +4,6 @@ package libp2phttp
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -22,6 +21,7 @@ import (
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	gostream "github.com/libp2p/go-libp2p/p2p/gostream"
 	ma "github.com/multiformats/go-multiaddr"
@@ -367,9 +367,11 @@ type PeerMetadataGetter interface {
 }
 
 type streamRoundTripper struct {
-	server   peer.ID
-	h        host.Host
-	httpHost *Host
+	server      peer.ID
+	addrsAdded  sync.Once
+	serverAddrs []ma.Multiaddr
+	h           host.Host
+	httpHost    *Host
 }
 
 // streamReadCloser wraps an io.ReadCloser and closes the underlying stream when
@@ -393,6 +395,14 @@ func (rt *streamRoundTripper) GetPeerMetadata() (PeerMeta, error) {
 
 // RoundTrip implements http.RoundTripper.
 func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	// Add the addresses we learned about for this server
+	rt.addrsAdded.Do(func() {
+		if len(rt.serverAddrs) > 0 {
+			rt.h.Peerstore().AddAddrs(rt.server, rt.serverAddrs, peerstore.TempAddrTTL)
+		}
+		rt.serverAddrs = nil // may as well cleanup
+	})
+
 	s, err := rt.h.NewStream(r.Context(), rt.server, ProtocolIDForMultistreamSelect)
 	if err != nil {
 		return nil, err
@@ -641,13 +651,9 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 		if server.ID == "" {
 			return nil, fmt.Errorf("can not use the HTTP transport, and no server peer ID provided")
 		}
-		err := h.StreamHost.Connect(context.Background(), peer.AddrInfo{ID: server.ID, Addrs: nonHTTPAddrs})
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to peer: %w", err)
-		}
 	}
 
-	return &streamRoundTripper{h: h.StreamHost, server: server.ID, httpHost: h}, nil
+	return &streamRoundTripper{h: h.StreamHost, server: server.ID, serverAddrs: nonHTTPAddrs, httpHost: h}, nil
 }
 
 type httpMultiaddr struct {
