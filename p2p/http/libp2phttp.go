@@ -749,7 +749,7 @@ func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server pe
 	meta := PeerMeta{}
 	err = json.NewDecoder(&io.LimitedReader{
 		R: resp.Body,
-		N: 8 << 10,
+		N: peerMetadataLimit,
 	}).Decode(&meta)
 	if err != nil {
 		return nil, err
