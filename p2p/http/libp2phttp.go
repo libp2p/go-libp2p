@@ -372,6 +372,11 @@ type streamRoundTripper struct {
 	httpHost *Host
 }
 
+// streamReadCloser wraps an io.ReadCloser and closes the underlying stream when
+// closed (as well as closing the wrapped ReadCloser). This is necessary because
+// we have two things to close, the body and the stream. The stream isn't closed
+// by the body automatically, as hinted at by the fact that `http.ReadResponse`
+// takes a bufio.Reader.
 type streamReadCloser struct {
 	io.ReadCloser
 	s network.Stream
