@@ -45,6 +45,7 @@ type PeerMeta map[protocol.ID]ProtocolMeta
 type WellKnownHandler struct {
 	wellknownMapMu   sync.Mutex
 	wellKnownMapping PeerMeta
+	wellKnownCache   []byte
 }
 
 // streamHostListen retuns a net.Listener that listens on libp2p streams for HTTP/1.1 messages.
@@ -67,7 +68,14 @@ func (h *WellKnownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Return a JSON object with the well-known protocols
 	h.wellknownMapMu.Lock()
-	mapping, err := json.Marshal(h.wellKnownMapping)
+	mapping := h.wellKnownCache
+	var err error
+	if mapping == nil {
+		mapping, err = json.Marshal(h.wellKnownMapping)
+		if err == nil {
+			h.wellKnownCache = mapping
+		}
+	}
 	h.wellknownMapMu.Unlock()
 	if err != nil {
 		http.Error(w, "Marshal error", http.StatusInternalServerError)
@@ -84,6 +92,7 @@ func (h *WellKnownHandler) AddProtocolMeta(p protocol.ID, protocolMeta ProtocolM
 		h.wellKnownMapping = make(map[protocol.ID]ProtocolMeta)
 	}
 	h.wellKnownMapping[p] = protocolMeta
+	h.wellKnownCache = nil
 	h.wellknownMapMu.Unlock()
 }
 
@@ -92,6 +101,7 @@ func (h *WellKnownHandler) RemoveProtocolMeta(p protocol.ID) {
 	if h.wellKnownMapping != nil {
 		delete(h.wellKnownMapping, p)
 	}
+	h.wellKnownCache = nil
 	h.wellknownMapMu.Unlock()
 }
 
