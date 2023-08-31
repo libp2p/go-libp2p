@@ -390,3 +390,32 @@ func selfSignedTLSConfig(t *testing.T) *tls.Config {
 	}
 	return tlsConfig
 }
+
+func TestCustomServeMux(t *testing.T) {
+	serveMux := http.NewServeMux()
+	serveMux.Handle("/ping/", httpping.Ping{})
+
+	server := libp2phttp.Host{
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+		ServeMux:          serveMux,
+		InsecureAllowHTTP: true,
+	}
+	server.WellKnownHandler.AddProtocolMeta(httpping.PingProtocolID, libp2phttp.ProtocolMeta{Path: "/ping/"})
+	go func() {
+		server.Serve()
+	}()
+	defer server.Close()
+
+	addrs := server.Addrs()
+	require.Equal(t, len(addrs), 1)
+	var clientHttpHost libp2phttp.Host
+	rt, err := clientHttpHost.NewConstrainedRoundTripper(peer.AddrInfo{Addrs: addrs}, libp2phttp.PreferHTTPTransport)
+	require.NoError(t, err)
+
+	client := &http.Client{Transport: rt}
+	body := [32]byte{}
+	req, _ := http.NewRequest(http.MethodPost, "/ping/", bytes.NewReader(body[:]))
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
