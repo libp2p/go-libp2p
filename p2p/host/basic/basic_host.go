@@ -543,7 +543,7 @@ func (h *BasicHost) background() {
 			h.updateLocalIpAddr()
 		}
 		// Request addresses anyways because, technically, address filters still apply.
-		// The underlying AllAddrs call is effectivley a no-op.
+		// The underlying AllAddrs call is effectively a no-op.
 		curr := h.Addrs()
 		emitAddrChange(curr, lastAddrs)
 		lastAddrs = curr

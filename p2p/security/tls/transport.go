@@ -113,7 +113,7 @@ func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p pee
 	for _, muxer := range t.muxers {
 		muxers = append(muxers, (string)(muxer))
 	}
-	// Prepend the prefered muxers list to TLS config.
+	// Prepend the preferred muxers list to TLS config.
 	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {
@@ -157,7 +157,7 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 
 	nextProto := tlsConn.ConnectionState().NegotiatedProtocol
 	// The special ALPN extension value "libp2p" is used by libp2p versions
-	// that don't support early muxer negotiation. If we see this sepcial
+	// that don't support early muxer negotiation. If we see this special
 	// value selected, that means we are handshaking with a version that does
 	// not support early muxer negotiation. In this case return empty nextProto
 	// to indicate no muxer is selected.

@@ -562,7 +562,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 			return
 		}
 
-		t.Logf("first dial succedded; conn: %+v", c)
+		t.Logf("first dial succeeded; conn: %+v", c)
 
 		connch <- c
 		errs <- nil
@@ -587,7 +587,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 			return
 		}
 
-		t.Logf("second dial succedded; conn: %+v", c)
+		t.Logf("second dial succeeded; conn: %+v", c)
 
 		connch <- c
 		errs <- nil
@@ -605,7 +605,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 			return
 		}
 
-		t.Logf("third dial succedded; conn: %+v", c)
+		t.Logf("third dial succeeded; conn: %+v", c)
 
 		connch <- c
 		errs <- nil

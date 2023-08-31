@@ -23,7 +23,7 @@ func setupPSKConns(ctx context.Context, t *testing.T) (net.Conn, net.Conn) {
 	return psk1, psk2
 }
 
-func TestPSKSimpelMessges(t *testing.T) {
+func TestPSKSimpelMessages(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 

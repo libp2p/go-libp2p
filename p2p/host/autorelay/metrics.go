@@ -59,7 +59,7 @@ var (
 		prometheus.CounterOpts{
 			Namespace: metricNamespace,
 			Name:      "candidates_circuit_v2_support_total",
-			Help:      "Candidiates supporting circuit v2",
+			Help:      "Candidates supporting circuit v2",
 		},
 		[]string{"support"},
 	)
@@ -167,7 +167,7 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 	metricshelper.RegisterCollectors(setting.reg, collectors...)
 
 	// Initialise these counters to 0 otherwise the first reservation requests aren't handled
-	// correctly when using promql increse function
+	// correctly when using promql increase function
 	reservationRequestsOutcomeTotal.WithLabelValues("refresh", "success")
 	reservationRequestsOutcomeTotal.WithLabelValues("new", "success")
 	candidatesCircuitV2SupportTotal.WithLabelValues("yes")

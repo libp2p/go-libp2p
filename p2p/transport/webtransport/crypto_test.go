@@ -73,7 +73,7 @@ func TestCertificateVerification(t *testing.T) {
 		errStr string
 	}{
 		{
-			name:   "validitity period too long",
+			name:   "validity period too long",
 			cert:   generateCertWithKey(t, ecdsaKey, now, now.Add(15*24*time.Hour)),
 			errStr: "cert must not be valid for longer than 14 days",
 		},

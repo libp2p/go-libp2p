@@ -104,7 +104,7 @@ const (
 // Event Objects
 type DirectDialEvt struct {
 	Success      bool
-	EllapsedTime time.Duration
+	ElapsedTime time.Duration
 	Error        string `json:",omitempty"`
 }
 
@@ -119,7 +119,7 @@ type StartHolePunchEvt struct {
 
 type EndHolePunchEvt struct {
 	Success      bool
-	EllapsedTime time.Duration
+	ElapsedTime time.Duration
 	Error        string `json:",omitempty"`
 }
 
@@ -141,7 +141,7 @@ func (t *tracer) DirectDialSuccessful(p peer.ID, dt time.Duration) {
 			Type:      DirectDialEvtT,
 			Evt: &DirectDialEvt{
 				Success:      true,
-				EllapsedTime: dt,
+				ElapsedTime: dt,
 			},
 		})
 	}
@@ -164,7 +164,7 @@ func (t *tracer) DirectDialFailed(p peer.ID, dt time.Duration, err error) {
 			Type:      DirectDialEvtT,
 			Evt: &DirectDialEvt{
 				Success:      false,
-				EllapsedTime: dt,
+				ElapsedTime: dt,
 				Error:        err.Error(),
 			},
 		})
@@ -213,7 +213,7 @@ func (t *tracer) EndHolePunch(p peer.ID, dt time.Duration, err error) {
 	if t != nil && t.et != nil {
 		evt := &EndHolePunchEvt{
 			Success:      err == nil,
-			EllapsedTime: dt,
+			ElapsedTime: dt,
 		}
 		if err != nil {
 			evt.Error = err.Error()

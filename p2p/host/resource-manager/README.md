@@ -161,7 +161,7 @@ belong to some service in the system. Hence, this suggests that apart
 from global limits, we can constrain stream usage at finer
 granularity, at the protocol and service level.
 
-Once again, we disinguish between inbound and outbound streams.
+Once again, we distinguish between inbound and outbound streams.
 Inbound streams are initiated by remote peers and consume resources in
 response to network events; controlling inbound stream usage is again
 paramount for protecting the system from overload or attack.
@@ -578,7 +578,7 @@ More specifically the following constraints apply:
 - the peer scope, where the limits for the peer at the other end of the stream
   apply.
 - the service scope, where the limits of the specific service owning the stream apply.
-- the protcol scope, where the limits of the specific protocol for the stream apply.
+- the protocol scope, where the limits of the specific protocol for the stream apply.
 
 
 The resource transfer that happens in the `SetProtocol` and `SetService`

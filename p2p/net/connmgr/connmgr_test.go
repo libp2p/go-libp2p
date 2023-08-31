@@ -282,7 +282,7 @@ func TestGetTagInfo(t *testing.T) {
 	}
 }
 
-func TestTagPeerNonExistant(t *testing.T) {
+func TestTagPeerNonExistent(t *testing.T) {
 	cm, err := NewConnManager(1, 1, WithGracePeriod(10*time.Minute))
 	require.NoError(t, err)
 	defer cm.Close()

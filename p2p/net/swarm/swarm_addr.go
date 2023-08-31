@@ -31,42 +31,42 @@ const ifaceAddrsCacheDuration = 1 * time.Minute
 func (s *Swarm) InterfaceListenAddresses() ([]ma.Multiaddr, error) {
 	s.listeners.RLock() // RLock start
 
-	ifaceListenAddres := s.listeners.ifaceListenAddres
+	ifaceListenAddress := s.listeners.ifaceListenAddress
 	isEOL := time.Now().After(s.listeners.cacheEOL)
 	s.listeners.RUnlock() // RLock end
 
 	if !isEOL {
 		// Cache is valid, clone the slice
-		return append(ifaceListenAddres[:0:0], ifaceListenAddres...), nil
+		return append(ifaceListenAddress[:0:0], ifaceListenAddress...), nil
 	}
 
 	// Cache is not valid
-	// Perfrom double checked locking
+	// Perform double checked locking
 
 	s.listeners.Lock() // Lock start
 
-	ifaceListenAddres = s.listeners.ifaceListenAddres
+	ifaceListenAddress = s.listeners.ifaceListenAddress
 	isEOL = time.Now().After(s.listeners.cacheEOL)
 	if isEOL {
 		// Cache is still invalid
-		listenAddres := s.listenAddressesNoLock()
-		if len(listenAddres) > 0 {
+		listenAddress := s.listenAddressesNoLock()
+		if len(listenAddress) > 0 {
 			// We're actually listening on addresses.
 			var err error
-			ifaceListenAddres, err = manet.ResolveUnspecifiedAddresses(listenAddres, nil)
+			ifaceListenAddress, err = manet.ResolveUnspecifiedAddresses(listenAddress, nil)
 			if err != nil {
 				s.listeners.Unlock() // Lock early exit
 				return nil, err
 			}
 		} else {
-			ifaceListenAddres = nil
+			ifaceListenAddress = nil
 		}
 
-		s.listeners.ifaceListenAddres = ifaceListenAddres
+		s.listeners.ifaceListenAddress = ifaceListenAddress
 		s.listeners.cacheEOL = time.Now().Add(ifaceAddrsCacheDuration)
 	}
 
 	s.listeners.Unlock() // Lock end
 
-	return append(ifaceListenAddres[:0:0], ifaceListenAddres...), nil
+	return append(ifaceListenAddress[:0:0], ifaceListenAddress...), nil
 }

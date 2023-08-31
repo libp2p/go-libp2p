@@ -47,7 +47,7 @@ creates the connection resource scope using the allowlisted specific system and
 transient resource scopes. If it wasn't an allowlisted multiaddr it fails as
 before.
 
-When an allowlisted connection is tied to a peer id and transfered with
+When an allowlisted connection is tied to a peer id and transferred with
 `ConnManagementScope.SetPeer`, we check if that peer id matches the expected
 value in the allowlist (if it exists). If it does not match, we attempt to
 transfer this resource to the normal system and peer scope. If that transfer

@@ -161,7 +161,7 @@ type Swarm struct {
 	listeners struct {
 		sync.RWMutex
 
-		ifaceListenAddres []ma.Multiaddr
+		ifaceListenAddress []ma.Multiaddr
 		cacheEOL          time.Time
 
 		m map[transport.Listener]struct{}

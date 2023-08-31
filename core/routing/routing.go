@@ -76,7 +76,7 @@ type Routing interface {
 	ValueStore
 
 	// Bootstrap allows callers to hint to the routing system to get into a
-	// Boostrapped state and remain there. It is not a synchronous call.
+	// Bootstrapped state and remain there. It is not a synchronous call.
 	Bootstrap(context.Context) error
 
 	// TODO expose io.Closer or plain-old Close error

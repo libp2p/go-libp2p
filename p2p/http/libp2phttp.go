@@ -48,7 +48,7 @@ type WellKnownHandler struct {
 	wellKnownCache   []byte
 }
 
-// streamHostListen retuns a net.Listener that listens on libp2p streams for HTTP/1.1 messages.
+// streamHostListen returns a net.Listener that listens on libp2p streams for HTTP/1.1 messages.
 func streamHostListen(streamHost host.Host) (net.Listener, error) {
 	return gostream.Listen(streamHost, ProtocolIDForMultistreamSelect)
 }

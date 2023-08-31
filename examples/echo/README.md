@@ -42,7 +42,7 @@ The `makeBasicHost()` function creates a [go-libp2p-basichost](https://godoc.org
 
 In order to create the swarm (and a `basichost`), the example needs:
 
-- An [ipfs-procotol ID](https://godoc.org/github.com/libp2p/go-libp2p-peer#ID) like `QmNtX1cvrm2K6mQmMEaMxAuB4rTexhd87vpYVot4sEZzxc`. The example autogenerates a key pair on every run and uses an ID extracted from the public key (the hash of the public key). When using `-insecure`, it leaves the connection unencrypted (otherwise, it uses the key pair to encrypt communications).
+- An [ipfs-protocol ID](https://godoc.org/github.com/libp2p/go-libp2p-peer#ID) like `QmNtX1cvrm2K6mQmMEaMxAuB4rTexhd87vpYVot4sEZzxc`. The example autogenerates a key pair on every run and uses an ID extracted from the public key (the hash of the public key). When using `-insecure`, it leaves the connection unencrypted (otherwise, it uses the key pair to encrypt communications).
 - A [Multiaddress](https://godoc.org/github.com/multiformats/go-multiaddr), which indicates how to reach this peer. There can be several of them (using different protocols or locations for example). Example: `/ip4/127.0.0.1/tcp/1234`.
 - A [go-libp2p-peerstore](https://godoc.org/github.com/libp2p/go-libp2p-peerstore), which is used as an address book which matches node IDs to the multiaddresses through which they can be contacted. This peerstore gets autopopulated when manually opening a connection (with [`Connect()`](https://godoc.org/github.com/libp2p/go-libp2p/p2p/host/basic#BasicHost.Connect). Alternatively, we can manually [`AddAddr()`](https://godoc.org/github.com/libp2p/go-libp2p-peerstore#AddrManager.AddAddr) as in the example.
 
