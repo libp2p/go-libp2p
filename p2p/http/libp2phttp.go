@@ -181,7 +181,9 @@ func (h *Host) httpTransportInit() {
 
 func (h *Host) serveMuxInit() {
 	h.initializeServeMux.Do(func() {
-		h.ServeMux = http.NewServeMux()
+		if h.ServeMux == nil {
+			h.ServeMux = http.NewServeMux()
+		}
 	})
 }
 
