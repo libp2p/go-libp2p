@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -418,4 +419,69 @@ func TestCustomServeMux(t *testing.T) {
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+func TestSetHandlerAtPath(t *testing.T) {
+	hf := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Hello World"))
+	}
+	tests := []struct {
+		prefix, rest string
+		paths200     []string
+		paths404     []string
+	}{
+		{
+			prefix:   "/",
+			rest:     "/",
+			paths200: []string{"/", "/a/", "/b", "/a/b"},
+		},
+		{
+			prefix:   "/a",
+			rest:     "/b/",
+			paths200: []string{"/a/b/", "///a///b/", "/a/b/c"},
+			// Not being able to serve /a/b when handling /a/b/ is a rather annoying limitation
+			// of http.StripPrefix mechanism. This happens because /a/b is redirected to /b/
+			// as the prefix /a is stripped when the redirect happens
+			paths404: []string{"/a/b", "/a", "/b", "/a/a"},
+		},
+		{
+			prefix:   "/",
+			rest:     "/b/",
+			paths200: []string{"/b", "/b/c", "/b/c/"},
+			paths404: []string{"/", "/a/b"},
+		},
+	}
+	for i, tc := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			nestedMx := http.NewServeMux()
+			nestedMx.HandleFunc(tc.rest, hf)
+			server := libp2phttp.Host{
+				ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+				InsecureAllowHTTP: true,
+			}
+			server.SetHTTPHandlerAtPath("test", tc.prefix, nestedMx)
+			go func() {
+				server.Serve()
+			}()
+			defer server.Close()
+			addrs := server.Addrs()
+			require.Equal(t, 1, len(addrs))
+			port, err := addrs[0].ValueForProtocol(ma.P_TCP)
+			require.NoError(t, err)
+			httpAddr := fmt.Sprintf("http://127.0.0.1:%s", port)
+			for _, p := range tc.paths200 {
+				resp, err := http.Get(httpAddr + p)
+				require.NoError(t, err)
+				require.Equal(t, 200, resp.StatusCode, "path:%s", p)
+				resp.Body.Close()
+			}
+			for _, p := range tc.paths404 {
+				resp, _ := http.Get(httpAddr + p)
+				require.Equal(t, 404, resp.StatusCode, "path:%s", p)
+				resp.Body.Close()
+			}
+		})
+	}
+
 }
