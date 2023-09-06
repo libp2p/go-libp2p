@@ -642,3 +642,12 @@ func TestDialSelf(t *testing.T) {
 	_, err := s1.DialPeer(context.Background(), s1.LocalPeer())
 	require.ErrorIs(t, err, swarm.ErrDialToSelf, "expected error from self dial")
 }
+
+func TestDialQUICDraft29(t *testing.T) {
+	s := makeDialOnlySwarm(t)
+	id := testutil.RandPeerIDFatal(t)
+	s.Peerstore().AddAddr(id, ma.StringCast("/ip4/127.0.0.1/udp/1234/quic"), time.Hour)
+	_, err := s.DialPeer(context.Background(), id)
+	require.ErrorIs(t, err, swarm.ErrQUICDraft29)
+	require.ErrorIs(t, err, swarm.ErrNoTransport)
+}

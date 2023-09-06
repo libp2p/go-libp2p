@@ -419,6 +419,11 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			PeerKey:            autonatPrivKey,
 			Peerstore:          ps,
 			DialRanker:         swarm.NoDelayDialRanker,
+			SwarmOpts: []swarm.Option{
+				// It is better to disable black hole detection and just attempt a dial for autonat
+				swarm.WithUDPBlackHoleConfig(false, 0, 0),
+				swarm.WithIPv6BlackHoleConfig(false, 0, 0),
+			},
 		}
 
 		dialer, err := autoNatCfg.makeSwarm(eventbus.NewBus(), false)

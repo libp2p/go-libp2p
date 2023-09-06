@@ -1,9 +1,22 @@
 name: Interoperability Testing
 on:
+  workflow_dispatch:
   pull_request:
+    paths:
+      - 'config/**'
+      - 'core/**'
+      - 'internal/**'
+      - 'p2p/**'
+      - 'test-plans/**'
   push:
     branches:
       - "master"
+    paths:
+      - 'config/**'
+      - 'core/**'
+      - 'internal/**'
+      - 'p2p/**'
+      - 'test-plans/**'
 
 jobs:
   run-multidim-interop:

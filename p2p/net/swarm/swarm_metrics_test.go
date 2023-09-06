@@ -53,7 +53,7 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		{StreamMultiplexer: "yamux", Security: "tls", Transport: "tcp", UsedEarlyMuxerNegotiation: true},
 		{StreamMultiplexer: "yamux", Security: "noise", Transport: "tcp", UsedEarlyMuxerNegotiation: false},
 		{StreamMultiplexer: "", Security: "", Transport: "quic"},
-		{StreamMultiplexer: "mplex", Security: "noise", Transport: "tcp"},
+		{StreamMultiplexer: "another-yamux", Security: "noise", Transport: "tcp"},
 	}
 
 	directions := []network.Direction{network.DirInbound, network.DirOutbound}
@@ -91,7 +91,7 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		"CompletedHandshake": func() {
 			mt.CompletedHandshake(time.Duration(mrand.Intn(100))*time.Second, randItem(connections), randItem(addrs))
 		},
-		"FailedDialing":    func() { mt.FailedDialing(randItem(addrs), randItem(errors)) },
+		"FailedDialing":    func() { mt.FailedDialing(randItem(addrs), randItem(errors), randItem(errors)) },
 		"DialCompleted":    func() { mt.DialCompleted(mrand.Intn(2) == 1, mrand.Intn(10)) },
 		"DialRankingDelay": func() { mt.DialRankingDelay(time.Duration(mrand.Intn(1e10))) },
 		"UpdatedBlackHoleFilterState": func() {

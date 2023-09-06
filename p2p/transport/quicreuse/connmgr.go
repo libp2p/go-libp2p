@@ -145,7 +145,7 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (re
 		return reuse.TransportForListen(network, laddr)
 	}
 
-	conn, err := listenAndOptimize(network, laddr)
+	conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refC
 	case "udp6":
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	conn, err := listenAndOptimize(network, laddr)
+	conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
@@ -228,13 +228,4 @@ func (c *ConnManager) Close() error {
 		return err
 	}
 	return c.reuseUDP4.Close()
-}
-
-// listenAndOptimize same as net.ListenUDP, but also calls quic.OptimizeConn
-func listenAndOptimize(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
-	conn, err := net.ListenUDP(network, laddr)
-	if err != nil {
-		return nil, err
-	}
-	return quic.OptimizeConn(conn)
 }

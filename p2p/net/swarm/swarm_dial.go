@@ -14,8 +14,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
+
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -64,6 +66,19 @@ var (
 	// forming a connection with a peer.
 	ErrGaterDisallowedConnection = errors.New("gater disallows connection to peer")
 )
+
+// ErrQUICDraft29 wraps ErrNoTransport and provide a more meaningful error message
+var ErrQUICDraft29 errQUICDraft29
+
+type errQUICDraft29 struct{}
+
+func (errQUICDraft29) Error() string {
+	return "QUIC draft-29 has been removed, QUIC (RFC 9000) is accessible with /quic-v1"
+}
+
+func (errQUICDraft29) Unwrap() error {
+	return ErrNoTransport
+}
 
 // DialAttempts governs how many times a goroutine will try to dial a given peer.
 // Note: this is down to one, as we have _too many dials_ atm. To add back in,
@@ -280,10 +295,10 @@ func (s *Swarm) dialWorkerLoop(p peer.ID, reqch <-chan dialRequest) {
 	w.loop()
 }
 
-func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, error) {
+func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) (goodAddrs []ma.Multiaddr, addrErrs []TransportError, err error) {
 	peerAddrs := s.peers.Addrs(p)
 	if len(peerAddrs) == 0 {
-		return nil, ErrNoAddresses
+		return nil, nil, ErrNoAddresses
 	}
 
 	peerAddrsAfterTransportResolved := make([]ma.Multiaddr, 0, len(peerAddrs))
@@ -308,22 +323,22 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 		Addrs: peerAddrsAfterTransportResolved,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	goodAddrs := s.filterKnownUndialables(p, resolved)
+	goodAddrs = ma.Unique(resolved)
+	goodAddrs, addrErrs = s.filterKnownUndialables(p, goodAddrs)
 	if forceDirect, _ := network.GetForceDirectDial(ctx); forceDirect {
 		goodAddrs = ma.FilterAddrs(goodAddrs, s.nonProxyAddr)
 	}
-	goodAddrs = ma.Unique(goodAddrs)
 
 	if len(goodAddrs) == 0 {
-		return nil, ErrNoGoodAddresses
+		return nil, addrErrs, ErrNoGoodAddresses
 	}
 
 	s.peers.AddAddrs(p, goodAddrs, peerstore.TempAddrTTL)
 
-	return goodAddrs, nil
+	return goodAddrs, addrErrs, nil
 }
 
 func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) ([]ma.Multiaddr, error) {
@@ -402,15 +417,12 @@ func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, 
 	return nil
 }
 
-func (s *Swarm) canDial(addr ma.Multiaddr) bool {
-	t := s.TransportForDialing(addr)
-	return t != nil && t.CanDial(addr)
-}
-
 func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 	t := s.TransportForDialing(addr)
 	return !t.Proxy()
 }
+
+var quicDraft29DialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_QUIC))
 
 // filterKnownUndialables takes a list of multiaddrs, and removes those
 // that we definitely don't want to dial: addresses configured to be blocked,
@@ -418,7 +430,7 @@ func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 // addresses that we know to be our own, and addresses with a better tranport
 // available. This is an optimization to avoid wasting time on dials that we
 // know are going to fail or for which we have a better alternative.
-func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Multiaddr {
+func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAddrs []ma.Multiaddr, addrErrs []TransportError) {
 	lisAddrs, _ := s.InterfaceListenAddresses()
 	var ourAddrs []ma.Multiaddr
 	for _, addr := range lisAddrs {
@@ -431,27 +443,55 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 		})
 	}
 
-	// The order of these two filters is important. If we can only dial /webtransport,
-	// we don't want to filter /webtransport addresses out because the peer had a /quic-v1
-	// address
+	addrErrs = make([]TransportError, 0, len(addrs))
 
-	// filter addresses we cannot dial
-	addrs = ma.FilterAddrs(addrs, s.canDial)
+	// The order of checking for transport and filtering low priority addrs is important. If we
+	// can only dial /webtransport, we don't want to filter /webtransport addresses out because
+	// the peer had a /quic-v1 address
+
+	// filter addresses with no transport
+	addrs = ma.FilterAddrs(addrs, func(a ma.Multiaddr) bool {
+		if s.TransportForDialing(a) == nil {
+			e := ErrNoTransport
+			// We used to support QUIC draft-29 for a long time.
+			// Provide a more useful error when attempting to dial a QUIC draft-29 address.
+			if quicDraft29DialMatcher.Matches(a) {
+				e = ErrQUICDraft29
+			}
+			addrErrs = append(addrErrs, TransportError{Address: a, Cause: e})
+			return false
+		}
+		return true
+	})
 
 	// filter low priority addresses among the addresses we can dial
+	// We don't return an error for these addresses
 	addrs = filterLowPriorityAddresses(addrs)
 
 	// remove black holed addrs
-	addrs = s.bhd.FilterAddrs(addrs)
+	addrs, blackHoledAddrs := s.bhd.FilterAddrs(addrs)
+	for _, a := range blackHoledAddrs {
+		addrErrs = append(addrErrs, TransportError{Address: a, Cause: ErrDialRefusedBlackHole})
+	}
 
 	return ma.FilterAddrs(addrs,
-		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
+		func(addr ma.Multiaddr) bool {
+			if ma.Contains(ourAddrs, addr) {
+				addrErrs = append(addrErrs, TransportError{Address: addr, Cause: ErrDialToSelf})
+				return false
+			}
+			return true
+		},
 		// TODO: Consider allowing link-local addresses
 		func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },
 		func(addr ma.Multiaddr) bool {
-			return s.gater == nil || s.gater.InterceptAddrDial(p, addr)
+			if s.gater != nil && !s.gater.InterceptAddrDial(p, addr) {
+				addrErrs = append(addrErrs, TransportError{Address: addr, Cause: ErrGaterDisallowedConnection})
+				return false
+			}
+			return true
 		},
-	)
+	), addrErrs
 }
 
 // limitedDial will start a dial to the given peer when
@@ -499,7 +539,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 
 	if err != nil {
 		if s.metricsTracer != nil {
-			s.metricsTracer.FailedDialing(addr, err)
+			s.metricsTracer.FailedDialing(addr, err, context.Cause(ctx))
 		}
 		return nil, err
 	}

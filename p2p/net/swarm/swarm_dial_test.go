@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"net"
 	"sort"
 	"testing"
@@ -65,7 +66,7 @@ func TestAddrsForDial(t *testing.T) {
 	ps.AddAddr(otherPeer, ma.StringCast("/dns4/example.com/tcp/1234/wss"), time.Hour)
 
 	ctx := context.Background()
-	mas, err := s.addrsForDial(ctx, otherPeer)
+	mas, _, err := s.addrsForDial(ctx, otherPeer)
 	require.NoError(t, err)
 
 	require.NotZero(t, len(mas))
@@ -110,7 +111,7 @@ func TestDedupAddrsForDial(t *testing.T) {
 	ps.AddAddr(otherPeer, ma.StringCast("/ip4/1.2.3.4/tcp/1234"), time.Hour)
 
 	ctx := context.Background()
-	mas, err := s.addrsForDial(ctx, otherPeer)
+	mas, _, err := s.addrsForDial(ctx, otherPeer)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, len(mas))
@@ -183,7 +184,7 @@ func TestAddrResolution(t *testing.T) {
 
 	tctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
 	defer cancel()
-	mas, err := s.addrsForDial(tctx, p1)
+	mas, _, err := s.addrsForDial(tctx, p1)
 	require.NoError(t, err)
 
 	require.Len(t, mas, 1)
@@ -241,7 +242,7 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	tctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
 	defer cancel()
 	s.Peerstore().AddAddrs(pi1.ID, pi1.Addrs, peerstore.TempAddrTTL)
-	_, err = s.addrsForDial(tctx, p1)
+	_, _, err = s.addrsForDial(tctx, p1)
 	require.NoError(t, err)
 
 	addrs1 := s.Peerstore().Addrs(pi1.ID)
@@ -253,7 +254,7 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	require.NoError(t, err)
 
 	s.Peerstore().AddAddrs(pi2.ID, pi2.Addrs, peerstore.TempAddrTTL)
-	_, err = s.addrsForDial(tctx, p2)
+	_, _, err = s.addrsForDial(tctx, p2)
 	// This never resolves to a good address
 	require.Equal(t, ErrNoGoodAddresses, err)
 
@@ -315,7 +316,7 @@ func TestAddrsForDialFiltering(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s.Peerstore().ClearAddrs(p1)
 			s.Peerstore().AddAddrs(p1, tc.input, peerstore.PermanentAddrTTL)
-			result, err := s.addrsForDial(ctx, p1)
+			result, _, err := s.addrsForDial(ctx, p1)
 			require.NoError(t, err)
 			sort.Slice(result, func(i, j int) bool { return bytes.Compare(result[i].Bytes(), result[j].Bytes()) < 0 })
 			sort.Slice(tc.output, func(i, j int) bool { return bytes.Compare(tc.output[i].Bytes(), tc.output[j].Bytes()) < 0 })
@@ -366,10 +367,10 @@ func TestBlackHoledAddrBlocked(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	conn, err := s.DialPeer(ctx, p)
-	if conn != nil {
-		t.Fatalf("expected dial to be blocked")
-	}
-	if err != ErrNoGoodAddresses {
+	require.Nil(t, conn)
+	var de *DialError
+	if !errors.As(err, &de) {
 		t.Fatalf("expected to receive an error of type *DialError, got %s of type %T", err, err)
 	}
+	require.ErrorIs(t, err, ErrDialRefusedBlackHole)
 }

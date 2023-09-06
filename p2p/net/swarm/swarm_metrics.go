@@ -128,7 +128,7 @@ type MetricsTracer interface {
 	OpenedConnection(network.Direction, crypto.PubKey, network.ConnectionState, ma.Multiaddr)
 	ClosedConnection(network.Direction, time.Duration, network.ConnectionState, ma.Multiaddr)
 	CompletedHandshake(time.Duration, network.ConnectionState, ma.Multiaddr)
-	FailedDialing(ma.Multiaddr, error)
+	FailedDialing(ma.Multiaddr, error, error)
 	DialCompleted(success bool, totalDials int)
 	DialRankingDelay(d time.Duration)
 	UpdatedBlackHoleFilterState(name string, state blackHoleState, nextProbeAfter int, successFraction float64)
@@ -216,18 +216,28 @@ func (m *metricsTracer) CompletedHandshake(t time.Duration, cs network.Connectio
 	connHandshakeLatency.WithLabelValues(*tags...).Observe(t.Seconds())
 }
 
-func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, err error) {
+func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, dialErr error, cause error) {
 	transport := metricshelper.GetTransport(addr)
 	e := "other"
-	if errors.Is(err, context.Canceled) {
-		e = "canceled"
-	} else if errors.Is(err, context.DeadlineExceeded) {
+	// dial deadline exceeded or the the parent contexts deadline exceeded
+	if errors.Is(dialErr, context.DeadlineExceeded) || errors.Is(cause, context.DeadlineExceeded) {
 		e = "deadline"
+	} else if errors.Is(dialErr, context.Canceled) {
+		// dial was cancelled.
+		if errors.Is(cause, context.Canceled) {
+			// parent context was canceled
+			e = "application canceled"
+		} else if errors.Is(cause, errConcurrentDialSuccessful) {
+			e = "canceled: concurrent dial successful"
+		} else {
+			// something else
+			e = "canceled: other"
+		}
 	} else {
-		nerr, ok := err.(net.Error)
+		nerr, ok := dialErr.(net.Error)
 		if ok && nerr.Timeout() {
 			e = "timeout"
-		} else if strings.Contains(err.Error(), "connect: connection refused") {
+		} else if strings.Contains(dialErr.Error(), "connect: connection refused") {
 			e = "connection refused"
 		}
 	}

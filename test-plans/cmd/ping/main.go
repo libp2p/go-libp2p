@@ -18,10 +18,9 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/muxer/mplex"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -139,8 +138,6 @@ func main() {
 		switch muxer {
 		case "yamux":
 			options = append(options, libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport))
-		case "mplex":
-			options = append(options, libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport))
 		default:
 			log.Fatalf("Unsupported muxer: %s", muxer)
 		}

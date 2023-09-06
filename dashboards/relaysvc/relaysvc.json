@@ -1229,7 +1229,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "libp2p Relay Service",
+  "title": "go-libp2p Relay Service",
   "uid": "C6RUfAx4z",
   "version": 5,
   "weekStart": ""

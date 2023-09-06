@@ -2251,7 +2251,113 @@
           },
           "mappings": []
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "canceled: concurrent dial successful"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "super-light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "application canceled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "canceled: other"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "timeout"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "other"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "deadline"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "super-light-orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "connection refused"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -2261,10 +2367,14 @@
       },
       "id": 15,
       "options": {
+        "displayLabels": [],
         "legend": {
-          "displayMode": "list",
+          "displayMode": "table",
           "placement": "right",
-          "showLegend": true
+          "showLegend": true,
+          "values": [
+            "percent"
+          ]
         },
         "pieType": "donut",
         "reduceOptions": {
@@ -2795,7 +2905,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(libp2p_swarm_dial_ranking_delay_seconds_bucket{instance=~\"$instance\",le=\"inf\"}[$__range])) - ignoring(le) sum(increase(libp2p_swarm_dial_ranking_delay_seconds_bucket{instance=~\"$instance\",le=\"0.75\"}[$__range]))",
+          "expr": "sum(increase(libp2p_swarm_dial_ranking_delay_seconds_bucket{instance=~\"$instance\",le=\"+Inf\"}[$__range])) - ignoring(le) sum(increase(libp2p_swarm_dial_ranking_delay_seconds_bucket{instance=~\"$instance\",le=\"0.75\"}[$__range]))",
           "hide": false,
           "legendFormat": ">750ms",
           "range": true,
@@ -3194,7 +3304,7 @@
         },
         "textMode": "value_and_name"
       },
-      "pluginVersion": "9.3.6",
+      "pluginVersion": "10.0.1",
       "targets": [
         {
           "datasource": {
@@ -3222,7 +3332,7 @@
             "mode": "thresholds"
           },
           "mappings": [],
-          "max": 10,
+          "max": 100,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -3259,7 +3369,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.3.6",
+      "pluginVersion": "10.0.1",
       "targets": [
         {
           "datasource": {
@@ -3275,26 +3385,16 @@
           "refId": "A"
         }
       ],
-      "title": "Black Hole Filter Success Percentage",
+      "title": "Dial Success Rate",
       "type": "gauge"
     }
   ],
-  "refresh": false,
-  "schemaVersion": 37,
+  "refresh": "",
+  "schemaVersion": 38,
   "style": "dark",
   "tags": [],
   "templating": {
     "list": [
-      {
-        "hide": 0,
-        "label": "datasource",
-        "name": "DS_PROMETHEUS",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "regex": "",
-        "type": "datasource"
-      },
       {
         "current": {},
         "datasource": {
@@ -3320,13 +3420,13 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "libp2p Swarm",
+  "title": "go-libp2p Swarm",
   "uid": "a15PyhO4z",
-  "version": 7,
+  "version": 4,
   "weekStart": ""
 }

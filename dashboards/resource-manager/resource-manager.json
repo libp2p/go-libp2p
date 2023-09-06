@@ -1821,7 +1821,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "libp2p Resource Manager",
+  "title": "go-libp2p Resource Manager",
   "uid": "MgmGIjjnj",
   "version": 1,
   "weekStart": ""

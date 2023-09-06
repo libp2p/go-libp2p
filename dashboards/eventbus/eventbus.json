@@ -554,7 +554,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "libp2p EventBus",
+  "title": "go-libp2p EventBus",
   "uid": "ZFbI6NAVn",
   "version": 4,
   "weekStart": ""

@@ -14,6 +14,9 @@ You can check the following prebuilt dashboards in action:
 5. [Relay Service](https://protocollabs.grafana.net/public-dashboards/4a8cb5d245294893874ed65279b049be)
 6. [Swarm](https://protocollabs.grafana.net/public-dashboards/2bd3f1bee9964d40b6786fbe3eafd9fc)
 
+These metrics come from one of the public IPFS DHT [bootstrap nodes](https://docs.ipfs.tech/concepts/nodes/#bootstrap) run by Protocol Labs.
+At the time of writing (2023-08), these nodes handle many connections across various libp2p implementations, versions, and configurations (they don't handle large file transfers).
+
 ## Using locally
 
 For local development and debugging, it can be useful to spin up a local Prometheus and Grafana instance.

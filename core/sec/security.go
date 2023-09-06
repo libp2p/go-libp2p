@@ -3,6 +3,7 @@ package sec
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -29,3 +30,14 @@ type SecureTransport interface {
 	// ID is the protocol ID of the security protocol.
 	ID() protocol.ID
 }
+
+type ErrPeerIDMismatch struct {
+	Expected peer.ID
+	Actual   peer.ID
+}
+
+func (e ErrPeerIDMismatch) Error() string {
+	return fmt.Sprintf("peer id mismatch: expected %s, but remote key matches %s", e.Expected, e.Actual)
+}
+
+var _ error = (*ErrPeerIDMismatch)(nil)

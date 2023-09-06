@@ -85,7 +85,7 @@ func TestBlackHoleDetectorInApplicableAddress(t *testing.T) {
 		ma.StringCast("/ip4/192.168.1.5/udp/1234/quic-v1"),
 	}
 	for i := 0; i < 1000; i++ {
-		filteredAddrs := bhd.FilterAddrs(addrs)
+		filteredAddrs, _ := bhd.FilterAddrs(addrs)
 		require.ElementsMatch(t, addrs, filteredAddrs)
 		for j := 0; j < len(addrs); j++ {
 			bhd.RecordResult(addrs[j], false)
@@ -101,8 +101,12 @@ func TestBlackHoleDetectorUDPDisabled(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		bhd.RecordResult(publicAddr, false)
 	}
-	addrs := []ma.Multiaddr{publicAddr, privAddr}
-	require.ElementsMatch(t, addrs, bhd.FilterAddrs(addrs))
+	wantAddrs := []ma.Multiaddr{publicAddr, privAddr}
+	wantRemovedAddrs := make([]ma.Multiaddr, 0)
+
+	gotAddrs, gotRemovedAddrs := bhd.FilterAddrs(wantAddrs)
+	require.ElementsMatch(t, wantAddrs, gotAddrs)
+	require.ElementsMatch(t, wantRemovedAddrs, gotRemovedAddrs)
 }
 
 func TestBlackHoleDetectorIPv6Disabled(t *testing.T) {
@@ -110,11 +114,16 @@ func TestBlackHoleDetectorIPv6Disabled(t *testing.T) {
 	bhd := newBlackHoleDetector(udpConfig, blackHoleConfig{Enabled: false}, nil)
 	publicAddr := ma.StringCast("/ip6/1::1/tcp/1234")
 	privAddr := ma.StringCast("/ip6/::1/tcp/1234")
-	addrs := []ma.Multiaddr{publicAddr, privAddr}
 	for i := 0; i < 100; i++ {
 		bhd.RecordResult(publicAddr, false)
 	}
-	require.ElementsMatch(t, addrs, bhd.FilterAddrs(addrs))
+
+	wantAddrs := []ma.Multiaddr{publicAddr, privAddr}
+	wantRemovedAddrs := make([]ma.Multiaddr, 0)
+
+	gotAddrs, gotRemovedAddrs := bhd.FilterAddrs(wantAddrs)
+	require.ElementsMatch(t, wantAddrs, gotAddrs)
+	require.ElementsMatch(t, wantRemovedAddrs, gotRemovedAddrs)
 }
 
 func TestBlackHoleDetectorProbes(t *testing.T) {
@@ -128,7 +137,7 @@ func TestBlackHoleDetectorProbes(t *testing.T) {
 		bhd.RecordResult(udp6Addr, false)
 	}
 	for i := 1; i < 100; i++ {
-		filteredAddrs := bhd.FilterAddrs(addrs)
+		filteredAddrs, _ := bhd.FilterAddrs(addrs)
 		if i%2 == 0 || i%3 == 0 {
 			if len(filteredAddrs) == 0 {
 				t.Fatalf("expected probe to be allowed irrespective of the state of other black hole filter")
@@ -145,7 +154,7 @@ func TestBlackHoleDetectorProbes(t *testing.T) {
 func TestBlackHoleDetectorAddrFiltering(t *testing.T) {
 	udp6Pub := ma.StringCast("/ip6/1::1/udp/1234/quic-v1")
 	udp6Pri := ma.StringCast("/ip6/::1/udp/1234/quic-v1")
-	upd4Pub := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
+	udp4Pub := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
 	udp4Pri := ma.StringCast("/ip4/192.168.1.5/udp/1234/quic-v1")
 	tcp6Pub := ma.StringCast("/ip6/1::1/tcp/1234/quic-v1")
 	tcp6Pri := ma.StringCast("/ip6/::1/tcp/1234/quic-v1")
@@ -158,7 +167,7 @@ func TestBlackHoleDetectorAddrFiltering(t *testing.T) {
 			ipv6: &blackHoleFilter{n: 100, minSuccesses: 10, name: "ipv6"},
 		}
 		for i := 0; i < 100; i++ {
-			bhd.RecordResult(upd4Pub, !udpBlocked)
+			bhd.RecordResult(udp4Pub, !udpBlocked)
 		}
 		for i := 0; i < 100; i++ {
 			bhd.RecordResult(tcp6Pub, !ipv6Blocked)
@@ -166,18 +175,27 @@ func TestBlackHoleDetectorAddrFiltering(t *testing.T) {
 		return bhd
 	}
 
-	allInput := []ma.Multiaddr{udp6Pub, udp6Pri, upd4Pub, udp4Pri, tcp6Pub, tcp6Pri,
+	allInput := []ma.Multiaddr{udp6Pub, udp6Pri, udp4Pub, udp4Pri, tcp6Pub, tcp6Pri,
 		tcp4Pub, tcp4Pri}
 
 	udpBlockedOutput := []ma.Multiaddr{udp6Pri, udp4Pri, tcp6Pub, tcp6Pri, tcp4Pub, tcp4Pri}
+	udpPublicAddrs := []ma.Multiaddr{udp6Pub, udp4Pub}
 	bhd := makeBHD(true, false)
-	require.ElementsMatch(t, udpBlockedOutput, bhd.FilterAddrs(allInput))
+	gotAddrs, gotRemovedAddrs := bhd.FilterAddrs(allInput)
+	require.ElementsMatch(t, udpBlockedOutput, gotAddrs)
+	require.ElementsMatch(t, udpPublicAddrs, gotRemovedAddrs)
 
-	ip6BlockedOutput := []ma.Multiaddr{udp6Pri, upd4Pub, udp4Pri, tcp6Pri, tcp4Pub, tcp4Pri}
+	ip6BlockedOutput := []ma.Multiaddr{udp6Pri, udp4Pub, udp4Pri, tcp6Pri, tcp4Pub, tcp4Pri}
+	ip6PublicAddrs := []ma.Multiaddr{udp6Pub, tcp6Pub}
 	bhd = makeBHD(false, true)
-	require.ElementsMatch(t, ip6BlockedOutput, bhd.FilterAddrs(allInput))
+	gotAddrs, gotRemovedAddrs = bhd.FilterAddrs(allInput)
+	require.ElementsMatch(t, ip6BlockedOutput, gotAddrs)
+	require.ElementsMatch(t, ip6PublicAddrs, gotRemovedAddrs)
 
 	bothBlockedOutput := []ma.Multiaddr{udp6Pri, udp4Pri, tcp6Pri, tcp4Pub, tcp4Pri}
+	bothPublicAddrs := []ma.Multiaddr{udp6Pub, tcp6Pub, udp4Pub}
 	bhd = makeBHD(true, true)
-	require.ElementsMatch(t, bothBlockedOutput, bhd.FilterAddrs(allInput))
+	gotAddrs, gotRemovedAddrs = bhd.FilterAddrs(allInput)
+	require.ElementsMatch(t, bothBlockedOutput, gotAddrs)
+	require.ElementsMatch(t, bothPublicAddrs, gotRemovedAddrs)
 }

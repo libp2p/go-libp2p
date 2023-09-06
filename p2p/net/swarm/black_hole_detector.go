@@ -178,7 +178,7 @@ type blackHoleDetector struct {
 }
 
 // FilterAddrs filters the peer's addresses removing black holed addresses
-func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
+func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) (valid []ma.Multiaddr, blackHoled []ma.Multiaddr) {
 	hasUDP, hasIPv6 := false, false
 	for _, a := range addrs {
 		if !manet.IsPublicAddr(a) {
@@ -202,6 +202,7 @@ func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 		ipv6Res = d.ipv6.HandleRequest()
 	}
 
+	blackHoled = make([]ma.Multiaddr, 0, len(addrs))
 	return ma.FilterAddrs(
 		addrs,
 		func(a ma.Multiaddr) bool {
@@ -218,14 +219,16 @@ func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 			}
 
 			if udpRes == blackHoleResultBlocked && isProtocolAddr(a, ma.P_UDP) {
+				blackHoled = append(blackHoled, a)
 				return false
 			}
 			if ipv6Res == blackHoleResultBlocked && isProtocolAddr(a, ma.P_IP6) {
+				blackHoled = append(blackHoled, a)
 				return false
 			}
 			return true
 		},
-	)
+	), blackHoled
 }
 
 // RecordResult updates the state of the relevant `blackHoleFilter`s for addr

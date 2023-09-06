@@ -52,6 +52,7 @@ func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quic
 		addrs:     localMultiaddrs,
 	}
 	tlsConf := &tls.Config{
+		SessionTicketsDisabled: true, // This is set for the config for client, but we set it here as well: https://github.com/quic-go/quic-go/issues/4029
 		GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
 			cl.protocolsMu.Lock()
 			defer cl.protocolsMu.Unlock()
@@ -82,7 +83,7 @@ func (l *quicListener) allowWindowIncrease(conn quic.Connection, delta uint64) b
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
-	conf, ok := l.protocols[conn.ConnectionState().TLS.ConnectionState.NegotiatedProtocol]
+	conf, ok := l.protocols[conn.ConnectionState().TLS.NegotiatedProtocol]
 	if !ok {
 		return false
 	}

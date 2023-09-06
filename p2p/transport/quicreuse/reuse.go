@@ -51,8 +51,7 @@ func (c *singleOwnerTransport) Close() error {
 }
 
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
-	// Safe because we called quic.OptimizeConn ourselves.
-	return c.packetConn.WriteTo(b, addr)
+	return c.Transport.WriteTo(b, addr)
 }
 
 // Constant. Defined as variables to simplify testing.
@@ -86,8 +85,7 @@ func (c *refcountedTransport) Close() error {
 }
 
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
-	// Safe because we called quic.OptimizeConn ourselves.
-	return c.packetConn.WriteTo(b, addr)
+	return c.Transport.WriteTo(b, addr)
 }
 
 func (c *refcountedTransport) LocalAddr() net.Addr {
@@ -265,7 +263,7 @@ func (r *reuse) transportForDialLocked(network string, source *net.IP) (*refcoun
 	case "udp6":
 		addr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	conn, err := listenAndOptimize(network, addr)
+	conn, err := net.ListenUDP(network, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +312,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		}
 	}
 
-	conn, err := listenAndOptimize(network, laddr)
+	conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}

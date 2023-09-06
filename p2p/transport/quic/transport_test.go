@@ -46,6 +46,7 @@ func TestCanDial(t *testing.T) {
 		"/ip4/127.0.0.1/udp/1234",
 		"/ip4/5.5.5.5/tcp/1234",
 		"/dns/google.com/udp/443/quic-v1",
+		"/ip4/127.0.0.1/udp/1234/quic",
 	}
 	valid := []string{
 		"/ip4/127.0.0.1/udp/1234/quic-v1",

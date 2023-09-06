@@ -13,7 +13,6 @@
         "noise"
     ],
     "muxers": [
-        "mplex",
         "yamux"
     ]
 }

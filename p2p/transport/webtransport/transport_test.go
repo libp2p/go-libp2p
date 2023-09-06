@@ -178,7 +178,7 @@ func TestHashVerification(t *testing.T) {
 		var trErr *quic.TransportError
 		require.ErrorAs(t, err, &trErr)
 		require.Equal(t, quic.TransportErrorCode(0x12a), trErr.ErrorCode)
-		require.Contains(t, trErr.ErrorMessage, "cert hash not found")
+		require.Contains(t, errors.Unwrap(trErr).Error(), "cert hash not found")
 	})
 
 	t.Run("fails when adding a wrong hash", func(t *testing.T) {
