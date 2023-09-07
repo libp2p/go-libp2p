@@ -23,9 +23,6 @@ type dataRequestPolicyFunc = func(s network.Stream, dialAddr ma.Multiaddr) bool
 // server implements the AutoNATv2 server.
 // It can ask client to provide dial data before attempting the requested dial.
 // It rate limits requests on a global level, per peer level and on whether the request requires dial data.
-//
-// This uses the host's dialer as well as the dialerHost's dialer to determine whether an address is
-// dialable.
 type server struct {
 	host       host.Host
 	dialerHost host.Host
@@ -114,21 +111,16 @@ func (as *server) handleDialRequest(s network.Stream) {
 		if err != nil {
 			continue
 		}
-		if (!as.allowAllAddrs && !manet.IsPublicAddr(a)) ||
-			(as.dialerHost.Network().CanDial(p, a) != network.DialabilityDialable) {
+		if !as.allowAllAddrs && !manet.IsPublicAddr(a) {
 			continue
 		}
-		// Check if the host can dial the address. This check ensures that we do not
-		// attempt dialing an IPv6 address if we have no IPv6 connectivity as the host dialer's
-		// black hole detector is likely to be more accurate.
-		if as.host.Network().CanDial(p, a) != network.DialabilityDialable {
+		if !as.dialerHost.Network().CanDial(p, a) {
 			continue
 		}
 		dialAddr = a
 		addrIdx = i
 		break
 	}
-
 	w := pbio.NewDelimitedWriter(s)
 	// No dialable address
 	if dialAddr == nil {

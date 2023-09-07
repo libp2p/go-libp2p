@@ -111,22 +111,33 @@ func WithDialRanker(d network.DialRanker) Option {
 	}
 }
 
-// WithUDPBlackHoleConfig configures swarm to use the provided config for UDP black hole detection
+// WithUDPBlackHoleFilter configures swarm to use the provided config for UDP black hole detection
 // n is the size of the sliding window used to evaluate black hole state
 // min is the minimum number of successes out of n required to not block requests
-func WithUDPBlackHoleConfig(enabled bool, n, min int) Option {
+func WithUDPBlackHoleFilter(f *BlackHoleFilter) Option {
 	return func(s *Swarm) error {
-		s.udpBlackHoleConfig = blackHoleConfig{Enabled: enabled, N: n, MinSuccesses: min}
+		s.udpBHF = f
 		return nil
 	}
 }
 
-// WithIPv6BlackHoleConfig configures swarm to use the provided config for IPv6 black hole detection
+// WithIPv6BlackHoleFilter configures swarm to use the provided config for IPv6 black hole detection
 // n is the size of the sliding window used to evaluate black hole state
 // min is the minimum number of successes out of n required to not block requests
-func WithIPv6BlackHoleConfig(enabled bool, n, min int) Option {
+func WithIPv6BlackHoleFilter(f *BlackHoleFilter) Option {
 	return func(s *Swarm) error {
-		s.ipv6BlackHoleConfig = blackHoleConfig{Enabled: enabled, N: n, MinSuccesses: min}
+		s.ipv6BHF = f
+		return nil
+	}
+}
+
+// WithReadOnlyBlackHoleDetector configures the swarm to use the black hole detector in
+// read only mode. In Read Only mode dial requests are refused in unknown state and
+// no updates to the detector state are made. This is useful for services like AutoNAT that
+// care about accurately providing reachability info.
+func WithReadOnlyBlackHoleDetector() Option {
+	return func(s *Swarm) error {
+		s.readOnlyBHD = true
 		return nil
 	}
 }
@@ -197,9 +208,10 @@ type Swarm struct {
 
 	dialRanker network.DialRanker
 
-	udpBlackHoleConfig  blackHoleConfig
-	ipv6BlackHoleConfig blackHoleConfig
-	bhd                 *blackHoleDetector
+	udpBHF      *BlackHoleFilter
+	ipv6BHF     *BlackHoleFilter
+	bhd         *blackHoleDetector
+	readOnlyBHD bool
 }
 
 // NewSwarm constructs a Swarm.
@@ -223,8 +235,8 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 		// A black hole is a binary property. On a network if UDP dials are blocked or there is
 		// no IPv6 connectivity, all dials will fail. So a low success rate of 5 out 100 dials
 		// is good enough.
-		udpBlackHoleConfig:  blackHoleConfig{Enabled: true, N: 100, MinSuccesses: 5},
-		ipv6BlackHoleConfig: blackHoleConfig{Enabled: true, N: 100, MinSuccesses: 5},
+		udpBHF:  &BlackHoleFilter{N: 100, MinSuccesses: 5, Name: "UDP"},
+		ipv6BHF: &BlackHoleFilter{N: 100, MinSuccesses: 5, Name: "IPv6"},
 	}
 
 	s.conns.m = make(map[peer.ID][]*Conn)
@@ -246,8 +258,12 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 	s.limiter = newDialLimiter(s.dialAddr)
 	s.backf.init(s.ctx)
 
-	s.bhd = newBlackHoleDetector(s.udpBlackHoleConfig, s.ipv6BlackHoleConfig, s.metricsTracer)
-
+	s.bhd = &blackHoleDetector{
+		udp:      s.udpBHF,
+		ipv6:     s.ipv6BHF,
+		mt:       s.metricsTracer,
+		readOnly: s.readOnlyBHD,
+	}
 	return s, nil
 }
 

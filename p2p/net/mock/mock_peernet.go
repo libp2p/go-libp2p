@@ -435,6 +435,6 @@ func (pn *peernet) ResourceManager() network.ResourceManager {
 	return &network.NullResourceManager{}
 }
 
-func (pn *peernet) CanDial(p peer.ID, addr ma.Multiaddr) network.Dialability {
-	return network.DialabilityUnknown
+func (pn *peernet) CanDial(p peer.ID, addr ma.Multiaddr) bool {
+	return true
 }

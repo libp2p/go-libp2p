@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 
@@ -26,9 +27,14 @@ import (
 func newAutoNAT(t *testing.T, dialer host.Host, opts ...AutoNATOption) *AutoNAT {
 	t.Helper()
 	b := eventbus.NewBus()
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.EventBus(b)), bhost.WithEventBus(b))
+	h := bhost.NewBlankHost(
+		swarmt.GenSwarm(t, swarmt.EventBus(b)), bhost.WithEventBus(b))
 	if dialer == nil {
-		dialer = bhost.NewBlankHost(swarmt.GenSwarm(t))
+		dialer = bhost.NewBlankHost(
+			swarmt.GenSwarm(t,
+				swarmt.WithSwarmOpts(
+					swarm.WithUDPBlackHoleFilter(nil),
+					swarm.WithIPv6BlackHoleFilter(nil))))
 	}
 	an, err := New(h, dialer, opts...)
 	if err != nil {

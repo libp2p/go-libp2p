@@ -2,12 +2,14 @@ package autonatv2
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/test"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
@@ -36,6 +38,25 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		idAndWait(t, c, an)
 
 		res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), true))
+		fmt.Println(res, err)
+		require.ErrorIs(t, err, ErrDialRefused)
+		require.Equal(t, Result{}, res)
+	})
+
+	t.Run("black holed addr", func(t *testing.T) {
+		dialer := bhost.NewBlankHost(swarmt.GenSwarm(
+			t, swarmt.WithSwarmOpts(swarm.WithReadOnlyBlackHoleDetector())))
+		an := newAutoNAT(t, dialer)
+		defer an.Close()
+		defer an.host.Close()
+
+		idAndWait(t, c, an)
+
+		res, err := c.CheckReachability(context.Background(),
+			[]Request{{
+				Addr:         ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1"),
+				SendDialData: true,
+			}})
 		require.ErrorIs(t, err, ErrDialRefused)
 		require.Equal(t, Result{}, res)
 	})

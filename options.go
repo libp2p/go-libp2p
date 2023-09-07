@@ -605,3 +605,21 @@ func DisableAutoNATv2() Option {
 		return nil
 	}
 }
+
+// UDPBlackHoleFilter configures libp2p to use f as the black hole filter for UDP addrs
+func UDPBlackHoleFilter(f *swarm.BlackHoleFilter) Option {
+	return func(cfg *Config) error {
+		cfg.UDPBlackHoleFilter = f
+		cfg.CustomUDPBlackHoleFilter = true
+		return nil
+	}
+}
+
+// IPv6BlackHoleFilter configures libp2p to use f as the black hole filter for IPv6 addrs
+func IPv6BlackHoleFilter(f *swarm.BlackHoleFilter) Option {
+	return func(cfg *Config) error {
+		cfg.IPv6BlackHoleFilter = f
+		cfg.CustomIPv6BlackHoleFilter = true
+		return nil
+	}
+}

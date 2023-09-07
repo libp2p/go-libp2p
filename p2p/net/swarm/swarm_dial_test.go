@@ -341,7 +341,7 @@ func TestBlackHoledAddrBlocked(t *testing.T) {
 	defer s.Close()
 
 	n := 3
-	s.bhd.ipv6 = &blackHoleFilter{n: n, minSuccesses: 1, name: "IPv6"}
+	s.bhd.ipv6 = &BlackHoleFilter{N: n, MinSuccesses: 1, Name: "IPv6"}
 
 	// all dials to the address will fail. RFC6666 Discard Prefix
 	addr := ma.StringCast("/ip6/0100::1/tcp/54321/")
