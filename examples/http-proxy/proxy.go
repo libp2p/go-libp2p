@@ -144,7 +144,7 @@ func (p *ProxyService) Serve() {
 // Streams are multiplexed over single connections so, unlike connections
 // themselves, they are cheap to create and dispose of.
 func (p *ProxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("proxying request for %s to peer %s\n", r.URL, p.dest.Pretty())
+	fmt.Printf("proxying request for %s to peer %s\n", r.URL, p.dest)
 	// We need to send the request to the remote libp2p peer, so
 	// we open a stream to it
 	stream, err := p.host.NewStream(context.Background(), p.dest, Protocol)

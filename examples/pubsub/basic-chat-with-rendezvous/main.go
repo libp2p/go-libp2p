@@ -95,9 +95,9 @@ func discoverPeers(ctx context.Context, h host.Host) {
 			}
 			err := h.Connect(ctx, peer)
 			if err != nil {
-				fmt.Println("Failed connecting to ", peer.ID.Pretty(), ", error:", err)
+				fmt.Printf("Failed connecting to %s, error: %s\n", peer.ID, err)
 			} else {
-				fmt.Println("Connected to:", peer.ID.Pretty())
+				fmt.Println("Connected to:", peer.ID)
 				anyConnected = true
 			}
 		}
