@@ -107,6 +107,9 @@ func emitAddrChangeEvt(t *testing.T, h host.Host) {
 // this is because it used to be concurrent. Now, Dial wait till the
 // id service is done.
 func TestIDService(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("This test modifies peerstore.RecentlyConnectedAddrTTL, which is racy.")
+	}
 	// This test is highly timing dependent, waiting on timeouts/expiration.
 	oldTTL := peerstore.RecentlyConnectedAddrTTL
 	peerstore.RecentlyConnectedAddrTTL = 500 * time.Millisecond

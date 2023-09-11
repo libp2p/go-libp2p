@@ -132,7 +132,7 @@ to the `pubsub.Topic`:
 func (cr *ChatRoom) Publish(message string) error {
 	m := ChatMessage{
 		Message:    message,
-		SenderID:   cr.self.Pretty(),
+		SenderID:   cr.self.String(),
 		SenderNick: cr.nick,
 	}
 	msgBytes, err := json.Marshal(m)

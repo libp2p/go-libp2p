@@ -277,6 +277,9 @@ func TestAddrsForDialFiltering(t *testing.T) {
 	t1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
 	ws1 := ma.StringCast("/ip4/1.2.3.4/tcp/1/ws")
 
+	unSpecQ := ma.StringCast("/ip4/0.0.0.0/udp/2/quic-v1")
+	unSpecT := ma.StringCast("/ip6/::/tcp/2/")
+
 	resolver, err := madns.NewResolver(madns.WithDefaultResolver(&madns.MockResolver{}))
 	require.NoError(t, err)
 	s := newTestSwarmWithResolver(t, resolver)
@@ -306,6 +309,11 @@ func TestAddrsForDialFiltering(t *testing.T) {
 			name:   "our-addrs-filtered",
 			input:  append([]ma.Multiaddr{q1}, ourAddrs...),
 			output: []ma.Multiaddr{q1},
+		},
+		{
+			name:   "unspecified-filtered",
+			input:  []ma.Multiaddr{q1v1, t1, unSpecQ, unSpecT},
+			output: []ma.Multiaddr{q1v1, t1},
 		},
 	}
 

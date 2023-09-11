@@ -91,7 +91,7 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		"CompletedHandshake": func() {
 			mt.CompletedHandshake(time.Duration(mrand.Intn(100))*time.Second, randItem(connections), randItem(addrs))
 		},
-		"FailedDialing":    func() { mt.FailedDialing(randItem(addrs), randItem(errors)) },
+		"FailedDialing":    func() { mt.FailedDialing(randItem(addrs), randItem(errors), randItem(errors)) },
 		"DialCompleted":    func() { mt.DialCompleted(mrand.Intn(2) == 1, mrand.Intn(10)) },
 		"DialRankingDelay": func() { mt.DialRankingDelay(time.Duration(mrand.Intn(1e10))) },
 		"UpdatedBlackHoleFilterState": func() {

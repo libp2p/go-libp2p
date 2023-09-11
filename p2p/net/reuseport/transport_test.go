@@ -1,9 +1,11 @@
 package reuseport
 
 import (
+	"context"
 	"net"
 	"runtime"
 	"testing"
+	"time"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -64,8 +66,11 @@ func acceptOne(t *testing.T, listener manet.Listener) <-chan manet.Conn {
 func dialOne(t *testing.T, tr *Transport, listener manet.Listener, expected ...int) int {
 	t.Helper()
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	connChan := acceptOne(t, listener)
-	c, err := tr.Dial(listener.Multiaddr())
+	c, err := tr.DialContext(ctx, listener.Multiaddr())
 	if err != nil {
 		t.Fatal(err)
 	}
