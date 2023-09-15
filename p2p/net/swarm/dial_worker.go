@@ -304,16 +304,22 @@ loop:
 			// Update all requests waiting on this address. On success, complete the request.
 			// On error, record the error
 
-			dialsInFlight--
 			ad, ok := w.trackedDials[string(res.Addr.Bytes())]
 			if !ok {
 				log.Errorf("SWARM BUG: no entry for address %s in trackedDials", res.Addr)
 				if res.Conn != nil {
 					res.Conn.Close()
 				}
+				dialsInFlight--
 				continue
 			}
 
+			// TODO: Handle TCPConnectionEstablished by delaying future dials
+			if res.Kind == tpt.TCPConnectionEstablished {
+				continue
+			}
+
+			dialsInFlight--
 			if res.Conn != nil {
 				// we got a connection, add it to the swarm
 				conn, err := w.s.addConn(res.Conn, network.DirOutbound)

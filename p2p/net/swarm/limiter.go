@@ -39,7 +39,7 @@ type dialLimiter struct {
 	waitingOnPeerLimit map[peer.ID][]*dialJob
 }
 
-type dialfunc func(context.Context, peer.ID, ma.Multiaddr) (transport.CapableConn, error)
+type dialfunc func(context.Context, peer.ID, ma.Multiaddr, chan<- transport.DialUpdate) (transport.CapableConn, error)
 
 func newDialLimiter(df dialfunc) *dialLimiter {
 	fd := ConcurrentFdDials
@@ -210,7 +210,7 @@ func (dl *dialLimiter) executeDial(j *dialJob) {
 	dctx, cancel := context.WithTimeout(j.ctx, j.timeout)
 	defer cancel()
 
-	con, err := dl.dialFunc(dctx, j.peer, j.addr)
+	con, err := dl.dialFunc(dctx, j.peer, j.addr, j.resp)
 	select {
 	case j.resp <- transport.DialUpdate{Conn: con, Addr: j.addr, Err: err}:
 	case <-j.ctx.Done():

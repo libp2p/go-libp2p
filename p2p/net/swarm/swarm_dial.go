@@ -520,7 +520,7 @@ func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp
 }
 
 // dialAddr is the actual dial for an addr, indirectly invoked through the limiter
-func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (transport.CapableConn, error) {
+func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, updCh chan<- transport.DialUpdate) (transport.CapableConn, error) {
 	// Just to double check. Costs nothing.
 	if s.local == p {
 		return nil, ErrDialToSelf
@@ -538,7 +538,13 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	}
 
 	start := time.Now()
-	connC, err := tpt.Dial(ctx, addr, p)
+	var connC transport.CapableConn
+	var err error
+	if du, ok := tpt.(transport.DialUpdater); ok {
+		connC, err = du.DialWithUpdates(ctx, addr, p, updCh)
+	} else {
+		connC, err = tpt.Dial(ctx, addr, p)
+	}
 
 	// We're recording any error as a failure here.
 	// Notably, this also applies to cancelations (i.e. if another dial attempt was faster).
