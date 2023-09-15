@@ -254,7 +254,7 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 	}
 
 	if s.gater != nil && !s.gater.InterceptPeerDial(p) {
-		log.Debugf("gater disallowed outbound connection to peer %s", p.Pretty())
+		log.Debugf("gater disallowed outbound connection to peer %s", p)
 		return nil, &DialError{Peer: p, Cause: ErrGaterDisallowedConnection}
 	}
 
@@ -343,7 +343,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) (goodAddrs []ma.Mul
 
 func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) ([]ma.Multiaddr, error) {
 	proto := ma.ProtocolWithCode(ma.P_P2P).Name
-	p2paddr, err := ma.NewMultiaddr("/" + proto + "/" + pi.ID.Pretty())
+	p2paddr, err := ma.NewMultiaddr("/" + proto + "/" + pi.ID.String())
 	if err != nil {
 		return nil, err
 	}

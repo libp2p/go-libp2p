@@ -9,11 +9,11 @@ import (
 
 	"github.com/libp2p/go-nat"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
-//go:generate sh -c "go run github.com/golang/mock/mockgen -package nat -destination mock_nat_test.go github.com/libp2p/go-nat NAT"
+//go:generate sh -c "go run go.uber.org/mock/mockgen -package nat -destination mock_nat_test.go github.com/libp2p/go-nat NAT"
 
 func setupMockNAT(t *testing.T) (mockNAT *MockNAT, reset func()) {
 	t.Helper()

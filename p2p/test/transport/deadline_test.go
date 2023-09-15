@@ -43,7 +43,9 @@ func TestReadWriteDeadlines(t *testing.T) {
 				buf := make([]byte, 1)
 				_, err = s.Read(buf)
 				require.Error(t, err)
-				require.True(t, err.(net.Error).Timeout())
+				var nerr net.Error
+				require.ErrorAs(t, err, &nerr)
+				require.True(t, nerr.Timeout())
 				require.Less(t, time.Since(start), 1*time.Second)
 			})
 
@@ -80,7 +82,9 @@ func TestReadWriteDeadlines(t *testing.T) {
 							_, err = s.Write(sendBuf)
 						}
 						require.Error(t, err)
-						require.True(t, err.(net.Error).Timeout())
+						var nerr net.Error
+						require.ErrorAs(t, err, &nerr)
+						require.True(t, nerr.Timeout())
 						require.Less(t, time.Since(start), 1*time.Second)
 					})
 				}

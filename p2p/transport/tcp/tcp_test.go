@@ -16,9 +16,9 @@ import (
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
-	"github.com/golang/mock/gomock"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 var muxers = []tptu.StreamMuxer{{ID: "/yamux", Muxer: yamux.DefaultTransport}}

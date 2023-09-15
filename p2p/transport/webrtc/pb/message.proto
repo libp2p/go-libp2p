@@ -1,0 +1,20 @@
+syntax = "proto2";
+
+option go_package = "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb";
+
+message Message {
+  enum Flag {
+    // The sender will no longer send messages on the stream.
+    FIN = 0;
+    // The sender will no longer read messages on the stream. Incoming data is
+    // being discarded on receipt.
+    STOP_SENDING = 1;
+    // The sender abruptly terminates the sending part of the stream. The
+    // receiver can discard any data that it already received on that stream.
+    RESET = 2;
+  }
+
+  optional Flag flag=1;
+
+  optional bytes message = 2;
+}

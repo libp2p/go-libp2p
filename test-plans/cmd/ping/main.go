@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"time"
 
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -103,6 +105,9 @@ func main() {
 	case "webtransport":
 		options = append(options, libp2p.Transport(libp2pwebtransport.New))
 		listenAddr = fmt.Sprintf("/ip4/%s/udp/0/quic-v1/webtransport", ip)
+	case "webrtc-direct":
+		options = append(options, libp2p.Transport(libp2pwebrtc.New))
+		listenAddr = fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", ip)
 	default:
 		log.Fatalf("Unsupported transport: %s", transport)
 	}
@@ -112,13 +117,11 @@ func main() {
 	var skipMuxer bool
 	var skipSecureChannel bool
 	switch transport {
-	case "quic":
-		fallthrough
 	case "quic-v1":
 		fallthrough
 	case "webtransport":
 		fallthrough
-	case "webrtc":
+	case "webrtc-direct":
 		skipMuxer = true
 		skipSecureChannel = true
 	}

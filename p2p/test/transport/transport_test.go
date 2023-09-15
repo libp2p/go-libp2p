@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -27,6 +28,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+
 	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -134,6 +137,21 @@ var transportsToTest = []TransportTestCase{
 			return h
 		},
 	},
+	{
+		Name: "WebRTC",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
 }
 
 func TestPing(t *testing.T) {
@@ -229,7 +247,7 @@ func TestLotsOfDataManyStreams(t *testing.T) {
 	// 64k buffer
 	const bufSize = 64 << 10
 	sendBuf := [bufSize]byte{}
-	const totalStreams = 512
+	const totalStreams = 500
 	const parallel = 8
 	// Total sends are > 20MiB
 	require.Greater(t, len(sendBuf)*totalStreams, 20<<20)
@@ -296,6 +314,9 @@ func TestManyStreams(t *testing.T) {
 	const streamCount = 128
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTC") {
+				t.Skip("Pion doesn't correctly handle large queues of streams.")
+			}
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 			defer h1.Close()
@@ -361,6 +382,9 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 	const streamCount = 1024
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTC") {
+				t.Skip("This test potentially exhausts the uint16 WebRTC stream ID space.")
+			}
 			listenerLimits := rcmgr.PartialLimitConfig{
 				PeerDefault: rcmgr.ResourceLimits{
 					Streams:         32,
@@ -455,6 +479,8 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 									time.Sleep(50 * time.Millisecond)
 									continue
 								}
+								t.Logf("opening stream failed: %v", err)
+								return
 							}
 							err = func(s network.Stream) error {
 								defer s.Close()
@@ -596,8 +622,8 @@ func TestStreamReadDeadline(t *testing.T) {
 			_, err = s.Read([]byte{0})
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "deadline")
-			nerr, ok := err.(net.Error)
-			require.True(t, ok, "expected a net.Error")
+			var nerr net.Error
+			require.True(t, errors.As(err, &nerr), "expected a net.Error")
 			require.True(t, nerr.Timeout(), "expected net.Error.Timeout() == true")
 			// now test that the stream is still usable
 			s.SetReadDeadline(time.Time{})
@@ -628,58 +654,41 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 		return "", inputErr
 	}
 
-	// runs a test to verify we can extract the peer ID from a target with just its address
-	runTest := func(t *testing.T, h host.Host) {
-		t.Helper()
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		// Use a bogus peer ID so that when we connect to the target we get an error telling
-		// us the targets real peer ID
-		bogusPeerId, err := peer.Decode("QmadAdJ3f63JyNs65X7HHzqDwV53ynvCcKtNFvdNaz3nhk")
-		if err != nil {
-			t.Fatal("the hard coded bogus peerID is invalid")
-		}
-
-		ai := &peer.AddrInfo{
-			ID:    bogusPeerId,
-			Addrs: []multiaddr.Multiaddr{h.Addrs()[0]},
-		}
-
-		testHost, err := libp2p.New()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Try connecting with the bogus peer ID
-		if err := testHost.Connect(ctx, *ai); err != nil {
-			// Extract the actual peer ID from the error
-			newPeerId, err := extractPeerIDFromError(err)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ai.ID = newPeerId
-
-			// Make sure the new ID is what we expected
-			if ai.ID != h.ID() {
-				t.Fatalf("peerID mismatch: expected %s, got %s", h.ID(), ai.ID)
-			}
-
-			// and just to double-check try connecting again to make sure it works
-			if err := testHost.Connect(ctx, *ai); err != nil {
-				t.Fatal(err)
-			}
-		} else {
-			t.Fatal("somehow we successfully connected to a bogus peerID!")
-		}
-	}
-
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			h := tc.HostGenerator(t, TransportTestCaseOpts{})
-			defer h.Close()
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 
-			runTest(t, h)
+			// runs a test to verify we can extract the peer ID from a target with just its address
+			t.Helper()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Use a bogus peer ID so that when we connect to the target we get an error telling
+			// us the targets real peer ID
+			bogusPeerId, err := peer.Decode("QmadAdJ3f63JyNs65X7HHzqDwV53ynvCcKtNFvdNaz3nhk")
+			require.NoError(t, err, "the hard coded bogus peerID is invalid")
+
+			ai := &peer.AddrInfo{
+				ID:    bogusPeerId,
+				Addrs: []multiaddr.Multiaddr{h1.Addrs()[0]},
+			}
+
+			// Try connecting with the bogus peer ID
+			err = h2.Connect(ctx, *ai)
+			require.Error(t, err, "somehow we successfully connected to a bogus peerID!")
+
+			// Extract the actual peer ID from the error
+			newPeerId, err := extractPeerIDFromError(err)
+			require.NoError(t, err)
+			ai.ID = newPeerId
+			// Make sure the new ID is what we expected
+			require.Equal(t, h1.ID(), ai.ID)
+
+			// and just to double-check try connecting again to make sure it works
+			require.NoError(t, h2.Connect(ctx, *ai))
 		})
 	}
 }

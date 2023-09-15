@@ -38,7 +38,7 @@ func RandomPeer(b *testing.B, addrCount int) *peerpair {
 	}
 
 	for i := 0; i < addrCount; i++ {
-		if addrs[i], err = ma.NewMultiaddr(fmt.Sprintf(aFmt, i, pid.Pretty())); err != nil {
+		if addrs[i], err = ma.NewMultiaddr(fmt.Sprintf(aFmt, i, pid)); err != nil {
 			b.Fatal(err)
 		}
 	}

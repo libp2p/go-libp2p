@@ -12,7 +12,7 @@ import (
 
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 func setupMockNAT(t *testing.T) (mockNAT *MockNAT, reset func()) {

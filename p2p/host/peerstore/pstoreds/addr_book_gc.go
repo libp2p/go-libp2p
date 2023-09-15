@@ -215,7 +215,7 @@ func (gc *dsAddrBookGc) purgeLookahead() {
 			cached.Lock()
 			if cached.clean(gc.ab.clock.Now()) {
 				if err = cached.flush(batch); err != nil {
-					log.Warnf("failed to flush entry modified by GC for peer: &v, err: %v", id.Pretty(), err)
+					log.Warnf("failed to flush entry modified by GC for peer: %s, err: %v", id, err)
 				}
 			}
 			dropOrReschedule(gcKey, cached)
@@ -241,7 +241,7 @@ func (gc *dsAddrBookGc) purgeLookahead() {
 		if record.clean(gc.ab.clock.Now()) {
 			err = record.flush(batch)
 			if err != nil {
-				log.Warnf("failed to flush entry modified by GC for peer: &v, err: %v", id.Pretty(), err)
+				log.Warnf("failed to flush entry modified by GC for peer: %s, err: %v", id, err)
 			}
 		}
 		dropOrReschedule(gcKey, record)
@@ -353,7 +353,7 @@ func (gc *dsAddrBookGc) populateLookahead() {
 			}
 			gcKey := gcLookaheadBase.ChildString(fmt.Sprintf("%d/%s", cached.Addrs[0].Expiry, idb32))
 			if err = batch.Put(context.TODO(), gcKey, []byte{}); err != nil {
-				log.Warnf("failed while inserting GC entry for peer: %v, err: %v", id.Pretty(), err)
+				log.Warnf("failed while inserting GC entry for peer: %s, err: %v", id, err)
 			}
 			cached.RUnlock()
 			continue
@@ -363,17 +363,17 @@ func (gc *dsAddrBookGc) populateLookahead() {
 
 		val, err := gc.ab.ds.Get(context.TODO(), ds.RawKey(result.Key))
 		if err != nil {
-			log.Warnf("failed which getting record from store for peer: %v, err: %v", id.Pretty(), err)
+			log.Warnf("failed which getting record from store for peer: %s, err: %v", id, err)
 			continue
 		}
 		if err := proto.Unmarshal(val, record); err != nil {
-			log.Warnf("failed while unmarshalling record from store for peer: %v, err: %v", id.Pretty(), err)
+			log.Warnf("failed while unmarshalling record from store for peer: %s, err: %v", id, err)
 			continue
 		}
 		if len(record.Addrs) > 0 && record.Addrs[0].Expiry <= until {
 			gcKey := gcLookaheadBase.ChildString(fmt.Sprintf("%d/%s", record.Addrs[0].Expiry, idb32))
 			if err = batch.Put(context.TODO(), gcKey, []byte{}); err != nil {
-				log.Warnf("failed while inserting GC entry for peer: %v, err: %v", id.Pretty(), err)
+				log.Warnf("failed while inserting GC entry for peer: %s, err: %v", id, err)
 			}
 		}
 	}

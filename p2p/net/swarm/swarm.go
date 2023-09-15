@@ -353,7 +353,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 			// TODO Send disconnect with reason here
 			err := tc.Close()
 			if err != nil {
-				log.Warnf("failed to close connection with peer %s and addr %s; err: %s", p.Pretty(), addr, err)
+				log.Warnf("failed to close connection with peer %s and addr %s; err: %s", p, addr, err)
 			}
 			return nil, ErrGaterDisallowedConnection
 		}

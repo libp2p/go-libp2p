@@ -7,9 +7,9 @@ package mocknetwork
 import (
 	reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
 	network "github.com/libp2p/go-libp2p/core/network"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockConnManagementScope is a mock of ConnManagementScope interface.

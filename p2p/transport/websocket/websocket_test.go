@@ -525,12 +525,13 @@ func TestWriteZero(t *testing.T) {
 func TestResolveMultiaddr(t *testing.T) {
 	// map[unresolved]resolved
 	testCases := map[string]string{
+		"/dns/example.com/tcp/1234/wss":        "/dns/example.com/tcp/1234/tls/sni/example.com/ws",
 		"/dns4/example.com/tcp/1234/wss":       "/dns4/example.com/tcp/1234/tls/sni/example.com/ws",
 		"/dns6/example.com/tcp/1234/wss":       "/dns6/example.com/tcp/1234/tls/sni/example.com/ws",
-		"/dnsaddr/example.com/tcp/1234/wss":    "/dnsaddr/example.com/tcp/1234/tls/sni/example.com/ws",
+		"/dnsaddr/example.com/tcp/1234/wss":    "/dnsaddr/example.com/tcp/1234/wss",
 		"/dns4/example.com/tcp/1234/tls/ws":    "/dns4/example.com/tcp/1234/tls/sni/example.com/ws",
 		"/dns6/example.com/tcp/1234/tls/ws":    "/dns6/example.com/tcp/1234/tls/sni/example.com/ws",
-		"/dnsaddr/example.com/tcp/1234/tls/ws": "/dnsaddr/example.com/tcp/1234/tls/sni/example.com/ws",
+		"/dnsaddr/example.com/tcp/1234/tls/ws": "/dnsaddr/example.com/tcp/1234/tls/ws",
 	}
 
 	for unresolved, expectedMA := range testCases {

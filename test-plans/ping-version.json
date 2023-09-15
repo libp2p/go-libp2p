@@ -6,7 +6,8 @@
         "ws",
         "wss",
         "quic-v1",
-        "webtransport"
+        "webtransport",
+        "webrtc-direct"
     ],
     "secureChannels": [
         "tls",

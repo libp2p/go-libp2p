@@ -7,11 +7,11 @@ package mocknetwork
 import (
 	reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
 	network "github.com/libp2p/go-libp2p/core/network"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
 	multiaddr "github.com/multiformats/go-multiaddr"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockResourceManager is a mock of ResourceManager interface.

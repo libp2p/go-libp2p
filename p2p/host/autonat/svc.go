@@ -68,7 +68,7 @@ func (as *autoNATService) handleStream(s network.Stream) {
 	defer s.Close()
 
 	pid := s.Conn().RemotePeer()
-	log.Debugf("New stream from %s", pid.Pretty())
+	log.Debugf("New stream from %s", pid)
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	w := pbio.NewDelimitedWriter(s)
@@ -78,14 +78,14 @@ func (as *autoNATService) handleStream(s network.Stream) {
 
 	err := r.ReadMsg(&req)
 	if err != nil {
-		log.Debugf("Error reading message from %s: %s", pid.Pretty(), err.Error())
+		log.Debugf("Error reading message from %s: %s", pid, err.Error())
 		s.Reset()
 		return
 	}
 
 	t := req.GetType()
 	if t != pb.Message_DIAL {
-		log.Debugf("Unexpected message from %s: %s (%d)", pid.Pretty(), t.String(), t)
+		log.Debugf("Unexpected message from %s: %s (%d)", pid, t.String(), t)
 		s.Reset()
 		return
 	}
@@ -96,7 +96,7 @@ func (as *autoNATService) handleStream(s network.Stream) {
 
 	err = w.WriteMsg(&res)
 	if err != nil {
-		log.Debugf("Error writing response to %s: %s", pid.Pretty(), err.Error())
+		log.Debugf("Error writing response to %s: %s", pid, err.Error())
 		s.Reset()
 		return
 	}
@@ -234,7 +234,7 @@ func (as *autoNATService) doDial(pi peer.AddrInfo) *pb.Message_DialResponse {
 
 	conn, err := as.config.dialer.DialPeer(ctx, pi.ID)
 	if err != nil {
-		log.Debugf("error dialing %s: %s", pi.ID.Pretty(), err.Error())
+		log.Debugf("error dialing %s: %s", pi.ID, err.Error())
 		// wait for the context to timeout to avoid leaking timing information
 		// this renders the service ineffective as a port scanner
 		<-ctx.Done()

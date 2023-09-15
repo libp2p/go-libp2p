@@ -46,7 +46,7 @@ func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 	require.NoError(t, err)
 	id, err := peer.IDFromPrivateKey(priv)
 	require.NoError(t, err)
-	t.Logf("using a %s key: %s", priv.Type(), id.Pretty())
+	t.Logf("using a %s key: %s", priv.Type(), id)
 	return id, priv
 }
 

@@ -9,7 +9,7 @@ import (
 	netip "net/netip"
 	reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockNAT is a mock of NAT interface.

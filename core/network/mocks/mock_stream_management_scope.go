@@ -7,9 +7,9 @@ package mocknetwork
 import (
 	reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
 	network "github.com/libp2p/go-libp2p/core/network"
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockStreamManagementScope is a mock of StreamManagementScope interface.

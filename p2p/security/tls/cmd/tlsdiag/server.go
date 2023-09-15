@@ -26,7 +26,7 @@ func StartServer() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf(" Peer ID: %s\n", id.Pretty())
+	fmt.Printf(" Peer ID: %s\n", id)
 	tp, err := libp2ptls.New(libp2ptls.ID, priv, nil)
 	if err != nil {
 		return err
@@ -38,7 +38,7 @@ func StartServer() error {
 	}
 	fmt.Printf("Listening for new connections on %s\n", ln.Addr())
 	fmt.Printf("Now run the following command in a separate terminal:\n")
-	fmt.Printf("\tgo run cmd/tlsdiag.go client -p %d -id %s\n", *port, id.Pretty())
+	fmt.Printf("\tgo run cmd/tlsdiag.go client -p %d -id %s\n", *port, id)
 
 	for {
 		conn, err := ln.Accept()
@@ -61,7 +61,7 @@ func handleConn(tp *libp2ptls.Transport, conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Authenticated client: %s\n", sconn.RemotePeer().Pretty())
+	fmt.Printf("Authenticated client: %s\n", sconn.RemotePeer())
 	fmt.Fprintf(sconn, "Hello client!")
 	fmt.Printf("Closing connection to %s\n", conn.RemoteAddr())
 	return sconn.Close()

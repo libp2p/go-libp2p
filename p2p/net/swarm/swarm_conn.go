@@ -49,7 +49,7 @@ func (c *Conn) IsClosed() bool {
 
 func (c *Conn) ID() string {
 	// format: <first 10 chars of peer id>-<global conn ordinal>
-	return fmt.Sprintf("%s-%d", c.RemotePeer().Pretty()[0:10], c.id)
+	return fmt.Sprintf("%s-%d", c.RemotePeer().String()[:10], c.id)
 }
 
 // Close closes this connection.
@@ -147,9 +147,9 @@ func (c *Conn) String() string {
 		"<swarm.Conn[%T] %s (%s) <-> %s (%s)>",
 		c.conn.Transport(),
 		c.conn.LocalMultiaddr(),
-		c.conn.LocalPeer().Pretty(),
+		c.conn.LocalPeer(),
 		c.conn.RemoteMultiaddr(),
-		c.conn.RemotePeer().Pretty(),
+		c.conn.RemotePeer(),
 	)
 }
 

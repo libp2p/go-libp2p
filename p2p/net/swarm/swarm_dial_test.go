@@ -167,8 +167,8 @@ func TestAddrResolution(t *testing.T) {
 	addr1 := ma.StringCast("/dnsaddr/example.com")
 	addr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123")
 
-	p2paddr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
-	p2paddr3 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p2.Pretty())
+	p2paddr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.String())
+	p2paddr3 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p2.String())
 
 	backend := &madns.MockResolver{
 		TXT: map[string][]string{"_dnsaddr.example.com": {
@@ -209,11 +209,11 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	}
 	addr1 := ma.StringCast("/dnsaddr/example.com")
 	addr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123")
-	p2paddr1 := ma.StringCast("/dnsaddr/example.com/p2p/" + p1.Pretty())
-	p2paddr2 := ma.StringCast("/dnsaddr/example.com/p2p/" + p2.Pretty())
-	p2paddr1i := ma.StringCast("/dnsaddr/foo.example.com/p2p/" + p1.Pretty())
-	p2paddr2i := ma.StringCast("/dnsaddr/bar.example.com/p2p/" + p2.Pretty())
-	p2paddr1f := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
+	p2paddr1 := ma.StringCast("/dnsaddr/example.com/p2p/" + p1.String())
+	p2paddr2 := ma.StringCast("/dnsaddr/example.com/p2p/" + p2.String())
+	p2paddr1i := ma.StringCast("/dnsaddr/foo.example.com/p2p/" + p1.String())
+	p2paddr2i := ma.StringCast("/dnsaddr/bar.example.com/p2p/" + p2.String())
+	p2paddr1f := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.String())
 
 	backend := &madns.MockResolver{
 		TXT: map[string][]string{

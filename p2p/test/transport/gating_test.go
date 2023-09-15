@@ -2,6 +2,7 @@ package transport_integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,12 +13,12 @@ import (
 
 	"github.com/libp2p/go-libp2p-testing/race"
 
-	"github.com/golang/mock/gomock"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
-//go:generate go run github.com/golang/mock/mockgen -package transport_integration -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater
+//go:generate go run go.uber.org/mock/mockgen -package transport_integration -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater
 
 func stripCertHash(addr ma.Multiaddr) ma.Multiaddr {
 	for {
@@ -88,6 +89,8 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, ConnGater: connGater})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 			require.Len(t, h2.Addrs(), 1)
 
@@ -97,7 +100,7 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 				connGater.EXPECT().InterceptPeerDial(h2.ID()).Return(true),
 				connGater.EXPECT().InterceptAddrDial(h2.ID(), gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptSecured(network.DirOutbound, h2.ID(), gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-					// remove the certhash component from WebTransport addresses
+					// remove the certhash component from WebTransport and WebRTC addresses
 					require.Equal(t, stripCertHash(h2.Addrs()[0]).String(), addrs.RemoteMultiaddr().String())
 				}),
 			)
@@ -120,6 +123,8 @@ func TestInterceptUpgradedOutgoing(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, ConnGater: connGater})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 			require.Len(t, h2.Addrs(), 1)
 
@@ -154,19 +159,35 @@ func TestInterceptAccept(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{ConnGater: connGater})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			// The basic host dials the first connection.
-			connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
-				// remove the certhash component from WebTransport addresses
-				require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
-			})
+			if strings.Contains(tc.Name, "WebRTC") {
+				// In WebRTC, retransmissions of the STUN packet might cause us to create multiple connections,
+				// if the first connection attempt is rejected.
+				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
+					// remove the certhash component from WebTransport addresses
+					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+				}).AnyTimes()
+			} else {
+				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
+					// remove the certhash component from WebTransport addresses
+					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+				})
+			}
+
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
 			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
 			require.Error(t, err)
-			require.NotErrorIs(t, err, context.DeadlineExceeded)
+			if _, err := h2.Addrs()[0].ValueForProtocol(ma.P_WEBRTC_DIRECT); err != nil {
+				// WebRTC rejects connection attempt before an error can be sent to the client.
+				// This means that the connection attempt will time out.
+				require.NotErrorIs(t, err, context.DeadlineExceeded)
+			}
 		})
 	}
 }
@@ -183,6 +204,8 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{ConnGater: connGater})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -214,6 +237,8 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{ConnGater: connGater})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
