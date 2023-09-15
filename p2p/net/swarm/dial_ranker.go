@@ -92,7 +92,8 @@ func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.D
 	sort.Slice(addrs, func(i, j int) bool { return score(addrs[i]) < score(addrs[j]) })
 
 	// If the first address is (QUIC, IPv6), make the second address (QUIC, IPv4).
-	happyEyeballs := false
+	happyEyeballsQUIC := false
+	happyEyeballsTCP := false
 	if len(addrs) > 0 {
 		if isQUICAddr(addrs[0]) && isProtocolAddr(addrs[0], ma.P_IP6) {
 			for i := 1; i < len(addrs); i++ {
@@ -103,7 +104,29 @@ func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.D
 						copy(addrs[2:], addrs[1:i])
 						addrs[1] = a
 					}
-					happyEyeballs = true
+					happyEyeballsQUIC = true
+					break
+				}
+			}
+		}
+		// idx is the index of the first tcp address
+		idx := 0
+		for i, a := range addrs {
+			if isProtocolAddr(a, ma.P_TCP) {
+				idx = i
+				break
+			}
+		}
+		if isProtocolAddr(addrs[idx], ma.P_TCP) && isProtocolAddr(addrs[idx], ma.P_IP6) {
+			for i := idx + 1; i < len(addrs); i++ {
+				if isProtocolAddr(addrs[i], ma.P_TCP) && isProtocolAddr(addrs[i], ma.P_IP4) {
+					// make IPv4 address the second element
+					if i > idx+1 {
+						a := addrs[i]
+						copy(addrs[idx+2:], addrs[idx+1:i])
+						addrs[idx+1] = a
+					}
+					happyEyeballsTCP = true
 					break
 				}
 			}
@@ -112,24 +135,32 @@ func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.D
 
 	res := make([]network.AddrDelay, 0, len(addrs))
 
+	var tcpIdx int
 	var totalTCPDelay time.Duration
 	for i, addr := range addrs {
 		var delay time.Duration
 		switch {
 		case isQUICAddr(addr):
-			// For QUIC addresses we dial an IPv6 address, then after quicDelay an IPv4
-			// address, then after quicDelay we dial rest of the addresses.
 			if i == 1 {
 				delay = quicDelay
 			}
-			if i > 1 && happyEyeballs {
+			if i > 1 && happyEyeballsQUIC {
 				delay = 2 * quicDelay
 			} else if i > 1 {
 				delay = quicDelay
 			}
 			totalTCPDelay = delay + tcpDelay
 		case isProtocolAddr(addr, ma.P_TCP):
-			delay = totalTCPDelay
+			if tcpIdx == 1 {
+				delay = tcpDelay
+			}
+			if tcpIdx > 1 && happyEyeballsTCP {
+				delay = 2 * tcpDelay
+			} else if tcpIdx > 1 {
+				delay = tcpDelay
+			}
+			tcpIdx++
+			delay += totalTCPDelay
 		}
 		res = append(res, network.AddrDelay{Addr: addr, Delay: offset + delay})
 	}
