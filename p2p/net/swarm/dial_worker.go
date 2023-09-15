@@ -8,6 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	tpt "github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -77,7 +78,7 @@ type dialWorker struct {
 	// we dial an address at most once
 	trackedDials map[string]*addrDial
 	// resch is used to receive response for dials to the peers addresses.
-	resch chan dialResult
+	resch chan tpt.DialUpdate
 
 	connected bool // true when a connection has been successfully established
 
@@ -96,7 +97,7 @@ func newDialWorker(s *Swarm, p peer.ID, reqch <-chan dialRequest, cl Clock) *dia
 		reqch:           reqch,
 		pendingRequests: make(map[*pendRequest]struct{}),
 		trackedDials:    make(map[string]*addrDial),
-		resch:           make(chan dialResult),
+		resch:           make(chan tpt.DialUpdate),
 		cl:              cl,
 	}
 }

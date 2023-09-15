@@ -13,17 +13,11 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type dialResult struct {
-	Conn transport.CapableConn
-	Addr ma.Multiaddr
-	Err  error
-}
-
 type dialJob struct {
 	addr    ma.Multiaddr
 	peer    peer.ID
 	ctx     context.Context
-	resp    chan dialResult
+	resp    chan transport.DialUpdate
 	timeout time.Duration
 }
 
@@ -218,7 +212,7 @@ func (dl *dialLimiter) executeDial(j *dialJob) {
 
 	con, err := dl.dialFunc(dctx, j.peer, j.addr)
 	select {
-	case j.resp <- dialResult{Conn: con, Addr: j.addr, Err: err}:
+	case j.resp <- transport.DialUpdate{Conn: con, Addr: j.addr, Err: err}:
 	case <-j.ctx.Done():
 		if con != nil {
 			con.Close()
