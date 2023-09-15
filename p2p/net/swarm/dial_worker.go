@@ -325,7 +325,7 @@ loop:
 
 			// TCP Connection has been established. Wait for connection upgrade on this address
 			// before making new dials.
-			if res.Kind == tpt.TCPConnectionEstablished {
+			if res.Kind == tpt.UpdateKindTCPConnectionEstablished {
 				// Only wait for public addresses to complete dialing since private dials
 				// are quick any way
 				if manet.IsPublicAddr(res.Addr) {

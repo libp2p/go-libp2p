@@ -136,21 +136,22 @@ type DialUpdater interface {
 type DialUpdateKind int
 
 const (
-	// DialFailed indicates dial failed.
-	DialFailed DialUpdateKind = iota
-	// DialSuccessful indicates dial succeeded.
-	DialSuccessful
-	// TCPConnectionEstablished indicates successful completion of the TCP 3-way handshake
-	TCPConnectionEstablished
+	// UpdateKindDialFailed indicates dial failed.
+	UpdateKindDialFailed DialUpdateKind = iota
+	// UpdateKindDialSuccessful indicates dial succeeded.
+	UpdateKindDialSuccessful
+	// UpdateKindTCPConnectionEstablished indicates successful completion of the TCP 3-way
+	// handshake
+	UpdateKindTCPConnectionEstablished
 )
 
 func (k DialUpdateKind) String() string {
 	switch k {
-	case DialFailed:
+	case UpdateKindDialFailed:
 		return "DialFailed"
-	case DialSuccessful:
+	case UpdateKindDialSuccessful:
 		return "DialSuccessful"
-	case TCPConnectionEstablished:
+	case UpdateKindTCPConnectionEstablished:
 		return "TCPConnectionEstablished"
 	default:
 		return fmt.Sprintf("DialUpdateKind<Unknown-%d>", k)

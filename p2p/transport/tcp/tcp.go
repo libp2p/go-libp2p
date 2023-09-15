@@ -219,7 +219,7 @@ func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p 
 	}
 	if updCh != nil {
 		select {
-		case updCh <- transport.DialUpdate{Kind: transport.TCPConnectionEstablished, Addr: raddr}:
+		case updCh <- transport.DialUpdate{Kind: transport.UpdateKindTCPConnectionEstablished, Addr: raddr}:
 		default:
 			// It is better to skip the update than to delay upgrading the connection
 		}

@@ -1116,7 +1116,7 @@ func TestDialWorkerLoopTCPConnUpgradeWait(t *testing.T) {
 	// Wait a bit to let the loop make the dial attempt to a1
 	time.Sleep(1 * time.Second)
 	// Send conn established for a1
-	worker.resch <- transport.DialUpdate{Kind: transport.TCPConnectionEstablished, Addr: a1}
+	worker.resch <- transport.DialUpdate{Kind: transport.UpdateKindTCPConnectionEstablished, Addr: a1}
 	// Dial to a2 shouldn't happen even if a2 is scheduled to dial by now
 	cl.AdvanceBy(290 * time.Millisecond)
 	select {

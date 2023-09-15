@@ -211,9 +211,9 @@ func (dl *dialLimiter) executeDial(j *dialJob) {
 	defer cancel()
 
 	con, err := dl.dialFunc(dctx, j.peer, j.addr, j.resp)
-	kind := transport.DialSuccessful
+	kind := transport.UpdateKindDialSuccessful
 	if err != nil {
-		kind = transport.DialFailed
+		kind = transport.UpdateKindDialFailed
 	}
 	select {
 	case j.resp <- transport.DialUpdate{Kind: kind, Conn: con, Addr: j.addr, Err: err}:
