@@ -126,6 +126,12 @@ type Upgrader interface {
 	Upgrade(ctx context.Context, t Transport, maconn manet.Conn, dir network.Direction, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
 }
 
+// DialUpdater provides updates on in progress dials.
+type DialUpdater interface {
+	// DialWithUpdates dials a remote peer and provides updates on the passed channel.
+	DialWithUpdates(context.Context, ma.Multiaddr, peer.ID, chan<- DialUpdate) (CapableConn, error)
+}
+
 // DialUpdateKind indicates the type of DialUpdate event.
 type DialUpdateKind int
 
@@ -134,6 +140,8 @@ const (
 	DialFailed DialUpdateKind = iota
 	// DialSuccessful indicates dial succeeded.
 	DialSuccessful
+	// TCPConnectionEstablished indicates successful completion of the TCP 3-way handshake
+	TCPConnectionEstablished
 )
 
 func (k DialUpdateKind) String() string {
@@ -142,6 +150,8 @@ func (k DialUpdateKind) String() string {
 		return "DialFailed"
 	case DialSuccessful:
 		return "DialSuccessful"
+	case TCPConnectionEstablished:
+		return "TCPConnectionEstablished"
 	default:
 		return fmt.Sprintf("DialUpdateKind<Unknown-%d>", k)
 	}
