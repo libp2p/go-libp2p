@@ -11,6 +11,7 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // dialRequest is structure used to request dials to the peer associated with a
@@ -63,6 +64,8 @@ type addrDial struct {
 	createdAt time.Time
 	// dialRankingDelay is the delay in dialing this address introduced by the ranking logic
 	dialRankingDelay time.Duration
+	// expectedTCPUpgTime is the expected time by which security upgrade will complete
+	expectedTCPUpgTime time.Time
 }
 
 // dialWorker synchronises concurrent dials to a peer. It ensures that we make at most one dial to a
@@ -129,7 +132,13 @@ func (w *dialWorker) loop() {
 				// if there are no dials in flight, trigger the next dials immediately
 				dialTimer.Reset(startTime)
 			} else {
-				dialTimer.Reset(startTime.Add(dq.top().Delay))
+				resetTime := startTime.Add(dq.top().Delay)
+				for _, ad := range w.trackedDials {
+					if !ad.expectedTCPUpgTime.IsZero() && ad.expectedTCPUpgTime.After(resetTime) {
+						resetTime = ad.expectedTCPUpgTime
+					}
+				}
+				dialTimer.Reset(resetTime)
 			}
 			timerRunning = true
 		}
@@ -314,12 +323,19 @@ loop:
 				continue
 			}
 
-			// TODO: Handle TCPConnectionEstablished by delaying future dials
+			// TCP Connection has been established. Wait for connection upgrade on this address
+			// before making new dials.
 			if res.Kind == tpt.TCPConnectionEstablished {
+				// Only wait for public addresses to complete dialing since private dials
+				// are quick any way
+				if manet.IsPublicAddr(res.Addr) {
+					ad.expectedTCPUpgTime = w.cl.Now().Add(PublicTCPDelay)
+				}
+				scheduleNextDial()
 				continue
 			}
-
 			dialsInFlight--
+			ad.expectedTCPUpgTime = time.Time{}
 			if res.Conn != nil {
 				// we got a connection, add it to the swarm
 				conn, err := w.s.addConn(res.Conn, network.DirOutbound)

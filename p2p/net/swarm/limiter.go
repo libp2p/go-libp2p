@@ -211,8 +211,12 @@ func (dl *dialLimiter) executeDial(j *dialJob) {
 	defer cancel()
 
 	con, err := dl.dialFunc(dctx, j.peer, j.addr, j.resp)
+	kind := transport.DialSuccessful
+	if err != nil {
+		kind = transport.DialFailed
+	}
 	select {
-	case j.resp <- transport.DialUpdate{Conn: con, Addr: j.addr, Err: err}:
+	case j.resp <- transport.DialUpdate{Kind: kind, Conn: con, Addr: j.addr, Err: err}:
 	case <-j.ctx.Done():
 		if con != nil {
 			con.Close()
