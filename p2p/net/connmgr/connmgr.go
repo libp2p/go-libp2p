@@ -240,7 +240,7 @@ func (cm *BasicConnMgr) IsProtected(id peer.ID, tag string) (protected bool) {
 	return protected
 }
 
-func (cm *BasicConnMgr) CheckLimit(systemLimit connmgr.GetterConnLimit) error {
+func (cm *BasicConnMgr) CheckLimit(systemLimit connmgr.GetConnLimiter) error {
 	if cm.cfg.highWater > systemLimit.GetConnLimit() {
 		return fmt.Errorf("conn manager high water limit: %d, exceeds the system limit of: %d", cm.cfg.highWater, systemLimit.GetConnLimit())
 	}

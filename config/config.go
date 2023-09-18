@@ -297,7 +297,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 func (cfg *Config) NewNode() (host.Host, error) {
 	// If possible check that the resource manager conn limit is higher than the
 	// limit set in the conn manager.
-	l, ok := cfg.ResourceManager.(connmgr.GetterConnLimit)
+	l, ok := cfg.ResourceManager.(connmgr.GetConnLimiter)
 	if ok {
 		err := cfg.ConnManager.CheckLimit(l)
 		if err != nil {

@@ -76,7 +76,7 @@ type ConnManager interface {
 
 	// CheckLimit will return an error if the connection manager's internal
 	// connection limit exceeds the provided system limit.
-	CheckLimit(l GetterConnLimit) error
+	CheckLimit(l GetConnLimiter) error
 
 	// Close closes the connection manager and stops background processes.
 	Close() error
@@ -94,8 +94,8 @@ type TagInfo struct {
 	Conns map[string]time.Time
 }
 
-// GetterConnLimit provides access to a component's total connection limit.
-type GetterConnLimit interface {
+// GetConnLimiter provides access to a component's total connection limit.
+type GetConnLimiter interface {
 	// GetConnLimit returns the total connection limit of the implementing component.
 	GetConnLimit() int
 }
