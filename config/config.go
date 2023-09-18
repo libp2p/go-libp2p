@@ -295,7 +295,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 //
 // This function consumes the config. Do not reuse it (really!).
 func (cfg *Config) NewNode() (host.Host, error) {
-	// If possible check that the resource manager conn limit is higer than the
+	// If possible check that the resource manager conn limit is higher than the
 	// limit set in the conn manager.
 	l, ok := cfg.ResourceManager.(connmgr.GetterConnLimit)
 	if ok {
