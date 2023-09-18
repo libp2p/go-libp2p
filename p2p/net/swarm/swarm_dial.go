@@ -216,7 +216,8 @@ func (db *DialBackoff) cleanup() {
 	}
 }
 
-// DialPeer connects to a peer.
+// DialPeer connects to a peer. Use network.WithForceDirectDial to force a
+// direct connection.
 //
 // The idea is that the client of Swarm does not need to know what network
 // the connection will happen over. Swarm can use whichever it choses.
@@ -246,11 +247,10 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 		return nil, ErrDialToSelf
 	}
 
-	// check if we already have an open (usable) connection first, or can't have a usable
-	// connection.
-	conn, err := s.bestAcceptableConnToPeer(ctx, p)
-	if conn != nil || err != nil {
-		return conn, err
+	// check if we already have an open (usable) connection.
+	conn := s.bestAcceptableConnToPeer(ctx, p)
+	if conn != nil {
+		return conn, nil
 	}
 
 	if s.gater != nil && !s.gater.InterceptPeerDial(p) {

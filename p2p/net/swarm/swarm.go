@@ -429,6 +429,8 @@ func (s *Swarm) StreamHandler() network.StreamHandler {
 
 // NewStream creates a new stream on any available connection to peer, dialing
 // if necessary.
+// Use network.WithUseTransient to open a stream over a transient(relayed)
+// connection.
 func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error) {
 	log.Debugf("[%s] opening stream to peer [%s]", s.local, p)
 
@@ -447,10 +449,7 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 	dials := 0
 	for {
 		// will prefer direct connections over relayed connections for opening streams
-		c, err := s.bestAcceptableConnToPeer(ctx, p)
-		if err != nil {
-			return nil, err
-		}
+		c := s.bestAcceptableConnToPeer(ctx, p)
 
 		if c == nil {
 			if nodial, _ := network.GetNoDial(ctx); nodial {
@@ -548,26 +547,17 @@ func (s *Swarm) bestConnToPeer(p peer.ID) *Conn {
 	return best
 }
 
-// - Returns the best "acceptable" connection, if available.
-// - Returns nothing if no such connection exists, but if we should try dialing anyways.
-// - Returns an error if no such connection exists, but we should not try dialing.
-func (s *Swarm) bestAcceptableConnToPeer(ctx context.Context, p peer.ID) (*Conn, error) {
+// bestAcceptableConnToPeer returns the best acceptable connection, considering the passed in ctx.
+// If network.WithForceDirectDial is used, it only returns a direct connections, ignoring
+// any transient (relayed) connections to the peer.
+func (s *Swarm) bestAcceptableConnToPeer(ctx context.Context, p peer.ID) *Conn {
 	conn := s.bestConnToPeer(p)
-	if conn == nil {
-		return nil, nil
-	}
 
 	forceDirect, _ := network.GetForceDirectDial(ctx)
 	if forceDirect && !isDirectConn(conn) {
-		return nil, nil
+		return nil
 	}
-
-	useTransient, _ := network.GetUseTransient(ctx)
-	if useTransient || !conn.Stat().Transient {
-		return conn, nil
-	}
-
-	return nil, network.ErrTransientConn
+	return conn
 }
 
 func isDirectConn(c *Conn) bool {
