@@ -301,7 +301,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if ok {
 		err := cfg.ConnManager.CheckLimit(l)
 		if err != nil {
-			log.Warn(err)
+			log.Warn(fmt.Sprintf("rcmgr limit conflicts with connmgr limit: %v", err))
 		}
 	}
 
