@@ -402,10 +402,16 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 		stream, err := conn.OpenStream(context.Background())
 		require.NoError(t, err)
 
-		stream.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
+		stream.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 		largeBuffer := make([]byte, 2*1024*1024)
 		_, err = stream.Write(largeBuffer)
 		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+
+		stream.SetWriteDeadline(time.Now().Add(-200 * time.Millisecond))
+		smallBuffer := make([]byte, 1024)
+		_, err = stream.Write(smallBuffer)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+
 	})
 }
 

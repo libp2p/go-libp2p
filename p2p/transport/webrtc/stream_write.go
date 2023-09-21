@@ -35,6 +35,10 @@ func (s *stream) Write(b []byte) (int, error) {
 		s.readLoopOnce.Do(s.spawnControlMessageReader)
 	}
 
+	if !s.writeDeadline.IsZero() && time.Now().After(s.writeDeadline) {
+		return 0, os.ErrDeadlineExceeded
+	}
+
 	var writeDeadlineTimer *time.Timer
 	defer func() {
 		if writeDeadlineTimer != nil {
