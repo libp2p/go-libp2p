@@ -126,7 +126,7 @@ func newStream(
 		if s.isDone() {
 			// onDone removes the stream from the connection and requires the connection lock.
 			// This callback(onBufferedAmountLow) is executing in the sctp readLoop goroutine.
-			// If the connection is closed concurrently, the closing goroutine will acquire
+			// If Connection.Close is called concurrently, the closing goroutine will acquire
 			// the connection lock and wait for sctp readLoop to exit, the sctp readLoop will
 			// wait for the connection lock before exiting, causing a deadlock.
 			// Run this in a different goroutine to avoid the deadlock.
@@ -202,7 +202,8 @@ func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 	s.maybeDeclareStreamDone()
 }
 
-// this is used to force reset a stream
+// maybeDeclareStreamDone is used to force reset a stream. It should be called with
+// the stream lock acquired. It calls stream.onDone which requires the connection lock.
 func (s *stream) maybeDeclareStreamDone() {
 	if s.isDone() {
 		_ = s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
@@ -214,6 +215,8 @@ func (s *stream) maybeDeclareStreamDone() {
 	}
 }
 
+// isDone indicates whether the stream is completed and all the control messages have also been
+// flushed. It must be called with the stream lock acquired.
 func (s *stream) isDone() bool {
 	return (s.sendState == sendStateReset || s.sendState == sendStateDataSent) &&
 		(s.receiveState == receiveStateReset || s.receiveState == receiveStateDataRead) &&
