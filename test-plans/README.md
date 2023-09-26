@@ -10,10 +10,10 @@ can dial/listen for ourselves we can do the following:
 
 1. Start redis (needed by the tests): `docker run --rm -it -p 6379:6379
    redis/redis-stack`.
-2. In one terminal run the dialer: `REDIS_ADDR=localhost:6379 ip="0.0.0.0"
+2. In one terminal run the dialer: `redis_addr=localhost:6379 ip="0.0.0.0"
    transport=quic-v1 security=quic muxer=quic is_dialer="true" go run
    ./cmd/ping`
-3. In another terminal, run the listener: `REDIS_ADDR=localhost:6379
+3. In another terminal, run the listener: `redis_addr=localhost:6379
    ip="0.0.0.0" transport=quic-v1 security=quic muxer=quic is_dialer="false" go
    run ./cmd/ping`
 
