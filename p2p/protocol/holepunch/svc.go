@@ -84,6 +84,8 @@ func NewService(h host.Host, ids identify.IDService, opts ...Option) (*Service, 
 			return nil, err
 		}
 	}
+	s.host.Network().Notify(s)
+
 	s.tracer.Start()
 
 	s.refCount.Add(1)
@@ -283,3 +285,39 @@ func (s *Service) DirectConnect(p peer.ID) error {
 	s.holePuncherMx.Unlock()
 	return holePuncher.DirectConnect(p)
 }
+
+var _ network.Notifiee = &Service{}
+
+func (s *Service) Connected(_ network.Network, conn network.Conn) {
+	// Dial /webrtc address if it's a relay connection to a browser node
+	if conn.Stat().Direction == network.DirOutbound && conn.Stat().Transient {
+		s.refCount.Add(1)
+		go func() {
+			defer s.refCount.Done()
+			select {
+			// waiting for Identify here will allow us to access the peer's public and observed addresses
+			// that we can dial to for a hole punch.
+			case <-s.ids.IdentifyWait(conn):
+			case <-s.ctx.Done():
+				return
+			}
+			p := conn.RemotePeer()
+			// Peer supports DCUtR, let it trigger holepunch
+			if protos, err := s.host.Peerstore().SupportsProtocols(p, Protocol); err == nil && len(protos) > 0 {
+				return
+			}
+			// No DCUtR support, connect with peer over /webrtc
+			for _, addr := range s.host.Peerstore().Addrs(p) {
+				if _, err := addr.ValueForProtocol(ma.P_WEBRTC); err == nil {
+					ctx := network.WithForceDirectDial(s.ctx, "webrtc holepunch")
+					s.host.Connect(ctx, peer.AddrInfo{ID: p}) // address is already in peerstore
+					return
+				}
+			}
+		}()
+	}
+}
+
+func (*Service) Disconnected(_ network.Network, v network.Conn) {}
+func (*Service) Listen(n network.Network, a ma.Multiaddr)       {}
+func (*Service) ListenClose(n network.Network, a ma.Multiaddr)  {}

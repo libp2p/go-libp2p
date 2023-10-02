@@ -108,6 +108,9 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	// short-circuit hole punching if a direct dial works.
 	// attempt a direct connection ONLY if we have a public address for the remote peer
 	for _, a := range hp.host.Peerstore().Addrs(rp) {
+		// Here we consider /webrtc addresses as relay addresses and skip them as they're
+		// also holepunched. We will dial the /webrtc addresses along with other addresses
+		// obtained in DCUtR
 		if manet.IsPublicAddr(a) && !isRelayAddress(a) {
 			forceDirectConnCtx := network.WithForceDirectDial(hp.ctx, "hole-punching")
 			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
@@ -136,6 +139,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 		if err != nil {
 			log.Debugw("hole punching failed", "peer", rp, "error", err)
 			hp.tracer.ProtocolError(rp, err)
+			hp.maybeDialWebRTC(rp)
 			return err
 		}
 		synTime := rtt / 2
@@ -169,6 +173,17 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 		}
 	}
 	return fmt.Errorf("all retries for hole punch with peer %s failed", rp)
+}
+
+func (hp *holePuncher) maybeDialWebRTC(p peer.ID) {
+	addrs := hp.host.Peerstore().Addrs(p)
+	for _, a := range addrs {
+		if _, err := a.ValueForProtocol(ma.P_WEBRTC); err == nil {
+			ctx := network.WithForceDirectDial(hp.ctx, "webrtc holepunch")
+			hp.host.Connect(ctx, peer.AddrInfo{ID: p}) // address is already in peerstore
+			return
+		}
+	}
 }
 
 // initiateHolePunch opens a new hole punching coordination stream,

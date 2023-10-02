@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -510,4 +511,58 @@ func mkHostWithHolePunchSvc(t *testing.T, opts ...holepunch.Option) (host.Host, 
 	hps, err := holepunch.NewService(h, newMockIDService(t, h), opts...)
 	require.NoError(t, err)
 	return h, hps
+}
+
+func TestWebRTCDirectConnect(t *testing.T) {
+	relay1, err := libp2p.New()
+	require.NoError(t, err)
+
+	_, err = relayv2.New(relay1)
+	require.NoError(t, err)
+
+	relay1info := peer.AddrInfo{
+		ID:    relay1.ID(),
+		Addrs: relay1.Addrs(),
+	}
+
+	h1, err := libp2p.New(
+		libp2p.NoListenAddrs,
+		libp2p.EnableRelay(),
+		libp2p.EnableWebRTCPrivate(nil),
+		libp2p.EnableHolePunching(),
+	)
+	require.NoError(t, err)
+
+	h2, err := libp2p.New(
+		libp2p.NoListenAddrs,
+		libp2p.EnableRelay(),
+		libp2p.EnableWebRTCPrivate(nil),
+	)
+	require.NoError(t, err)
+
+	err = h2.Connect(context.Background(), relay1info)
+	require.NoError(t, err)
+
+	_, err = client.Reserve(context.Background(), h2, relay1info)
+	require.NoError(t, err)
+
+	webrtcAddr := ma.StringCast(relay1info.Addrs[0].String() + "/p2p/" + relay1info.ID.String() + "/p2p-circuit/webrtc")
+	relayAddrs := ma.StringCast(relay1info.Addrs[0].String() + "/p2p/" + relay1info.ID.String() + "/p2p-circuit/")
+	h1.Peerstore().AddAddrs(h2.ID(), []ma.Multiaddr{webrtcAddr, relayAddrs}, peerstore.TempAddrTTL)
+
+	err = h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID()})
+	require.NoError(t, err)
+	require.Eventually(
+		t,
+		func() bool {
+			for _, c := range h1.Network().ConnsToPeer(h2.ID()) {
+				if !c.Stat().Transient {
+					return true
+				}
+			}
+			return false
+		},
+		5*time.Second,
+		100*time.Millisecond,
+	)
 }
