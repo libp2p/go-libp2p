@@ -742,7 +742,7 @@ func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 		for _, addr := range addrs {
 			pub := addr.Encapsulate(circuit)
 			raddrs = append(raddrs, pub)
-			if isBrowserDialableAddr(addr) {
+			if rf.conf.webRTCSupport && isBrowserDialableAddr(addr) {
 				waddr := pub.Encapsulate(webrtc)
 				raddrs = append(raddrs, waddr)
 				relayAddrCnt++

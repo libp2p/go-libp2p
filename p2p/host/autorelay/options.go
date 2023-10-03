@@ -42,6 +42,9 @@ type config struct {
 	setMinCandidates bool
 	// see WithMetricsTracer
 	metricsTracer MetricsTracer
+
+	// see WithWebRTCSupport
+	webRTCSupport bool
 }
 
 var defaultConfig = config{
@@ -228,6 +231,14 @@ func WithMinInterval(interval time.Duration) Option {
 func WithMetricsTracer(mt MetricsTracer) Option {
 	return func(c *config) error {
 		c.metricsTracer = mt
+		return nil
+	}
+}
+
+// WithWebRTCSupport configures autorelay to advertise webrtc addresses from host
+func WithWebRTCSupport() Option {
+	return func(c *config) error {
+		c.webRTCSupport = true
 		return nil
 	}
 }

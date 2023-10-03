@@ -519,47 +519,114 @@ func TestNoBusyLoop0MinInterval(t *testing.T) {
 }
 
 func TestRelayAddrs(t *testing.T) {
-	const numCandidates = 3
-	var called bool
-	peerChan := make(chan peer.AddrInfo, numCandidates)
-	for i := 0; i < numCandidates; i++ {
-		r := newRelay(t)
-		t.Cleanup(func() { r.Close() })
-		peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
-	}
-	close(peerChan)
 
-	h := newPrivateNode(t,
-		func(_ context.Context, num int) <-chan peer.AddrInfo {
-			require.False(t, called, "expected the peer source callback to only have been called once")
-			called = true
-			require.Equal(t, numCandidates, num)
-			return peerChan
-		},
-		autorelay.WithMaxCandidates(numCandidates),
-		autorelay.WithNumRelays(1),
-		autorelay.WithBootDelay(0),
-		autorelay.WithMinInterval(time.Hour),
-	)
-	defer h.Close()
+	t.Run("WithoutWebRTC", func(t *testing.T) {
+		const numCandidates = 3
+		var called bool
+		peerChan := make(chan peer.AddrInfo, numCandidates)
+		for i := 0; i < numCandidates; i++ {
+			r := newRelay(t)
+			t.Cleanup(func() { r.Close() })
+			peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+		}
+		close(peerChan)
 
-	require.Eventually(
-		t,
-		func() bool {
-			if numRelays(h) <= 0 {
-				return false
-			}
-			addrs := h.Addrs()
-			var foundCircuit, foundWebRTC bool
-			for _, addr := range addrs {
-				_, cerr := addr.ValueForProtocol(ma.P_CIRCUIT)
-				_, werr := addr.ValueForProtocol(ma.P_WEBRTC)
-				foundCircuit = foundCircuit || cerr == nil
-				foundWebRTC = foundWebRTC || (cerr == nil && werr == nil)
-			}
-			return foundCircuit && foundWebRTC
-		},
-		5*time.Second,
-		100*time.Millisecond,
-	)
+		h := newPrivateNode(t,
+			func(_ context.Context, num int) <-chan peer.AddrInfo {
+				require.False(t, called, "expected the peer source callback to only have been called once")
+				called = true
+				require.Equal(t, numCandidates, num)
+				return peerChan
+			},
+			autorelay.WithMaxCandidates(numCandidates),
+			autorelay.WithNumRelays(1),
+			autorelay.WithBootDelay(0),
+			autorelay.WithMinInterval(time.Hour),
+		)
+		defer h.Close()
+
+		require.Eventually(
+			t,
+			func() bool {
+				if numRelays(h) <= 0 {
+					return false
+				}
+				addrs := h.Addrs()
+				var foundCircuit, foundWebRTC bool
+				for _, addr := range addrs {
+					_, cerr := addr.ValueForProtocol(ma.P_CIRCUIT)
+					_, werr := addr.ValueForProtocol(ma.P_WEBRTC)
+					foundCircuit = foundCircuit || cerr == nil
+					foundWebRTC = foundWebRTC || (cerr == nil && werr == nil)
+				}
+				return foundCircuit && !foundWebRTC
+			},
+			5*time.Second,
+			100*time.Millisecond,
+		)
+		require.Never(
+			t,
+			func() bool {
+				if numRelays(h) <= 0 {
+					return false
+				}
+				addrs := h.Addrs()
+				var foundWebRTC bool
+				for _, addr := range addrs {
+					_, cerr := addr.ValueForProtocol(ma.P_CIRCUIT)
+					_, werr := addr.ValueForProtocol(ma.P_WEBRTC)
+					foundWebRTC = foundWebRTC || (cerr == nil && werr == nil)
+				}
+				return foundWebRTC
+			},
+			500*time.Millisecond,
+			100*time.Millisecond)
+	})
+
+	t.Run("WithWebRTC", func(t *testing.T) {
+		const numCandidates = 3
+		var called bool
+		peerChan := make(chan peer.AddrInfo, numCandidates)
+		for i := 0; i < numCandidates; i++ {
+			r := newRelay(t)
+			t.Cleanup(func() { r.Close() })
+			peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+		}
+		close(peerChan)
+
+		h := newPrivateNode(t,
+			func(_ context.Context, num int) <-chan peer.AddrInfo {
+				require.False(t, called, "expected the peer source callback to only have been called once")
+				called = true
+				require.Equal(t, numCandidates, num)
+				return peerChan
+			},
+			autorelay.WithMaxCandidates(numCandidates),
+			autorelay.WithNumRelays(1),
+			autorelay.WithBootDelay(0),
+			autorelay.WithMinInterval(time.Hour),
+			autorelay.WithWebRTCSupport(),
+		)
+		defer h.Close()
+
+		require.Eventually(
+			t,
+			func() bool {
+				if numRelays(h) <= 0 {
+					return false
+				}
+				addrs := h.Addrs()
+				var foundCircuit, foundWebRTC bool
+				for _, addr := range addrs {
+					_, cerr := addr.ValueForProtocol(ma.P_CIRCUIT)
+					_, werr := addr.ValueForProtocol(ma.P_WEBRTC)
+					foundCircuit = foundCircuit || cerr == nil
+					foundWebRTC = foundWebRTC || (cerr == nil && werr == nil)
+				}
+				return foundCircuit && foundWebRTC
+			},
+			5*time.Second,
+			100*time.Millisecond,
+		)
+	})
 }
