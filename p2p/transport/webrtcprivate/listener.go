@@ -103,6 +103,15 @@ func (l *listener) handleSignalingStream(s network.Stream) {
 
 	s.SetDeadline(time.Now().Add(connectTimeout))
 
+	if l.transport.gater != nil {
+		localAddr := s.Conn().LocalMultiaddr().Encapsulate(WebRTCAddr)
+		remoteAddr := s.Conn().RemoteMultiaddr().Encapsulate(WebRTCAddr)
+		if !l.transport.gater.InterceptAccept(&libp2pwebrtc.ConnMultiaddrs{Local: localAddr, Remote: remoteAddr}) {
+			log.Debug("gater disallowed accepting connection from %s at %s", s.Conn().RemotePeer(), remoteAddr)
+			s.Reset()
+		}
+	}
+
 	conn, err := l.setupConnection(ctx, s, scope)
 	if err != nil {
 		s.Reset()
@@ -111,7 +120,7 @@ func (l *listener) handleSignalingStream(s network.Stream) {
 		return
 	}
 
-	if l.transport.gater != nil && l.transport.gater.InterceptSecured(network.DirOutbound, s.Conn().RemotePeer(), conn) {
+	if l.transport.gater != nil && l.transport.gater.InterceptSecured(network.DirInbound, s.Conn().RemotePeer(), conn) {
 		conn.Close()
 		log.Debugf("conn gater refused connection to addr: %s", conn.RemoteMultiaddr())
 	}
@@ -126,6 +135,7 @@ func (l *listener) handleSignalingStream(s network.Stream) {
 }
 
 func (l *listener) setupConnection(ctx context.Context, s network.Stream, scope network.ConnManagementScope) (tpt.CapableConn, error) {
+
 	pc, err := l.transport.NewPeerConnection()
 	if err != nil {
 		err = fmt.Errorf("error creating a webrtc.PeerConnection: %w", err)

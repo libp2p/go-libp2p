@@ -25,14 +25,14 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type connMultiaddrs struct {
-	local, remote ma.Multiaddr
+type ConnMultiaddrs struct {
+	Local, Remote ma.Multiaddr
 }
 
-var _ network.ConnMultiaddrs = &connMultiaddrs{}
+var _ network.ConnMultiaddrs = &ConnMultiaddrs{}
 
-func (c *connMultiaddrs) LocalMultiaddr() ma.Multiaddr  { return c.local }
-func (c *connMultiaddrs) RemoteMultiaddr() ma.Multiaddr { return c.remote }
+func (c *ConnMultiaddrs) LocalMultiaddr() ma.Multiaddr  { return c.Local }
+func (c *ConnMultiaddrs) RemoteMultiaddr() ma.Multiaddr { return c.Remote }
 
 const (
 	candidateSetupTimeout         = 20 * time.Second
@@ -158,7 +158,7 @@ func (l *listener) handleCandidate(ctx context.Context, candidate udpmux.Candida
 	}
 	if l.transport.gater != nil {
 		localAddr, _ := ma.SplitFunc(l.localMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
-		if !l.transport.gater.InterceptAccept(&connMultiaddrs{local: localAddr, remote: remoteMultiaddr}) {
+		if !l.transport.gater.InterceptAccept(&ConnMultiaddrs{Local: localAddr, Remote: remoteMultiaddr}) {
 			// The connection attempt is rejected before we can send the client an error.
 			// This means that the connection attempt will time out.
 			return nil, errors.New("connection gated")

@@ -25,12 +25,14 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 
-	"github.com/multiformats/go-multiaddr"
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -152,6 +154,56 @@ var transportsToTest = []TransportTestCase{
 			return h
 		},
 	},
+	{
+		Name: "WebRTCPrivate",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			// NoListenAddrs helps ensure that we are not listening for TCP, QUIC etc. We do need
+			// those transports to dial the relay for signaling stream
+			libp2pOpts = append(libp2pOpts, libp2p.EnableWebRTCPrivate(nil), libp2p.EnableRelay(), libp2p.NoListenAddrs)
+
+			if !opts.NoListen {
+				r, err := libp2p.New(
+					libp2p.EnableRelayService(),
+					libp2p.ForceReachabilityPublic(),
+					libp2p.Transport(libp2pquic.NewTransport),
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
+				require.NoError(t, err)
+				libp2pOpts = append(
+					libp2pOpts,
+					libp2p.AddrsFactory(func(_ []ma.Multiaddr) []ma.Multiaddr {
+						raddrs := r.Addrs()
+						addrs := make([]ma.Multiaddr, len(raddrs))
+						for i := 0; i < len(raddrs); i++ {
+
+							addrs[i] = ma.StringCast(fmt.Sprintf("%s/p2p/%s/p2p-circuit/webrtc/", raddrs[i], r.ID()))
+						}
+						return addrs
+					}))
+				h, err := libp2p.New(libp2pOpts...)
+				require.NoError(t, err)
+				_, err = client.Reserve(context.Background(), h, peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()})
+				require.NoError(t, err)
+				return &webrtcHost{Host: h, r: r}
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return &webrtcHost{Host: h}
+		},
+	},
+}
+
+type webrtcHost struct {
+	host.Host
+	r host.Host
+}
+
+func (h *webrtcHost) Close() error {
+	h.Host.Close()
+	if h.r != nil {
+		h.r.Close()
+	}
+	return nil
 }
 
 func TestPing(t *testing.T) {
@@ -656,6 +708,10 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTCPrivate") {
+				t.Skip("webrtcprivate needs different handling because of the relay required for connection setup")
+			}
+
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -673,7 +729,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 
 			ai := &peer.AddrInfo{
 				ID:    bogusPeerId,
-				Addrs: []multiaddr.Multiaddr{h1.Addrs()[0]},
+				Addrs: []ma.Multiaddr{h1.Addrs()[0]},
 			}
 
 			// Try connecting with the bogus peer ID
