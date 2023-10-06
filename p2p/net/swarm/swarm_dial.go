@@ -507,7 +507,7 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAdd
 // limiting that occur without using extra goroutines per addr
 func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp chan dialResult) {
 	timeout := s.dialTimeout
-	if lowTimeoutFilters.AddrBlocked(a) && s.dialTimeoutLocal < s.dialTimeout {
+	if manet.IsPrivateAddr(a) && s.dialTimeoutLocal < s.dialTimeout {
 		timeout = s.dialTimeoutLocal
 	}
 	s.limiter.AddDialJob(&dialJob{
