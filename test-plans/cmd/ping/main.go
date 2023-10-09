@@ -20,7 +20,9 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
+
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
@@ -42,7 +44,6 @@ func main() {
 		redisAddr      = os.Getenv("redis_addr")
 		testTimeoutStr = os.Getenv("test_timeout_seconds")
 	)
-
 	testTimeout := 3 * time.Minute
 	if testTimeoutStr != "" {
 		secs, err := strconv.ParseInt(testTimeoutStr, 10, 32)
@@ -75,7 +76,6 @@ func main() {
 		if ctx.Err() != nil {
 			log.Fatal("timeout waiting for redis")
 		}
-
 		// Wait for redis to be ready
 		_, err := rClient.Ping(ctx).Result()
 		if err == nil {
@@ -108,20 +108,28 @@ func main() {
 	case "webrtc-direct":
 		options = append(options, libp2p.Transport(libp2pwebrtc.New))
 		listenAddr = fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", ip)
+	case "webrtc":
+		options = append(
+			options,
+			libp2p.Transport(websocket.New),
+			libp2p.EnableWebRTCPrivate(nil),
+			libp2p.EnableRelay(),
+			libp2p.Security(noise.ID, noise.New),
+			libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport),
+		)
 	default:
 		log.Fatalf("Unsupported transport: %s", transport)
 	}
-	options = append(options, libp2p.ListenAddrStrings(listenAddr))
+	if listenAddr != "" {
+		// We do not set listenAddr here for /webrtc addresses
+		options = append(options, libp2p.ListenAddrStrings(listenAddr))
+	}
 
 	// Skipped for certain transports
 	var skipMuxer bool
 	var skipSecureChannel bool
 	switch transport {
-	case "quic-v1":
-		fallthrough
-	case "webtransport":
-		fallthrough
-	case "webrtc-direct":
+	case "quic-v1", "webtransport", "webrtc", "webrtc-direct":
 		skipMuxer = true
 		skipSecureChannel = true
 	}
@@ -145,9 +153,7 @@ func main() {
 			log.Fatalf("Unsupported muxer: %s", muxer)
 		}
 	}
-
 	host, err := libp2p.New(options...)
-
 	if err != nil {
 		log.Fatalf("failed to instantiate libp2p instance: %s", err)
 	}
@@ -174,7 +180,7 @@ func main() {
 			Addrs: []ma.Multiaddr{otherMa},
 		})
 		if err != nil {
-			log.Fatal("Failed to connect to other peer")
+			log.Fatal("Failed to connect to other peer", err)
 		}
 
 		ping := ping.NewPingService(host)
@@ -200,10 +206,37 @@ func main() {
 		fmt.Println(string(testResultJSON))
 	} else {
 		var listenAddr ma.Multiaddr
-		for _, addr := range host.Addrs() {
-			if !manet.IsIPLoopback(addr) {
-				listenAddr = addr
-				break
+		if transport == "webrtc" {
+			// /ws so browsers can dial us
+			relayHost, err := libp2p.New(libp2p.Transport(websocket.New),
+				libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0/ws"),
+				libp2p.ForceReachabilityPublic(),
+				libp2p.EnableRelayService(),
+			)
+			if err != nil {
+				log.Fatalf("failed to create relay host: %v", err)
+			}
+			defer relayHost.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_, err = client.Reserve(ctx, host, peer.AddrInfo{ID: relayHost.ID(), Addrs: relayHost.Addrs()})
+			if err != nil {
+				log.Fatalf("failed to obtain relay reservation: %v", err)
+			}
+			for _, addr := range relayHost.Addrs() {
+				if !manet.IsIPLoopback(addr) {
+					listenAddr = ma.StringCast(
+						fmt.Sprintf("%s/p2p/%s/p2p-circuit/webrtc", addr, relayHost.ID()),
+					)
+					break
+				}
+			}
+		} else {
+			for _, addr := range host.Addrs() {
+				if !manet.IsIPLoopback(addr) {
+					listenAddr = addr
+					break
+				}
 			}
 		}
 		_, err := rClient.RPush(ctx, "listenerAddr", listenAddr.Encapsulate(ma.StringCast("/p2p/"+host.ID().String())).String()).Result()
