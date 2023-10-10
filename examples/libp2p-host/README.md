@@ -84,7 +84,7 @@ defer h2.Close()
 fmt.Printf("Hello World, my second hosts ID is %s\n", h2.ID())
 ```
 
-And thats it, you have a libp2p host and you're ready to start doing some awesome p2p networking!
+And that's it, you have a libp2p host and you're ready to start doing some awesome p2p networking!
 
 In future guides we will go over ways to use hosts, configure them differently (hint: there are a huge number of ways to set these up), and interesting ways to apply this technology to various applications you might want to build.
 

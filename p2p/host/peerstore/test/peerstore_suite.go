@@ -144,7 +144,7 @@ func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 				t.Fatal("channel shouldnt be closed yet")
 			}
 			if a == nil {
-				t.Fatal("got a nil address, thats weird")
+				t.Fatal("got a nil address, that's weird")
 			}
 			count++
 			if received[a.String()] {
@@ -195,7 +195,7 @@ func testAddrStreamDuplicates(ps pstore.Peerstore) func(t *testing.T) {
 		var count int
 		for a := range ach {
 			if a == nil {
-				t.Fatal("got a nil address, thats weird")
+				t.Fatal("got a nil address, that's weird")
 			}
 			count++
 			if received[a.String()] {

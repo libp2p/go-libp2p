@@ -28,7 +28,7 @@ processes are vying for CPU time.
   sudo cgset -r cpu.cfs_quota_us=10000 cpulimit
   sudo cgset -r cpu.cfs_period_us=1000000 cpulimit
 
-  # Run a shell with in our limited environemnt
+  # Run a shell with in our limited environment
   sudo cgexec -g cpu:cpulimit bash
 
   # In the shell, run the test
