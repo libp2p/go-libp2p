@@ -49,8 +49,8 @@ type UDPMux struct {
 	// addrMap allows us to correctly direct incoming packets after the connection
 	// is established and ufrag isn't available on all packets
 	addrMap map[string]*muxedConnection
-	// ufragAddrMap allows us to clean up all addresses from the addrMap once
-	// connection is closed
+	// ufragAddrMap allows cleaning up all addresses from the addrMap once the connection is closed
+	// During the ICE connectivity checks, the same ufrag might be used on multiple addresses.
 	ufragAddrMap map[ufragConnKey][]net.Addr
 
 	// the context controls the lifecycle of the mux
