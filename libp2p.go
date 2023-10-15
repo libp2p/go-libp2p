@@ -42,7 +42,7 @@ func ChainOptions(opts ...Option) Option {
 // - If no security transport is provided, the host uses the go-libp2p's noise
 // and/or tls encrypted transport to encrypt all traffic;
 //
-// - If no peer identity is provided, it generates a random RSA 2048 key-pair
+// - If no peer identity is provided, it generates a random Ed25519 key-pair
 // and derives a new identity from it;
 //
 // - If no peerstore is provided, the host is initialized with an empty
