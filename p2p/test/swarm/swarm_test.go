@@ -79,7 +79,7 @@ func TestNewStreamTransientConnection(t *testing.T) {
 	require.NoError(t, err)
 
 	h2, err := libp2p.New(
-		libp2p.NoListenAddrs,
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
 		libp2p.EnableRelay(),
 	)
 	require.NoError(t, err)
@@ -107,18 +107,46 @@ func TestNewStreamTransientConnection(t *testing.T) {
 
 	h1.Peerstore().AddAddr(h2.ID(), relayaddr, peerstore.TempAddrTTL)
 
-	// NewStream should block transient connections till we have a direct connection
+	// WithUseTransient should succeed
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
+	ctx = network.WithUseTransient(ctx, "test")
 	s, err := h1.Network().NewStream(ctx, h2.ID())
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	defer s.Close()
+
+	// Without WithUseTransient should fail with context deadline exceeded
+	ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	s, err = h1.Network().NewStream(ctx, h2.ID())
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, s)
 
-	// NewStream should return a stream if a direct connection is established
-	// while waiting
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	// Provide h2's direct address to h1.
+	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.TempAddrTTL)
+	// network.NoDial should also fail
+	ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	time.AfterFunc(time.Second, func() {
+	ctx = network.WithNoDial(ctx, "test")
+	s, err = h1.Network().NewStream(ctx, h2.ID())
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, s)
+
+	done := make(chan bool, 2)
+	// NewStream should return a stream if an incoming direct connection is established
+	go func() {
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ctx = network.WithNoDial(ctx, "test")
+		s, err = h1.Network().NewStream(ctx, h2.ID())
+		assert.NoError(t, err)
+		assert.NotNil(t, s)
+		defer s.Close()
+		require.Equal(t, s.Conn().Stat().Direction, network.DirInbound)
+		done <- true
+	}()
+	go func() {
 		// connect h2 to h1 simulating connection reversal
 		h2.Peerstore().AddAddrs(h1.ID(), h1.Addrs(), peerstore.TempAddrTTL)
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -126,8 +154,9 @@ func TestNewStreamTransientConnection(t *testing.T) {
 		ctx = network.WithForceDirectDial(ctx, "test")
 		err := h2.Connect(ctx, peer.AddrInfo{ID: h1.ID()})
 		assert.NoError(t, err)
-	})
-	s, err = h1.Network().NewStream(ctx, h2.ID())
-	require.NoError(t, err)
-	require.NotNil(t, s)
+		done <- true
+	}()
+
+	<-done
+	<-done
 }
