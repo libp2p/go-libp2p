@@ -189,7 +189,7 @@ func TestAutoNATServiceRateLimitJitter(t *testing.T) {
 		svc.mx.Lock()
 		defer svc.mx.Unlock()
 		return svc.globalReqs == 0
-	}, dur*5/2, 10*time.Millisecond, "reset of rate limitter occured slower than expected")
+	}, dur*5/2, 10*time.Millisecond, "reset of rate limitter occurred slower than expected")
 }
 
 func TestAutoNATServiceStartup(t *testing.T) {

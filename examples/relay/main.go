@@ -27,7 +27,7 @@ func run() {
 	unreachable1, err := libp2p.New(
 		libp2p.NoListenAddrs,
 		// Usually EnableRelay() is not required as it is enabled by default
-		// but NoListenAddrs overrides this, so we're adding it in explictly again.
+		// but NoListenAddrs overrides this, so we're adding it in explicitly again.
 		libp2p.EnableRelay(),
 	)
 	if err != nil {
