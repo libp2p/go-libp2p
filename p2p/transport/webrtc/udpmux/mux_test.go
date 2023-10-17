@@ -187,6 +187,7 @@ func TestMuxedConnection(t *testing.T) {
 	connCount := 3
 
 	ufrags := []string{"a", "b", "c"}
+
 	var mu sync.Mutex
 	addrUfragMap := make(map[string]string)
 	for _, ufrag := range ufrags {
@@ -196,6 +197,7 @@ func TestMuxedConnection(t *testing.T) {
 				mu.Lock()
 				addrUfragMap[cc.LocalAddr().String()] = ufrag
 				mu.Unlock()
+				addrUfragMap[cc.LocalAddr().String()] = ufrag
 				setupMapping(t, ufrag, cc, m)
 				for j := 0; j < msgCount; j++ {
 					cc.WriteTo([]byte(ufrag), c.LocalAddr())

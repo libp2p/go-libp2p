@@ -711,3 +711,50 @@ func TestMaxInFlightRequests(t *testing.T) {
 	require.Equal(t, count, int(success.Load()), "expected exactly 3 dial successes")
 	require.Equal(t, 1, int(fails.Load()), "expected exactly 1 dial failure")
 }
+
+func TestTransportWebRTC_ReuseUDPMux(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
+
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+
+	tr1, connectingPeer := getTransport(t)
+	listener1, err := tr1.Listen(listenMultiaddr)
+	// For dialing localhost this address should be preferred
+	addr1 := listener1.Multiaddr()
+	require.NoError(t, err)
+	defer listener1.Close()
+
+	// For dialing localhost this address should be ignored
+	listener2, err := tr1.Listen(ma.StringCast("/ip4/0.0.0.0/udp/0/webrtc-direct"))
+	require.NoError(t, err)
+	defer listener2.Close()
+
+	done := make(chan struct{})
+	go func() {
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+		assert.NoError(t, err)
+		_, err = conn.LocalMultiaddr().ValueForProtocol(ma.P_WEBRTC_DIRECT)
+		assert.NoError(t, err)
+		close(done)
+	}()
+
+	conn, err := listener.Accept()
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+
+	require.Equal(t, connectingPeer, conn.RemotePeer())
+
+	// remote address on connection will not have /certhash
+	expectedAddr, _ := ma.SplitFunc(addr1, func(c ma.Component) bool {
+		return c.Protocol().Code == ma.P_CERTHASH
+	})
+	require.Equal(t, conn.RemoteMultiaddr(), expectedAddr, "%s\n%s", conn.RemoteMultiaddr(), expectedAddr)
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.FailNow()
+	}
+}

@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -796,6 +797,22 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 			addrWithCerthash, added := tpt.AddCertHashes(addr)
 			if !added {
 				log.Debug("Couldn't add certhashes to webtransport multiaddr because we aren't listening on webtransport")
+				continue
+			}
+			addrs[i] = addrWithCerthash
+		}
+	}
+
+	for i, addr := range addrs {
+		if ok, n := libp2pwebrtc.IsWebRTCDirectMultiaddr(addr); ok && n == 0 {
+			t := s.TransportForListening(addr)
+			tpt, ok := t.(addCertHasher)
+			if !ok {
+				continue
+			}
+			addrWithCerthash, added := tpt.AddCertHashes(addr)
+			if !added {
+				log.Debug("Couldn't add certhashes to webrtc-direct multiaddress")
 				continue
 			}
 			addrs[i] = addrWithCerthash

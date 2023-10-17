@@ -35,6 +35,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -94,6 +95,9 @@ type WebRTCTransport struct {
 
 	// in-flight connections
 	maxInFlightConnections uint32
+
+	v4Reuse reuseUDPMux
+	v6Reuse reuseUDPMux
 }
 
 var _ tpt.Transport = &WebRTCTransport{}
@@ -156,6 +160,16 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		},
 
 		maxInFlightConnections: DefaultMaxInFlightConnections,
+		v4Reuse: reuseUDPMux{
+			loopback:    make(map[int]*udpmux.UDPMux),
+			specific:    make(map[string]map[int]*udpmux.UDPMux),
+			unspecified: make(map[int]*udpmux.UDPMux),
+		},
+		v6Reuse: reuseUDPMux{
+			loopback:    make(map[int]*udpmux.UDPMux),
+			specific:    make(map[string]map[int]*udpmux.UDPMux),
+			unspecified: make(map[int]*udpmux.UDPMux),
+		},
 	}
 	for _, opt := range opts {
 		if err := opt(transport); err != nil {
@@ -197,7 +211,7 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		return nil, fmt.Errorf("listen on udp: %w", err)
 	}
 
-	listener, err := t.listenSocket(socket)
+	listener, err := t.listenSocket(socket, nw)
 	if err != nil {
 		socket.Close()
 		return nil, err
@@ -205,7 +219,7 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	return listener, nil
 }
 
-func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error) {
+func (t *WebRTCTransport) listenSocket(socket *net.UDPConn, network string) (tpt.Listener, error) {
 	listenerMultiaddr, err := manet.FromNetAddr(socket.LocalAddr())
 	if err != nil {
 		return nil, err
@@ -225,6 +239,12 @@ func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error
 	if err != nil {
 		return nil, err
 	}
+
+	mux, err := t.newMux(socket, network)
+	if err != nil {
+		return nil, err
+	}
+
 	listenerMultiaddr = listenerMultiaddr.Encapsulate(webrtcComponent).Encapsulate(certComp)
 
 	return newListener(
@@ -232,6 +252,7 @@ func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error
 		listenerMultiaddr,
 		socket,
 		t.webrtcConfig,
+		mux,
 	)
 }
 
@@ -306,6 +327,17 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		t.peerConnectionTimeouts.Failed,
 		t.peerConnectionTimeouts.Keepalive,
 	)
+
+	if rnw == "udp4" {
+		if mux := t.v4Reuse.Get(raddr); mux != nil {
+			settingEngine.SetICEUDPMux(mux)
+		}
+	} else {
+		if mux := t.v6Reuse.Get(raddr); mux != nil {
+			settingEngine.SetICEUDPMux(mux)
+		}
+	}
+
 	// By default, webrtc will not collect candidates on the loopback address.
 	// This is disallowed in the ICE specification. However, implementations
 	// do not strictly follow this, for eg. Chrome gathers TCP loopback candidates.
@@ -387,6 +419,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	if err != nil {
 		return nil, err
 	}
+	localAddr = localAddr.Encapsulate(webrtcComponent)
 
 	remoteMultiaddrWithoutCerthash, _ := ma.SplitFunc(remoteMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
 
@@ -519,6 +552,78 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 		}
 	}
 	return secureConn.RemotePublicKey(), nil
+}
+
+func (t *WebRTCTransport) newMux(socket *net.UDPConn, network string) (*udpmux.UDPMux, error) {
+	mux := udpmux.NewUDPMux(socket)
+	if network == "udp4" {
+		if err := t.v4Reuse.Put(mux); err != nil {
+			t.v4Reuse.Delete(mux)
+			return nil, err
+		}
+	} else {
+		if err := t.v6Reuse.Put(mux); err != nil {
+			t.v6Reuse.Delete(mux)
+			return nil, err
+		}
+	}
+	mux.Start()
+	return mux, nil
+}
+
+func (t *WebRTCTransport) RemoveMux(mux *udpmux.UDPMux) {
+	t.v4Reuse.Delete(mux)
+	t.v6Reuse.Delete(mux)
+}
+
+func (t *WebRTCTransport) AddCertHashes(addr ma.Multiaddr) (ma.Multiaddr, bool) {
+	listenerFingerprint, err := t.getCertificateFingerprint()
+	if err != nil {
+		return nil, false
+	}
+
+	encodedLocalFingerprint, err := encodeDTLSFingerprint(listenerFingerprint)
+	if err != nil {
+		return nil, false
+	}
+
+	certComp, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_CERTHASH).Name, encodedLocalFingerprint)
+	if err != nil {
+		return nil, false
+	}
+
+	return addr.Encapsulate(certComp), true
+}
+
+// IsWebRTCDirectMultiaddr returns whether addr is a /webrtc-direct multiaddr and the number of
+// certhashes found
+func IsWebRTCDirectMultiaddr(addr ma.Multiaddr) (bool, int) {
+	const (
+		init = iota
+		foundUDP
+		foundWebRTCDirect
+	)
+	state := init
+	certhashCount := 0
+
+	ma.ForEach(addr, func(c ma.Component) bool {
+		switch c.Protocol().Code {
+		case ma.P_UDP:
+			if state == init {
+				state = foundUDP
+			}
+		case ma.P_WEBRTC_DIRECT:
+			if state == foundUDP {
+				state = foundWebRTCDirect
+			}
+		case ma.P_CERTHASH:
+			if state == foundWebRTCDirect {
+				certhashCount++
+			}
+		}
+		return true
+	})
+	return state == foundWebRTCDirect, certhashCount
 }
 
 type fakeStreamConn struct{ *stream }

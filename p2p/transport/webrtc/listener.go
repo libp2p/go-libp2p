@@ -61,7 +61,7 @@ type listener struct {
 
 var _ tpt.Listener = &listener{}
 
-func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
+func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration, mux *udpmux.UDPMux) (*listener, error) {
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -91,9 +91,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	}
 
 	l.ctx, l.cancel = context.WithCancel(context.Background())
-	mux := udpmux.NewUDPMux(socket)
 	l.mux = mux
-	mux.Start()
 
 	go l.listen()
 
@@ -284,7 +282,7 @@ func (l *listener) setupConnection(
 		localMultiaddrWithoutCerthash,
 		"",  // remotePeer
 		nil, // remoteKey
-		remoteMultiaddr,
+		remoteMultiaddr.Encapsulate(webrtcComponent),
 	)
 	if err != nil {
 		return nil, err
@@ -321,11 +319,9 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 }
 
 func (l *listener) Close() error {
-	select {
-	case <-l.ctx.Done():
-	default:
-		l.cancel()
-	}
+	l.cancel()
+	l.mux.Close()
+	l.transport.RemoveMux(l.mux)
 	return nil
 }
 
