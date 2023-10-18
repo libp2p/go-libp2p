@@ -140,9 +140,9 @@ const (
 	UpdateKindDialFailed DialUpdateKind = iota
 	// UpdateKindDialSuccessful indicates dial succeeded.
 	UpdateKindDialSuccessful
-	// UpdateKindTCPConnectionEstablished indicates successful completion of the TCP 3-way
+	// UpdateKindHandshakeProgressed indicates successful completion of the TCP 3-way
 	// handshake
-	UpdateKindTCPConnectionEstablished
+	UpdateKindHandshakeProgressed
 )
 
 func (k DialUpdateKind) String() string {
@@ -151,8 +151,8 @@ func (k DialUpdateKind) String() string {
 		return "DialFailed"
 	case UpdateKindDialSuccessful:
 		return "DialSuccessful"
-	case UpdateKindTCPConnectionEstablished:
-		return "TCPConnectionEstablished"
+	case UpdateKindHandshakeProgressed:
+		return "UpdateKindHandshakeProgressed"
 	default:
 		return fmt.Sprintf("DialUpdateKind<Unknown-%d>", k)
 	}

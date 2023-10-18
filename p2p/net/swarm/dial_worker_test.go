@@ -1098,7 +1098,7 @@ func TestDialWorkerLoopTCPConnUpgradeWait(t *testing.T) {
 
 	rankerCalled := make(chan struct{})
 	s1.dialRanker = func(addrs []ma.Multiaddr) []network.AddrDelay {
-		close(rankerCalled)
+		defer close(rankerCalled)
 		return []network.AddrDelay{{Addr: a1, Delay: 0}, {Addr: a2, Delay: 100 * time.Millisecond}}
 	}
 
@@ -1116,25 +1116,26 @@ func TestDialWorkerLoopTCPConnUpgradeWait(t *testing.T) {
 	// Wait a bit to let the loop make the dial attempt to a1
 	time.Sleep(1 * time.Second)
 	// Send conn established for a1
-	worker.resch <- transport.DialUpdate{Kind: transport.UpdateKindTCPConnectionEstablished, Addr: a1}
+	worker.resch <- transport.DialUpdate{Kind: transport.UpdateKindHandshakeProgressed, Addr: a1}
 	// Dial to a2 shouldn't happen even if a2 is scheduled to dial by now
-	cl.AdvanceBy(290 * time.Millisecond)
+	cl.AdvanceBy(200 * time.Millisecond)
 	select {
 	case r := <-resch:
 		t.Fatalf("didn't expect any event on resch %s %s", r.err, r.conn)
 	case <-time.After(500 * time.Millisecond):
 	}
+
 	// Dial to a2 should happen now
 	// This number is high because there's a race between this goroutine advancing the clock
 	// and the worker loop goroutine processing the TCPConnectionEstablished event.
 	// In case it processes the event after the previous clock advancement we need to wait
-	// 290 + 300ms.
-	cl.AdvanceBy(600 * time.Millisecond)
+	// 2 * PublicTCPDelay.
+	cl.AdvanceBy(2 * PublicTCPDelay)
 	select {
 	case r := <-resch:
 		require.NoError(t, r.err)
 		require.NotNil(t, r.conn)
-	case <-time.After(5 * time.Second):
+	case <-time.After(3 * time.Second):
 		t.Errorf("expected a fail response")
 	}
 }

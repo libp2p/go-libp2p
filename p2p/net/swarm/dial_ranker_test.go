@@ -161,7 +161,7 @@ func TestDelayRankerTCPDelay(t *testing.T) {
 	t1 := ma.StringCast("/ip4/1.2.3.5/tcp/1/")
 	t1v6 := ma.StringCast("/ip6/1::2/tcp/1")
 	t2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
-	t3 := ma.StringCast("/ip6/1::3/tcp/3")
+	t3 := ma.StringCast("/ip4/1.2.3.4/tcp/3")
 
 	testCase := []struct {
 		name   string
@@ -194,6 +194,25 @@ func TestDelayRankerTCPDelay(t *testing.T) {
 			},
 		},
 		{
+			name:  "quic-ip4-with-tcp-ipv4",
+			addrs: []ma.Multiaddr{q1v1, t2, t3, t1},
+			output: []network.AddrDelay{
+				{Addr: q1v1, Delay: 0},
+				{Addr: t1, Delay: PublicTCPDelay},
+				{Addr: t2, Delay: 2 * PublicQUICDelay},
+				{Addr: t3, Delay: 2 * PublicTCPDelay},
+			},
+		},
+		{
+			name:  "quic-ip4-with-two-tcp",
+			addrs: []ma.Multiaddr{q1v1, t1v6, t2},
+			output: []network.AddrDelay{
+				{Addr: q1v1, Delay: 0},
+				{Addr: t1v6, Delay: PublicTCPDelay},
+				{Addr: t2, Delay: 2 * PublicTCPDelay},
+			},
+		},
+		{
 			name:  "tcp-ip4-ip6",
 			addrs: []ma.Multiaddr{t1, t2, t1v6, t3},
 			output: []network.AddrDelay{
@@ -202,6 +221,11 @@ func TestDelayRankerTCPDelay(t *testing.T) {
 				{Addr: t2, Delay: 2 * PublicTCPDelay},
 				{Addr: t3, Delay: 2 * PublicTCPDelay},
 			},
+		},
+		{
+			name:   "empty",
+			addrs:  []ma.Multiaddr{},
+			output: []network.AddrDelay{},
 		},
 	}
 	for _, tc := range testCase {

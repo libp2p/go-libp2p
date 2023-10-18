@@ -64,8 +64,8 @@ type addrDial struct {
 	createdAt time.Time
 	// dialRankingDelay is the delay in dialing this address introduced by the ranking logic
 	dialRankingDelay time.Duration
-	// expectedTCPUpgTime is the expected time by which security upgrade will complete
-	expectedTCPUpgTime time.Time
+	// expectedTCPUpgradeTime is the expected time by which security upgrade will complete
+	expectedTCPUpgradeTime time.Time
 }
 
 // dialWorker synchronises concurrent dials to a peer. It ensures that we make at most one dial to a
@@ -134,8 +134,8 @@ func (w *dialWorker) loop() {
 			} else {
 				resetTime := startTime.Add(dq.top().Delay)
 				for _, ad := range w.trackedDials {
-					if !ad.expectedTCPUpgTime.IsZero() && ad.expectedTCPUpgTime.After(resetTime) {
-						resetTime = ad.expectedTCPUpgTime
+					if !ad.expectedTCPUpgradeTime.IsZero() && ad.expectedTCPUpgradeTime.After(resetTime) {
+						resetTime = ad.expectedTCPUpgradeTime
 					}
 				}
 				dialTimer.Reset(resetTime)
@@ -325,17 +325,17 @@ loop:
 
 			// TCP Connection has been established. Wait for connection upgrade on this address
 			// before making new dials.
-			if res.Kind == tpt.UpdateKindTCPConnectionEstablished {
+			if res.Kind == tpt.UpdateKindHandshakeProgressed {
 				// Only wait for public addresses to complete dialing since private dials
 				// are quick any way
 				if manet.IsPublicAddr(res.Addr) {
-					ad.expectedTCPUpgTime = w.cl.Now().Add(PublicTCPDelay)
+					ad.expectedTCPUpgradeTime = w.cl.Now().Add(PublicTCPDelay)
 				}
 				scheduleNextDial()
 				continue
 			}
 			dialsInFlight--
-			ad.expectedTCPUpgTime = time.Time{}
+			ad.expectedTCPUpgradeTime = time.Time{}
 			if res.Conn != nil {
 				// we got a connection, add it to the swarm
 				conn, err := w.s.addConn(res.Conn, network.DirOutbound)
