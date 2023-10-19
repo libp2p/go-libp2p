@@ -118,8 +118,8 @@ func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.D
 		if isQUICAddr(addrs[0]) && isProtocolAddr(addrs[0], ma.P_IP6) {
 			for j := 1; j < len(addrs); j++ {
 				if isQUICAddr(addrs[j]) && isProtocolAddr(addrs[j], ma.P_IP4) {
-					// The first IPv4 address is at position i
-					// Move the ith element at position 1 shifting the affected elements
+					// The first IPv4 address is at position j
+					// Move the jth element at position 1 shifting the affected elements
 					if j > 1 {
 						a := addrs[j]
 						copy(addrs[2:], addrs[1:j])
@@ -163,7 +163,7 @@ func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.D
 		switch {
 		case isQUICAddr(addr):
 			// We dial an IPv6 address, then after quicDelay an IPv4
-			// address, then after a further quicDelay we dial rest of the addresses.
+			// address, then after a further quicDelay we dial the rest of the addresses.
 			if i == 1 {
 				delay = quicDelay
 			}
@@ -179,7 +179,7 @@ func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.D
 			tcpFirstDialDelay = delay + tcpDelay
 		case isProtocolAddr(addr, ma.P_TCP):
 			// We dial an IPv6 address, then after tcpDelay an IPv4
-			// address, then after a further tcpDelay we dial rest of the addresses.
+			// address, then after a further tcpDelay we dial the rest of the addresses.
 			if i == tcpStartIdx+1 {
 				delay = tcpDelay
 			}
