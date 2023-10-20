@@ -21,12 +21,14 @@ func TestNoStreamOverTransientConnection(t *testing.T) {
 	h1, err := libp2p.New(
 		libp2p.NoListenAddrs,
 		libp2p.EnableRelay(),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
 	require.NoError(t, err)
 
 	h2, err := libp2p.New(
 		libp2p.NoListenAddrs,
 		libp2p.EnableRelay(),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
 	require.NoError(t, err)
 
@@ -80,12 +82,14 @@ func TestNewStreamTransientConnection(t *testing.T) {
 	h1, err := libp2p.New(
 		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
 		libp2p.EnableRelay(),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
 	require.NoError(t, err)
 
 	h2, err := libp2p.New(
 		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
 		libp2p.EnableRelay(),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
 	require.NoError(t, err)
 
