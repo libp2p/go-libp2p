@@ -56,7 +56,7 @@ func newWebRTCHost(t *testing.T) *webrtcHost {
 }
 
 func newRelayedHost(t *testing.T) *relayedHost {
-	rh := blankhost.NewBlankHost(swarmt.GenSwarm(t))
+	rh := blankhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
 	rr := relay.DefaultResources()
 	rr.MaxCircuits = 100
 	_, err := relay.New(rh, relay.WithResources(rr))
@@ -135,9 +135,9 @@ func TestConnectionProperties(t *testing.T) {
 			require.NoError(t, err)
 		}
 		testAddr(ca.LocalMultiaddr())
-		testAddr(ca.RemoteMultiaddr())
 		testAddr(cb.LocalMultiaddr())
-		testAddr(cb.RemoteMultiaddr())
+		require.Equal(t, ca.RemoteMultiaddr(), b.Addr, "%s\n%s", ca.RemoteMultiaddr(), b.Addr)
+		require.Equal(t, cb.RemoteMultiaddr(), b.Addr, "%s\n%s", cb.RemoteMultiaddr(), b.Addr)
 	})
 
 	t.Run("ConnectionState", func(t *testing.T) {

@@ -25,7 +25,8 @@ func TestResourceManagerIsUsed(t *testing.T) {
 			for _, testDialer := range []bool{true, false} {
 				t.Run(tc.Name+fmt.Sprintf(" test_dialer=%v", testDialer), func(t *testing.T) {
 					if strings.Contains(tc.Name, "WebRTCPrivate") {
-						t.Skip("webrtcprivate needs different handling because of the relay required for connection setup")
+						testResourceManagerIsUsedWebRTCPrivate(t, tc, testDialer)
+						return
 					}
 					var reservedMemory, releasedMemory atomic.Int32
 					defer func() {
@@ -140,4 +141,299 @@ func TestResourceManagerIsUsed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testResourceManagerIsUsedWebRTCPrivate(t *testing.T, tc TransportTestCase, testDialer bool) {
+	t.Helper()
+	if testDialer {
+		testResourceManagerIsUsedWebRTCPrivateDialer(t, tc)
+	} else {
+		testResourceManagerIsUsedWebRTCPrivateListener(t, tc)
+	}
+}
+
+func testResourceManagerIsUsedWebRTCPrivateDialer(t *testing.T, tc TransportTestCase) {
+	t.Helper()
+	var reservedMemory, releasedMemory atomic.Int32
+	defer func() {
+		require.Equal(t, reservedMemory.Load(), releasedMemory.Load())
+		require.NotEqual(t, 0, reservedMemory.Load())
+	}()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
+	rcmgr.EXPECT().Close()
+
+	listener := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
+	dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, ResourceManager: rcmgr})
+
+	getPeerScope := func() *mocknetwork.MockPeerScope {
+		peerScope := mocknetwork.NewMockPeerScope(ctrl)
+		peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, pri uint8) {
+			reservedMemory.Add(int32(amount))
+		})
+		peerScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes().Do(func(amount int) {
+			releasedMemory.Add(int32(amount))
+		})
+		peerScope.EXPECT().BeginSpan().AnyTimes().DoAndReturn(func() (network.ResourceScopeSpan, error) {
+			s := mocknetwork.NewMockResourceScopeSpan(ctrl)
+			s.EXPECT().BeginSpan().AnyTimes().Return(mocknetwork.NewMockResourceScopeSpan(ctrl), nil)
+			// No need to track these memory reservations since we assert that Done is called
+			s.EXPECT().ReserveMemory(gomock.Any(), gomock.Any())
+			s.EXPECT().Done()
+			return s, nil
+		})
+		return peerScope
+	}
+
+	relayPeerScope := getPeerScope()
+	listenerPeerScope := getPeerScope()
+
+	// getRelayConnScope creates a connection scope for the connection to the relay node and the circuitv2 connection
+	// to the listener
+	getRelayConnScope := func() *mocknetwork.MockConnManagementScope {
+		var connPeer atomic.Pointer[peer.ID]
+		connScope := mocknetwork.NewMockConnManagementScope(ctrl)
+		connScope.EXPECT().SetPeer(gomock.Any()).AnyTimes().Do(func(p peer.ID) {
+			connPeer.Store(&p)
+		})
+		connScope.EXPECT().PeerScope().AnyTimes().DoAndReturn(func() *mocknetwork.MockPeerScope {
+			if connPeer.Load() == nil || *connPeer.Load() == listener.ID() {
+				return listenerPeerScope
+			}
+			return relayPeerScope
+		})
+		connScope.EXPECT().Done().MinTimes(1)
+		return connScope
+	}
+
+	var calledSetPeer atomic.Bool
+	// connScope is the scope to be used for the final connection over /webrtc to the peer
+	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
+	connScope.EXPECT().SetPeer(listener.ID()).Do(func(peer.ID) {
+		calledSetPeer.Store(true)
+	})
+	connScope.EXPECT().PeerScope().AnyTimes().DoAndReturn(func() network.PeerScope {
+		if calledSetPeer.Load() {
+			return listenerPeerScope
+		}
+		return nil
+	})
+	connScope.EXPECT().Done().MinTimes(1)
+
+	var allStreamsDone sync.WaitGroup
+
+	// Dial to relay node and then to listener over circtuiv2
+	rcmgr.EXPECT().OpenConnection(network.DirOutbound, gomock.Any(), gomock.Any()).MaxTimes(2).Return(getRelayConnScope(), nil)
+
+	rcmgr.EXPECT().OpenStream(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+		streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
+		// No need to track these memory reservations since we assert that Done is called
+		streamScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes()
+		streamScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().BeginSpan().AnyTimes().DoAndReturn(func() (network.ResourceScopeSpan, error) {
+			s := mocknetwork.NewMockResourceScopeSpan(ctrl)
+			s.EXPECT().BeginSpan().AnyTimes().Return(mocknetwork.NewMockResourceScopeSpan(ctrl), nil)
+			s.EXPECT().Done()
+			return s, nil
+		})
+		streamScope.EXPECT().SetService(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().SetProtocol(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().Done()
+		return streamScope, nil
+	})
+
+	// Now handle /webrtc connection establishment
+	rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, listener.Addrs()[0]).Return(connScope, nil)
+	rcmgr.EXPECT().OpenStream(listener.ID(), gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+		allStreamsDone.Add(1)
+		streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
+		// No need to track these memory reservations since we assert that Done is called
+		streamScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes()
+		streamScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().BeginSpan().AnyTimes().DoAndReturn(func() (network.ResourceScopeSpan, error) {
+			s := mocknetwork.NewMockResourceScopeSpan(ctrl)
+			s.EXPECT().BeginSpan().AnyTimes().Return(mocknetwork.NewMockResourceScopeSpan(ctrl), nil)
+			s.EXPECT().Done()
+			return s, nil
+		})
+
+		streamScope.EXPECT().SetService(gomock.Any()).MaxTimes(1)
+		streamScope.EXPECT().SetProtocol(gomock.Any())
+
+		streamScope.EXPECT().Done().Do(func() {
+			allStreamsDone.Done()
+		})
+		return streamScope, nil
+	})
+
+	require.NoError(t, dialer.Connect(context.Background(), peer.AddrInfo{
+		ID:    listener.ID(),
+		Addrs: listener.Addrs(),
+	}))
+
+	// Wait for any in progress identifies to finish.
+	// We shouldn't have to do this, but basic host currently
+	// always does an identify.
+	<-dialer.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(dialer.Network().ConnsToPeer(listener.ID())[0])
+	<-listener.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(listener.Network().ConnsToPeer(dialer.ID())[0])
+	<-ping.Ping(context.Background(), dialer, listener.ID())
+	err := dialer.Network().ClosePeer(listener.ID())
+	require.NoError(t, err)
+
+	// Wait a bit for any pending .Adds before we call .Wait to avoid a data race.
+	// This shouldn't be necessary since it should be impossible
+	// for an OpenStream to happen *after* a ClosePeer, however
+	// in practice it does and leads to test flakiness.
+	time.Sleep(10 * time.Millisecond)
+	allStreamsDone.Wait()
+	dialer.Close()
+	listener.Close()
+}
+
+func testResourceManagerIsUsedWebRTCPrivateListener(t *testing.T, tc TransportTestCase) {
+	t.Helper()
+	var reservedMemory, releasedMemory atomic.Int32
+	defer func() {
+		require.Equal(t, reservedMemory.Load(), releasedMemory.Load())
+		require.NotEqual(t, 0, reservedMemory.Load())
+	}()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
+	rcmgr.EXPECT().Close()
+
+	var listener, dialer host.Host
+
+	getPeerScope := func() *mocknetwork.MockPeerScope {
+		peerScope := mocknetwork.NewMockPeerScope(ctrl)
+		peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, pri uint8) {
+			reservedMemory.Add(int32(amount))
+		})
+		peerScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes().Do(func(amount int) {
+			releasedMemory.Add(int32(amount))
+		})
+		peerScope.EXPECT().BeginSpan().AnyTimes().DoAndReturn(func() (network.ResourceScopeSpan, error) {
+			s := mocknetwork.NewMockResourceScopeSpan(ctrl)
+			s.EXPECT().BeginSpan().AnyTimes().Return(mocknetwork.NewMockResourceScopeSpan(ctrl), nil)
+			// No need to track these memory reservations since we assert that Done is called
+			s.EXPECT().ReserveMemory(gomock.Any(), gomock.Any())
+			s.EXPECT().Done()
+			return s, nil
+		})
+		return peerScope
+	}
+
+	relayPeerScope := getPeerScope()
+	dialerPeerScope := getPeerScope()
+
+	// getRelayConnScope creates a connection scope for the connection to the relay node and the circuitv2 connection
+	// from the dialer
+	getRelayConnScope := func() *mocknetwork.MockConnManagementScope {
+		var connPeer atomic.Pointer[peer.ID]
+		connScope := mocknetwork.NewMockConnManagementScope(ctrl)
+		connScope.EXPECT().SetPeer(gomock.Any()).AnyTimes().Do(func(p peer.ID) {
+			connPeer.Store(&p)
+		})
+		connScope.EXPECT().PeerScope().AnyTimes().DoAndReturn(func() *mocknetwork.MockPeerScope {
+			// Nil returns from DoAndReturn are typed. This causes problems with nil
+			// checks. So we return dialerPeerScope when PeerScope is called before
+			// SetPeer. This happens on circuitv2 connection upgrade.
+			if connPeer.Load() == nil || *connPeer.Load() == dialer.ID() {
+				return dialerPeerScope
+			}
+			return relayPeerScope
+		})
+		connScope.EXPECT().Done().MinTimes(1)
+		return connScope
+	}
+
+	// Connection to the relay node
+	rcmgr.EXPECT().OpenConnection(network.DirOutbound, gomock.Any(), gomock.Any()).Return(getRelayConnScope(), nil)
+	rcmgr.EXPECT().OpenStream(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+		streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
+		// No need to track these memory reservations since we assert that Done is called
+		streamScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes()
+		streamScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().BeginSpan().AnyTimes().DoAndReturn(func() (network.ResourceScopeSpan, error) {
+			s := mocknetwork.NewMockResourceScopeSpan(ctrl)
+			s.EXPECT().BeginSpan().AnyTimes().Return(mocknetwork.NewMockResourceScopeSpan(ctrl), nil)
+			s.EXPECT().Done()
+			return s, nil
+		})
+		streamScope.EXPECT().SetService(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().SetProtocol(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().Done()
+		return streamScope, nil
+	})
+
+	listener = tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: rcmgr})
+	dialer = tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
+
+	var calledSetPeer atomic.Bool
+	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
+	connScope.EXPECT().SetPeer(dialer.ID()).Do(func(peer.ID) {
+		calledSetPeer.Store(true)
+	})
+	connScope.EXPECT().PeerScope().AnyTimes().DoAndReturn(func() network.PeerScope {
+		if calledSetPeer.Load() {
+			return dialerPeerScope
+		}
+		return nil
+	})
+	connScope.EXPECT().Done().MinTimes(1)
+
+	var allStreamsDone sync.WaitGroup
+	gomock.InOrder(
+		// Incoming circuit-v2 connection for signaling stream
+		rcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).Return(getRelayConnScope(), nil),
+		// /webrtc connection
+		// The remote multiaddr is the same as our
+		rcmgr.EXPECT().OpenConnection(network.DirInbound, true, listener.Addrs()[0]).Return(connScope, nil),
+	)
+	rcmgr.EXPECT().OpenStream(dialer.ID(), gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+		allStreamsDone.Add(1)
+		streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
+		// No need to track these memory reservations since we assert that Done is called
+		streamScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes()
+		streamScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes()
+		streamScope.EXPECT().BeginSpan().AnyTimes().DoAndReturn(func() (network.ResourceScopeSpan, error) {
+			s := mocknetwork.NewMockResourceScopeSpan(ctrl)
+			s.EXPECT().BeginSpan().AnyTimes().Return(mocknetwork.NewMockResourceScopeSpan(ctrl), nil)
+			s.EXPECT().Done()
+			return s, nil
+		})
+
+		streamScope.EXPECT().SetService(gomock.Any()).MaxTimes(1)
+		streamScope.EXPECT().SetProtocol(gomock.Any())
+
+		streamScope.EXPECT().Done().Do(func() {
+			allStreamsDone.Done()
+		})
+		return streamScope, nil
+	})
+
+	require.NoError(t, dialer.Connect(context.Background(), peer.AddrInfo{
+		ID:    listener.ID(),
+		Addrs: listener.Addrs(),
+	}))
+	// Wait for any in progress identifies to finish.
+	// We shouldn't have to do this, but basic host currently
+	// always does an identify.
+	<-dialer.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(dialer.Network().ConnsToPeer(listener.ID())[0])
+	<-listener.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(listener.Network().ConnsToPeer(dialer.ID())[0])
+	<-ping.Ping(context.Background(), dialer, listener.ID())
+	err := dialer.Network().ClosePeer(listener.ID())
+	require.NoError(t, err)
+
+	// Wait a bit for any pending .Adds before we call .Wait to avoid a data race.
+	// This shouldn't be necessary since it should be impossible
+	// for an OpenStream to happen *after* a ClosePeer, however
+	// in practice it does and leads to test flakiness.
+	time.Sleep(10 * time.Millisecond)
+	allStreamsDone.Wait()
+	dialer.Close()
+	listener.Close()
 }

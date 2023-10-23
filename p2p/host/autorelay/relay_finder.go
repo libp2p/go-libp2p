@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
+	libp2pwebrtcprivate "github.com/libp2p/go-libp2p/p2p/transport/webrtcprivate"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -737,9 +738,15 @@ func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 		addrs := cleanupAddressSet(rf.host.Peerstore().Addrs(p))
 		relayAddrCnt += len(addrs)
 		circuit := ma.StringCast(fmt.Sprintf("/p2p/%s/p2p-circuit", p))
+		webrtc := libp2pwebrtcprivate.WebRTCAddr
 		for _, addr := range addrs {
 			pub := addr.Encapsulate(circuit)
 			raddrs = append(raddrs, pub)
+			if rf.conf.webRTCSupport && isBrowserDialableAddr(addr) {
+				waddr := pub.Encapsulate(webrtc)
+				raddrs = append(raddrs, waddr)
+				relayAddrCnt++
+			}
 		}
 	}
 
@@ -807,4 +814,15 @@ func (rf *relayFinder) resetMetrics() {
 
 	rf.metricsTracer.RelayAddressCount(0)
 	rf.metricsTracer.ScheduledWorkUpdated(&scheduledWorkTimes{})
+}
+
+var browserProtocols []int = []int{ma.P_WEBTRANSPORT, ma.P_WEBRTC_DIRECT, ma.P_WS, ma.P_WSS}
+
+func isBrowserDialableAddr(addr ma.Multiaddr) bool {
+	for _, p := range browserProtocols {
+		if _, err := addr.ValueForProtocol(p); err == nil {
+			return true
+		}
+	}
+	return false
 }

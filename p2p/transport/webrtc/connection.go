@@ -25,7 +25,8 @@ import (
 
 var _ tpt.CapableConn = &connection{}
 
-const maxAcceptQueueLen = 10
+// maxAcceptQueueLen is the number of waiting streams.
+const maxAcceptQueueLen = 256
 
 const maxDataChannelID = 1 << 10
 
@@ -47,7 +48,8 @@ type connection struct {
 	transport tpt.Transport
 	scope     network.ConnManagementScope
 
-	closeErr error
+	closeOnce sync.Once
+	closeErr  error
 
 	localPeer      peer.ID
 	localMultiaddr ma.Multiaddr
@@ -114,7 +116,11 @@ func NewWebRTCConnection(
 		c.nextStreamID.Store(2)
 	}
 
-	pc.OnConnectionStateChange(c.onConnectionStateChange)
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+			c.closeTimedOut()
+		}
+	})
 
 	// Between the connection establishing and the callback update in the above line, the
 	// connection may have been closed
@@ -134,16 +140,41 @@ func (c *connection) ConnState() network.ConnectionState {
 
 // Close closes the underlying peerconnection.
 func (c *connection) Close() error {
-	if c.IsClosed() {
-		return nil
-	}
+	c.closeOnce.Do(func() {
+		c.closeErr = errors.New("connection closed")
+		// cancel must be called after closeErr is set. This ensures interested goroutines waiting on
+		// ctx.Done can read closeErr without holding the conn lock.
+		c.cancel()
+		c.m.Lock()
+		streams := c.streams
+		c.streams = nil
+		c.m.Unlock()
+		for _, str := range streams {
+			str.Reset()
+		}
+		c.pc.Close()
+		c.scope.Done()
+	})
+	return nil
+}
 
-	c.m.Lock()
-	defer c.m.Unlock()
-	c.scope.Done()
-	c.closeErr = errors.New("connection closed")
-	c.cancel()
-	return c.pc.Close()
+func (c *connection) closeTimedOut() error {
+	c.closeOnce.Do(func() {
+		c.closeErr = errConnectionTimeout{}
+		// cancel must be called after closeErr is set. This ensures interested goroutines waiting on
+		// ctx.Done can read closeErr without holding the conn lock.
+		c.cancel()
+		c.m.Lock()
+		streams := c.streams
+		c.streams = nil
+		c.m.Unlock()
+		for _, str := range streams {
+			str.setCloseError(errConnectionTimeout{})
+		}
+		c.pc.Close()
+		c.scope.Done()
+	})
+	return nil
 }
 
 func (c *connection) IsClosed() bool {
@@ -213,6 +244,9 @@ func (c *connection) Transport() tpt.Transport      { return c.transport }
 func (c *connection) addStream(str *stream) error {
 	c.m.Lock()
 	defer c.m.Unlock()
+	if c.streams == nil {
+		return c.closeErr
+	}
 	if _, ok := c.streams[str.id]; ok {
 		return errors.New("stream ID already exists")
 	}
@@ -224,25 +258,6 @@ func (c *connection) removeStream(id uint16) {
 	c.m.Lock()
 	defer c.m.Unlock()
 	delete(c.streams, id)
-}
-
-func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
-	if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-		// reset any streams
-		if c.IsClosed() {
-			return
-		}
-		c.m.Lock()
-		defer c.m.Unlock()
-		c.closeErr = errConnectionTimeout{}
-		for k, str := range c.streams {
-			str.setCloseError(c.closeErr)
-			delete(c.streams, k)
-		}
-		c.cancel()
-		c.scope.Done()
-		c.pc.Close()
-	}
 }
 
 // detachChannel detaches an outgoing channel by taking into account the context

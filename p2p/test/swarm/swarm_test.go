@@ -276,8 +276,8 @@ func TestDialPeerWebRTC(t *testing.T) {
 	_, err = client.Reserve(context.Background(), h2, relay1info)
 	require.NoError(t, err)
 
-	webrtcAddr := ma.StringCast(relay1info.Addrs[0].String() + "/p2p/" + relay1info.ID.String() + "/p2p-circuit/webrtc/p2p/" + h2.ID().String())
-	relayAddrs := ma.StringCast(relay1info.Addrs[0].String() + "/p2p/" + relay1info.ID.String() + "/p2p-circuit/p2p/" + h2.ID().String())
+	webrtcAddr := ma.StringCast(relay1info.Addrs[0].String() + "/p2p/" + relay1info.ID.String() + "/p2p-circuit/webrtc")
+	relayAddrs := ma.StringCast(relay1info.Addrs[0].String() + "/p2p/" + relay1info.ID.String() + "/p2p-circuit/")
 
 	h1.Peerstore().AddAddrs(h2.ID(), []ma.Multiaddr{webrtcAddr, relayAddrs}, peerstore.TempAddrTTL)
 
@@ -285,30 +285,18 @@ func TestDialPeerWebRTC(t *testing.T) {
 	conn1, err := h1.Network().DialPeer(context.Background(), h2.ID())
 	require.NoError(t, err)
 	require.NotNil(t, conn1)
-	require.Condition(t, func() bool {
-		_, err1 := conn1.RemoteMultiaddr().ValueForProtocol(ma.P_CIRCUIT)
-		_, err2 := conn1.RemoteMultiaddr().ValueForProtocol(ma.P_WEBRTC)
-		return err1 == nil && err2 != nil
-	})
+	require.Equal(t, conn1.RemoteMultiaddr(), relayAddrs)
 
 	// should connect to webrtc address
 	ctx := network.WithForceDirectDial(context.Background(), "test")
 	conn, err := h1.Network().DialPeer(ctx, h2.ID())
 	require.NoError(t, err)
 	require.NotNil(t, conn)
-	require.Condition(t, func() bool {
-		_, err1 := conn.RemoteMultiaddr().ValueForProtocol(ma.P_CIRCUIT)
-		_, err2 := conn.RemoteMultiaddr().ValueForProtocol(ma.P_WEBRTC)
-		return err1 != nil && err2 == nil
-	})
+	require.Equal(t, conn.RemoteMultiaddr(), webrtcAddr)
 
 	done := make(chan struct{})
 	h2.SetStreamHandler("test-addr", func(s network.Stream) {
-		s.Conn().LocalMultiaddr()
-		_, err1 := conn.RemoteMultiaddr().ValueForProtocol(ma.P_CIRCUIT)
-		assert.Error(t, err1)
-		_, err2 := conn.RemoteMultiaddr().ValueForProtocol(ma.P_WEBRTC)
-		assert.NoError(t, err2)
+		require.Equal(t, conn.RemoteMultiaddr(), webrtcAddr)
 		s.Reset()
 		close(done)
 	})

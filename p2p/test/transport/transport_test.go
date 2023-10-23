@@ -22,10 +22,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
+	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
@@ -206,6 +208,10 @@ func (h *webrtcHost) Close() error {
 	return nil
 }
 
+func (h *webrtcHost) IDService() identify.IDService {
+	return h.Host.(*basichost.BasicHost).IDService()
+}
+
 func TestPing(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -366,9 +372,6 @@ func TestManyStreams(t *testing.T) {
 	const streamCount = 128
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			if strings.Contains(tc.Name, "WebRTC") {
-				t.Skip("Pion doesn't correctly handle large queues of streams.")
-			}
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 			defer h1.Close()
@@ -709,7 +712,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			if strings.Contains(tc.Name, "WebRTCPrivate") {
-				t.Skip("webrtcprivate needs different handling because of the relay required for connection setup")
+				t.Skip("inapplicable for webrtc private to private since the connection is established over an authenticated channel")
 			}
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})

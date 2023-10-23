@@ -395,6 +395,10 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			cfg.AutoRelayOpts = append(mtOpts, cfg.AutoRelayOpts...)
 		}
 
+		if cfg.WebRTCPrivate {
+			cfg.AutoRelayOpts = append(cfg.AutoRelayOpts, autorelay.WithWebRTCSupport())
+		}
+
 		ar, err = autorelay.NewAutoRelay(h, cfg.AutoRelayOpts...)
 		if err != nil {
 			return nil, err
