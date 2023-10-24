@@ -29,9 +29,9 @@ the following (from the root directory of this repository):
 
 1. Build the image: `docker build -t go-libp2p-head -f test-plans/PingDockerfile .`.
 2. Build the images for all released versions in `libp2p/test-plans`: `(cd <path
-   to >/libp2p/test-plans/multidim-interop/ && make)`.
+   to >/libp2p/test-plans/transport-interop/ && make)`.
 3. Run the test:
 ```
-GO_LIBP2P="$PWD"; (cd <path to >/libp2p/test-plans/multidim-interop/ && npm run test -- --extra-version=$GO_LIBP2P/test-plans/ping-version.json --name-filter="go-libp2p-head")
+GO_LIBP2P="$PWD"; (cd <path to >/libp2p/test-plans/transport-interop/ && npm run test -- --extra-version=$GO_LIBP2P/test-plans/ping-version.json --name-filter="go-libp2p-head")
 
 ```

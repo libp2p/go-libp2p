@@ -19,14 +19,14 @@ on:
       - 'test-plans/**'
 
 jobs:
-  run-multidim-interop:
-    name: Run multidimensional interoperability tests
+  run-transport-interop:
+    name: Run transport interoperability tests
     runs-on: ${{ fromJSON(vars['INTEROP_TEST_RUNNER_UBUNTU'] || '"ubuntu-22.04"') }}
     steps:
       - uses: actions/checkout@v3
       - name: Build image
         run: docker build -t go-libp2p-head -f test-plans/PingDockerfile .
-      - uses: libp2p/test-plans/.github/actions/run-interop-ping-test@master
+      - uses: libp2p/test-plans/.github/actions/run-transport-interop-test@master
         with:
           test-filter: go-libp2p-head
           extra-versions: ${{ github.workspace }}/test-plans/ping-version.json
