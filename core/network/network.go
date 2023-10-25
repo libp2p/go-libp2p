@@ -20,7 +20,7 @@ import (
 // One can write more, as the interface is a stream. But it is useful
 // to bunch it up into multiple read/writes when the whole message is
 // a single, large serialized object.
-const MessageSizeMax = 1 << 22 // 4 MB
+const MessageSizeMax = 1 << 24 // 16 MB
 
 // Direction represents which peer in a stream initiated a connection.
 type Direction int
