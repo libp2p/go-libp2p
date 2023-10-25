@@ -56,3 +56,5 @@ As you can see, the proxy prints the listening address `127.0.0.1:9900`. You can
 > curl -x "127.0.0.1:9900" "http://ipfs.io/p2p/QmfUX75pGRBRDnjeoMkQzuQczuCup2aYbeLxz5NzeSu9G6"
 it works!
 ```
+
+Learn more about how curl uses proxies [here](https://everything.curl.dev/usingcurl/proxies/http).

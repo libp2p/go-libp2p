@@ -46,23 +46,13 @@ type ProxyService struct {
 	proxyAddr ma.Multiaddr
 }
 
-// NewProxyService attaches a proxy service to the given libp2p Host.
+// NewProxyClient returns a service which is able to serve HTTP requests.
 // The proxyAddr parameter specifies the address on which the
 // HTTP proxy server listens. The dest parameter specifies the peer
 // ID of the remote peer in charge of performing the HTTP requests.
-//
-// ProxyAddr/dest may be nil/"" it is not necessary that this host
-// provides a listening HTTP server (and instead its only function is to
-// perform the proxied http requests it receives from a different peer.
-//
 // The addresses for the dest peer should be part of the host's peerstore.
-func NewProxyService(h host.Host, proxyAddr ma.Multiaddr, dest peer.ID) *ProxyService {
-	// We let our host know that it needs to handle streams tagged with the
-	// protocol id that we have defined, and then handle them to
-	// our own streamHandling function.
-	h.SetStreamHandler(Protocol, streamHandler)
-
-	fmt.Println("Proxy server is ready")
+func NewProxyClient(h host.Host, proxyAddr ma.Multiaddr, dest peer.ID) *ProxyService {
+	fmt.Println("Proxy client is ready")
 	fmt.Println("libp2p-peer addresses:")
 	for _, a := range h.Addrs() {
 		fmt.Printf("%s/ipfs/%s\n", a, h.ID())
@@ -72,6 +62,22 @@ func NewProxyService(h host.Host, proxyAddr ma.Multiaddr, dest peer.ID) *ProxySe
 		host:      h,
 		dest:      dest,
 		proxyAddr: proxyAddr,
+	}
+}
+
+// NewProxyServer attaches a proxy service to the given libp2p Host.
+// Its only function is to perform the proxied http requests it receives
+// from a different peer.
+func NewProxyServer(h host.Host) {
+	// We let our host know that it needs to handle streams tagged with the
+	// protocol id that we have defined, and then handle them to
+	// our own streamHandling function.
+	h.SetStreamHandler(Protocol, streamHandler)
+
+	fmt.Println("Proxy server is ready")
+	fmt.Println("libp2p-peer addresses:")
+	for _, a := range h.Addrs() {
+		fmt.Printf("%s/ipfs/%s\n", a, h.ID())
 	}
 }
 
@@ -258,15 +264,15 @@ func main() {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		// Create the proxy service and start the http server
-		proxy := NewProxyService(host, proxyAddr, destPeerID)
+		// Create the proxy client and start the http server
+		proxy := NewProxyClient(host, proxyAddr, destPeerID)
 		proxy.Serve() // serve hangs forever
 	} else {
 		host := makeRandomHost(*p2pport)
 		// In this case we only need to make sure our host
 		// knows how to handle incoming proxied requests from
 		// another peer.
-		_ = NewProxyService(host, nil, "")
+		NewProxyServer(host)
 		<-make(chan struct{}) // hang forever
 	}
 
