@@ -15,4 +15,4 @@ Let us know if you find any issue or if you want to contribute and add a new tut
 - [P2P chat application with peer discovery using mdns](./chat-with-mdns)
 - [A chapter based approach to building a libp2p application](./ipfs-camp-2019/) _Created for [IPFS Camp 2019](https://github.com/ipfs/camp/tree/master/CORE_AND_ELECTIVE_COURSES/CORE_COURSE_B)_
 
-For js-libp2p examples, check https://github.com/libp2p/js-libp2p/tree/master/examples
+For js-libp2p examples, check https://github.com/libp2p/js-libp2p-examples
