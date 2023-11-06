@@ -120,6 +120,8 @@ func (w *dialWorker) loop() {
 	startTime := w.cl.Now()
 	// dialTimer is the dialTimer used to trigger dials
 	dialTimer := w.cl.InstantTimer(startTime.Add(math.MaxInt64))
+	defer dialTimer.Stop()
+
 	timerRunning := true
 	// scheduleNextDial updates timer for triggering the next dial
 	scheduleNextDial := func() {
