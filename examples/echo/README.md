@@ -38,7 +38,7 @@ The new node with send the message `"Hello, world!"` to the listener, which will
 
 ## Details
 
-The `makeBasicHost()` function creates a [go-libp2p-basichost](https://godoc.org/github.com/libp2p/go-libp2p/p2p/host/basic) object. `basichost` objects wrap [go-libp2p swarms](https://godoc.org/github.com/libp2p/go-libp2p-swarm#Swarm) and should be used preferentially. A [go-libp2p-swarm Network](https://godoc.org/github.com/libp2p/go-libp2p-swarm#Network) is a `swarm` which complies to the [go-libp2p-net Network interface](https://godoc.org/github.com/libp2p/go-libp2p-net#Network) and takes care of maintaining streams, connections, multiplexing different protocols on them, handling incoming connections etc.
+The `makeBasicHost()` function creates a [go-libp2p basichost](https://godoc.org/github.com/libp2p/go-libp2p/p2p/host/basic) object. `basichost` objects wrap [go-libp2p swarms](https://godoc.org/github.com/libp2p/go-libp2p-swarm#Swarm) and should be used preferentially. A [go-libp2p-swarm Network](https://godoc.org/github.com/libp2p/go-libp2p-swarm#Network) is a `swarm` which complies to the [go-libp2p-net Network interface](https://godoc.org/github.com/libp2p/go-libp2p-net#Network) and takes care of maintaining streams, connections, multiplexing different protocols on them, handling incoming connections etc.
 
 In order to create the swarm (and a `basichost`), the example needs:
 
