@@ -232,9 +232,7 @@
       "options": {
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -1139,9 +1137,7 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -1816,9 +1812,7 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -2016,9 +2010,7 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -2110,9 +2102,7 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -2205,9 +2195,7 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -2372,15 +2360,11 @@
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "values": [
-            "percent"
-          ]
+          "values": ["percent"]
         },
         "pieType": "donut",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -2652,9 +2636,7 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -2798,22 +2780,16 @@
       },
       "id": 38,
       "options": {
-        "displayLabels": [
-          "percent"
-        ],
+        "displayLabels": ["percent"],
         "legend": {
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "values": [
-            "percent"
-          ]
+          "values": ["percent"]
         },
         "pieType": "donut",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -3036,23 +3012,16 @@
       },
       "id": 42,
       "options": {
-        "displayLabels": [
-          "percent",
-          "name"
-        ],
+        "displayLabels": ["percent", "name"],
         "legend": {
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "values": [
-            "percent"
-          ]
+          "values": ["percent"]
         },
         "pieType": "donut",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -3296,9 +3265,7 @@
         "justifyMode": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -3360,9 +3327,7 @@
       "options": {
         "orientation": "vertical",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -3396,6 +3361,16 @@
   "templating": {
     "list": [
       {
+        "hide": 0,
+        "label": "datasource",
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
         "current": {},
         "datasource": {
           "type": "prometheus",
@@ -3412,7 +3387,6 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "",
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"
