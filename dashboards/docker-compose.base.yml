@@ -26,3 +26,4 @@ services:
       - ./identify/identify.json:/var/lib/grafana/dashboards/identify.json
       - ./relaysvc/relaysvc.json:/var/lib/grafana/dashboards/relaysvc.json
       - ./swarm/swarm.json:/var/lib/grafana/dashboards/swarm.json
+      - ./resource-manager/resource-manager.json:/var/lib/grafana/dashboards/resource-manager.json
