@@ -3,6 +3,7 @@ package libp2pquic
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -33,6 +34,27 @@ var ErrHolePunching = errors.New("hole punching attempted; no active dial")
 var HolePunchTimeout = 5 * time.Second
 
 const errorCodeConnectionGating = 0x47415445 // GATE in ASCII
+
+type Option func(*Config) error
+
+func WithCertTemplate(template *x509.Certificate) Option {
+	return func(cfg *Config) error {
+		cfg.CertTemplate = template
+		return nil
+	}
+}
+
+func WithVerifyPeerCertificate(verify p2ptls.VerifyPeerCertificate) Option {
+	return func(cfg *Config) error {
+		cfg.Verify = verify
+		return nil
+	}
+}
+
+type Config struct {
+	CertTemplate *x509.Certificate
+	Verify       p2ptls.VerifyPeerCertificate
+}
 
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
@@ -70,7 +92,22 @@ type activeHolePunch struct {
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
+func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+	var cfg Config
+	for _, o := range opts {
+		if err := o(&cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	var idOpts []p2ptls.IdentityOption
+	if cfg.CertTemplate != nil {
+		idOpts = append(idOpts, p2ptls.WithCertTemplate(cfg.CertTemplate))
+	}
+	if cfg.Verify != nil {
+		idOpts = append(idOpts, p2ptls.WithVerifyPeerCertificate(cfg.Verify))
+	}
+
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
@@ -79,7 +116,7 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 	if err != nil {
 		return nil, err
 	}
-	identity, err := p2ptls.NewIdentity(key)
+	identity, err := p2ptls.NewIdentity(key, idOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +125,7 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		rcmgr = &network.NullResourceManager{}
 	}
 
-	return &transport{
+	tr := &transport{
 		privKey:      key,
 		localPeer:    localPeer,
 		identity:     identity,
@@ -100,7 +137,9 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		rnd:          *rand.New(rand.NewSource(time.Now().UnixNano())),
 
 		listeners: make(map[string][]*virtualListener),
-	}, nil
+	}
+
+	return tr, nil
 }
 
 // Dial dials a new QUIC connection

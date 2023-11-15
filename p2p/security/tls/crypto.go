@@ -28,6 +28,9 @@ const alpn string = "libp2p"
 var extensionID = getPrefixedExtensionID([]int{1, 1})
 var extensionCritical bool // so we can mark the extension critical in tests
 
+// VerifyPeerCertificate is a TLS certificate chain verification function
+type VerifyPeerCertificate func([]*x509.Certificate) error
+
 type signedKey struct {
 	PubKey    []byte
 	Signature []byte
@@ -36,11 +39,13 @@ type signedKey struct {
 // Identity is used to secure connections
 type Identity struct {
 	config tls.Config
+	verify VerifyPeerCertificate
 }
 
 // IdentityConfig is used to configure an Identity
 type IdentityConfig struct {
 	CertTemplate *x509.Certificate
+	Verify       VerifyPeerCertificate
 }
 
 // IdentityOption transforms an IdentityConfig to apply optional settings.
@@ -53,6 +58,13 @@ func WithCertTemplate(template *x509.Certificate) IdentityOption {
 	}
 }
 
+// WithVerifyPeerCertificate specifies additional TLS certificate chain verification function.
+func WithVerifyPeerCertificate(verify VerifyPeerCertificate) IdentityOption {
+	return func(c *IdentityConfig) {
+		c.Verify = verify
+	}
+}
+
 // NewIdentity creates a new identity
 func NewIdentity(privKey ic.PrivKey, opts ...IdentityOption) (*Identity, error) {
 	config := IdentityConfig{}
@@ -62,7 +74,7 @@ func NewIdentity(privKey ic.PrivKey, opts ...IdentityOption) (*Identity, error) 
 
 	var err error
 	if config.CertTemplate == nil {
-		config.CertTemplate, err = certTemplate()
+		config.CertTemplate, err = CertTemplate()
 		if err != nil {
 			return nil, err
 		}
@@ -84,6 +96,7 @@ func NewIdentity(privKey ic.PrivKey, opts ...IdentityOption) (*Identity, error) 
 			NextProtos:             []string{alpn},
 			SessionTicketsDisabled: true,
 		},
+		verify: config.Verify,
 	}, nil
 }
 
@@ -119,6 +132,12 @@ func (i *Identity) ConfigForPeer(remote peer.ID) (*tls.Config, <-chan ic.PubKey)
 				return err
 			}
 			chain[i] = cert
+		}
+
+		if i.verify != nil {
+			if err := i.verify(chain); err != nil {
+				return err
+			}
 		}
 
 		pubKey, err := PubKeyFromCertChain(chain)
@@ -247,8 +266,8 @@ func keyToCertificate(sk ic.PrivKey, certTmpl *x509.Certificate) (*tls.Certifica
 	}, nil
 }
 
-// certTemplate returns the template for generating an Identity's TLS certificates.
-func certTemplate() (*x509.Certificate, error) {
+// CertTemplate returns the template for generating an Identity's TLS certificates.
+func CertTemplate() (*x509.Certificate, error) {
 	bigNum := big.NewInt(1 << 62)
 	sn, err := rand.Int(rand.Reader, bigNum)
 	if err != nil {

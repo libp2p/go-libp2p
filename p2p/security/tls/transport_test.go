@@ -144,7 +144,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 	// Use transports with custom TLS certificates
 
 	// override client identity to use a custom certificate
-	clientCertTmlp, err := certTemplate()
+	clientCertTmlp, err := CertTemplate()
 	require.NoError(t, err)
 
 	clientCertTmlp.Subject.CommonName = "client.test.name"
@@ -154,7 +154,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 	require.NoError(t, err)
 
 	// override server identity to use a custom certificate
-	serverCertTmpl, err := certTemplate()
+	serverCertTmpl, err := CertTemplate()
 	require.NoError(t, err)
 
 	serverCertTmpl.Subject.CommonName = "server.test.name"

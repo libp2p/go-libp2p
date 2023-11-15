@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	mrand "math/rand"
 	"net"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,6 +22,7 @@ import (
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -673,4 +678,112 @@ func TestHolePunching(t *testing.T) {
 	ln2.Close()
 	<-done1
 	<-done2
+}
+
+func TestVerifyTLS(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testVerifyTLS(t, tc)
+		})
+	}
+}
+
+func testVerifyTLS(t *testing.T, tc *connTestCase) {
+	connect := func(t *testing.T, srvCheckEmail, clientCheckEmail string) (tpt.Listener, tpt.CapableConn, func(), error) {
+		serverID, serverKey := createPeer(t)
+		_, clientKey := createPeer(t)
+
+		serverTmpl, err := p2ptls.CertTemplate()
+		require.NoError(t, err)
+		serverTmpl.EmailAddresses = []string{"foo@example.com"}
+
+		clientTmpl, err := p2ptls.CertTemplate()
+		require.NoError(t, err)
+		clientTmpl.EmailAddresses = []string{"foo@example.com"}
+
+		serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil,
+			WithCertTemplate(serverTmpl),
+			WithVerifyPeerCertificate(func(chain []*x509.Certificate) error {
+				t.Logf("server verify")
+				for _, cert := range chain {
+					if slices.Equal(cert.EmailAddresses, []string{srvCheckEmail}) {
+						t.Logf("server ok")
+						return nil
+					}
+				}
+				t.Logf("server fail")
+				return errors.New("server-side cert verification failed")
+			}))
+		require.NoError(t, err)
+		defer serverTransport.(io.Closer).Close()
+
+		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
+		doneCh := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			select {
+			case <-time.After(3 * time.Second):
+			case <-doneCh:
+			}
+			ln.Close()
+			wg.Done()
+		}()
+		done := func() {
+			close(doneCh)
+			wg.Wait()
+		}
+
+		clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil,
+			WithCertTemplate(clientTmpl),
+			WithVerifyPeerCertificate(func(chain []*x509.Certificate) error {
+				t.Logf("client verify")
+				for _, cert := range chain {
+					if slices.Equal(cert.EmailAddresses, []string{clientCheckEmail}) {
+						t.Logf("client ok")
+						return nil
+					}
+				}
+				t.Logf("client fail")
+				return errors.New("client-side cert verification failed")
+			}))
+		require.NoError(t, err)
+		defer clientTransport.(io.Closer).Close()
+		clientConn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+		return ln, clientConn, done, err
+	}
+
+	t.Run("cert ok", func(t *testing.T) {
+		ln, clientConn, done, err := connect(t, "foo@example.com", "foo@example.com")
+		defer done()
+		serverConn, err := ln.Accept()
+		require.NoError(t, err)
+		defer serverConn.Close()
+
+		str, err := clientConn.OpenStream(context.Background())
+		require.NoError(t, err)
+		str.Close()
+		// this hangs with incorrect cert, will be stopped after 3s in that case
+		_, err = serverConn.AcceptStream()
+		require.NoError(t, err)
+	})
+
+	t.Run("server fail", func(t *testing.T) {
+		_, clientConn, done, err := connect(t, "notthis@example.com", "foo@example.com")
+		if err != nil {
+			require.Error(t, err, tls.CertificateVerificationError{})
+			return
+		}
+
+		// this hangs with correct cert, will be stopped after 3s in that case
+		_, err = clientConn.AcceptStream()
+		require.ErrorContains(t, err, "tls: bad certificate")
+		done()
+	})
+
+	t.Run("client fail", func(t *testing.T) {
+		_, _, done, err := connect(t, "foo@example.com", "notthis@example.com")
+		defer done()
+		require.ErrorContains(t, err, "client-side cert verification failed")
+	})
 }

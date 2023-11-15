@@ -31,7 +31,7 @@ func TestNewIdentityCertificates(t *testing.T) {
 	})
 
 	t.Run("NewIdentity with custom template", func(t *testing.T) {
-		tmpl, err := certTemplate()
+		tmpl, err := CertTemplate()
 		assert.NoError(t, err)
 
 		tmpl.Subject.CommonName = cn
