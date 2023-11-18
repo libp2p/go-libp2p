@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -23,7 +24,7 @@ func TestGracePeriod(t *testing.T) {
 	eventBus := eventbus.NewBus()
 	pstore := NewMockPeerstore(ctrl)
 	const gracePeriod = 250 * time.Millisecond
-	man, err := pstoremanager.NewPeerstoreManager(pstore, eventBus, pstoremanager.WithGracePeriod(gracePeriod))
+	man, err := pstoremanager.NewPeerstoreManager(pstore, eventBus, swarmt.GenSwarm(t), pstoremanager.WithGracePeriod(gracePeriod))
 	require.NoError(t, err)
 	defer man.Close()
 	man.Start()
@@ -51,7 +52,7 @@ func TestReconnect(t *testing.T) {
 	eventBus := eventbus.NewBus()
 	pstore := NewMockPeerstore(ctrl)
 	const gracePeriod = 200 * time.Millisecond
-	man, err := pstoremanager.NewPeerstoreManager(pstore, eventBus, pstoremanager.WithGracePeriod(gracePeriod))
+	man, err := pstoremanager.NewPeerstoreManager(pstore, eventBus, swarmt.GenSwarm(t), pstoremanager.WithGracePeriod(gracePeriod))
 	require.NoError(t, err)
 	defer man.Close()
 	man.Start()
@@ -77,7 +78,7 @@ func TestClose(t *testing.T) {
 	eventBus := eventbus.NewBus()
 	pstore := NewMockPeerstore(ctrl)
 	const gracePeriod = time.Hour
-	man, err := pstoremanager.NewPeerstoreManager(pstore, eventBus, pstoremanager.WithGracePeriod(gracePeriod))
+	man, err := pstoremanager.NewPeerstoreManager(pstore, eventBus, swarmt.GenSwarm(t), pstoremanager.WithGracePeriod(gracePeriod))
 	require.NoError(t, err)
 	man.Start()
 

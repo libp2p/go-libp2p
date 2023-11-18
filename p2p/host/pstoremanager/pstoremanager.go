@@ -41,6 +41,7 @@ func WithCleanupInterval(t time.Duration) Option {
 type PeerstoreManager struct {
 	pstore   peerstore.Peerstore
 	eventBus event.Bus
+	network  network.Network
 
 	cancel   context.CancelFunc
 	refCount sync.WaitGroup
@@ -49,11 +50,12 @@ type PeerstoreManager struct {
 	cleanupInterval time.Duration
 }
 
-func NewPeerstoreManager(pstore peerstore.Peerstore, eventBus event.Bus, opts ...Option) (*PeerstoreManager, error) {
+func NewPeerstoreManager(pstore peerstore.Peerstore, eventBus event.Bus, network network.Network, opts ...Option) (*PeerstoreManager, error) {
 	m := &PeerstoreManager{
 		pstore:      pstore,
 		gracePeriod: time.Minute,
 		eventBus:    eventBus,
+		network:     network,
 	}
 	for _, opt := range opts {
 		if err := opt(m); err != nil {
@@ -107,14 +109,21 @@ func (m *PeerstoreManager) background(ctx context.Context, sub event.Subscriptio
 				}
 			case network.Connected:
 				// If we reconnect to the peer before we've cleared the information, keep it.
+				// This is an optimization to keep the disconnected map small.
+				// We still need to check that a peer is actually disconnected before removing it from the peer store.
 				delete(disconnected, p)
 			}
 		case <-ticker.C:
 			now := time.Now()
 			for p, disconnectTime := range disconnected {
 				if disconnectTime.Add(m.gracePeriod).Before(now) {
-					m.pstore.RemovePeer(p)
-					delete(disconnected, p)
+					// Check that the peer is actually not connected at this point.
+					// This avoids a race condition where the Connected notification
+					// is processed after this time has fired.
+					if m.network.Connectedness(p) != network.Connected {
+						m.pstore.RemovePeer(p)
+						delete(disconnected, p)
+					}
 				}
 			}
 		case <-ctx.Done():
