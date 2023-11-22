@@ -25,7 +25,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
-	"github.com/libp2p/go-libp2p/p2p/security/internal/benchmark"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -709,12 +708,4 @@ func TestInvalidCerts(t *testing.T) {
 			}
 		})
 	}
-}
-
-func BenchmarkTls(b *testing.B) {
-	benchmark.Bench(b, func(b *testing.B, priv ic.PrivKey) sec.SecureTransport {
-		tpt, err := New("", priv, nil)
-		assert.NoError(b, err)
-		return tpt
-	})
 }

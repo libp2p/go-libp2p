@@ -11,6 +11,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -85,7 +87,7 @@ func benchmarkHandshakes(b *testing.B, factory Factory) {
 		for p := range pipes {
 			conn, err := tptB.SecureInbound(context.Background(), p, idA)
 			assert.NoError(b, err)
-			_, err = conn.Read(throwAway[:]) // read because currently the tls transport is buggy and don't handle concurrent symetric closes.
+			_, err = conn.Read(throwAway[:]) // read because currently the tls transport handshake when calling Read.
 			assert.ErrorIs(b, err, io.EOF)
 		}
 	}()
@@ -103,10 +105,26 @@ func benchmarkHandshakes(b *testing.B, factory Factory) {
 	finished.Lock()
 }
 
-func Bench(b *testing.B, factory Factory) {
+func bench(b *testing.B, factory Factory) {
 	b.Run("throughput", func(b *testing.B) {
 		b.Run("32KiB", func(b *testing.B) { benchmarkThroughput(b, 32*1024, factory) })
 		b.Run("1MiB", func(b *testing.B) { benchmarkThroughput(b, 1024*1024, factory) })
 	})
 	b.Run("handshakes", func(b *testing.B) { benchmarkHandshakes(b, factory) })
+}
+
+func BenchmarkNoise(b *testing.B) {
+	bench(b, func(b *testing.B, priv crypto.PrivKey) sec.SecureTransport {
+		tpt, err := noise.New("", priv, nil)
+		assert.NoError(b, err)
+		return tpt
+	})
+}
+
+func BenchmarkTLS(b *testing.B) {
+	bench(b, func(b *testing.B, priv crypto.PrivKey) sec.SecureTransport {
+		tpt, err := tls.New("", priv, nil)
+		assert.NoError(b, err)
+		return tpt
+	})
 }

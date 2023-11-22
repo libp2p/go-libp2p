@@ -17,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
-	"github.com/libp2p/go-libp2p/p2p/security/internal/benchmark"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
 
 	"github.com/stretchr/testify/assert"
@@ -714,12 +713,4 @@ func TestHandshakeWithTransportEarlyData(t *testing.T) {
 			noiseHandshake(t, test.clientProtos, test.serverProtos, test.expectedResult)
 		})
 	}
-}
-
-func BenchmarkNoise(b *testing.B) {
-	benchmark.Bench(b, func(b *testing.B, priv crypto.PrivKey) sec.SecureTransport {
-		tpt, err := New("", priv, nil)
-		assert.NoError(b, err)
-		return tpt
-	})
 }
