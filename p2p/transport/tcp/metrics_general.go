@@ -1,4 +1,4 @@
-//go:build !linux && !darwin && !windows && !riscv64
+//go:build !linux && !darwin && !windows && !riscv64 && !loong64
 
 package tcp
 
