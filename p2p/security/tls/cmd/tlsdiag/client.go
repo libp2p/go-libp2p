@@ -8,6 +8,7 @@ import (
 	"net"
 	"time"
 
+	ci "github.com/libp2p/go-libp2p/core/crypto"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -16,6 +17,7 @@ import (
 func StartClient() error {
 	port := flag.Int("p", 5533, "port")
 	peerIDString := flag.String("id", "", "peer ID")
+	netCookieString := flag.String("netCookie", "", "network cookie (hex string)")
 	keyType := flag.String("key", "ecdsa", "rsa, ecdsa, ed25519 or secp256k1")
 	flag.Parse()
 
@@ -33,7 +35,17 @@ func StartClient() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf(" Peer ID: %s\n", id)
+	fmt.Printf(" Peer ID: %s", id)
+	if *netCookieString != "" {
+		nc, err := ci.ParseNetworkCookie(*netCookieString)
+		if err != nil {
+			return err
+		}
+		fmt.Printf(" Network cookie: %s\n", nc)
+		priv = ci.AddNetworkCookieToPrivKey(priv, nc)
+	} else {
+		fmt.Println()
+	}
 	tp, err := libp2ptls.New(libp2ptls.ID, priv, nil)
 	if err != nil {
 		return err

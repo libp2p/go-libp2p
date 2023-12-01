@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	ci "github.com/libp2p/go-libp2p/core/crypto"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -15,6 +16,7 @@ import (
 func StartServer() error {
 	port := flag.Int("p", 5533, "port")
 	keyType := flag.String("key", "ecdsa", "rsa, ecdsa, ed25519 or secp256k1")
+	netCookieString := flag.String("netCookie", "", "network cookie (hex string)")
 	flag.Parse()
 
 	priv, err := generateKey(*keyType)
@@ -26,7 +28,20 @@ func StartServer() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf(" Peer ID: %s\n", id)
+	fmt.Printf(" Peer ID: %s", id)
+	fmt.Printf(" Peer ID: %s", id)
+	cookieOpt := ""
+	if *netCookieString != "" {
+		nc, err := ci.ParseNetworkCookie(*netCookieString)
+		if err != nil {
+			return err
+		}
+		fmt.Printf(" Network cookie: %s\n", nc)
+		priv = ci.AddNetworkCookieToPrivKey(priv, nc)
+		cookieOpt = fmt.Sprintf(" -netCookie %s", nc)
+	} else {
+		fmt.Println()
+	}
 	tp, err := libp2ptls.New(libp2ptls.ID, priv, nil)
 	if err != nil {
 		return err
@@ -38,7 +53,7 @@ func StartServer() error {
 	}
 	fmt.Printf("Listening for new connections on %s\n", ln.Addr())
 	fmt.Printf("Now run the following command in a separate terminal:\n")
-	fmt.Printf("\tgo run cmd/tlsdiag.go client -p %d -id %s\n", *port, id)
+	fmt.Printf("\tgo run cmd/tlsdiag.go client -p %d -id %s%s\n", *port, id, cookieOpt)
 
 	for {
 		conn, err := ln.Accept()

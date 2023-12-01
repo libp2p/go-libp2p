@@ -29,17 +29,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func getTransport(t *testing.T, opts ...Option) (*WebRTCTransport, peer.ID) {
+func getTransportWithNetCookie(t *testing.T, nc crypto.NetworkCookie, opts ...Option) (*WebRTCTransport, peer.ID) {
 	t.Helper()
 	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	require.NoError(t, err)
 	rcmgr := &network.NullResourceManager{}
+	privKey = crypto.AddNetworkCookieToPrivKey(privKey, nc)
 	transport, err := New(privKey, nil, nil, rcmgr, opts...)
 	require.NoError(t, err)
 	peerID, err := peer.IDFromPrivateKey(privKey)
 	require.NoError(t, err)
 	t.Cleanup(func() { rcmgr.Close() })
 	return transport, peerID
+}
+
+func getTransport(t *testing.T, opts ...Option) (*WebRTCTransport, peer.ID) {
+	t.Helper()
+	return getTransportWithNetCookie(t, nil, opts...)
 }
 
 func TestTransportWebRTC_CanDial(t *testing.T) {
@@ -710,4 +716,87 @@ func TestMaxInFlightRequests(t *testing.T) {
 	wg.Wait()
 	require.Equal(t, count, int(success.Load()), "expected exactly 3 dial successes")
 	require.Equal(t, 1, int(fails.Load()), "expected exactly 1 dial failure")
+}
+
+func TestTransportWebRTC_NetworkCookie(t *testing.T) {
+	type testcase struct {
+		name            string
+		clientNetCookie string
+		serverNetCookie string
+		error           string
+	}
+
+	testcases := []testcase{
+		{
+			name: "no cookie",
+		},
+		{
+			name:            "cookie ok",
+			clientNetCookie: "01020342",
+			serverNetCookie: "01020342",
+		},
+		{
+			name:            "cookie mismatch",
+			clientNetCookie: "01020342",
+			serverNetCookie: "010203",
+			error:           "failed to secure outbound connection",
+		},
+		{
+			name:            "only client cookie",
+			clientNetCookie: "01020342",
+			error:           "failed to secure outbound connection",
+		},
+		{
+			name:            "only server cookie",
+			serverNetCookie: "010203",
+			error:           "failed to secure outbound connection",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			clientNC, err := crypto.ParseNetworkCookie(tc.clientNetCookie)
+			require.NoError(t, err)
+			serverNC, err := crypto.ParseNetworkCookie(tc.serverNetCookie)
+			require.NoError(t, err)
+
+			tr, listeningPeer := getTransportWithNetCookie(t, serverNC)
+			tr1, _ := getTransportWithNetCookie(t, clientNC)
+			listenMultiaddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
+
+			listener, err := tr.Listen(listenMultiaddr)
+			require.NoError(t, err)
+			defer func() {
+				if listener != nil {
+					listener.Close()
+				}
+			}()
+
+			done := make(chan struct{})
+			go func() {
+				_, err := listener.Accept()
+				if tc.error == "" {
+					require.NoError(t, err)
+				}
+				close(done)
+			}()
+
+			_, err = tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+			if err != nil {
+				listener.Close()
+				listener = nil
+			}
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.FailNow()
+			}
+
+			if tc.error == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, tc.error)
+			}
+		})
+	}
 }

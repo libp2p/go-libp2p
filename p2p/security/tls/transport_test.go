@@ -709,3 +709,65 @@ func TestInvalidCerts(t *testing.T) {
 		})
 	}
 }
+
+func TestNetworkCookie(t *testing.T) {
+	type testcase struct {
+		name         string
+		clientCookie string
+		serverCookie string
+		error        string
+	}
+
+	testcases := []testcase{
+		{
+			name: "No cookie",
+		},
+		{
+			name:         "Matching cookie",
+			clientCookie: "424344aa",
+			serverCookie: "424344aa",
+		},
+		{
+			name:         "Non-matching cookie",
+			clientCookie: "424344aa",
+			serverCookie: "010203",
+			error:        "bad network cookie (wrong network?)",
+		},
+		{
+			name:         "Cookie vs no cookie",
+			clientCookie: "424344aa",
+			error:        "bad network cookie (wrong network?)",
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, clientKey := createPeer(t)
+			serverID, serverKey := createPeer(t)
+			clientCookie, err := ic.ParseNetworkCookie(tc.clientCookie)
+			require.NoError(t, err)
+
+			serverCookie, err := ic.ParseNetworkCookie(tc.serverCookie)
+			require.NoError(t, err)
+
+			serverTransport, err := New(ID, ic.AddNetworkCookieToPrivKey(serverKey, serverCookie), nil)
+			require.NoError(t, err)
+			clientTransport, err := New(ID, ic.AddNetworkCookieToPrivKey(clientKey, clientCookie), nil)
+			require.NoError(t, err)
+
+			clientInsecureConn, serverInsecureConn := connect(t)
+
+			serverErrChan := make(chan error)
+			go func() {
+				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+				serverErrChan <- err
+			}()
+
+			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
+			if tc.error == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.error)
+			}
+		})
+	}
+}

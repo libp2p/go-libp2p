@@ -24,9 +24,10 @@ type listener struct {
 	privKey         ic.PrivKey
 	localPeer       peer.ID
 	localMultiaddrs map[quic.VersionNumber]ma.Multiaddr
+	netCookie       ic.NetworkCookie
 }
 
-func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (listener, error) {
+func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager, netCookie ic.NetworkCookie) (listener, error) {
 	localMultiaddrs := make(map[quic.VersionNumber]ma.Multiaddr)
 	for _, addr := range ln.Multiaddrs() {
 		if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
@@ -41,6 +42,7 @@ func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.
 		privKey:         key,
 		localPeer:       localPeer,
 		localMultiaddrs: localMultiaddrs,
+		netCookie:       netCookie,
 	}, nil
 }
 
@@ -53,6 +55,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		}
 		c, err := l.setupConn(qconn)
 		if err != nil {
+			log.Debugw("inbound conn setup failed", "addr", qconn.RemoteAddr(), "error", err)
 			continue
 		}
 		l.transport.addConn(qconn, c)
@@ -106,7 +109,7 @@ func (l *listener) setupConnWithScope(qconn quic.Connection, connScope network.C
 	// Since we don't have any way of knowing which tls.Config was used though,
 	// we have to re-determine the peer's identity here.
 	// Therefore, this is expected to never fail.
-	remotePubKey, err := p2ptls.PubKeyFromCertChain(qconn.ConnectionState().TLS.PeerCertificates)
+	remotePubKey, err := p2ptls.PubKeyFromCertChain(qconn.ConnectionState().TLS.PeerCertificates, l.netCookie)
 	if err != nil {
 		return nil, err
 	}

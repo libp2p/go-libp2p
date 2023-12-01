@@ -598,3 +598,15 @@ func SwarmOpts(opts ...swarm.Option) Option {
 		return nil
 	}
 }
+
+// NetworkCookie provides a way to prevent peers from different
+// networks from connecting to each other. Peers that lack
+// NetworkCookie cannot connect to peers with NetworkCookie, and peers
+// with NetworkCookie can only connect to peers with the same
+// NetworkCookie.
+func NetworkCookie(netCookie crypto.NetworkCookie) Option {
+	return func(cfg *Config) error {
+		cfg.NetworkCookie = netCookie
+		return nil
+	}
+}

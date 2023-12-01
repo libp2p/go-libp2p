@@ -128,6 +128,8 @@ type Config struct {
 	DialRanker network.DialRanker
 
 	SwarmOpts []swarm.Option
+
+	NetworkCookie crypto.NetworkCookie
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -203,7 +205,9 @@ func (cfg *Config) addTransports(h host.Host) error {
 		fx.Supply(cfg.Muxers),
 		fx.Supply(h.ID()),
 		fx.Provide(func() host.Host { return h }),
-		fx.Provide(func() crypto.PrivKey { return h.Peerstore().PrivKey(h.ID()) }),
+		fx.Provide(func() crypto.PrivKey {
+			return crypto.AddNetworkCookieToPrivKey(h.Peerstore().PrivKey(h.ID()), cfg.NetworkCookie)
+		}),
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),

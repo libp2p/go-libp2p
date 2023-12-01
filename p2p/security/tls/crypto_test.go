@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"testing"
 
+	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/stretchr/testify/assert"
@@ -51,12 +52,80 @@ func TestNewIdentityCertificates(t *testing.T) {
 	})
 }
 
+func TestVerifyNetworkCookie(t *testing.T) {
+	peerIDA, keyA := createPeer(t)
+	peerIDB, keyB := createPeer(t)
+
+	type testcase struct {
+		name    string
+		cookieA string
+		cookieB string
+		error   string
+	}
+
+	testcases := []testcase{
+		{
+			name: "No cookie",
+		},
+		{
+			name:    "Matching cookie",
+			cookieA: "424344aa",
+			cookieB: "424344aa",
+		},
+		{
+			name:    "Non-matching cookie",
+			cookieA: "424344aa",
+			cookieB: "010203",
+			error:   "bad network cookie (wrong network?)",
+		},
+		{
+			name:    "Cookie vs no cookie",
+			cookieA: "424344aa",
+			error:   "bad network cookie (wrong network?)",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			cookieA, err := ic.ParseNetworkCookie(string(tc.cookieA))
+			assert.NoError(t, err)
+			idA, err := NewIdentity(ic.AddNetworkCookieToPrivKey(keyA, cookieA))
+			assert.NoError(t, err)
+
+			cookieB, err := ic.ParseNetworkCookie(string(tc.cookieB))
+			assert.NoError(t, err)
+			idB, err := NewIdentity(ic.AddNetworkCookieToPrivKey(keyB, cookieB))
+			assert.NoError(t, err)
+
+			tlsCfgA, _ := idA.ConfigForPeer(peerIDB)
+			tlsCfgB, _ := idB.ConfigForPeer(peerIDA)
+
+			err = tlsCfgA.VerifyPeerCertificate(tlsCfgB.Certificates[0].Certificate, nil)
+			if tc.error != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.error)
+			} else {
+				require.NoError(t, err)
+			}
+
+			err = tlsCfgB.VerifyPeerCertificate(tlsCfgA.Certificates[0].Certificate, nil)
+			if tc.error != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.error)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestVectors(t *testing.T) {
 	type testcase struct {
-		name   string
-		data   string
-		peerID string
-		error  string
+		name      string
+		data      string
+		peerID    string
+		netCookie string
+		error     string
 	}
 
 	testcases := []testcase{
@@ -76,6 +145,19 @@ func TestVectors(t *testing.T) {
 			peerID: "16Uiu2HAm2dSCBFxuge46aEt7U1oejtYuBUZXxASHqmcfVmk4gsbx",
 		},
 		{
+			name:      "ECDSA Peer ID with netCookie",
+			data:      "308201fd308201a4a003020102020838eac2a7e9695e39300a06082a8648ce3d040302301e311c301a06035504051313333933393837353437393830353238313331333020170d3233313133303233303630315a180f32313233313130373030303630315a301e311c301a06035504051313333933393837353437393830353238313331333059301306072a8648ce3d020106082a8648ce3d0301070342000428ecde7e10c3e03f13355a3be97f8bcd7969f11fe9b1132d6ad3708b8ab8a23426a68a8e70fa324abc110822c2d92357a08debcb4aedcc8086a1e197c20ae081a381c93081c63081c3060a2b0601040183a25a01010481b43081b1045f0803125b3059301306072a8648ce3d020106082a8648ce3d03010703420004089b6bbb86e428bcef0ddb4cb50bb800cf2a7b40624535cfd4d77d26b6e5d4e7638eba12fe7a62349c7d787c2d5dc6685b150811885a7c0864a54b2e5b9867bc04483046022100b3e337b966a79a920843ab5ef26adc0f0e1fa8772b10d989b8fc2a739b77d8e5022100b29e170c9db29a7fc42c8365c7d423acab72810a74c2b502fa97bcb9b7d2b26d0404424344aa300a06082a8648ce3d040302034700304402203cf9b63ec8717be19a8a4071adeb3c79aeab91a75e94b962bbcab7551801e641022014dca9d5bf8e27777c0d91b48bdd60301c16d51a87f69d8c90af4b37338d7250",
+			peerID:    "QmeXd8w4utstC9X47U5DPK9CM2dNQssAmJVKY8Bpne42qj",
+			netCookie: "424344aa",
+		},
+		{
+			name:      "bad network cookie",
+			data:      "308201fd308201a4a003020102020838eac2a7e9695e39300a06082a8648ce3d040302301e311c301a06035504051313333933393837353437393830353238313331333020170d3233313133303233303630315a180f32313233313130373030303630315a301e311c301a06035504051313333933393837353437393830353238313331333059301306072a8648ce3d020106082a8648ce3d0301070342000428ecde7e10c3e03f13355a3be97f8bcd7969f11fe9b1132d6ad3708b8ab8a23426a68a8e70fa324abc110822c2d92357a08debcb4aedcc8086a1e197c20ae081a381c93081c63081c3060a2b0601040183a25a01010481b43081b1045f0803125b3059301306072a8648ce3d020106082a8648ce3d03010703420004089b6bbb86e428bcef0ddb4cb50bb800cf2a7b40624535cfd4d77d26b6e5d4e7638eba12fe7a62349c7d787c2d5dc6685b150811885a7c0864a54b2e5b9867bc04483046022100b3e337b966a79a920843ab5ef26adc0f0e1fa8772b10d989b8fc2a739b77d8e5022100b29e170c9db29a7fc42c8365c7d423acab72810a74c2b502fa97bcb9b7d2b26d0404424344aa300a06082a8648ce3d040302034700304402203cf9b63ec8717be19a8a4071adeb3c79aeab91a75e94b962bbcab7551801e641022014dca9d5bf8e27777c0d91b48bdd60301c16d51a87f69d8c90af4b37338d7250",
+			peerID:    "QmeXd8w4utstC9X47U5DPK9CM2dNQssAmJVKY8Bpne42qj",
+			netCookie: "012345",
+			error:     "bad network cookie (wrong network?)",
+		},
+		{
 			name:  "Invalid certificate",
 			data:  "308201773082011da003020102020830a73c5d896a1109300a06082a8648ce3d04030230003020170d3735303130313030303030305a180f34303936303130313030303030305a30003059301306072a8648ce3d020106082a8648ce3d03010703420004bbe62df9a7c1c46b7f1f21d556deec5382a36df146fb29c7f1240e60d7d5328570e3b71d99602b77a65c9b3655f62837f8d66b59f1763b8c9beba3be07778043a37f307d307b060a2b0601040183a25a01010101ff046a3068042408011220ec8094573afb9728088860864f7bcea2d4fd412fef09a8e2d24d482377c20db60440ecabae8354afa2f0af4b8d2ad871e865cb5a7c0c8d3dbdbf42de577f92461a0ebb0a28703e33581af7d2a4f2270fc37aec6261fcc95f8af08f3f4806581c730a300a06082a8648ce3d040302034800304502202dfb17a6fa0f94ee0e2e6a3b9fb6e986f311dee27392058016464bd130930a61022100ba4b937a11c8d3172b81e7cd04aedb79b978c4379c2b5b24d565dd5d67d3cb3c",
 			error: "signature invalid",
@@ -89,7 +171,11 @@ func TestVectors(t *testing.T) {
 
 			cert, err := x509.ParseCertificate(data)
 			require.NoError(t, err)
-			key, err := PubKeyFromCertChain([]*x509.Certificate{cert})
+			nc, err := ic.ParseNetworkCookie(tc.netCookie)
+			if err != nil {
+				require.NoError(t, err)
+			}
+			key, err := PubKeyFromCertChain([]*x509.Certificate{cert}, nc)
 			if tc.error != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.error)

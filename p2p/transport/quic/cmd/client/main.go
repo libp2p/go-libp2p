@@ -18,16 +18,20 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Printf("Usage: %s <multiaddr> <peer id>", os.Args[0])
+	if len(os.Args) < 3 || len(os.Args) > 4 {
+		fmt.Printf("Usage: %s <multiaddr> <peer id> [<netcookie>]", os.Args[0])
 		return
 	}
-	if err := run(os.Args[1], os.Args[2]); err != nil {
+	nc := ""
+	if len(os.Args) == 4 {
+		nc = os.Args[3]
+	}
+	if err := run(os.Args[1], os.Args[2], nc); err != nil {
 		log.Fatalf(err.Error())
 	}
 }
 
-func run(raddr string, p string) error {
+func run(raddr, p, ncStr string) error {
 	peerID, err := peer.Decode(p)
 	if err != nil {
 		return err
@@ -40,11 +44,16 @@ func run(raddr string, p string) error {
 	if err != nil {
 		return err
 	}
+	nc, err := ic.ParseNetworkCookie(ncStr)
+	if err != nil {
+		return err
+	}
 
 	reuse, err := quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
 	if err != nil {
 		return err
 	}
+	priv = ic.AddNetworkCookieToPrivKey(priv, nc)
 	t, err := libp2pquic.NewTransport(priv, reuse, nil, nil, nil)
 	if err != nil {
 		return err

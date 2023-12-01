@@ -18,10 +18,12 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
+	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
@@ -36,6 +38,7 @@ import (
 
 type TransportTestCase struct {
 	Name          string
+	Insecure      bool
 	HostGenerator func(t *testing.T, opts TransportTestCaseOpts) host.Host
 }
 
@@ -44,6 +47,7 @@ type TransportTestCaseOpts struct {
 	NoRcmgr         bool
 	ConnGater       connmgr.ConnectionGater
 	ResourceManager network.ResourceManager
+	NetworkCookie   crypto.NetworkCookie
 }
 
 func transformOpts(opts TransportTestCaseOpts) []config.Option {
@@ -55,9 +59,11 @@ func transformOpts(opts TransportTestCaseOpts) []config.Option {
 	if opts.ConnGater != nil {
 		libp2pOpts = append(libp2pOpts, libp2p.ConnectionGater(opts.ConnGater))
 	}
-
 	if opts.ResourceManager != nil {
 		libp2pOpts = append(libp2pOpts, libp2p.ResourceManager(opts.ResourceManager))
+	}
+	if !opts.NetworkCookie.Empty() {
+		libp2pOpts = append(libp2pOpts, libp2p.NetworkCookie(opts.NetworkCookie))
 	}
 	return libp2pOpts
 }
@@ -84,6 +90,23 @@ var transportsToTest = []TransportTestCase{
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name:     "TCP / insecure / Yamux",
+		Insecure: true,
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(insecure.ID, insecure.NewWithIdentity))
 			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -655,6 +678,9 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 	}
 
 	for _, tc := range transportsToTest {
+		if tc.Insecure {
+			continue
+		}
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
@@ -690,5 +716,62 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 			// and just to double-check try connecting again to make sure it works
 			require.NoError(t, h2.Connect(ctx, *ai))
 		})
+	}
+}
+
+func TestNetworkCookie(t *testing.T) {
+	type testcase struct {
+		name    string
+		cookieA string
+		cookieB string
+		error   bool
+	}
+
+	testcases := []testcase{
+		{
+			name: "No cookie",
+		},
+		{
+			name:    "Matching cookie",
+			cookieA: "424344aa",
+			cookieB: "424344aa",
+		},
+		{
+			name:    "Non-matching cookie",
+			cookieA: "424344aa",
+			cookieB: "010203",
+			error:   true,
+		},
+		{
+			name:    "Cookie vs no cookie",
+			cookieA: "424344aa",
+			error:   true,
+		},
+	}
+
+	for _, tr := range transportsToTest {
+		for _, tc := range testcases {
+			t.Run(tc.name+": "+tr.Name, func(t *testing.T) {
+				cookieA, err := crypto.ParseNetworkCookie(tc.cookieA)
+				require.NoError(t, err)
+				cookieB, err := crypto.ParseNetworkCookie(tc.cookieB)
+				require.NoError(t, err)
+				h1 := tr.HostGenerator(t, TransportTestCaseOpts{NetworkCookie: cookieA})
+				h2 := tr.HostGenerator(t, TransportTestCaseOpts{NetworkCookie: cookieB})
+				defer h1.Close()
+				defer h2.Close()
+				ai := peer.AddrInfo{
+					ID:    h1.ID(),
+					Addrs: h1.Addrs(),
+				}
+
+				err = h2.Connect(context.Background(), ai)
+				if tc.error {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
 	}
 }

@@ -311,7 +311,8 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		if err != nil {
 			return nil, err
 		}
-		l, err := newListener(ln, t, t.localPeer, t.privKey, t.rcmgr)
+		nc := ic.NetworkCookieFromPrivKey(t.privKey)
+		l, err := newListener(ln, t, t.localPeer, t.privKey, t.rcmgr, nc)
 		if err != nil {
 			_ = ln.Close()
 			return nil, err

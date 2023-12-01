@@ -674,3 +674,79 @@ func TestHolePunching(t *testing.T) {
 	<-done1
 	<-done2
 }
+
+func TestNetworkCookie(t *testing.T) {
+	for _, tc := range connTestCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			testNetworkCookie(t, tc)
+		})
+	}
+}
+
+func testNetworkCookie(t *testing.T, ctc *connTestCase) {
+	type testcase struct {
+		name            string
+		clientNetCookie string
+		serverNetCookie string
+		error           string
+	}
+
+	testcases := []testcase{
+		{
+			name: "no cookie",
+		},
+		{
+			name:            "cookie ok",
+			clientNetCookie: "01020342",
+			serverNetCookie: "01020342",
+		},
+		{
+			name:            "cookie mismatch",
+			clientNetCookie: "01020342",
+			serverNetCookie: "010203",
+			error:           "bad network cookie (wrong network?)",
+		},
+		{
+			name:            "only client cookie",
+			clientNetCookie: "01020342",
+			error:           "bad network cookie (wrong network?)",
+		},
+		{
+			name:            "only server cookie",
+			serverNetCookie: "010203",
+			error:           "bad network cookie (wrong network?)",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			serverNC, err := ic.ParseNetworkCookie(tc.serverNetCookie)
+			require.NoError(t, err)
+			serverID, serverKey := createPeer(t)
+			serverKey = ic.AddNetworkCookieToPrivKey(serverKey, serverNC)
+
+			clientNC, err := ic.ParseNetworkCookie(tc.clientNetCookie)
+			require.NoError(t, err)
+			_, clientKey := createPeer(t)
+			clientKey = ic.AddNetworkCookieToPrivKey(clientKey, clientNC)
+
+			serverTransport, err := NewTransport(serverKey, newConnManager(t, ctc.Options...), nil, nil, nil)
+			require.NoError(t, err)
+			defer serverTransport.(io.Closer).Close()
+
+			ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
+			defer ln.Close()
+
+			clientTransport, err := NewTransport(clientKey, newConnManager(t, ctc.Options...), nil, nil, nil)
+			require.NoError(t, err)
+			defer clientTransport.(io.Closer).Close()
+
+			_, err = clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+			if tc.error == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.error)
+			}
+		})
+	}
+}

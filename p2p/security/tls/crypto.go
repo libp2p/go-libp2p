@@ -1,6 +1,7 @@
 package libp2ptls
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -23,6 +24,7 @@ import (
 
 const certValidityPeriod = 100 * 365 * 24 * time.Hour // ~100 years
 const certificatePrefix = "libp2p-tls-handshake:"
+const cookieCertificatePrefix = "libp2p-tls-cookie-handshake:"
 const alpn string = "libp2p"
 
 var extensionID = getPrefixedExtensionID([]int{1, 1})
@@ -31,11 +33,13 @@ var extensionCritical bool // so we can mark the extension critical in tests
 type signedKey struct {
 	PubKey    []byte
 	Signature []byte
+	NetCookie []byte `asn1:"optional"`
 }
 
 // Identity is used to secure connections
 type Identity struct {
-	config tls.Config
+	config    tls.Config
+	netCookie ic.NetworkCookie
 }
 
 // IdentityConfig is used to configure an Identity
@@ -68,7 +72,8 @@ func NewIdentity(privKey ic.PrivKey, opts ...IdentityOption) (*Identity, error) 
 		}
 	}
 
-	cert, err := keyToCertificate(privKey, config.CertTemplate)
+	netCookie := ic.NetworkCookieFromPrivKey(privKey)
+	cert, err := keyToCertificate(privKey, config.CertTemplate, netCookie)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +89,7 @@ func NewIdentity(privKey ic.PrivKey, opts ...IdentityOption) (*Identity, error) 
 			NextProtos:             []string{alpn},
 			SessionTicketsDisabled: true,
 		},
+		netCookie: netCookie,
 	}, nil
 }
 
@@ -121,7 +127,7 @@ func (i *Identity) ConfigForPeer(remote peer.ID) (*tls.Config, <-chan ic.PubKey)
 			chain[i] = cert
 		}
 
-		pubKey, err := PubKeyFromCertChain(chain)
+		pubKey, err := PubKeyFromCertChain(chain, i.netCookie)
 		if err != nil {
 			return err
 		}
@@ -139,7 +145,7 @@ func (i *Identity) ConfigForPeer(remote peer.ID) (*tls.Config, <-chan ic.PubKey)
 }
 
 // PubKeyFromCertChain verifies the certificate chain and extract the remote's public key.
-func PubKeyFromCertChain(chain []*x509.Certificate) (ic.PubKey, error) {
+func PubKeyFromCertChain(chain []*x509.Certificate, netCookie ic.NetworkCookie) (ic.PubKey, error) {
 	if len(chain) != 1 {
 		return nil, errors.New("expected one certificates in the chain")
 	}
@@ -184,12 +190,16 @@ func PubKeyFromCertChain(chain []*x509.Certificate) (ic.PubKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	valid, err := pubKey.Verify(append([]byte(certificatePrefix), certKeyPub...), sk.Signature)
+	valid, err := pubKey.Verify(signData(certKeyPub, sk.NetCookie), sk.Signature)
 	if err != nil {
 		return nil, fmt.Errorf("signature verification failed: %s", err)
 	}
 	if !valid {
 		return nil, errors.New("signature invalid")
+	}
+	if !bytes.Equal(sk.NetCookie, netCookie) {
+		return nil, fmt.Errorf("bad network cookie (wrong network?). Expected %q, got %q",
+			netCookie, ic.NetworkCookie(sk.NetCookie))
 	}
 	return pubKey, nil
 }
@@ -197,7 +207,7 @@ func PubKeyFromCertChain(chain []*x509.Certificate) (ic.PubKey, error) {
 // GenerateSignedExtension uses the provided private key to sign the public key, and returns the
 // signature within a pkix.Extension.
 // This extension is included in a certificate to cryptographically tie it to the libp2p private key.
-func GenerateSignedExtension(sk ic.PrivKey, pubKey crypto.PublicKey) (pkix.Extension, error) {
+func GenerateSignedExtension(sk ic.PrivKey, pubKey crypto.PublicKey, netCookie ic.NetworkCookie) (pkix.Extension, error) {
 	keyBytes, err := ic.MarshalPublicKey(sk.GetPublic())
 	if err != nil {
 		return pkix.Extension{}, err
@@ -206,13 +216,14 @@ func GenerateSignedExtension(sk ic.PrivKey, pubKey crypto.PublicKey) (pkix.Exten
 	if err != nil {
 		return pkix.Extension{}, err
 	}
-	signature, err := sk.Sign(append([]byte(certificatePrefix), certKeyPub...))
+	signature, err := sk.Sign(signData(certKeyPub, netCookie))
 	if err != nil {
 		return pkix.Extension{}, err
 	}
 	value, err := asn1.Marshal(signedKey{
 		PubKey:    keyBytes,
 		Signature: signature,
+		NetCookie: netCookie,
 	})
 	if err != nil {
 		return pkix.Extension{}, err
@@ -224,14 +235,14 @@ func GenerateSignedExtension(sk ic.PrivKey, pubKey crypto.PublicKey) (pkix.Exten
 // keyToCertificate generates a new ECDSA private key and corresponding x509 certificate.
 // The certificate includes an extension that cryptographically ties it to the provided libp2p
 // private key to authenticate TLS connections.
-func keyToCertificate(sk ic.PrivKey, certTmpl *x509.Certificate) (*tls.Certificate, error) {
+func keyToCertificate(sk ic.PrivKey, certTmpl *x509.Certificate, netCookie ic.NetworkCookie) (*tls.Certificate, error) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}
 
 	// after calling CreateCertificate, these will end up in Certificate.Extensions
-	extension, err := GenerateSignedExtension(sk, certKey.Public())
+	extension, err := GenerateSignedExtension(sk, certKey.Public(), netCookie)
 	if err != nil {
 		return nil, err
 	}
@@ -268,4 +279,15 @@ func certTemplate() (*x509.Certificate, error) {
 		// see https://datatracker.ietf.org/doc/html/rfc3280#section-4.1.2.4.
 		Subject: pkix.Name{SerialNumber: subjectSN.String()},
 	}, nil
+}
+
+func signData(certKeyPub []byte, netCookie ic.NetworkCookie) []byte {
+	var r []byte
+	if netCookie.Empty() {
+		r = []byte(certificatePrefix)
+	} else {
+		r = append([]byte(cookieCertificatePrefix), byte(len(netCookie)))
+		r = append(r, netCookie...)
+	}
+	return append(r, certKeyPub...)
 }

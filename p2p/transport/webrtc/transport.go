@@ -137,7 +137,7 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 	config := webrtc.Configuration{
 		Certificates: []webrtc.Certificate{*cert},
 	}
-	noiseTpt, err := noise.New(noise.ID, privKey, nil)
+	noiseTpt, err := noise.New(noise.ID, ic.StripNetworkCookieFromPrivKey(privKey), nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create noise transport: %w", err)
 	}
@@ -481,7 +481,14 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 		return nil, err
 	}
 
-	result := []byte("libp2p-webrtc-noise:")
+	var result []byte
+	netCookie := ic.NetworkCookieFromPrivKey(t.privKey)
+	if netCookie.Empty() {
+		result = []byte("libp2p-webrtc-noise:")
+	} else {
+		result = append([]byte("libp2p-webrtc-noise-cookie:"), byte(len(netCookie)))
+		result = append(result, netCookie...)
+	}
 	if inbound {
 		result = append(result, remoteEncoded...)
 		result = append(result, localEncoded...)
