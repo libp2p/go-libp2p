@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"math/rand"
+	"net"
 	"strings"
 	"sync"
 
@@ -86,9 +87,15 @@ func (s *mdnsService) Close() error {
 func (s *mdnsService) getIPs(addrs []ma.Multiaddr) ([]string, error) {
 	var ip4, ip6 string
 	for _, addr := range addrs {
-		first, _ := ma.SplitFirst(addr)
+		first, remaining := ma.SplitFirst(addr)
 		if first == nil {
 			continue
+		}
+		if first.Protocol().Code == ma.P_IP6ZONE {
+			first, _ = ma.SplitFirst(remaining)
+			if first == nil {
+				continue
+			}
 		}
 		if ip4 == "" && first.Protocol().Code == ma.P_IP4 {
 			ip4 = first.Value()
@@ -124,6 +131,10 @@ func (s *mdnsService) startServer() error {
 	var txts []string
 	for _, addr := range addrs {
 		if manet.IsThinWaist(addr) { // don't announce circuit addresses
+			if manet.IsIP6LinkLocal(addr) {
+				_, addr = ma.SplitFirst(addr)
+			}
+
 			txts = append(txts, dnsaddrPrefix+addr.String())
 		}
 	}
@@ -159,21 +170,26 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 			// We only care about the TXT records.
 			// Ignore A, AAAA and PTR.
 			addrs := make([]ma.Multiaddr, 0, len(entry.Text)) // assume that all TXT records are dnsaddrs
-			for _, s := range entry.Text {
-				if !strings.HasPrefix(s, dnsaddrPrefix) {
+			for _, txt := range entry.Text {
+				if !strings.HasPrefix(txt, dnsaddrPrefix) {
 					log.Debug("missing dnsaddr prefix")
 					continue
 				}
-				addr, err := ma.NewMultiaddr(s[len(dnsaddrPrefix):])
+				addr, err := ma.NewMultiaddr(txt[len(dnsaddrPrefix):])
 				if err != nil {
 					log.Debugf("failed to parse multiaddr: %s", err)
 					continue
+				}
+				if manet.IsIP6LinkLocal(addr) {
+					ifaces, _ := net.Interfaces()
+					addr = s.fixIP6LinkLocalAddress(entry.ReceivedIfIndex, entry.ReceivedSrc, addr)
+					_ = ifaces
 				}
 				addrs = append(addrs, addr)
 			}
 			infos, err := peer.AddrInfosFromP2pAddrs(addrs...)
 			if err != nil {
-				log.Debugf("failed to get peer info: %s", err)
+				log.Debugf("failed to get peer info: %txt", err)
 				continue
 			}
 			for _, info := range infos {
@@ -190,6 +206,26 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 			log.Debugf("zeroconf browsing failed: %s", err)
 		}
 	}()
+}
+
+func (s *mdnsService) fixIP6LinkLocalAddress(ifIndex int, src net.Addr, addr ma.Multiaddr) ma.Multiaddr {
+	var ifName string
+	udpAddr, ok := src.(*net.UDPAddr)
+	if ok && len(udpAddr.Zone) > 0 {
+		ifName = udpAddr.Zone
+	} else if ifIndex > 0 {
+		iface, err := net.InterfaceByIndex(ifIndex)
+		if err == nil {
+			ifName = iface.Name
+		}
+	}
+	if len(ifName) > 0 {
+		prefix, err := ma.NewMultiaddr("/ip6zone/" + ifName)
+		if err == nil {
+			return prefix.Encapsulate(addr)
+		}
+	}
+	return addr
 }
 
 func randomString(l int) string {
