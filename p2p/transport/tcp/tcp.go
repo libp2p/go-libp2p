@@ -152,7 +152,10 @@ func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager,
 	return tr, nil
 }
 
-var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_TCP))
+var dialMatcher = mafmt.Or(
+	mafmt.And(mafmt.IP, mafmt.Base(ma.P_TCP)),
+	mafmt.And(mafmt.Base(ma.P_IP6ZONE), mafmt.IP, mafmt.Base(ma.P_TCP)),
+)
 
 // CanDial returns true if this transport believes it can dial the given
 // multiaddr.

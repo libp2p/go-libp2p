@@ -3,6 +3,7 @@ package tcp
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -39,6 +40,69 @@ func TestTcpTransport(t *testing.T) {
 		require.NoError(t, err)
 
 		zero := "/ip4/127.0.0.1/tcp/0"
+		ttransport.SubtestTransport(t, ta, tb, zero, peerA)
+
+		envReuseportVal = false
+	}
+	envReuseportVal = true
+}
+
+func TestTcpTransportCanDialToLinkLocalAddress(t *testing.T) {
+	addr := ma.StringCast("/ip6zone/eth0/ip6/fe80::fc54:ff:fe43:e553/tcp/1234")
+
+	var u transport.Upgrader
+	tpt, err := NewTCPTransport(u, nil)
+	require.NoError(t, err)
+
+	if !tpt.CanDial(addr) {
+		t.Fatal("should be able to dial ip6zone")
+	}
+}
+
+func TestTcpTransportWithLinkLocalAddress(t *testing.T) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	var targetAddr ma.Multiaddr
+
+findInterface:
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err == nil {
+			for _, a := range addrs {
+				addr, err := manet.FromNetAddr(a)
+				if err == nil {
+					if manet.IsIP6LinkLocal(addr) {
+						targetAddr = ma.StringCast("/ip6zone/" + iface.Name + addr.String())
+						break findInterface
+					}
+				}
+			}
+		}
+	}
+
+	if targetAddr == nil {
+		t.Fail()
+		return
+	}
+
+	for i := 0; i < 2; i++ {
+		peerA, ia := makeInsecureMuxer(t)
+		_, ib := makeInsecureMuxer(t)
+
+		ua, err := tptu.New(ia, muxers, nil, nil, nil)
+		require.NoError(t, err)
+		ta, err := NewTCPTransport(ua, nil)
+		require.NoError(t, err)
+		ub, err := tptu.New(ib, muxers, nil, nil, nil)
+		require.NoError(t, err)
+		tb, err := NewTCPTransport(ub, nil)
+		require.NoError(t, err)
+
+		zero := targetAddr.String() + "/tcp/0"
 		ttransport.SubtestTransport(t, ta, tb, zero, peerA)
 
 		envReuseportVal = false
