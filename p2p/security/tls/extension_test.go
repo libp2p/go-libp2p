@@ -7,7 +7,7 @@ import (
 )
 
 func TestExtensionGenerating(t *testing.T) {
-	require.Equal(t, getPrefixedExtensionID([]int{13, 37}), []int{1, 3, 6, 1, 4, 1, 53594, 13, 37})
+	require.Equal(t, []int{1, 3, 6, 1, 4, 1, 53594, 13, 37}, getPrefixedExtensionID([]int{13, 37}))
 }
 
 func TestExtensionComparison(t *testing.T) {

@@ -112,7 +112,7 @@ func TestConnectionsClosedIfNotAccepted(t *testing.T) {
 	}
 
 	time.Sleep(timeout)
-	require.Nil(<-errCh)
+	require.NoError(<-errCh)
 }
 
 func TestFailedUpgradeOnListen(t *testing.T) {

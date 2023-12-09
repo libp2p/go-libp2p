@@ -109,8 +109,7 @@ func TestCorrectNumberOfVirtualListeners(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, len(tpt.listeners[udpAddr.String()]))
+	require.Len(t, tpt.listeners[udpAddr.String()], 1)
 	ln.Close()
-	require.Equal(t, 0, len(tpt.listeners[udpAddr.String()]))
-
+	require.Empty(t, tpt.listeners[udpAddr.String()])
 }

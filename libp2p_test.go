@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -25,21 +24,14 @@ import (
 
 func TestNewHost(t *testing.T) {
 	h, err := makeRandomHost(t, 9000)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	h.Close()
 }
 
 func TestBadTransportConstructor(t *testing.T) {
-	h, err := New(Transport(func() {}))
-	if err == nil {
-		h.Close()
-		t.Fatal("expected an error")
-	}
-	if !strings.Contains(err.Error(), "libp2p_test.go") {
-		t.Error("expected error to contain debugging info")
-	}
+	_, err := New(Transport(func() {}))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "libp2p_test.go", "expected error to contain debugging info")
 }
 
 func TestTransportConstructor(t *testing.T) {
@@ -61,9 +53,7 @@ func TestNoListenAddrs(t *testing.T) {
 	h, err := New(NoListenAddrs)
 	require.NoError(t, err)
 	defer h.Close()
-	if len(h.Addrs()) != 0 {
-		t.Fatal("expected no addresses")
-	}
+	require.Empty(t, h.Addrs(), "expected no addresses")
 }
 
 func TestNoTransports(t *testing.T) {
@@ -80,9 +70,7 @@ func TestNoTransports(t *testing.T) {
 		ID:    b.ID(),
 		Addrs: b.Addrs(),
 	})
-	if err == nil {
-		t.Error("dial should have failed as no transports have been configured")
-	}
+	require.Error(t, err, "dial should have failed as no transports have been configured")
 }
 
 func TestInsecure(t *testing.T) {
@@ -118,13 +106,8 @@ func TestDefaultListenAddrs(t *testing.T) {
 	// Test 2: Listen addr only include relay if user defined transport is passed.
 	h, err = New(Transport(tcp.NewTCPTransport))
 	require.NoError(t, err)
-
-	if len(h.Network().ListenAddresses()) != 1 {
-		t.Error("expected one listen addr with user defined transport")
-	}
-	if reCircuit.FindStringSubmatchIndex(h.Network().ListenAddresses()[0].String()) == nil {
-		t.Error("expected relay address")
-	}
+	require.Len(t, h.Network().ListenAddresses(), 1, "expected one listen addr with user defined transport")
+	require.NotNil(t, reCircuit.FindStringSubmatchIndex(h.Network().ListenAddresses()[0].String()), "expected relay address")
 	h.Close()
 }
 
@@ -155,20 +138,15 @@ func TestChainOptions(t *testing.T) {
 		}
 	}
 
-	if err := cfg.Apply(newOpt(), nil, ChainOptions(newOpt(), newOpt(), ChainOptions(), ChainOptions(nil, newOpt()))); err != nil {
-		t.Fatal(err)
-	}
+	err := cfg.Apply(newOpt(), nil, ChainOptions(newOpt(), newOpt(), ChainOptions(), ChainOptions(nil, newOpt())))
+	require.NoError(t, err)
 
 	// Make sure we ran all options.
-	if optcount != 4 {
-		t.Errorf("expected to have handled %d options, handled %d", optcount, len(optsRun))
-	}
+	require.Equalf(t, 4, optcount, "expected to have handled %d options, handled %d", optcount, len(optsRun))
 
 	// Make sure we ran the options in-order.
 	for i, x := range optsRun {
-		if i != x {
-			t.Errorf("expected opt %d, got opt %d", i, x)
-		}
+		require.Equalf(t, i, x, "expected opt %d, got opt %d", i, x)
 	}
 }
 
@@ -306,9 +284,7 @@ func TestTransportConstructorWebTransport(t *testing.T) {
 
 func TestTransportCustomAddressWebTransport(t *testing.T) {
 	customAddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	h, err := New(
 		Transport(webtransport.New),
 		ListenAddrs(customAddr),
@@ -325,8 +301,8 @@ func TestTransportCustomAddressWebTransport(t *testing.T) {
 	require.NotEqual(t, addrs[0], customAddr)
 	restOfAddr, lastComp := ma.SplitLast(addrs[0])
 	restOfAddr, secondToLastComp := ma.SplitLast(restOfAddr)
-	require.Equal(t, lastComp.Protocol().Code, ma.P_CERTHASH)
-	require.Equal(t, secondToLastComp.Protocol().Code, ma.P_CERTHASH)
+	require.Equal(t, ma.P_CERTHASH, lastComp.Protocol().Code)
+	require.Equal(t, ma.P_CERTHASH, secondToLastComp.Protocol().Code)
 	require.True(t, restOfAddr.Equal(customAddr))
 }
 
@@ -335,9 +311,7 @@ func TestTransportCustomAddressWebTransport(t *testing.T) {
 // listening on a webtranport address, we don't stall.
 func TestTransportCustomAddressWebTransportDoesNotStall(t *testing.T) {
 	customAddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	h, err := New(
 		Transport(webtransport.New),
 		// Purposely not listening on the custom address so that we make sure the node doesn't stall if it fails to add a certhash to the multiaddr
@@ -352,7 +326,7 @@ func TestTransportCustomAddressWebTransportDoesNotStall(t *testing.T) {
 	addrs := h.Addrs()
 	require.Len(t, addrs, 1)
 	_, lastComp := ma.SplitLast(addrs[0])
-	require.NotEqual(t, lastComp.Protocol().Code, ma.P_CERTHASH)
+	require.NotEqual(t, ma.P_CERTHASH, lastComp.Protocol().Code)
 	// We did not add the certhash to the multiaddr
 	require.Equal(t, addrs[0], customAddr)
 }

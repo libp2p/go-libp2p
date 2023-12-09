@@ -69,7 +69,7 @@ func TestReuseListenOnAllIPv4(t *testing.T) {
 	require.NoError(t, err)
 	conn, err := reuse.TransportForListen("udp4", addr)
 	require.NoError(t, err)
-	require.Equal(t, conn.GetCount(), 1)
+	require.Equal(t, 1, conn.GetCount())
 }
 
 func TestReuseListenOnAllIPv6(t *testing.T) {
@@ -82,7 +82,7 @@ func TestReuseListenOnAllIPv6(t *testing.T) {
 	tr, err := reuse.TransportForListen("udp6", addr)
 	require.NoError(t, err)
 	defer tr.Close()
-	require.Equal(t, tr.GetCount(), 1)
+	require.Equal(t, 1, tr.GetCount())
 }
 
 func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
@@ -93,10 +93,10 @@ func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
 	require.NoError(t, err)
 	conn, err := reuse.TransportForDial("udp4", addr)
 	require.NoError(t, err)
-	require.Equal(t, conn.GetCount(), 1)
+	require.Equal(t, 1, conn.GetCount())
 	laddr := conn.LocalAddr().(*net.UDPAddr)
-	require.Equal(t, laddr.IP.String(), "0.0.0.0")
-	require.NotEqual(t, laddr.Port, 0)
+	require.Equal(t, "0.0.0.0", laddr.IP.String())
+	require.NotEqual(t, 0, laddr.Port)
 }
 
 func TestReuseConnectionWhenDialing(t *testing.T) {
@@ -107,13 +107,13 @@ func TestReuseConnectionWhenDialing(t *testing.T) {
 	require.NoError(t, err)
 	lconn, err := reuse.TransportForListen("udp4", addr)
 	require.NoError(t, err)
-	require.Equal(t, lconn.GetCount(), 1)
+	require.Equal(t, 1, lconn.GetCount())
 	// dial
 	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
 	require.NoError(t, err)
 	conn, err := reuse.TransportForDial("udp4", raddr)
 	require.NoError(t, err)
-	require.Equal(t, conn.GetCount(), 2)
+	require.Equal(t, 2, conn.GetCount())
 }
 
 func TestReuseConnectionWhenListening(t *testing.T) {
@@ -127,8 +127,8 @@ func TestReuseConnectionWhenListening(t *testing.T) {
 	laddr := &net.UDPAddr{IP: net.IPv4zero, Port: tr.LocalAddr().(*net.UDPAddr).Port}
 	lconn, err := reuse.TransportForListen("udp4", laddr)
 	require.NoError(t, err)
-	require.Equal(t, lconn.GetCount(), 2)
-	require.Equal(t, tr.GetCount(), 2)
+	require.Equal(t, 2, lconn.GetCount())
+	require.Equal(t, 2, tr.GetCount())
 }
 
 func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
@@ -151,15 +151,15 @@ func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
 	require.NoError(t, err)
 	tr, err := reuse.TransportForDial("udp4", raddr)
 	require.NoError(t, err)
-	require.Equal(t, tr, lTr)
-	require.Equal(t, tr.GetCount(), 2)
+	require.Equal(t, lTr, tr)
+	require.Equal(t, 2, tr.GetCount())
 
 	// a listener on an unspecified port should reuse the dialer
 	laddr2 := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	lconn2, err := reuse.TransportForListen("udp4", laddr2)
 	require.NoError(t, err)
-	require.Equal(t, lconn2, rTr)
-	require.Equal(t, lconn2.GetCount(), 2)
+	require.Equal(t, rTr, lconn2)
+	require.Equal(t, 2, lconn2.GetCount())
 }
 
 func TestReuseListenOnSpecificInterface(t *testing.T) {
@@ -181,11 +181,11 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 	require.NoError(t, err)
 	lconn, err := reuse.TransportForListen("udp4", addr)
 	require.NoError(t, err)
-	require.Equal(t, lconn.GetCount(), 1)
+	require.Equal(t, 1, lconn.GetCount())
 	// dial
 	conn, err := reuse.TransportForDial("udp4", raddr)
 	require.NoError(t, err)
-	require.Equal(t, conn.GetCount(), 1)
+	require.Equal(t, 1, conn.GetCount())
 }
 
 func TestReuseGarbageCollect(t *testing.T) {
@@ -216,13 +216,13 @@ func TestReuseGarbageCollect(t *testing.T) {
 	require.NoError(t, err)
 	dTr, err := reuse.TransportForDial("udp4", raddr)
 	require.NoError(t, err)
-	require.Equal(t, dTr.GetCount(), 1)
+	require.Equal(t, 1, dTr.GetCount())
 
 	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:1234")
 	require.NoError(t, err)
 	lTr, err := reuse.TransportForListen("udp4", addr)
 	require.NoError(t, err)
-	require.Equal(t, lTr.GetCount(), 1)
+	require.Equal(t, 1, lTr.GetCount())
 
 	closeTime := time.Now()
 	lTr.DecreaseCount()
@@ -233,7 +233,7 @@ func TestReuseGarbageCollect(t *testing.T) {
 		if closeTime.Add(maxUnusedDuration).Before(time.Now()) {
 			break
 		}
-		require.Equal(t, num, 2)
+		require.Equal(t, 2, num)
 		time.Sleep(2 * time.Millisecond)
 	}
 	require.Eventually(t, func() bool { return numGlobals() == 0 }, 4*garbageCollectInterval, 10*time.Millisecond)

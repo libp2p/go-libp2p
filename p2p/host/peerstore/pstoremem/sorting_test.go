@@ -16,5 +16,5 @@ func TestAddressSorting(t *testing.T) {
 
 	l := addrList{local, u1, u2l, norm}
 	sort.Sort(l)
-	require.Equal(t, l, addrList{u2l, u1, local, norm})
+	require.Equal(t, addrList{u2l, u1, local, norm}, l)
 }

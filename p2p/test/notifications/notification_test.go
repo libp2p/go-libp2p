@@ -41,7 +41,7 @@ func TestListenAddressNotif(t *testing.T) {
 		ev := e.(event.EvtLocalAddressesUpdated)
 		require.Empty(t, ev.Removed)
 		require.Len(t, ev.Current, 1)
-		require.Equal(t, ev.Current[0].Action, event.Added)
+		require.Equal(t, event.Added, ev.Current[0].Action)
 		initialAddr = ev.Current[0].Address
 		portStr, err := initialAddr.ValueForProtocol(ma.P_TCP)
 		require.NoError(t, err)

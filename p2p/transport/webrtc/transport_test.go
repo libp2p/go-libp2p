@@ -58,12 +58,12 @@ func TestTransportWebRTC_CanDial(t *testing.T) {
 
 	for _, addr := range invalid {
 		a := ma.StringCast(addr)
-		require.Equal(t, false, tr.CanDial(a))
+		require.False(t, tr.CanDial(a))
 	}
 
 	for _, addr := range valid {
 		a := ma.StringCast(addr)
-		require.Equal(t, true, tr.CanDial(a), addr)
+		require.True(t, tr.CanDial(a), addr)
 	}
 }
 
@@ -183,7 +183,6 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatalf("timed out")
 	}
-
 }
 
 func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
@@ -248,7 +247,6 @@ func TestTransportWebRTC_ListenerCanCreateStreams(t *testing.T) {
 	n, err := str.Read(buf)
 	require.NoError(t, err)
 	require.Equal(t, "test", string(buf[:n]))
-
 }
 
 func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
@@ -290,7 +288,6 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out")
 	}
-
 }
 
 func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
@@ -411,7 +408,6 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 		smallBuffer := make([]byte, 1024)
 		_, err = stream.Write(smallBuffer)
 		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-
 	})
 }
 
@@ -431,7 +427,6 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 			_, err = lconn.AcceptStream()
 			require.NoError(t, err)
 		}()
-
 	}
 
 	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
@@ -502,7 +497,7 @@ func TestTransportWebRTC_RemoteReadsAfterClose(t *testing.T) {
 	buf := make([]byte, 10)
 	n, err := stream.Read(buf)
 	require.NoError(t, err)
-	require.Equal(t, n, 4)
+	require.Equal(t, 4, n)
 }
 
 func TestTransportWebRTC_RemoteReadsAfterClose2(t *testing.T) {
@@ -550,7 +545,7 @@ func TestTransportWebRTC_RemoteReadsAfterClose2(t *testing.T) {
 	require.NoError(t, err)
 	// signal stream closure
 	close(awaitStreamClosure)
-	require.Equal(t, <-readBytesResult, 4)
+	require.Equal(t, 4, <-readBytesResult)
 }
 
 func TestTransportWebRTC_Close(t *testing.T) {
@@ -573,7 +568,6 @@ func TestTransportWebRTC_Close(t *testing.T) {
 			require.NoError(t, err)
 			time.Sleep(100 * time.Millisecond)
 			_ = stream.Close()
-
 		}()
 
 		buf := make([]byte, 2)

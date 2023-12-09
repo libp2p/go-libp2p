@@ -96,8 +96,8 @@ func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 	require.GreaterOrEqual(t, nc2, 1)
 
 	require.NoError(t, hps.DirectConnect(h2.ID()))
-	require.Equal(t, len(h1.Network().ConnsToPeer(h2.ID())), nc1)
-	require.Equal(t, len(h2.Network().ConnsToPeer(h1.ID())), nc2)
+	require.Len(t, h1.Network().ConnsToPeer(h2.ID()), nc1)
+	require.Len(t, h2.Network().ConnsToPeer(h1.ID()), nc2)
 	require.Empty(t, tr.getEvents())
 }
 
@@ -120,13 +120,13 @@ func TestDirectDialWorks(t *testing.T) {
 	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
 
 	// try to hole punch without any connection and streams, if it works -> it's a direct connection
-	require.Len(t, h1.Network().ConnsToPeer(h2.ID()), 0)
+	require.Empty(t, h1.Network().ConnsToPeer(h2.ID()))
 	require.NoError(t, h1ps.DirectConnect(h2.ID()))
 	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
 	require.GreaterOrEqual(t, len(h2.Network().ConnsToPeer(h1.ID())), 1)
 	events := tr.getEvents()
 	require.Len(t, events, 1)
-	require.Equal(t, events[0].Type, holepunch.DirectDialEvtT)
+	require.Equal(t, holepunch.DirectDialEvtT, events[0].Type)
 }
 
 func TestEndToEndSimConnect(t *testing.T) {
@@ -247,7 +247,6 @@ func TestFailuresOnInitiator(t *testing.T) {
 				require.Contains(t, err.Error(), tc.errMsg)
 			}
 		})
-
 	}
 }
 
@@ -361,7 +360,6 @@ func TestFailuresOnResponder(t *testing.T) {
 			require.Len(t, errs, 1)
 			require.Contains(t, errs[0], tc.errMsg)
 		})
-
 	}
 }
 

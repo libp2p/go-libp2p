@@ -369,7 +369,6 @@ func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("did not get Symmetric NAT event")
 	}
-
 }
 
 func TestEmitNATDeviceTypeCone(t *testing.T) {
@@ -431,6 +430,6 @@ func TestObserveWebtransport(t *testing.T) {
 	harness.observe(observedAddr, pb4)
 	harness.observe(observedAddr, pb5)
 
-	require.Equal(t, 1, len(harness.oas.Addrs()))
+	require.Len(t, harness.oas.Addrs(), 1)
 	require.Equal(t, "/ip4/1.2.3.4/udp/1231/quic-v1/webtransport", harness.oas.Addrs()[0].String())
 }

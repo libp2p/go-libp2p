@@ -408,7 +408,7 @@ func TestCustomServeMux(t *testing.T) {
 	defer server.Close()
 
 	addrs := server.Addrs()
-	require.Equal(t, len(addrs), 1)
+	require.Len(t, addrs, 1)
 	var clientHttpHost libp2phttp.Host
 	rt, err := clientHttpHost.NewConstrainedRoundTripper(peer.AddrInfo{Addrs: addrs}, libp2phttp.PreferHTTPTransport)
 	require.NoError(t, err)
@@ -466,7 +466,7 @@ func TestSetHandlerAtPath(t *testing.T) {
 			}()
 			defer server.Close()
 			addrs := server.Addrs()
-			require.Equal(t, 1, len(addrs))
+			require.Len(t, addrs, 1)
 			port, err := addrs[0].ValueForProtocol(ma.P_TCP)
 			require.NoError(t, err)
 			httpAddr := fmt.Sprintf("http://127.0.0.1:%s", port)
@@ -483,5 +483,4 @@ func TestSetHandlerAtPath(t *testing.T) {
 			}
 		})
 	}
-
 }

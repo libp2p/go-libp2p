@@ -142,7 +142,7 @@ func TestNewStreamTransientConnection(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, s)
 		defer s.Close()
-		require.Equal(t, s.Conn().Stat().Direction, network.DirInbound)
+		require.Equal(t, network.DirInbound, s.Conn().Stat().Direction)
 		done <- true
 	}()
 	go func() {

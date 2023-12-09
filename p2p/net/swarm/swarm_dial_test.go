@@ -114,7 +114,7 @@ func TestDedupAddrsForDial(t *testing.T) {
 	mas, _, err := s.addrsForDial(ctx, otherPeer)
 	require.NoError(t, err)
 
-	require.Equal(t, 1, len(mas))
+	require.Len(t, mas, 1)
 }
 
 func newTestSwarmWithResolver(t *testing.T, resolver *madns.Resolver) *Swarm {
@@ -275,7 +275,7 @@ func TestAddrResolutionRecursiveTransportSpecific(t *testing.T) {
 	addrs, _, err := s.addrsForDial(tctx, p)
 	require.NoError(t, err)
 	require.Len(t, addrs, 1)
-	require.Equal(t, addrs[0].String(), "/ip4/1.2.3.4/tcp/443/tls/sni/sub.example.com/ws")
+	require.Equal(t, "/ip4/1.2.3.4/tcp/443/tls/sni/sub.example.com/ws", addrs[0].String())
 }
 
 func TestAddrsForDialFiltering(t *testing.T) {

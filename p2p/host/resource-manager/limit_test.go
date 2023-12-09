@@ -110,7 +110,6 @@ func TestScaling(t *testing.T) {
 		require.Equal(t, 20+4*2, scaled.service["B"].Streams)
 		require.Equal(t, int64(200+4*3), scaled.service["B"].Memory)
 		require.Equal(t, 400, scaled.service["B"].FD)
-
 	})
 }
 
@@ -157,7 +156,7 @@ func TestJSONMarshalling(t *testing.T) {
 
 	jsonEncoded, err := json.Marshal(bl)
 	require.NoError(t, err)
-	require.Equal(t, string(jsonEncoded), `{"StreamsInbound":10,"StreamsOutbound":"blockAll","Conns":10,"ConnsOutbound":"unlimited","Memory":"unlimited"}`)
+	require.Equal(t, `{"StreamsInbound":10,"StreamsOutbound":"blockAll","Conns":10,"ConnsOutbound":"unlimited","Memory":"unlimited"}`, string(jsonEncoded))
 
 	// Roundtrip
 	var blDecoded ResourceLimits
@@ -175,7 +174,7 @@ func TestJSONRoundTripInt64(t *testing.T) {
 	jsonEncoded, err := json.Marshal(bl)
 	require.NoError(t, err)
 
-	require.Equal(t, string(jsonEncoded), `{"Memory":"9223372036854775807"}`)
+	require.Equal(t, `{"Memory":"9223372036854775807"}`, string(jsonEncoded))
 
 	// Roundtrip
 	var blDecoded ResourceLimits

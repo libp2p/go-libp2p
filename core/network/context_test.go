@@ -11,9 +11,7 @@ import (
 func TestDefaultTimeout(t *testing.T) {
 	ctx := context.Background()
 	dur := GetDialPeerTimeout(ctx)
-	if dur != DialPeerTimeout {
-		t.Fatal("expected default peer timeout")
-	}
+	require.Equal(t, DialPeerTimeout, dur, "expected default peer timeout")
 }
 
 func TestNonDefaultTimeout(t *testing.T) {
@@ -24,9 +22,7 @@ func TestNonDefaultTimeout(t *testing.T) {
 		customTimeout,
 	)
 	dur := GetDialPeerTimeout(ctx)
-	if dur != customTimeout {
-		t.Fatal("peer timeout doesn't match set timeout")
-	}
+	require.Equal(t, customTimeout, dur, "peer timeout doesn't match set timeout")
 }
 
 func TestSettingTimeout(t *testing.T) {
@@ -36,9 +32,7 @@ func TestSettingTimeout(t *testing.T) {
 		customTimeout,
 	)
 	dur := GetDialPeerTimeout(ctx)
-	if dur != customTimeout {
-		t.Fatal("peer timeout doesn't match set timeout")
-	}
+	require.Equal(t, customTimeout, dur, "peer timeout doesn't match set timeout")
 }
 
 func TestSimultaneousConnect(t *testing.T) {
@@ -47,13 +41,13 @@ func TestSimultaneousConnect(t *testing.T) {
 		ok, isClient, reason := GetSimultaneousConnect(serverCtx)
 		require.True(t, ok)
 		require.False(t, isClient)
-		require.Equal(t, reason, "foobar")
+		require.Equal(t, "foobar", reason)
 	})
 	t.Run("for the client", func(t *testing.T) {
 		serverCtx := WithSimultaneousConnect(context.Background(), true, "foo")
 		ok, isClient, reason := GetSimultaneousConnect(serverCtx)
 		require.True(t, ok)
 		require.True(t, isClient)
-		require.Equal(t, reason, "foo")
+		require.Equal(t, "foo", reason)
 	})
 }

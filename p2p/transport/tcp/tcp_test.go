@@ -168,7 +168,7 @@ func TestDialWithUpdates(t *testing.T) {
 	updCh := make(chan transport.DialUpdate, 1)
 	conn, err := tb.DialWithUpdates(context.Background(), ln.Multiaddr(), peerA, updCh)
 	upd := <-updCh
-	require.Equal(t, upd.Kind, transport.UpdateKindHandshakeProgressed)
+	require.Equal(t, transport.UpdateKindHandshakeProgressed, upd.Kind)
 	require.NotNil(t, conn)
 	require.NoError(t, err)
 
@@ -191,7 +191,7 @@ func TestDialWithUpdates(t *testing.T) {
 	// This dial will fail as acceptAndClose will not upgrade the connection
 	conn, err = tb.DialWithUpdates(context.Background(), li.Multiaddr(), peerA, updCh)
 	upd = <-updCh
-	require.Equal(t, upd.Kind, transport.UpdateKindHandshakeProgressed)
+	require.Equal(t, transport.UpdateKindHandshakeProgressed, upd.Kind)
 	require.Nil(t, conn)
 	require.Error(t, err)
 }

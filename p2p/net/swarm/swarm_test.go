@@ -445,16 +445,16 @@ func TestStreamCount(t *testing.T) {
 		<-streamAccepted
 	}
 	require.Eventually(t, func() bool { return len(streams) == 10 }, 5*time.Second, 10*time.Millisecond)
-	require.Equal(t, countStreams(), 10)
+	require.Equal(t, 10, countStreams())
 	(<-streams).Reset()
 	(<-streams).Close()
-	require.Equal(t, countStreams(), 8)
+	require.Equal(t, 8, countStreams())
 
 	str, err := s1.NewStream(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
-	require.Equal(t, countStreams(), 9)
+	require.Equal(t, 9, countStreams())
 	str.Close()
-	require.Equal(t, countStreams(), 8)
+	require.Equal(t, 8, countStreams())
 }
 
 func TestResourceManager(t *testing.T) {
@@ -552,7 +552,7 @@ func TestListenCloseCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	listenedAddrs := s.ListenAddresses()
-	require.Equal(t, 2, len(listenedAddrs))
+	require.Len(t, listenedAddrs, 2)
 	var addrToClose ma.Multiaddr
 	for _, addr := range listenedAddrs {
 		if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
@@ -564,7 +564,7 @@ func TestListenCloseCount(t *testing.T) {
 	s.ListenClose(addrToClose)
 
 	remainingAddrs := s.ListenAddresses()
-	require.Equal(t, 1, len(remainingAddrs))
+	require.Len(t, remainingAddrs, 1)
 	_, err := remainingAddrs[0].ValueForProtocol(ma.P_TCP)
 	require.NoError(t, err, "expected the TCP address to still be present")
 }

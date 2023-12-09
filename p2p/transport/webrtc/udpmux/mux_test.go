@@ -120,7 +120,7 @@ func TestGetConn(t *testing.T) {
 		n, addr, err := mc.ReadFrom(msg)
 		require.NoError(t, err)
 		require.Equal(t, addr, cc.LocalAddr())
-		require.Equal(t, string(msg[:n]), "test1")
+		require.Equal(t, "test1", string(msg[:n]))
 
 		// Write from original connection should provide the original address
 		_, err = conns[i].WriteTo([]byte("test2"), c.LocalAddr())
@@ -128,7 +128,7 @@ func TestGetConn(t *testing.T) {
 		n, addr, err = mc.ReadFrom(msg)
 		require.NoError(t, err)
 		require.Equal(t, addr, conns[i].LocalAddr())
-		require.Equal(t, string(msg[:n]), "test2")
+		require.Equal(t, "test2", string(msg[:n]))
 	}
 }
 
@@ -242,7 +242,7 @@ func TestMuxedConnection(t *testing.T) {
 			require.Equal(t, v, msgCount+1) // msgCount msgs + 1 STUN binding request
 			delete(addrUfragMap, addr)
 		}
-		require.Equal(t, len(addrPacketCount), connCount)
+		require.Len(t, addrPacketCount, connCount)
 	}
-	require.Equal(t, len(addrUfragMap), 0)
+	require.Empty(t, addrUfragMap)
 }

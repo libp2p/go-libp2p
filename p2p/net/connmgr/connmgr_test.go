@@ -662,7 +662,6 @@ func TestPeerProtectionMultipleTags(t *testing.T) {
 			t.Error("protected connection was closed by connection manager")
 		}
 	}
-
 }
 
 func TestPeerProtectionIdempotent(t *testing.T) {
@@ -835,7 +834,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		p2 := &peerInfo{id: peer.ID("peer2"), temp: true}
 		pis := peerInfos{p1, p2}
 		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
-		require.Equal(t, pis, peerInfos{p2, p1})
+		require.Equal(t, peerInfos{p2, p1}, pis)
 	})
 
 	t.Run("starts with low-value connections", func(t *testing.T) {
@@ -843,7 +842,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		p2 := &peerInfo{id: peer.ID("peer2"), value: 20}
 		pis := peerInfos{p1, p2}
 		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
-		require.Equal(t, pis, peerInfos{p2, p1})
+		require.Equal(t, peerInfos{p2, p1}, pis)
 	})
 
 	t.Run("prefer peers with no streams", func(t *testing.T) {
@@ -859,7 +858,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		}
 		pis := peerInfos{p2, p1}
 		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
-		require.Equal(t, pis, peerInfos{p1, p2})
+		require.Equal(t, peerInfos{p1, p2}, pis)
 	})
 
 	t.Run("in a memory emergency, starts with incoming connections and higher streams", func(t *testing.T) {
@@ -902,7 +901,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		// p3 is first because it is inactive (no streams).
 		// p4 is second because it has the most streams and we priortize killing
 		// connections with the higher number of streams.
-		require.Equal(t, pis, peerInfos{p3, p4, p2, p1})
+		require.Equal(t, peerInfos{p3, p4, p2, p1}, pis)
 	})
 
 	t.Run("in a memory emergency, starts with connections that have many streams", func(t *testing.T) {
@@ -921,7 +920,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		}
 		pis := peerInfos{p1, p2}
 		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), true)
-		require.Equal(t, pis, peerInfos{p2, p1})
+		require.Equal(t, peerInfos{p2, p1}, pis)
 	})
 }
 

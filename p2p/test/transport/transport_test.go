@@ -515,7 +515,6 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 								continue
 							}
 							return
-
 						}
 					}()
 				}
@@ -623,7 +622,7 @@ func TestStreamReadDeadline(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "deadline")
 			var nerr net.Error
-			require.True(t, errors.As(err, &nerr), "expected a net.Error")
+			require.ErrorAs(t, err, &nerr, "expected a net.Error")
 			require.True(t, nerr.Timeout(), "expected net.Error.Timeout() == true")
 			// now test that the stream is still usable
 			s.SetReadDeadline(time.Time{})

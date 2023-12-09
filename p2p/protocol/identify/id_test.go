@@ -615,7 +615,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	h1t2c := h1.Network().ConnsToPeer(h2p)
-	require.Equal(t, 1, len(h1t2c), "should have a conn here")
+	require.Len(t, h1t2c, 1, "should have a conn here")
 
 	ids1.IdentifyConn(h1t2c[0])
 

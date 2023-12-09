@@ -49,7 +49,7 @@ func TestMultipleBumps(t *testing.T) {
 	require.NoError(t, tag.Bump(id, 5))
 
 	waitForTag(t, mgr, id)
-	require.Equal(t, mgr.GetTagInfo(id).Value, 10)
+	require.Equal(t, 10, mgr.GetTagInfo(id).Value)
 
 	require.NoError(t, tag.Bump(id, 100))
 	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 20 }, 100*time.Millisecond, 10*time.Millisecond, "expected tag value to decay to 20")
@@ -77,7 +77,7 @@ func TestMultipleTagsNoDecay(t *testing.T) {
 
 	// all tags are upper-bounded, so the score must be 300
 	ti := mgr.GetTagInfo(id)
-	require.Equal(t, ti.Value, 300)
+	require.Equal(t, 300, ti.Value)
 
 	for _, s := range []string{"beep", "bop", "foo"} {
 		if v, ok := ti.Tags[s]; !ok || v != 100 {

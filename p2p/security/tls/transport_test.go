@@ -121,7 +121,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 		b := make([]byte, 6)
 		_, err = clientConn.Read(b)
 		require.NoError(t, err)
-		require.Equal(t, string(b), "foobar")
+		require.Equal(t, "foobar", string(b))
 	}
 
 	// Use standard transports with default TLS configuration
@@ -245,21 +245,21 @@ func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
 		}
 		defer serverConn.Close()
 
-		require.Equal(t, clientConn.LocalPeer(), clientID)
-		require.Equal(t, serverConn.LocalPeer(), serverID)
-		require.Equal(t, clientConn.RemotePeer(), serverID)
-		require.Equal(t, serverConn.RemotePeer(), clientID)
+		require.Equal(t, clientID, clientConn.LocalPeer())
+		require.Equal(t, serverID, serverConn.LocalPeer())
+		require.Equal(t, serverID, clientConn.RemotePeer())
+		require.Equal(t, clientID, serverConn.RemotePeer())
 		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")
 		require.True(t, serverConn.RemotePublicKey().Equals(clientKey.GetPublic()), "client public key mismatch")
-		require.Equal(t, clientConn.ConnState().StreamMultiplexer, expectedMuxer)
-		require.Equal(t, clientConn.ConnState().UsedEarlyMuxerNegotiation, expectedMuxer != "")
+		require.Equal(t, expectedMuxer, clientConn.ConnState().StreamMultiplexer)
+		require.Equal(t, expectedMuxer != "", clientConn.ConnState().UsedEarlyMuxerNegotiation)
 		// exchange some data
 		_, err = serverConn.Write([]byte("foobar"))
 		require.NoError(t, err)
 		b := make([]byte, 6)
 		_, err = clientConn.Read(b)
 		require.NoError(t, err)
-		require.Equal(t, string(b), "foobar")
+		require.Equal(t, "foobar", string(b))
 	}
 
 	// Iterate through the StreamMultiplexer combinations.
@@ -378,8 +378,8 @@ func TestPeerIDMismatch(t *testing.T) {
 		require.Error(t, err)
 		var mismatchErr sec.ErrPeerIDMismatch
 		require.ErrorAs(t, err, &mismatchErr)
-		require.Equal(t, thirdPartyID, mismatchErr.Expected)
-		require.Equal(t, serverID, mismatchErr.Actual)
+		require.Equal(t, mismatchErr.Expected, thirdPartyID)
+		require.Equal(t, mismatchErr.Actual, serverID)
 
 		var serverErr error
 		select {
@@ -417,8 +417,8 @@ func TestPeerIDMismatch(t *testing.T) {
 		require.Error(t, serverErr)
 		var mismatchErr sec.ErrPeerIDMismatch
 		require.ErrorAs(t, serverErr, &mismatchErr)
-		require.Equal(t, thirdPartyID, mismatchErr.Expected)
-		require.Equal(t, clientTransport.localPeer, mismatchErr.Actual)
+		require.Equal(t, mismatchErr.Expected, thirdPartyID)
+		require.Equal(t, mismatchErr.Actual, clientTransport.localPeer)
 	})
 }
 

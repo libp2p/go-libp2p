@@ -377,7 +377,7 @@ func TestHostProtoPreknowledge(t *testing.T) {
 
 	// This test implicitly relies on 1 connection. If a background identify
 	// completes after we set the stream handler below things break
-	require.Equal(t, 1, len(h1.Network().ConnsToPeer(h2.ID())))
+	require.Len(t, h1.Network().ConnsToPeer(h2.ID()), 1)
 
 	// wait for identify handshake to finish completely
 	select {
@@ -469,7 +469,7 @@ func TestNewStreamResolve(t *testing.T) {
 			break
 		}
 	}
-	assert.NotEqual(t, dialAddr, "")
+	assert.NotEqual(t, "", dialAddr)
 
 	// Add the DNS multiaddr to h1's peerstore.
 	maddr, err := ma.NewMultiaddr(dialAddr)
@@ -506,7 +506,7 @@ func TestProtoDowngrade(t *testing.T) {
 		defer s.Close()
 		result, err := io.ReadAll(s)
 		assert.NoError(t, err)
-		assert.Equal(t, string(result), "bar")
+		assert.Equal(t, "bar", string(result))
 		connectedOn <- s.Protocol()
 	})
 
@@ -527,7 +527,7 @@ func TestProtoDowngrade(t *testing.T) {
 		defer s.Close()
 		result, err := io.ReadAll(s)
 		assert.NoError(t, err)
-		assert.Equal(t, string(result), "foo")
+		assert.Equal(t, "foo", string(result))
 		connectedOn <- s.Protocol()
 	})
 

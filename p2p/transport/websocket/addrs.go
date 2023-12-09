@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -16,6 +17,7 @@ type Addr struct {
 }
 
 var _ net.Addr = (*Addr)(nil)
+var errNotWebSocketAddress = errors.New("not a websocket address")
 
 // Network returns the network type for a WebSocket, "websocket".
 func (addr *Addr) Network() string {
@@ -57,7 +59,7 @@ func ConvertWebsocketMultiaddrToNetAddr(maddr ma.Multiaddr) (net.Addr, error) {
 func ParseWebsocketNetAddr(a net.Addr) (ma.Multiaddr, error) {
 	wsa, ok := a.(*Addr)
 	if !ok {
-		return nil, fmt.Errorf("not a websocket address")
+		return nil, errNotWebSocketAddress
 	}
 
 	var (
