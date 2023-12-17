@@ -11,11 +11,17 @@ import (
 
 func TestMultiaddrParsing(t *testing.T) {
 	addr, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/5555/ws")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	wsaddr, err := parseMultiaddr(addr)
-	require.NoError(t, err)
-	require.Equal(t, "ws://127.0.0.1:5555", wsaddr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wsaddr.String() != "ws://127.0.0.1:5555" {
+		t.Fatalf("expected ws://127.0.0.1:5555, got %s", wsaddr)
+	}
 }
 
 type httpAddr struct {
@@ -29,22 +35,37 @@ func (addr *httpAddr) Network() string {
 func TestParseWebsocketNetAddr(t *testing.T) {
 	notWs := &httpAddr{&url.URL{Host: "http://127.0.0.1:1234"}}
 	_, err := ParseWebsocketNetAddr(notWs)
-	require.ErrorIs(t, err, errNotWebSocketAddress)
+	if err.Error() != "not a websocket address" {
+		t.Fatalf("expect \"not a websocket address\", got \"%s\"", err)
+	}
 
 	wsAddr := NewAddrWithScheme("127.0.0.1:5555", false)
 	parsed, err := ParseWebsocketNetAddr(wsAddr)
-	require.NoError(t, err)
-	require.Equal(t, "/ip4/127.0.0.1/tcp/5555/ws", parsed.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if parsed.String() != "/ip4/127.0.0.1/tcp/5555/ws" {
+		t.Fatalf("expected \"/ip4/127.0.0.1/tcp/5555/ws\", got \"%s\"", parsed.String())
+	}
 }
 
 func TestConvertWebsocketMultiaddrToNetAddr(t *testing.T) {
 	addr, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/5555/ws")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	wsaddr, err := ConvertWebsocketMultiaddrToNetAddr(addr)
-	require.NoError(t, err)
-	require.Equal(t, "ws://127.0.0.1:5555", wsaddr.String())
-	require.Equal(t, "websocket", wsaddr.Network())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wsaddr.String() != "ws://127.0.0.1:5555" {
+		t.Fatalf("expected ws://127.0.0.1:5555, got %s", wsaddr)
+	}
+	if wsaddr.Network() != "websocket" {
+		t.Fatalf("expected network: \"websocket\", got \"%s\"", wsaddr.Network())
+	}
 }
 
 func TestListeningOnDNSAddr(t *testing.T) {

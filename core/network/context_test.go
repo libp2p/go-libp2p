@@ -11,7 +11,9 @@ import (
 func TestDefaultTimeout(t *testing.T) {
 	ctx := context.Background()
 	dur := GetDialPeerTimeout(ctx)
-	require.Equal(t, DialPeerTimeout, dur, "expected default peer timeout")
+	if dur != DialPeerTimeout {
+		t.Fatal("expected default peer timeout")
+	}
 }
 
 func TestNonDefaultTimeout(t *testing.T) {
@@ -22,7 +24,9 @@ func TestNonDefaultTimeout(t *testing.T) {
 		customTimeout,
 	)
 	dur := GetDialPeerTimeout(ctx)
-	require.Equal(t, customTimeout, dur, "peer timeout doesn't match set timeout")
+	if dur != customTimeout {
+		t.Fatal("peer timeout doesn't match set timeout")
+	}
 }
 
 func TestSettingTimeout(t *testing.T) {
@@ -32,7 +36,9 @@ func TestSettingTimeout(t *testing.T) {
 		customTimeout,
 	)
 	dur := GetDialPeerTimeout(ctx)
-	require.Equal(t, customTimeout, dur, "peer timeout doesn't match set timeout")
+	if dur != customTimeout {
+		t.Fatal("peer timeout doesn't match set timeout")
+	}
 }
 
 func TestSimultaneousConnect(t *testing.T) {
