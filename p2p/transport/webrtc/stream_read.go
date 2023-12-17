@@ -1,7 +1,6 @@
 package libp2pwebrtc
 
 import (
-	"errors"
 	"io"
 	"time"
 
@@ -10,9 +9,8 @@ import (
 )
 
 func (s *stream) Read(b []byte) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
+	s.readerSem <- struct{}{}
+	defer func() { <-s.readerSem }()
 
 	s.mx.Lock()
 	defer s.mx.Unlock()
@@ -25,6 +23,10 @@ func (s *stream) Read(b []byte) (int, error) {
 		return 0, io.EOF
 	case receiveStateReset:
 		return 0, network.ErrReset
+	}
+
+	if len(b) == 0 {
+		return 0, nil
 	}
 
 	var read int
@@ -40,12 +42,18 @@ func (s *stream) Read(b []byte) (int, error) {
 					if s.receiveState == receiveStateDataRead {
 						return 0, io.EOF
 					}
-					// This case occurs when the remote node closes the stream without writing a FIN message
-					// There's little we can do here
-					return 0, errors.New("didn't receive final state for stream")
+					// This case occurs when remote closes the datachannel without writing a FIN
+					// message. Some implementations discard the buffered data on closing the
+					// datachannel. For these implementations a stream reset will be observed as an
+					// abrupt closing of the datachannel.
+					s.receiveState = receiveStateReset
+					return 0, network.ErrReset
 				}
 				if s.receiveState == receiveStateReset {
 					return 0, network.ErrReset
+				}
+				if s.receiveState == receiveStateDataRead {
+					return 0, io.EOF
 				}
 				return 0, err
 			}
@@ -70,7 +78,6 @@ func (s *stream) Read(b []byte) (int, error) {
 		case receiveStateDataRead:
 			return read, io.EOF
 		case receiveStateReset:
-			s.dataChannel.SetReadDeadline(time.Time{})
 			return read, network.ErrReset
 		}
 	}
@@ -81,20 +88,11 @@ func (s *stream) SetReadDeadline(t time.Time) error { return s.dataChannel.SetRe
 func (s *stream) CloseRead() error {
 	s.mx.Lock()
 	defer s.mx.Unlock()
-
-	if s.nextMessage != nil {
-		s.processIncomingFlag(s.nextMessage.Flag)
-		s.nextMessage = nil
-	}
 	var err error
 	if s.receiveState == receiveStateReceiving && s.closeErr == nil {
-		err = s.sendControlMessage(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		err = s.writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		s.receiveState = receiveStateReset
 	}
-	s.receiveState = receiveStateReset
-	s.maybeDeclareStreamDone()
-
-	// make any calls to Read blocking on ReadMsg return immediately
-	s.dataChannel.SetReadDeadline(time.Now())
-
+	s.controlMessageReaderOnce.Do(s.spawnControlMessageReader)
 	return err
 }

@@ -12,6 +12,10 @@ message Message {
     // The sender abruptly terminates the sending part of the stream. The
     // receiver can discard any data that it already received on that stream.
     RESET = 2;
+    // Sending the FIN_ACK flag acknowledges the previous receipt of a message
+    // with the FIN flag set. Receiving a FIN_ACK flag gives the recipient
+    // confidence that the remote has received all sent messages.
+    FIN_ACK = 3;
   }
 
   optional Flag flag=1;

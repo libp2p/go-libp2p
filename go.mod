@@ -45,10 +45,10 @@ require (
 	github.com/multiformats/go-varint v0.0.7
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pion/datachannel v1.5.5
-	github.com/pion/ice/v2 v2.3.6
+	github.com/pion/ice/v2 v2.3.11
 	github.com/pion/logging v0.2.2
-	github.com/pion/stun v0.6.0
-	github.com/pion/webrtc/v3 v3.2.9
+	github.com/pion/stun v0.6.1
+	github.com/pion/webrtc/v3 v3.2.23
 	github.com/prometheus/client_golang v1.14.0
 	github.com/prometheus/client_model v0.4.0
 	github.com/quic-go/quic-go v0.39.3
@@ -59,10 +59,10 @@ require (
 	go.uber.org/goleak v1.2.0
 	go.uber.org/mock v0.3.0
 	go.uber.org/zap v1.26.0
-	golang.org/x/crypto v0.14.0
+	golang.org/x/crypto v0.16.0
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
 	golang.org/x/sync v0.4.0
-	golang.org/x/sys v0.13.0
+	golang.org/x/sys v0.15.0
 	golang.org/x/tools v0.14.0
 	google.golang.org/protobuf v1.30.0
 )
@@ -88,7 +88,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/pprof v0.0.0-20231023181126-ff6d637d2a7b // indirect
-	github.com/google/uuid v1.3.0 // indirect
+	github.com/google/uuid v1.4.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect
@@ -102,17 +102,17 @@ require (
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.13.0 // indirect
 	github.com/opencontainers/runtime-spec v1.1.0 // indirect
-	github.com/pion/dtls/v2 v2.2.7 // indirect
-	github.com/pion/interceptor v0.1.17 // indirect
-	github.com/pion/mdns v0.0.7 // indirect
+	github.com/pion/dtls/v2 v2.2.8 // indirect
+	github.com/pion/interceptor v0.1.25 // indirect
+	github.com/pion/mdns v0.0.9 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/rtcp v1.2.10 // indirect
-	github.com/pion/rtp v1.7.13 // indirect
-	github.com/pion/sctp v1.8.7 // indirect
+	github.com/pion/rtcp v1.2.13 // indirect
+	github.com/pion/rtp v1.8.3 // indirect
+	github.com/pion/sctp v1.8.9 // indirect
 	github.com/pion/sdp/v3 v3.0.6 // indirect
-	github.com/pion/srtp/v2 v2.0.15 // indirect
-	github.com/pion/transport/v2 v2.2.1 // indirect
-	github.com/pion/turn/v2 v2.1.0 // indirect
+	github.com/pion/srtp/v2 v2.0.18 // indirect
+	github.com/pion/transport/v2 v2.2.4 // indirect
+	github.com/pion/turn/v2 v2.1.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
@@ -125,8 +125,10 @@ require (
 	go.uber.org/dig v1.17.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/mod v0.13.0 // indirect
-	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/net v0.19.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.2.1 // indirect
 )
+
+replace github.com/pion/sctp => github.com/sukunrt/sctp v0.0.0-20231217055423-1ff4ca21cc89

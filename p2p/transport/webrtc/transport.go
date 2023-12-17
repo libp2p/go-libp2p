@@ -42,6 +42,7 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multihash"
 
+	"github.com/pion/datachannel"
 	pionlogger "github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
 )
@@ -76,6 +77,7 @@ const (
 // timeout values for the peerconnection
 // https://github.com/pion/webrtc/blob/v3.1.50/settingengine.go#L102-L109
 const (
+	receiveMTUBytes            = 1500
 	DefaultDisconnectedTimeout = 20 * time.Second
 	DefaultFailedTimeout       = 30 * time.Second
 	DefaultKeepaliveTimeout    = 15 * time.Second
@@ -315,10 +317,9 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	// This is disallowed in the ICE specification. However, implementations
 	// do not strictly follow this, for eg. Chrome gathers TCP loopback candidates.
 	// If you run pion on a system with only the loopback interface UP,
-	// it will not connect to anything. However, if it has any other interface
-	// (even a private one, eg. 192.168.0.0/16), it will gather candidates on it and
-	// will be able to connect to other pion instances on the same interface.
+	// it will not connect to anything.
 	settingEngine.SetIncludeLoopbackCandidate(true)
+	settingEngine.SetReceiveMTU(receiveMTUBytes)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 
@@ -371,7 +372,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		return nil, errors.New("peerconnection opening timed out")
 	}
 
-	detached, err := getDetachedChannel(ctx, rawHandshakeChannel)
+	detached, err := detachHandshakeDataChannel(ctx, rawHandshakeChannel)
 	if err != nil {
 		return nil, err
 	}
@@ -414,10 +415,9 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 
 	remotePubKey, err := t.noiseHandshake(ctx, pc, channel, p, remoteHashFunction, false)
 	if err != nil {
-		return conn, err
+		return nil, err
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, conn) {
-		conn.Close()
 		return nil, fmt.Errorf("secured connection gated")
 	}
 	conn.setRemotePublicKey(remotePubKey)
@@ -497,7 +497,7 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	return result, nil
 }
 
-func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *stream, peer peer.ID, hash crypto.Hash, inbound bool) (ic.PubKey, error) {
+func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, s *stream, peer peer.ID, hash crypto.Hash, inbound bool) (ic.PubKey, error) {
 	prologue, err := t.generateNoisePrologue(pc, hash, inbound)
 	if err != nil {
 		return nil, fmt.Errorf("generate prologue: %w", err)
@@ -513,12 +513,12 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	}
 	var secureConn sec.SecureConn
 	if inbound {
-		secureConn, err = sessionTransport.SecureOutbound(ctx, fakeStreamConn{datachannel}, peer)
+		secureConn, err = sessionTransport.SecureOutbound(ctx, netConnWrapper{s}, peer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to secure inbound connection: %w", err)
 		}
 	} else {
-		secureConn, err = sessionTransport.SecureInbound(ctx, fakeStreamConn{datachannel}, peer)
+		secureConn, err = sessionTransport.SecureInbound(ctx, netConnWrapper{s}, peer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to secure outbound connection: %w", err)
 		}
@@ -526,7 +526,34 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	return secureConn.RemotePublicKey(), nil
 }
 
-type fakeStreamConn struct{ *stream }
+type netConnWrapper struct {
+	*stream
+}
 
-func (fakeStreamConn) LocalAddr() net.Addr  { return nil }
-func (fakeStreamConn) RemoteAddr() net.Addr { return nil }
+func (netConnWrapper) LocalAddr() net.Addr  { return nil }
+func (netConnWrapper) RemoteAddr() net.Addr { return nil }
+func (w netConnWrapper) Close() error {
+	// Close called while running the security handshake is an error and we should Reset the
+	// stream in that case rather than gracefully closing
+	w.stream.Reset()
+	return nil
+}
+
+// detachHandshakeDataChannel detaches the handshake data channel
+func detachHandshakeDataChannel(ctx context.Context, dc *webrtc.DataChannel) (datachannel.ReadWriteCloser, error) {
+	done := make(chan struct{})
+	var rwc datachannel.ReadWriteCloser
+	var err error
+	dc.OnOpen(func() {
+		defer close(done)
+		rwc, err = dc.Detach()
+	})
+	// this is safe since for detached datachannels, the peerconnection runs the onOpen
+	// callback immediately if the SCTP transport is also connected.
+	select {
+	case <-done:
+		return rwc, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}

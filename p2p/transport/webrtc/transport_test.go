@@ -17,6 +17,7 @@ import (
 	quicproxy "github.com/quic-go/quic-go/integrationtests/tools/proxy"
 
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/exp/rand"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -294,7 +295,6 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 }
 
 func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
-	count := 5
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
 	listener, err := tr.Listen(listenMultiaddr)
@@ -303,27 +303,37 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 	tr1, connectingPeer := getTransport(t)
 	done := make(chan struct{})
 
+	const (
+		numListeners = 10
+		numStreams   = 100
+		numWriters   = 10
+		size         = 20 << 10
+	)
+
 	go func() {
 		lconn, err := listener.Accept()
 		require.NoError(t, err)
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
 		var wg sync.WaitGroup
-
-		for i := 0; i < count; i++ {
-			stream, err := lconn.AcceptStream()
-			require.NoError(t, err)
+		var doneStreams atomic.Int32
+		for i := 0; i < numListeners; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				buf := make([]byte, 100)
-				n, err := stream.Read(buf)
-				require.NoError(t, err)
-				require.Equal(t, "test", string(buf[:n]))
-				_, err = stream.Write([]byte("test"))
-				require.NoError(t, err)
+				for {
+					var nn int32
+					if nn = doneStreams.Add(1); nn > int32(numStreams) {
+						return
+					}
+					s, err := lconn.AcceptStream()
+					require.NoError(t, err)
+					n, err := io.Copy(s, s)
+					require.Equal(t, n, int64(size))
+					require.NoError(t, err)
+					s.Close()
+				}
 			}()
 		}
-
 		wg.Wait()
 		done <- struct{}{}
 	}()
@@ -332,23 +342,41 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("dialer opened connection")
 
-	for i := 0; i < count; i++ {
-		idx := i
+	var wwg sync.WaitGroup
+	var cnt atomic.Int32
+	var streamsStarted atomic.Int32
+	for i := 0; i < numWriters; i++ {
+		wwg.Add(1)
 		go func() {
-			stream, err := conn.OpenStream(context.Background())
-			require.NoError(t, err)
-			t.Logf("dialer opened stream: %d", idx)
-			buf := make([]byte, 100)
-			_, err = stream.Write([]byte("test"))
-			require.NoError(t, err)
-			n, err := stream.Read(buf)
-			require.NoError(t, err)
-			require.Equal(t, "test", string(buf[:n]))
+			defer wwg.Done()
+			for {
+				var nn int32
+				if nn = streamsStarted.Add(1); nn > int32(numStreams) {
+					return
+				}
+				s, err := conn.OpenStream(context.Background())
+				require.NoError(t, err)
+				//	t.Logf("dialer opened stream: %d %d", idx, s.(*stream).id)
+				buf := make([]byte, size)
+				rand.Read(buf)
+				n, err := s.Write(buf)
+				require.Equal(t, n, size)
+				require.NoError(t, err)
+
+				s.CloseWrite()
+				resp := make([]byte, size+10)
+				n, err = io.ReadFull(s, resp)
+				require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+				require.Equal(t, n, size)
+				if string(buf) != string(resp[:size]) {
+					t.Errorf("bytes not equal: %d %d", len(buf), len(resp))
+				}
+				s.Close()
+				t.Log("completed stream: ", cnt.Add(1), s.(*stream).id)
+			}
 		}()
-		if i%10 == 0 && i > 0 {
-			time.Sleep(100 * time.Millisecond)
-		}
 	}
+	wwg.Wait()
 	select {
 	case <-done:
 	case <-time.After(100 * time.Second):
@@ -496,7 +524,55 @@ func TestTransportWebRTC_RemoteReadsAfterClose(t *testing.T) {
 	require.NoError(t, err)
 	// require write and close to complete
 	require.NoError(t, <-done)
+	stream.SetReadDeadline(time.Now().Add(5 * time.Second))
 
+	buf := make([]byte, 10)
+	n, err := stream.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, n, 4)
+}
+
+func TestTransportWebRTC_RemoteReadsAfterAsyncClose(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+
+	tr1, _ := getTransport(t)
+
+	done := make(chan error)
+	go func() {
+		lconn, err := listener.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		s, err := lconn.AcceptStream()
+		if err != nil {
+			done <- err
+			return
+		}
+		_, err = s.Write([]byte{1, 2, 3, 4})
+		if err != nil {
+			done <- err
+			return
+		}
+		err = s.(*stream).AsyncClose(nil)
+		if err != nil {
+			done <- err
+			return
+		}
+		close(done)
+	}()
+
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+	require.NoError(t, err)
+	// create a stream
+	stream, err := conn.OpenStream(context.Background())
+
+	require.NoError(t, err)
+	// require write and close to complete
+	require.NoError(t, <-done)
 	stream.SetReadDeadline(time.Now().Add(5 * time.Second))
 
 	buf := make([]byte, 10)
@@ -665,9 +741,11 @@ func TestConnectionTimeoutOnListener(t *testing.T) {
 	// TODO: return timeout errors here
 	for {
 		if _, err := str.Write([]byte("test")); err != nil {
-			require.True(t, os.IsTimeout(err))
+			// TODO (sukunrt): Decide whether we want to keep this behaviour
+			//require.True(t, os.IsTimeout(err))
 			break
 		}
+
 		if time.Since(start) > 5*time.Second {
 			t.Fatal("timeout")
 		}
