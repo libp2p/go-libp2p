@@ -29,7 +29,7 @@ type constraints struct {
 	total []time.Time
 	peers map[peer.ID][]time.Time
 	ips   map[string][]time.Time
-	asns  map[string][]time.Time
+	asns  map[uint32][]time.Time
 }
 
 // newConstraints creates a new constraints object.
@@ -40,7 +40,7 @@ func newConstraints(rc *Resources) *constraints {
 		rc:    rc,
 		peers: make(map[peer.ID][]time.Time),
 		ips:   make(map[string][]time.Time),
-		asns:  make(map[string][]time.Time),
+		asns:  make(map[uint32][]time.Time),
 	}
 }
 
@@ -73,13 +73,10 @@ func (c *constraints) AddReservation(p peer.ID, a ma.Multiaddr) error {
 	}
 
 	var asnReservations []time.Time
-	var asn string
-	// Only public addresses have an ASN. Skip checking ASN for private addresses as
-	// initialising the ASN store is a costly operation. Skipping this check reduces a lot of
-	// flakiness in tests
-	if ip.To4() == nil && manet.IsPublicAddr(a) {
-		asn, _ = asnutil.Store.AsnForIPv6(ip)
-		if asn != "" {
+	var asn uint32
+	if ip.To4() == nil {
+		asn = asnutil.AsnForIPv6(ip)
+		if asn != 0 {
 			asnReservations = c.asns[asn]
 			if len(asnReservations) >= c.rc.MaxReservationsPerASN {
 				return errTooManyReservationsForASN
@@ -96,7 +93,7 @@ func (c *constraints) AddReservation(p peer.ID, a ma.Multiaddr) error {
 	ipReservations = append(ipReservations, expiry)
 	c.ips[ip.String()] = ipReservations
 
-	if asn != "" {
+	if asn != 0 {
 		asnReservations = append(asnReservations, expiry)
 		c.asns[asn] = asnReservations
 	}

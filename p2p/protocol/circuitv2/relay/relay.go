@@ -19,7 +19,6 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
-	asnutil "github.com/libp2p/go-libp2p-asn-util"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -624,8 +623,6 @@ func (r *Relay) makeLimitMsg(p peer.ID) *pbv2.Limit {
 }
 
 func (r *Relay) background() {
-	asnutil.Store.Init()
-
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
