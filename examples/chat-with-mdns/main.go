@@ -116,7 +116,12 @@ func main() {
 	peerChan := initMDNS(host, cfg.RendezvousString)
 	for { // allows multiple peers to join
 		peer := <-peerChan // will block until we discover a peer
-		fmt.Println("Found peer:", peer, ", connecting")
+		if peer.ID > host.ID() {
+			// if other end peer id greater than us, don't connect to it, just wait for it to connect us
+			fmt.Println("Found peer:", peer, " id is greater than us, wait for it connect us")
+			continue
+		}
+		fmt.Println("Found peer:", peer, ", connecting to it")
 
 		if err := host.Connect(ctx, peer); err != nil {
 			fmt.Println("Connection failed:", err)
