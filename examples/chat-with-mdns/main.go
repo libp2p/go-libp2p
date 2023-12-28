@@ -118,7 +118,7 @@ func main() {
 		peer := <-peerChan // will block until we discover a peer
 		if peer.ID > host.ID() {
 			// if other end peer id greater than us, don't connect to it, just wait for it to connect us
-			fmt.Println("Found peer:", peer, " id is greater than us, wait for it connect us")
+			fmt.Println("Found peer:", peer, " id is greater than us, wait for it to connect to us")
 			continue
 		}
 		fmt.Println("Found peer:", peer, ", connecting")
