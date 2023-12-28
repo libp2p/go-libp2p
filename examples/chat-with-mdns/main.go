@@ -121,7 +121,7 @@ func main() {
 			fmt.Println("Found peer:", peer, " id is greater than us, wait for it connect us")
 			continue
 		}
-		fmt.Println("Found peer:", peer, ", connecting to it")
+		fmt.Println("Found peer:", peer, ", connecting")
 
 		if err := host.Connect(ctx, peer); err != nil {
 			fmt.Println("Connection failed:", err)
