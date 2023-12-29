@@ -57,17 +57,18 @@ func handleStream(stream net.Stream) {
 
 3. **Find peers nearby using mdns**
 
-Start [mdns discovery](https://godoc.org/github.com/libp2p/go-libp2p/p2p/discovery#NewMdnsService) service in host.
+New [mdns discovery](https://godoc.org/github.com/libp2p/go-libp2p/p2p/discovery#NewMdnsService) service in host.
 
 ```go
-ser, err := discovery.NewMdnsService(peerhost, rendezvous)
+notifee := &discoveryNotifee{PeerChan: make(chan peer.AddrInfo)}
+ser, err := discovery.NewMdnsService(peerhost, rendezvous, notifee)
 ```
 register [Notifee interface](https://godoc.org/github.com/libp2p/go-libp2p/p2p/discovery#Notifee) with service so that we get notified about peer discovery
 
 ```go
-	n := &discoveryNotifee{}
-	ser.RegisterNotifee(n)
+	ser.Start()
 ```
+
 
 
 4. **Open streams to peers found.**
