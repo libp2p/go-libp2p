@@ -76,10 +76,17 @@ Finally we open stream to the peers we found, as we find them
 
 ```go
 	peer := <-peerChan // will block until we discover a peer
+	// this is used to avoid call `NewStream` from both side
+	if peer.ID > host.ID() {
+		// if other end peer id greater than us, don't connect to it, just wait for it to connect us
+		fmt.Println("Found peer:", peer, " id is greater than us, wait for it to connect to us")
+		continue
+	}
 	fmt.Println("Found peer:", peer, ", connecting")
 
 	if err := host.Connect(ctx, peer); err != nil {
 		fmt.Println("Connection failed:", err)
+		continue
 	}
 
 	// open a stream, this stream will be handled by handleStream other end
