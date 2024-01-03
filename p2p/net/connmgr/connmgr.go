@@ -73,7 +73,7 @@ type segments struct {
 }
 
 func (ss *segments) get(p peer.ID) *segment {
-	return ss.buckets[byte(p[len(p)-1])]
+	return ss.buckets[p[len(p)-1]]
 }
 
 func (ss *segments) countPeers() (count int) {

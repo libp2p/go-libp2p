@@ -166,7 +166,7 @@ func TestGetCurrentBucketStartTimeIsWithinBounds(t *testing.T) {
 
 		offset = offset % certValidity
 		// Bound this to 100 years
-		timeSinceUnixEpoch = time.Duration(timeSinceUnixEpoch % (time.Hour * 24 * 365 * 100))
+		timeSinceUnixEpoch = timeSinceUnixEpoch % (time.Hour * 24 * 365 * 100)
 		// Start a bit further in the future to avoid edge cases around epoch
 		timeSinceUnixEpoch += time.Hour * 24 * 365
 		start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())

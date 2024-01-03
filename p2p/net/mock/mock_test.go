@@ -463,11 +463,11 @@ func TestRateLimiting(t *testing.T) {
 	}
 
 	rl.UpdateBandwidth(100)
-	if !within(rl.Limit(1), time.Duration(time.Millisecond*10), time.Millisecond) {
+	if !within(rl.Limit(1), time.Millisecond*10, time.Millisecond) {
 		t.Fatal()
 	}
 
-	if within(rl.Limit(1), time.Duration(time.Millisecond*10), time.Millisecond) {
+	if within(rl.Limit(1), time.Millisecond*10, time.Millisecond) {
 		t.Fatal()
 	}
 }

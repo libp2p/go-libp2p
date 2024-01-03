@@ -129,7 +129,7 @@ func TestServerClient(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if string(resp) != "yes it is\n" {
+	if resp != "yes it is\n" {
 		t.Errorf("Bad response: %s", resp)
 	}
 

@@ -97,7 +97,7 @@ func TestCheckMemory(t *testing.T) {
 			return true
 		}
 
-		return (err != nil) == (uint64(res)+uint64(rc.memory) > (uint64(limit) >> uint64(8-priShift)))
+		return (err != nil) == (res+uint64(rc.memory) > (limit >> uint64(8-priShift)))
 	}
 
 	require.NoError(t, quick.Check(f, nil))
