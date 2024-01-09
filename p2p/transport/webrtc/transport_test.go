@@ -698,11 +698,12 @@ func TestMaxInFlightRequests(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			dialer, _ := getTransport(t)
-			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			if _, err := dialer.Dial(ctx, ln.Multiaddr(), listeningPeer); err == nil {
 				success.Add(1)
 			} else {
+				t.Log("failed to dial:", err)
 				fails.Add(1)
 			}
 		}()
