@@ -127,7 +127,7 @@ func (nmgr *natManager) background(ctx context.Context) {
 	for {
 		select {
 		case <-nmgr.syncFlag:
-			nmgr.doSync() // sync when our listen addresses chnage.
+			nmgr.doSync() // sync when our listen addresses change.
 		case <-ctx.Done():
 			return
 		}
