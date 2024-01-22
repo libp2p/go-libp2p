@@ -58,6 +58,16 @@ body:
         - label: Update the examples to the final release
         - label: Update the upstream dependencies to the final release and create PRs.
         - label: "filecoin-project/lotus: https://github.com/filecoin-project/lotus"
+        - label: "go-libp2p-kad-dht: https://github.com/libp2p/go-libp2p-kad-dht"
+        - label: "go-libp2p-pubsub:https://github.com/libp2p/go-libp2p-pubsub (In case of breaking changes.)"
+        - label: "ipfs/kubo: https://github.com/ipfs/kubo"
 
+  - type: checkboxes
+    id: required-changes
+    attributes:
+      label: Required Changes
+      description: Make required changes to the release process
+      options:
+        - label: Make required changes to the release process
 
 
