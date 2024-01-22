@@ -14,3 +14,18 @@ body:
         <!-- Describe the documentation issue. -->
     validations:
       required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: "Location of the doc"
+      description: "In the case of missing/erroneous documentation, where is the error? If possible, a link/url would be great!"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: "Describe the documentation issue."
+    validations:
+      required: true
+
