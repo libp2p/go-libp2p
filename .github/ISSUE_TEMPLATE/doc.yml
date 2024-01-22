@@ -1,4 +1,5 @@
 name: 'Documentation Issue'
+title: 'docs: '
 description: 'Report missing/erroneous documentation, propose new documentation, report broken links, etc.'
 labels: ['documentation']
 
