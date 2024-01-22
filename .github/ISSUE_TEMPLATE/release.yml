@@ -57,7 +57,7 @@ body:
       options:
         - label: Update the examples to the final release
         - label: Update the upstream dependencies to the final release and create PRs.
-        - label: [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
+        - label: "[filecoin-project/lotus](https://github.com/filecoin-project/lotus)"
 
 
 
