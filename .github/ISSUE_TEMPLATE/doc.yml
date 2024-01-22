@@ -3,22 +3,10 @@ description: 'Report missing/erroneous documentation, propose new documentation,
 labels: ['documentation']
 
 body:
-  - type: textarea
-    attributes:
-      label: "What's wrong?"
-      description: "Describe the documentation issue."
-      value: >
-        #### Location
-        <!-- In the case of missing/erroneous documentation, where is the error? If possible, a link/url would be great! -->
-        #### Description
-        <!-- Describe the documentation issue. -->
-    validations:
-      required: true
-
   - type: input
     id: location
     attributes:
-      label: "Location of the doc"
+      label: "Location"
       description: "In the case of missing/erroneous documentation, where is the error? If possible, a link/url would be great!"
 
   - type: textarea
