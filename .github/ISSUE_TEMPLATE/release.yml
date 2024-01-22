@@ -67,7 +67,6 @@ body:
     id: required-changes
     attributes:
       label: Required Changes
-      description: Make required changes to the release process
       options:
         - label: Make required changes to the release process
           required: true
