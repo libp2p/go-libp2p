@@ -28,7 +28,36 @@ body:
       description: Select the stages that are applicable for this release
       options:
         - label: Stage 0 - Finishing Touches
-            - label: Stage 0 - Finishing Touches
         - label: Stage 1 - Release
         - label: Stage 2 - Update Upstream
+
+  - type: checkboxes
+    id: finishing-touches
+    attributes:
+      label: Finishing Touches
+      description: Tasks for Stage 0 - Finishing Touches
+      options:
+        - label: Go through relevant libp2p repos looking for unreleased changes that should make it into the release. If you find any, cut releases.
+        - label: Run `go get -u ./...` to see if there are any out-of-date deps that look important. If there are, bubble them. Try to avoid _directly_ updating indirect deps in go-libp2p's `go.mod` when possible.
+
+  - type: checkboxes
+    id: release-stage
+    attributes:
+      label: Release Stage
+      description: Tasks for Stage 1 - Release
+      options:
+        - label: Publish the release through the GitHub UI, adding the release notes. Some users rely on this to receive notifications of new releases.
+        - label: Announce the release on the [discuss.libp2p.io](https://discuss.libp2p.io).
+
+  - type: checkboxes
+    id: update-upstream
+    attributes:
+      label: Update Upstream
+      description: Tasks for Stage 2 - Update Upstream
+      options:
+        - label: Update the examples to the final release
+        - label: Update the upstream dependencies to the final release and create PRs.
+        - label: [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
+
+
 
