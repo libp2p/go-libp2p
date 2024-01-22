@@ -70,5 +70,6 @@ body:
       description: Make required changes to the release process
       options:
         - label: Make required changes to the release process
+          required: true
 
 
