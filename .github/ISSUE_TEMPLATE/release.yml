@@ -34,7 +34,7 @@ body:
   - type: checkboxes
     id: finishing-touches
     attributes:
-      label: Finishing Touches
+      label: Stage 0
       description: Tasks for Stage 0 - Finishing Touches
       options:
         - label: Go through relevant libp2p repos looking for unreleased changes that should make it into the release. If you find any, cut releases.
@@ -43,7 +43,7 @@ body:
   - type: checkboxes
     id: release-stage
     attributes:
-      label: Release Stage
+      label: Stage 1
       description: Tasks for Stage 1 - Release
       options:
         - label: Publish the release through the GitHub UI, adding the release notes. Some users rely on this to receive notifications of new releases.
@@ -52,8 +52,8 @@ body:
   - type: checkboxes
     id: update-upstream
     attributes:
-      label: Update Upstream
-      description: Tasks for Stage 2 - Update Upstream
+      label: Stage 2
+      description: Tasks for Stage 2 - Update Upstream and Add new release to interop tester
       options:
         - label: Update the examples to the final release
         - label: Update the upstream dependencies to the final release and create PRs.
@@ -61,6 +61,7 @@ body:
         - label: "go-libp2p-kad-dht: https://github.com/libp2p/go-libp2p-kad-dht"
         - label: "go-libp2p-pubsub:https://github.com/libp2p/go-libp2p-pubsub (In case of breaking changes.)"
         - label: "ipfs/kubo: https://github.com/ipfs/kubo"
+        - label: Add new release to interop tester in [test-plans](https://github.com/libp2p/test-plans/)
 
   - type: checkboxes
     id: required-changes
