@@ -28,6 +28,7 @@ body:
       description: Select the stages that are applicable for this release
       options:
         - label: Stage 0 - Finishing Touches
+            - label: Stage 0 - Finishing Touches
         - label: Stage 1 - Release
         - label: Stage 2 - Update Upstream
 
