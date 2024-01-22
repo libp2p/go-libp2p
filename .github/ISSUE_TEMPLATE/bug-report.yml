@@ -6,11 +6,15 @@ body:
   - type: markdown
     attributes:
       value: >
-        Thanks for taking the time to fill out this bug report!
-        Please make sure to include *all* relevant information.
-        * What you were doing when you experienced the bug.
-        * Any error messages you saw, *where* you saw them, and what you believe may have caused them (if you have any ideas).
-        * When possible, steps to reliably produce the bug.
+        Thanks for helping us improve! 🙏 Please answer these questions and provide as much information as possible about your problem.
+
+  - type: textarea
+    id: what-did-you-do
+    attributes:
+      label: "What did you do?"
+      description: "If possible, provide a recipe for reproducing the error. Any error messages you saw, *where* you saw them, and what you believe may have caused them (if you have any ideas)."
+    validations:
+      required: true
 
   - type: textarea
     id: version-info
