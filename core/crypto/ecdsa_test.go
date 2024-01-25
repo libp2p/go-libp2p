@@ -25,7 +25,7 @@ func TestECDSABasicSignAndVerify(t *testing.T) {
 	}
 
 	if !ok {
-		t.Fatal("signature didnt match")
+		t.Fatal("signature didn't match")
 	}
 
 	// change data
