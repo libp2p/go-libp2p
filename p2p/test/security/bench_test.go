@@ -79,7 +79,7 @@ func benchmarkHandshakes(b *testing.B, factory Factory) {
 
 	pipes := make(chan net.Conn, 1)
 
-	var finished sync.Mutex // wait until all data has been transfered
+	var finished sync.Mutex // wait until all data has been transferred
 	finished.Lock()
 	go func() {
 		defer finished.Unlock()
