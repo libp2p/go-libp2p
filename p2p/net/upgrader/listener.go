@@ -37,7 +37,7 @@ type listener struct {
 
 // Close closes the listener.
 func (l *listener) Close() error {
-	// Do this first to try to get any relevent errors.
+	// Do this first to try to get any relevant errors.
 	err := l.Listener.Close()
 
 	l.cancel()
