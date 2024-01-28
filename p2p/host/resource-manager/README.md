@@ -161,7 +161,7 @@ belong to some service in the system. Hence, this suggests that apart
 from global limits, we can constrain stream usage at finer
 granularity, at the protocol and service level.
 
-Once again, we disinguish between inbound and outbound streams.
+Once again, we distinguish between inbound and outbound streams.
 Inbound streams are initiated by remote peers and consume resources in
 response to network events; controlling inbound stream usage is again
 paramount for protecting the system from overload or attack.
