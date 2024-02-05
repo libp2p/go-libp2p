@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/net/reuseport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
@@ -80,6 +81,13 @@ func WithTLSConfig(conf *tls.Config) Option {
 	}
 }
 
+func EnableReuseport() Option {
+	return func(t *WebsocketTransport) error {
+		t.enableReuseport = true
+		return nil
+	}
+}
+
 // WebsocketTransport is the actual go-libp2p transport
 type WebsocketTransport struct {
 	upgrader transport.Upgrader
@@ -87,6 +95,9 @@ type WebsocketTransport struct {
 
 	tlsClientConf *tls.Config
 	tlsConf       *tls.Config
+
+	enableReuseport bool // Explicitly enable reuseport.
+	reuse           reuseport.Transport
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -188,6 +199,32 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 	}
 	isWss := wsurl.Scheme == "wss"
 	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
+	dialer.NetDialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+
+		tcpAddr, err := net.ResolveTCPAddr(network, address)
+		if err != nil {
+			return nil, err
+		}
+
+		maddr, err := manet.FromNetAddr(tcpAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		var conn manet.Conn
+		if t.UseReuseport() {
+			conn, err = t.reuse.DialContext(ctx, maddr)
+		} else {
+			var d manet.Dialer
+			conn, err = d.DialContext(ctx, maddr)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		return conn, nil
+	}
+
 	if isWss {
 		sni := ""
 		sni, err = raddr.ValueForProtocol(ma.P_SNI)
@@ -202,12 +239,29 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 			ipAddr := wsurl.Host
 			// Setting the NetDial because we already have the resolved IP address, so we don't want to do another resolution.
 			// We set the `.Host` to the sni field so that the host header gets properly set.
-			dialer.NetDial = func(network, address string) (net.Conn, error) {
+			dialer.NetDialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 				tcpAddr, err := net.ResolveTCPAddr(network, ipAddr)
 				if err != nil {
 					return nil, err
 				}
-				return net.DialTCP("tcp", nil, tcpAddr)
+
+				maddr, err := manet.FromNetAddr(tcpAddr)
+				if err != nil {
+					return nil, err
+				}
+
+				var conn manet.Conn
+				if t.UseReuseport() {
+					conn, err = t.reuse.DialContext(ctx, maddr)
+				} else {
+					var d manet.Dialer
+					conn, err = d.DialContext(ctx, maddr)
+				}
+				if err != nil {
+					return nil, err
+				}
+
+				return conn, nil
 			}
 			wsurl.Host = sni + ":" + wsurl.Port()
 		} else {
@@ -229,7 +283,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 }
 
 func (t *WebsocketTransport) maListen(a ma.Multiaddr) (manet.Listener, error) {
-	l, err := newListener(a, t.tlsConf)
+	l, err := t.newListener(a, t.tlsConf)
 	if err != nil {
 		return nil, err
 	}
@@ -243,4 +297,9 @@ func (t *WebsocketTransport) Listen(a ma.Multiaddr) (transport.Listener, error) 
 		return nil, err
 	}
 	return &transportListener{Listener: t.upgrader.UpgradeListener(t, malist)}, nil
+}
+
+// UseReuseport returns true if reuseport is enabled and available.
+func (t *WebsocketTransport) UseReuseport() bool {
+	return t.enableReuseport && reuseportIsAvailable()
 }

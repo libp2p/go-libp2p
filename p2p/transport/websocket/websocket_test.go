@@ -549,3 +549,51 @@ func TestResolveMultiaddr(t *testing.T) {
 		})
 	}
 }
+
+func TestReusePortOnDial(t *testing.T) {
+
+	// Create an endpoint that will accept connections.
+	// We'll use this to verify that the party initiating the connection reused port.
+	clientID, cu := newUpgrader(t)
+	client, err := New(cu, &network.NullResourceManager{})
+	require.NoError(t, err)
+
+	cliListen, err := client.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	require.NoError(t, err)
+	defer cliListen.Close()
+
+	// Create an endpoint that will initiate connection.
+	_, u := newUpgrader(t)
+	tpt, err := New(u, &network.NullResourceManager{}, EnableReuseport())
+	require.NoError(t, err)
+
+	// Start listening.
+	l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	require.NoError(t, err)
+	defer l.Close()
+
+	// Take a note of the port on which we listen. This should be the address from which we dial too.
+	expectedAddr := l.Multiaddr()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		conn, err := cliListen.Accept()
+		require.NoError(t, err)
+		defer conn.Close()
+
+		remote := conn.RemoteMultiaddr()
+		require.Equal(t, expectedAddr, remote)
+	}()
+
+	conn, err := tpt.Dial(context.Background(), cliListen.Multiaddr(), clientID)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	stream, err := conn.OpenStream(context.Background())
+	require.NoError(t, err)
+	defer stream.Close()
+
+	<-done
+}

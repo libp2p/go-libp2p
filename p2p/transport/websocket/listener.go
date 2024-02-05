@@ -14,7 +14,7 @@ import (
 )
 
 type listener struct {
-	nl     net.Listener
+	nl     manet.Listener
 	server http.Server
 	// The Go standard library sets the http.Server.TLSConfig no matter if this is a WS or WSS,
 	// so we can't rely on checking if server.TLSConfig is set.
@@ -40,7 +40,7 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
+func (t *WebsocketTransport) newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -50,11 +50,16 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 		return nil, fmt.Errorf("cannot listen on wss address %s without a tls.Config", a)
 	}
 
-	lnet, lnaddr, err := manet.DialArgs(parsed.restMultiaddr)
-	if err != nil {
-		return nil, err
+	var nl manet.Listener
+	if !t.UseReuseport() {
+		nl, err = manet.Listen(a)
+	} else {
+		nl, err = t.reuse.Listen(a)
+		// Fallback to regular listener in case of an error.
+		if err != nil {
+			nl, err = manet.Listen(a)
+		}
 	}
-	nl, err := net.Listen(lnet, lnaddr)
 	if err != nil {
 		return nil, err
 	}
@@ -88,10 +93,11 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 
 func (l *listener) serve() {
 	defer close(l.closed)
+	list := manet.NetListener(l.nl)
 	if !l.isWss {
-		l.server.Serve(l.nl)
+		l.server.Serve(list)
 	} else {
-		l.server.ServeTLS(l.nl, "", "")
+		l.server.ServeTLS(list, "", "")
 	}
 }
 
