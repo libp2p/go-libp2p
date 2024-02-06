@@ -295,7 +295,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) pbv2.Statu
 	destConns := r.conns[dest.ID]
 	if destConns >= r.rc.MaxCircuits {
 		r.mx.Unlock()
-		log.Debugf("refusing connection from %s to %s; too many connecitons to %s", src, dest.ID, dest.ID)
+		log.Debugf("refusing connection from %s to %s; too many connections to %s", src, dest.ID, dest.ID)
 		fail(pbv2.Status_RESOURCE_LIMIT_EXCEEDED)
 		return pbv2.Status_RESOURCE_LIMIT_EXCEEDED
 	}

@@ -33,7 +33,7 @@ func randAddr(addrs []*net.TCPAddr) *net.TCPAddr {
 //
 // In-order:
 //
-//  1. If we're _explicitly_ listening on the prefered source address for the destination address
+//  1. If we're _explicitly_ listening on the preferred source address for the destination address
 //     (per the system's routes), we'll use that listener's port as the source port.
 //  2. If we're listening on one or more _unspecified_ addresses (zero address), we'll pick a source
 //     port from one of these listener's.

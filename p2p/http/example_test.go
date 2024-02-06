@@ -61,6 +61,8 @@ func ExampleHost_listenOnHTTPTransportAndStreams() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer serverStreamHost.Close()
+
 	server := libp2phttp.Host{
 		InsecureAllowHTTP: true, // For our example, we'll allow insecure HTTP
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50124/http")},
