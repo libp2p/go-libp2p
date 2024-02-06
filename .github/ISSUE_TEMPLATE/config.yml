@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions
+    about: Ask a question about go-libp2p or request support.
+    url: https://discuss.libp2p.io
