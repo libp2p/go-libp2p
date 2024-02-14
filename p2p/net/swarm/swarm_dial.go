@@ -426,7 +426,7 @@ var quicDraft29DialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Bas
 // filterKnownUndialables takes a list of multiaddrs, and removes those
 // that we definitely don't want to dial: addresses configured to be blocked,
 // IPv6 link-local addresses, addresses without a dial-capable transport,
-// addresses that we know to be our own, and addresses with a better tranport
+// addresses that we know to be our own, and addresses with a better transport
 // available. This is an optimization to avoid wasting time on dials that we
 // know are going to fail or for which we have a better alternative.
 func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAddrs []ma.Multiaddr, addrErrs []TransportError) {
@@ -546,7 +546,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, updC
 	}
 
 	// We're recording any error as a failure here.
-	// Notably, this also applies to cancelations (i.e. if another dial attempt was faster).
+	// Notably, this also applies to cancellations (i.e. if another dial attempt was faster).
 	// This is ok since the black hole detector uses a very low threshold (5%).
 	s.bhd.RecordResult(addr, err == nil)
 

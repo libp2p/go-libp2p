@@ -63,7 +63,7 @@ type relayFinder struct {
 	candidates                 map[peer.ID]*candidate
 	backoff                    map[peer.ID]time.Time
 	maybeConnectToRelayTrigger chan struct{} // cap: 1
-	// Any time _something_ hapens that might cause us to need new candidates.
+	// Any time _something_ happens that might cause us to need new candidates.
 	// This could be
 	// * the disconnection of a relay
 	// * the failed attempt to obtain a reservation with a current candidate

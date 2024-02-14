@@ -57,17 +57,18 @@ func handleStream(stream net.Stream) {
 
 3. **Find peers nearby using mdns**
 
-Start [mdns discovery](https://godoc.org/github.com/libp2p/go-libp2p/p2p/discovery#NewMdnsService) service in host.
+New [mdns discovery](https://godoc.org/github.com/libp2p/go-libp2p/p2p/discovery#NewMdnsService) service in host.
 
 ```go
-ser, err := discovery.NewMdnsService(peerhost, rendezvous)
+notifee := &discoveryNotifee{PeerChan: make(chan peer.AddrInfo)}
+ser, err := discovery.NewMdnsService(peerhost, rendezvous, notifee)
 ```
 register [Notifee interface](https://godoc.org/github.com/libp2p/go-libp2p/p2p/discovery#Notifee) with service so that we get notified about peer discovery
 
 ```go
-	n := &discoveryNotifee{}
-	ser.RegisterNotifee(n)
+	ser.Start()
 ```
+
 
 
 4. **Open streams to peers found.**
@@ -76,10 +77,17 @@ Finally we open stream to the peers we found, as we find them
 
 ```go
 	peer := <-peerChan // will block until we discover a peer
+	// this is used to avoid call `NewStream` from both side
+	if peer.ID > host.ID() {
+		// if other end peer id greater than us, don't connect to it, just wait for it to connect us
+		fmt.Println("Found peer:", peer, " id is greater than us, wait for it to connect to us")
+		continue
+	}
 	fmt.Println("Found peer:", peer, ", connecting")
 
 	if err := host.Connect(ctx, peer); err != nil {
 		fmt.Println("Connection failed:", err)
+		continue
 	}
 
 	// open a stream, this stream will be handled by handleStream other end

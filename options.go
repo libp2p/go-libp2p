@@ -349,7 +349,7 @@ func EnableAutoRelayWithPeerSource(peerSource autorelay.PeerSource, opts ...auto
 // forcing the local node to believe it is reachable externally.
 func ForceReachabilityPublic() Option {
 	return func(cfg *Config) error {
-		public := network.Reachability(network.ReachabilityPublic)
+		public := network.ReachabilityPublic
 		cfg.AutoNATConfig.ForceReachability = &public
 		return nil
 	}
@@ -359,7 +359,7 @@ func ForceReachabilityPublic() Option {
 // forceing the local node to believe it is behind a NAT and not reachable externally.
 func ForceReachabilityPrivate() Option {
 	return func(cfg *Config) error {
-		private := network.Reachability(network.ReachabilityPrivate)
+		private := network.ReachabilityPrivate
 		cfg.AutoNATConfig.ForceReachability = &private
 		return nil
 	}

@@ -196,7 +196,7 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 	str.SetDeadline(time.Now().Add(StreamTimeout))
 
 	if err := rd.ReadMsg(msg); err != nil {
-		return 0, nil, nil, fmt.Errorf("failed to read message from initator: %w", err)
+		return 0, nil, nil, fmt.Errorf("failed to read message from initiator: %w", err)
 	}
 	if t := msg.GetType(); t != pb.HolePunch_CONNECT {
 		return 0, nil, nil, fmt.Errorf("expected CONNECT message from initiator but got %d", t)
@@ -218,13 +218,13 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 	msg.ObsAddrs = addrsToBytes(ownAddrs)
 	tstart := time.Now()
 	if err := wr.WriteMsg(msg); err != nil {
-		return 0, nil, nil, fmt.Errorf("failed to write CONNECT message to initator: %w", err)
+		return 0, nil, nil, fmt.Errorf("failed to write CONNECT message to initiator: %w", err)
 	}
 
 	// Read SYNC message
 	msg.Reset()
 	if err := rd.ReadMsg(msg); err != nil {
-		return 0, nil, nil, fmt.Errorf("failed to read message from initator: %w", err)
+		return 0, nil, nil, fmt.Errorf("failed to read message from initiator: %w", err)
 	}
 	if t := msg.GetType(); t != pb.HolePunch_SYNC {
 		return 0, nil, nil, fmt.Errorf("expected SYNC message from initiator but got %d", t)

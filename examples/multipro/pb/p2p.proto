@@ -16,7 +16,7 @@ message MessageData {
 
 //// ping protocol
 
-// a protocol define a set of reuqest and responses
+// A protocol defines a set of requests and responses.
 message PingRequest {
     MessageData messageData = 1;
 
@@ -36,7 +36,7 @@ message PingResponse {
 
 //// echo protocol
 
-// a protocol define a set of reuqest and responses
+// A protocol defines a set of requests and responses.
 message EchoRequest {
     MessageData messageData = 1;
 

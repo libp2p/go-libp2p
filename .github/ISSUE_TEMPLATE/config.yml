@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Technical Questions
+    url: https://github.com/libp2p/go-libp2p/discussions/new?category=q-a
+    about: Please ask technical questions in the go-libp2p Github Discusions forum.
+  - name: Community-wide libp2p Discussion
+    url: https://discuss.libp2p.io
+    about: Discussions and questions about the libp2p community.

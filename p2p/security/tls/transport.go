@@ -113,7 +113,7 @@ func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p pee
 	for _, muxer := range t.muxers {
 		muxers = append(muxers, (string)(muxer))
 	}
-	// Prepend the prefered muxers list to TLS config.
+	// Prepend the preferred muxers list to TLS config.
 	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {

@@ -17,7 +17,7 @@ type protoSegment struct {
 type protoSegments [256]*protoSegment
 
 func (s *protoSegments) get(p peer.ID) *protoSegment {
-	return s[byte(p[len(p)-1])]
+	return s[p[len(p)-1]]
 }
 
 var errTooManyProtocols = errors.New("too many protocols")

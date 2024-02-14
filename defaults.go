@@ -27,8 +27,8 @@ import (
 // Useful when you want to extend, but not replace, the supported transport
 // security protocols.
 var DefaultSecurity = ChainOptions(
-	Security(noise.ID, noise.New),
 	Security(tls.ID, tls.New),
+	Security(noise.ID, noise.New),
 )
 
 // DefaultMuxers configures libp2p to use the stream connection multiplexers.

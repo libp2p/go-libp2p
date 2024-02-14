@@ -74,7 +74,7 @@ func TestCheckMemory(t *testing.T) {
 			limit = 1024
 		}
 		currentMem = (currentMem % limit) // We can't have reserved more than our limit
-		res = (res >> 14)                 // We won't resonably ever have a reservation > 2^50
+		res = (res >> 14)                 // We won't reasonably ever have a reservation > 2^50
 		rc := resources{limit: &BaseLimit{
 			Memory:          int64(limit),
 			StreamsInbound:  1,
@@ -88,7 +88,7 @@ func TestCheckMemory(t *testing.T) {
 		rc.memory = int64(currentMem)
 
 		priShift = (priShift % 9)
-		// Check different priorties at 2^0, 2^1,...2^8. This lets our math be correct in the check below (and avoid overflows).
+		// Check different priorities at 2^0, 2^1,...2^8. This lets our math be correct in the check below (and avoid overflows).
 		pri := uint8((1 << priShift) - 1)
 
 		err := rc.checkMemory(int64(res), pri)
@@ -97,7 +97,7 @@ func TestCheckMemory(t *testing.T) {
 			return true
 		}
 
-		return (err != nil) == (uint64(res)+uint64(rc.memory) > (uint64(limit) >> uint64(8-priShift)))
+		return (err != nil) == (res+uint64(rc.memory) > (limit >> uint64(8-priShift)))
 	}
 
 	require.NoError(t, quick.Check(f, nil))
