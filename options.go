@@ -598,3 +598,11 @@ func SwarmOpts(opts ...swarm.Option) Option {
 		return nil
 	}
 }
+
+func EnableWebRTCPrivate(stunServers []config.ICEServer) Option {
+	return func(cfg *Config) error {
+		cfg.WebRTCPrivate = true
+		cfg.WebRTCStunServers = stunServers
+		return nil
+	}
+}

@@ -83,6 +83,10 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTCPrivate") {
+				t.Skip("webrtcprivate needs different handling because of the relay required for connection setup")
+			}
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -91,7 +95,6 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			defer h1.Close()
 			defer h2.Close()
-			require.Len(t, h2.Addrs(), 1)
 			require.Len(t, h2.Addrs(), 1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -104,6 +107,7 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 					require.Equal(t, stripCertHash(h2.Addrs()[0]).String(), addrs.RemoteMultiaddr().String())
 				}),
 			)
+
 			err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
@@ -117,6 +121,9 @@ func TestInterceptUpgradedOutgoing(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTCPrivate") {
+				t.Skip("webrtc private to private needs special handling because the listener makes a dial to the relay")
+			}
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -153,6 +160,9 @@ func TestInterceptAccept(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTCPrivate") {
+				t.Skip("webrtc private to private needs special handling because the listener makes a dial to the relay")
+			}
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -198,6 +208,10 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTCPrivate") {
+				t.Skip("webrtc private to private needs special handling because the listener makes a dial to the relay")
+			}
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -231,6 +245,9 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTCPrivate") {
+				t.Skip("webrtc private to private needs special handling because the listener makes a dial to the relay")
+			}
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)

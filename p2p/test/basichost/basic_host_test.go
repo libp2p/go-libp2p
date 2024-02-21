@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	ma "github.com/multiformats/go-multiaddr"
@@ -157,4 +158,44 @@ func TestNewStreamTransientConnection(t *testing.T) {
 	}()
 	<-done
 	<-done
+}
+
+func TestWebRTCPrivateAddressAdvertisement(t *testing.T) {
+	r, err := libp2p.New(
+		// We need a public address for the relay
+		libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			return append(addrs, ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1/webtransport"))
+		}),
+		libp2p.EnableRelayService(),
+		libp2p.ForceReachabilityPublic(),
+	)
+	require.NoError(t, err)
+
+	relay1info := peer.AddrInfo{
+		ID:    r.ID(),
+		Addrs: r.Addrs(),
+	}
+
+	h, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+		libp2p.EnableRelay(),
+		libp2p.EnableWebRTCPrivate(nil),
+		libp2p.EnableAutoRelayWithStaticRelays(
+			[]peer.AddrInfo{relay1info},
+			autorelay.WithBootDelay(0),
+		),
+		libp2p.ForceReachabilityPrivate(),
+	)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		for _, a := range h.Addrs() {
+			_, rerr := a.ValueForProtocol(ma.P_CIRCUIT)
+			_, werr := a.ValueForProtocol(ma.P_WEBRTC)
+			if rerr == nil && werr == nil {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 50*time.Millisecond)
 }

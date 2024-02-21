@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package libp2pwebrtcprivate.pb;
+
+option go_package = "github.com/libp2p/go-libp2p/p2p/transport/webrtcprivate/pb";
+
+message Message {
+    // Specifies type in `data` field.
+    enum Type {
+        // String of `RTCSessionDescription.sdp`
+        SDP_OFFER = 0;
+        // String of `RTCSessionDescription.sdp`
+        SDP_ANSWER = 1;
+        // String of `RTCIceCandidate.toJSON()`
+        ICE_CANDIDATE = 2;
+    }
+
+    optional Type type = 1;
+    optional string data = 2;
+}

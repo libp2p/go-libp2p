@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	libp2pwebrtcprivate "github.com/libp2p/go-libp2p/p2p/transport/webrtcprivate"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -800,7 +801,36 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 			addrs[i] = addrWithCerthash
 		}
 	}
+
+	// Append webrtc addresses to circuit-v2 addresses
+	hasWebRTCPrivate := false
+	for _, addr := range addrs {
+		if addr.Equal(libp2pwebrtcprivate.WebRTCAddr) {
+			hasWebRTCPrivate = true
+			break
+		}
+	}
+	if hasWebRTCPrivate {
+		for _, addr := range addrs {
+			if _, err := addr.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+				if isBrowserDialableAddr(addr) {
+					addrs = append(addrs, addr.Encapsulate(libp2pwebrtcprivate.WebRTCAddr))
+				}
+			}
+		}
+	}
 	return addrs
+}
+
+var browserProtocols = []int{ma.P_WEBTRANSPORT, ma.P_WEBRTC_DIRECT, ma.P_WSS}
+
+func isBrowserDialableAddr(addr ma.Multiaddr) bool {
+	for _, p := range browserProtocols {
+		if _, err := addr.ValueForProtocol(p); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // NormalizeMultiaddr returns a multiaddr suitable for equality checks.

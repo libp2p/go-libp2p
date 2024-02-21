@@ -326,6 +326,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	if err != nil {
 		return nil, fmt.Errorf("instantiate peerconnection: %w", err)
 	}
+	dataChannelQueue := SetupDataChannelQueue(pc, maxAcceptQueueLen)
 
 	errC := addOnConnectionStateChangeCallback(pc)
 	// We need to set negotiated = true for this channel on both
@@ -397,7 +398,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 
 	// we can only know the remote public key after the noise handshake,
 	// but need to set up the callbacks on the peerconnection
-	conn, err := newConnection(
+	conn, err := NewWebRTCConnection(
 		network.DirOutbound,
 		pc,
 		t,
@@ -407,6 +408,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		p,
 		nil,
 		remoteMultiaddrWithoutCerthash,
+		dataChannelQueue,
 	)
 	if err != nil {
 		return nil, err

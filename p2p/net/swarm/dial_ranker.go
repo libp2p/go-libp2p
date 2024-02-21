@@ -43,7 +43,10 @@ func NoDelayDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 // no additional latency in the vast majority of cases.
 //
 // Private and public address groups are dialed in parallel.
+//
 // Dialing relay addresses is delayed by 500 ms, if we have any non-relay alternatives.
+// We treat webrtc addresses the same as relay addresses as we need a relay connection to establish a
+// webrtc connection. So any available direct addresses are preferred over webrtc addresses.
 //
 // Within each group (private, public, relay addresses) we apply the following ranking logic:
 //
@@ -72,7 +75,8 @@ func NoDelayDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 //
 // We dial lowest ports first as they are more likely to be the listen port.
 func DefaultDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
-	relay, addrs := filterAddrs(addrs, isRelayAddr)
+	// includes /webrtc addresses too
+	relay, addrs := filterAddrs(addrs, func(a ma.Multiaddr) bool { return isProtocolAddr(a, ma.P_CIRCUIT) })
 	pvt, addrs := filterAddrs(addrs, manet.IsPrivateAddr)
 	public, addrs := filterAddrs(addrs, func(a ma.Multiaddr) bool { return isProtocolAddr(a, ma.P_IP4) || isProtocolAddr(a, ma.P_IP6) })
 

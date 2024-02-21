@@ -27,7 +27,10 @@ func (s *Swarm) TransportForDialing(a ma.Multiaddr) transport.Transport {
 		}
 		return nil
 	}
-	if isRelayAddr(a) {
+	if isProtocolAddr(a, ma.P_WEBRTC) {
+		return s.transports.m[ma.P_WEBRTC]
+	}
+	if isProtocolAddr(a, ma.P_CIRCUIT) {
 		return s.transports.m[ma.P_CIRCUIT]
 	}
 	for _, t := range s.transports.m {

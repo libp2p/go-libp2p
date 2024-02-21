@@ -29,6 +29,13 @@ func WithForceDirectDial(ctx context.Context, reason string) context.Context {
 	return context.WithValue(ctx, forceDirectDial, reason)
 }
 
+// WithoutForceDirectDial constructs a new context with the ForceDirectDial option dropped.
+// This is useful in case establishing a direct connection first requires establishing a
+// relayed connection e.g. dialing /webrtc addresses.
+func WithoutForceDirectDial(ctx context.Context) context.Context {
+	return context.WithValue(ctx, forceDirectDial, nil)
+}
+
 // EXPERIMENTAL
 // GetForceDirectDial returns true if the force direct dial option is set in the context.
 func GetForceDirectDial(ctx context.Context) (forceDirect bool, reason string) {

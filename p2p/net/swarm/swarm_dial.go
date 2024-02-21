@@ -596,11 +596,6 @@ func isFdConsumingAddr(addr ma.Multiaddr) bool {
 	return err1 == nil || err2 == nil
 }
 
-func isRelayAddr(addr ma.Multiaddr) bool {
-	_, err := addr.ValueForProtocol(ma.P_CIRCUIT)
-	return err == nil
-}
-
 // filterLowPriorityAddresses removes addresses inplace for which we have a better alternative
 //  1. If a /quic-v1 address is present, filter out /quic and /webtransport address on the same 2-tuple:
 //     QUIC v1 is preferred over the deprecated QUIC draft-29, and given the choice, we prefer using
