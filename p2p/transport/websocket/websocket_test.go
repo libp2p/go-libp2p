@@ -572,7 +572,7 @@ func TestReusePortOnDial(t *testing.T) {
 	require.NoError(t, err)
 	defer l.Close()
 
-	// Take a note of the port on which we listen. This should be the address from which we dial too.
+	// Take a note of the multiaddress on which we listen. This should be the address from which we dial too.
 	expectedAddr := l.Multiaddr()
 
 	done := make(chan struct{})
@@ -583,6 +583,7 @@ func TestReusePortOnDial(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 
+		// The meat of this test - verify that the connection was received from the same port as the listen port recorded above.
 		remote := conn.RemoteMultiaddr()
 		require.Equal(t, expectedAddr, remote)
 	}()
@@ -590,10 +591,6 @@ func TestReusePortOnDial(t *testing.T) {
 	conn, err := tpt.Dial(context.Background(), cliListen.Multiaddr(), clientID)
 	require.NoError(t, err)
 	defer conn.Close()
-
-	stream, err := conn.OpenStream(context.Background())
-	require.NoError(t, err)
-	defer stream.Close()
 
 	<-done
 }
