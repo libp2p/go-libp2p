@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -554,13 +556,13 @@ func TestReusePortOnDial(t *testing.T) {
 
 	// Create an endpoint that will accept connections.
 	// We'll use this to verify that the party initiating the connection reused port.
-	clientID, cu := newUpgrader(t)
-	client, err := New(cu, &network.NullResourceManager{})
+	serverID, cu := newUpgrader(t)
+	transport, err := New(cu, &network.NullResourceManager{})
 	require.NoError(t, err)
 
-	cliListen, err := client.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	server, err := transport.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
 	require.NoError(t, err)
-	defer cliListen.Close()
+	defer server.Close()
 
 	// Create an endpoint that will initiate connection.
 	_, u := newUpgrader(t)
@@ -568,18 +570,18 @@ func TestReusePortOnDial(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start listening.
-	l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	listener, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
 	require.NoError(t, err)
-	defer l.Close()
+	defer listener.Close()
 
 	// Take a note of the multiaddress on which we listen. This should be the address from which we dial too.
-	expectedAddr := l.Multiaddr()
+	expectedAddr := listener.Multiaddr()
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 
-		conn, err := cliListen.Accept()
+		conn, err := server.Accept()
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -588,9 +590,96 @@ func TestReusePortOnDial(t *testing.T) {
 		require.Equal(t, expectedAddr, remote)
 	}()
 
-	conn, err := tpt.Dial(context.Background(), cliListen.Multiaddr(), clientID)
+	conn, err := tpt.Dial(context.Background(), server.Multiaddr(), serverID)
 	require.NoError(t, err)
 	defer conn.Close()
 
 	<-done
+}
+
+func TestReusePortOnListen(t *testing.T) {
+
+	const (
+		// how many connections we try to establish.
+		connectionCount = 20
+	)
+
+	// Create an endpoint that will accept connections.
+	// We'll use this to verify that the party initiating the connection reused port.
+	_, cu := newUpgrader(t)
+	tpt, err := New(cu, &network.NullResourceManager{}, EnableReuseport())
+	require.NoError(t, err)
+
+	listener1, err := tpt.maListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	require.NoError(t, err)
+
+	// Get the port on which we should start the second listener
+	addr, ok := listener1.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	port := addr.Port
+	listener2, err := tpt.maListen(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%v/ws", port)))
+	require.NoError(t, err)
+
+	listeners := []manet.Listener{listener1, listener2}
+
+	// Record which listener accepted how many connections.
+	requestCount := make(map[int]int)
+	var lock sync.Mutex
+
+	var connsHandled sync.WaitGroup
+	connsHandled.Add(connectionCount)
+	for i, l := range listeners {
+		go func(index int, listener manet.Listener) {
+			for {
+
+				conn, err := listener.Accept()
+				if err != nil {
+					// Stop condition - this happens when the listener is closed.
+					require.ErrorIs(t, err, transport.ErrListenerClosed)
+					return
+				}
+				defer conn.Close()
+
+				connsHandled.Done()
+
+				// Record which listener accepted the connection.
+				lock.Lock()
+				requestCount[index]++
+				lock.Unlock()
+			}
+		}(i, l)
+	}
+
+	_, u := newUpgrader(t)
+	tpt2, err := New(u, &network.NullResourceManager{})
+	require.NoError(t, err)
+
+	var dialers sync.WaitGroup
+	dialers.Add(connectionCount)
+
+	for i := 0; i < connectionCount; i++ {
+		go func() {
+			defer dialers.Done()
+			conn, err := tpt2.maDial(context.Background(), listener1.Multiaddr())
+			require.NoError(t, err)
+			defer conn.Close()
+		}()
+	}
+
+	// Wait for all dialers to complete.
+	dialers.Wait()
+
+	// Wait for listeners to complete their part.
+	connsHandled.Wait()
+
+	// Cancel listeners to unblock any further pending accepts.
+	listener1.Close()
+	listener2.Close()
+
+	require.NotZero(t, requestCount[0], "first listener accepted no connections")
+	require.NotZero(t, requestCount[1], "second listener accepted no connections")
+
+	total := requestCount[0] + requestCount[1]
+	require.Equal(t, connectionCount, total, "not all requests were handled")
 }
