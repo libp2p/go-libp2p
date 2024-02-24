@@ -13,14 +13,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-
-	"github.com/libp2p/go-msgio"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
-	"google.golang.org/protobuf/proto"
 )
 
 var _ tpt.CapableConn = &connection{}
@@ -77,6 +73,7 @@ func newConnection(
 	remotePeer peer.ID,
 	remoteKey ic.PubKey,
 	remoteMultiaddr ma.Multiaddr,
+	incomingDataChannels chan dataChannel,
 ) (*connection, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &connection{
@@ -94,7 +91,7 @@ func newConnection(
 		cancel:          cancel,
 		streams:         make(map[uint16]*stream),
 
-		acceptQueue: make(chan dataChannel, maxAcceptQueueLen),
+		acceptQueue: incomingDataChannels,
 	}
 	switch direction {
 	case network.DirInbound:
@@ -105,24 +102,6 @@ func newConnection(
 	}
 
 	pc.OnConnectionStateChange(c.onConnectionStateChange)
-	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		dc.OnOpen(func() {
-			rwc, err := dc.Detach()
-			if err != nil {
-				log.Warnf("could not detach datachannel: id: %d", *dc.ID())
-				return
-			}
-			select {
-			case c.acceptQueue <- dataChannel{rwc, dc}:
-			default:
-				log.Warnf("connection busy, rejecting stream")
-				b, _ := proto.Marshal(&pb.Message{Flag: pb.Message_RESET.Enum()})
-				w := msgio.NewWriter(rwc)
-				w.WriteMsg(b)
-				rwc.Close()
-			}
-		})
-	})
 	return c, nil
 }
 
@@ -273,29 +252,4 @@ func (c *connection) detachChannel(ctx context.Context, dc *webrtc.DataChannel) 
 	case <-done:
 		return rwc, err
 	}
-}
-
-// A note on these setters and why they are needed:
-//
-// The connection object sets up receiving datachannels (streams) from the remote peer.
-// Please consider the XX noise handshake pattern from a peer A to peer B as described at:
-// https://noiseexplorer.com/patterns/XX/
-//
-// The initiator A completes the noise handshake before B.
-// This would allow A to create new datachannels before B has set up the callbacks to process incoming datachannels.
-// This would create a situation where A has successfully created a stream but B is not aware of it.
-// Moving the construction of the connection object before the noise handshake eliminates this issue,
-// as callbacks have been set up for both peers.
-//
-// This could lead to a case where streams are created during the noise handshake,
-// and the handshake fails. In this case, we would close the underlying peerconnection.
-
-// only used during connection setup
-func (c *connection) setRemotePeer(id peer.ID) {
-	c.remotePeer = id
-}
-
-// only used during connection setup
-func (c *connection) setRemotePublicKey(key ic.PubKey) {
-	c.remoteKey = key
 }

@@ -184,11 +184,11 @@ func (l *listener) setupConnection(
 	ctx context.Context, scope network.ConnManagementScope,
 	remoteMultiaddr ma.Multiaddr, candidate udpmux.Candidate,
 ) (tConn tpt.CapableConn, err error) {
-	var pc *webrtc.PeerConnection
+	var w webRTCConnection
 	defer func() {
 		if err != nil {
-			if pc != nil {
-				_ = pc.Close()
+			if w.PeerConnection != nil {
+				_ = w.PeerConnection.Close()
 			}
 			if tConn != nil {
 				_ = tConn.Close()
@@ -224,34 +224,24 @@ func (l *listener) setupConnection(
 	)
 	settingEngine.DetachDataChannels()
 
-	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
-	pc, err = api.NewPeerConnection(l.config)
+	w, err = newWebRTCConnection(settingEngine, l.config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("instantiating peer connection failed: %w", err)
 	}
 
-	negotiated, id := handshakeChannelNegotiated, handshakeChannelID
-	rawDatachannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
-		Negotiated: &negotiated,
-		ID:         &id,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	errC := addOnConnectionStateChangeCallback(pc)
+	errC := addOnConnectionStateChangeCallback(w.PeerConnection)
 	// Infer the client SDP from the incoming STUN message by setting the ice-ufrag.
-	if err := pc.SetRemoteDescription(webrtc.SessionDescription{
+	if err := w.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		SDP:  createClientSDP(candidate.Addr, candidate.Ufrag),
 		Type: webrtc.SDPTypeOffer,
 	}); err != nil {
 		return nil, err
 	}
-	answer, err := pc.CreateAnswer(nil)
+	answer, err := w.PeerConnection.CreateAnswer(nil)
 	if err != nil {
 		return nil, err
 	}
-	if err := pc.SetLocalDescription(answer); err != nil {
+	if err := w.PeerConnection.SetLocalDescription(answer); err != nil {
 		return nil, err
 	}
 
@@ -264,34 +254,14 @@ func (l *listener) setupConnection(
 		}
 	}
 
-	rwc, err := detachHandshakeDataChannel(ctx, rawDatachannel)
+	// Run the noise handshake.
+	rwc, err := detachHandshakeDataChannel(ctx, w.HandshakeDataChannel)
 	if err != nil {
 		return nil, err
 	}
-
-	localMultiaddrWithoutCerthash, _ := ma.SplitFunc(l.localMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
-
-	handshakeChannel := newStream(rawDatachannel, rwc, func() {})
-	// The connection is instantiated before performing the Noise handshake. This is
-	// to handle the case where the remote is faster and attempts to initiate a stream
-	// before the ondatachannel callback can be set.
-	conn, err := newConnection(
-		network.DirInbound,
-		pc,
-		l.transport,
-		scope,
-		l.transport.localPeerId,
-		localMultiaddrWithoutCerthash,
-		"",  // remotePeer
-		nil, // remoteKey
-		remoteMultiaddr,
-	)
-	if err != nil {
-		return nil, err
-	}
-
+	handshakeChannel := newStream(w.HandshakeDataChannel, rwc, func() {})
 	// we do not yet know A's peer ID so accept any inbound
-	remotePubKey, err := l.transport.noiseHandshake(ctx, pc, handshakeChannel, "", crypto.SHA256, true)
+	remotePubKey, err := l.transport.noiseHandshake(ctx, w.PeerConnection, handshakeChannel, "", crypto.SHA256, true)
 	if err != nil {
 		return nil, err
 	}
@@ -299,14 +269,27 @@ func (l *listener) setupConnection(
 	if err != nil {
 		return nil, err
 	}
-
 	// earliest point where we know the remote's peerID
 	if err := scope.SetPeer(remotePeer); err != nil {
 		return nil, err
 	}
 
-	conn.setRemotePeer(remotePeer)
-	conn.setRemotePublicKey(remotePubKey)
+	localMultiaddrWithoutCerthash, _ := ma.SplitFunc(l.localMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
+	conn, err := newConnection(
+		network.DirInbound,
+		w.PeerConnection,
+		l.transport,
+		scope,
+		l.transport.localPeerId,
+		localMultiaddrWithoutCerthash,
+		remotePeer,
+		remotePubKey,
+		remoteMultiaddr,
+		w.IncomingDataChannels,
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	return conn, err
 }
