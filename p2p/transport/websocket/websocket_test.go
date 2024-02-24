@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -677,8 +678,24 @@ func TestReusePortOnListen(t *testing.T) {
 	listener1.Close()
 	listener2.Close()
 
-	require.NotZero(t, requestCount[0], "first listener accepted no connections")
-	require.NotZero(t, requestCount[1], "second listener accepted no connections")
+	// For Windows we can't make any assumptions with regards to connection distribution:
+	// 		"Once the second socket has successfully bound, the behavior for all sockets bound to that port is indeterminate.
+	//		For example, if all of the sockets on the same port provide TCP service, any incoming TCP connection requests over
+	//		the port cannot be guaranteed to be handled by the correct socket — the behavior is non-deterministic."
+	// => https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse
+
+	// For MacOS (FreeBSD) it's the last socket to bind that receives the connections. Anegdotal evidence but:
+	//		"Ironically it's the BSD semantics which support seamless server restarts. In my tests OS X's behavior (which I presume
+	// 		is identical to FreeBSD and other BSDs) is that the last socket to bind is the only one to receive new connections."
+	// => https://lwn.net/Articles/542629/
+	// On FreeBSD it's the SO_REUSEPORT_LB variant that provides load balancing.
+
+	// For Linux only - verify that both listeners handled some connections.
+	if runtime.GOOS == "linux" {
+		// We're not trying to verify an even distribution as it's not a perfect world.
+		require.NotZero(t, requestCount[0], "first listener accepted no connections")
+		require.NotZero(t, requestCount[1], "second listener accepted no connections")
+	}
 
 	total := requestCount[0] + requestCount[1]
 	require.Equal(t, connectionCount, total, "not all requests were handled")
