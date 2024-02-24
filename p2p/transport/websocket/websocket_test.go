@@ -629,9 +629,10 @@ func TestReusePortOnListen(t *testing.T) {
 
 	var connsHandled sync.WaitGroup
 	connsHandled.Add(connectionCount)
-	for i, l := range listeners {
-		go func(index int, listener manet.Listener) {
-			for {
+	// For both listeners spin up goroutines to accept incoming connections.
+	for i, listener := range listeners {
+		for j := 0; j < connectionCount; j++ {
+			go func(index int, listener manet.Listener) {
 
 				conn, err := listener.Accept()
 				if err != nil {
@@ -640,19 +641,18 @@ func TestReusePortOnListen(t *testing.T) {
 					return
 				}
 				defer conn.Close()
-
 				connsHandled.Done()
 
 				// Record which listener accepted the connection.
 				lock.Lock()
+				defer lock.Unlock()
 				requestCount[index]++
-				lock.Unlock()
-			}
-		}(i, l)
+			}(i, listener)
+		}
 	}
 
-	_, u := newUpgrader(t)
-	tpt2, err := New(u, &network.NullResourceManager{})
+	// Create a different transport as you cannot self-dial using reuseport.
+	tpt2, err := New(cu, &network.NullResourceManager{})
 	require.NoError(t, err)
 
 	var dialers sync.WaitGroup
