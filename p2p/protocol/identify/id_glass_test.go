@@ -122,6 +122,86 @@ func TestWrongSignedPeerRecord(t *testing.T) {
 	require.Empty(t, h1.Peerstore().Addrs(h3.ID()), "h1 should not know about h3 since it was relayed over h2")
 }
 
+func corruptEnvelope(ids *idService, s network.Stream, corruptor func(*recordPb.Envelope)) error {
+	// Update the snapshot
+	ids.updateSnapshot()
+	ids.currentSnapshot.Lock()
+	snapshot := ids.currentSnapshot.snapshot
+	ids.currentSnapshot.Unlock()
+
+	// Create the base identify response
+	mes := ids.createBaseIdentifyResponse(s.Conn(), &snapshot)
+	fmt.Println("Signed record is", snapshot.record)
+
+	// Marshal the record
+	marshalled, err := snapshot.record.Marshal()
+	if err != nil {
+		return err
+	}
+
+	// Unmarshal the envelope
+	var envPb recordPb.Envelope
+	err = proto.Unmarshal(marshalled, &envPb)
+	if err != nil {
+		return err
+	}
+
+	// Apply the corruption
+	corruptor(&envPb)
+
+	// Replace the SignedPeerRecord with the corrupted envelope
+	mes.SignedPeerRecord, err = proto.Marshal(&envPb)
+	if err != nil {
+		return err
+	}
+
+	// Write the identify message
+	err = ids.writeChunkedIdentifyMsg(s, mes)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Done sending msg")
+	return nil
+}
+
+func TestEmptyPayloadPeerRecord(t *testing.T) {
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer h1.Close()
+	ids1, err := NewIDService(h1)
+	require.NoError(t, err)
+	ids1.Start()
+	defer ids1.Close()
+
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer h2.Close()
+	ids2, err := NewIDService(h2)
+	require.NoError(t, err)
+	ids2.Start()
+	defer ids2.Close()
+
+	h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
+	require.Empty(t, h1.Peerstore().Addrs(h2.ID()), "h1 should not know about h2 since the peer record was not signed")
+
+	s, err := h2.NewStream(context.Background(), h1.ID(), IDPush)
+	require.NoError(t, err)
+
+	// Corrupt the envelope by emptying the signature
+	err = corruptEnvelope(ids2, s, func(envPb *recordPb.Envelope) {
+		envPb.Payload = []byte("")
+	})
+	require.NoError(t, err)
+
+	s.Close()
+
+	// Wait a bit for h1 to process the message
+	time.Sleep(1 * time.Second)
+
+	cab, ok := h1.Peerstore().(peerstore.CertifiedAddrBook)
+	require.True(t, ok)
+	require.Nil(t, cab.GetPeerRecord(h2.ID()))
+}
+
 func TestInvalidSignedPeerRecord(t *testing.T) {
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	defer h1.Close()
@@ -144,27 +224,12 @@ func TestInvalidSignedPeerRecord(t *testing.T) {
 	s, err := h2.NewStream(context.Background(), h1.ID(), IDPush)
 	require.NoError(t, err)
 
-	ids2.updateSnapshot()
-	ids2.currentSnapshot.Lock()
-	snapshot := ids2.currentSnapshot.snapshot
-	ids2.currentSnapshot.Unlock()
-	mes := ids2.createBaseIdentifyResponse(s.Conn(), &snapshot)
-	fmt.Println("Signed record is", snapshot.record)
-	marshalled, err := snapshot.record.Marshal()
+	// Corrupt the envelope by emptying the signature
+	err = corruptEnvelope(ids2, s, func(envPb *recordPb.Envelope) {
+		envPb.Signature = []byte("invalid")
+	})
 	require.NoError(t, err)
 
-	var envPb recordPb.Envelope
-	err = proto.Unmarshal(marshalled, &envPb)
-	require.NoError(t, err)
-
-	envPb.Signature = []byte("invalid")
-
-	mes.SignedPeerRecord, err = proto.Marshal(&envPb)
-	require.NoError(t, err)
-
-	err = ids2.writeChunkedIdentifyMsg(s, mes)
-	require.NoError(t, err)
-	fmt.Println("Done sending msg")
 	s.Close()
 
 	// Wait a bit for h1 to process the message
