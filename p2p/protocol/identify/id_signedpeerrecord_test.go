@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto/pb"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -249,6 +248,11 @@ func randomSignedPeerRecord(data []byte) *recordPb.Envelope {
 	}
 }
 
+// FuzzSignedPeerRecord is a fuzzing function used for testing the behavior of the SignedPeerRecord function.
+// It takes a testing.F parameter and performs fuzzing on the data provided in the testcases.
+// The function generates a new swarm for each host, creates a blank host, and starts the IDService.
+// It then connects two hosts, mutates the signed peer record, and sends it to the other host.
+// This function is used to test the robustness of the parsing of the signed peer record.
 func FuzzSignedPeerRecord(f *testing.F) {
 	// Seed corpus
 	testcases := [][]byte{
@@ -262,18 +266,29 @@ func FuzzSignedPeerRecord(f *testing.F) {
 		f.Add(tc) // Use f.Add to provide a seed corpus
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+		// Bail early if no mutation mask is set
+		mutationMask := byteToFieldMask(data)
+		if !isAnyMaskSet(mutationMask) {
+			t.Skip("No mutation mask set")
+		}
+
+		// Generate a new swarm for each host
+		swarm1 := swarmt.GenSwarm(t)
+		defer swarm1.Close()
+		h1 := blhost.NewBlankHost(swarm1)
 		defer h1.Close()
 		ids1, err := NewIDService(h1)
 		require.NoError(t, err)
 		ids1.Start()
 		defer ids1.Close()
 
-		h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+		swarm2 := swarmt.GenSwarm(t)
+		defer swarm2.Close()
+		h2 := blhost.NewBlankHost(swarm2)
 		defer h2.Close()
 		ids2, err := NewIDService(h2)
 		require.NoError(t, err)
-		ids2.Start()
+		// ids2.Start()
 		defer ids2.Close()
 
 		h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
@@ -281,11 +296,9 @@ func FuzzSignedPeerRecord(f *testing.F) {
 
 		s, err := h2.NewStream(context.Background(), h1.ID(), IDPush)
 		require.NoError(t, err)
+		defer s.Close()
 
-		mutationMask := byteToFieldMask(data)
-		if !isAnyMaskSet(mutationMask) {
-			t.Skip("No mutation mask set")
-		}
+		// The first byte of data is used for mutation mask, rest for signed peer record.
 		data = data[1:]
 		envPb := randomSignedPeerRecord(data)
 
@@ -293,10 +306,8 @@ func FuzzSignedPeerRecord(f *testing.F) {
 		err = mutateSignedPeerRecord(ids2, s, envPb, mutationMask)
 		require.NoError(t, err)
 
-		s.Close()
-
-		// Wait a bit for h1 to process the message
-		time.Sleep(1 * time.Second)
+		// Wait until h1 processes mutated signed peer record
+		<-ids1.IdentifyWait(h2.Network().ConnsToPeer(h1.ID())[0])
 
 		cab, ok := h1.Peerstore().(peerstore.CertifiedAddrBook)
 		require.True(t, ok)
