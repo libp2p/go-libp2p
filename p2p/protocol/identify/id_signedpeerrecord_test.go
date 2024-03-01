@@ -267,12 +267,15 @@ func FuzzSignedPeerRecord(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Bail early if no mutation mask is set
+		// No mutation mask set means that no mutations will be applied to the signed peer record,
+		// so there's no point in running the test.
 		mutationMask := byteToFieldMask(data)
 		if !isAnyMaskSet(mutationMask) {
 			t.Skip("No mutation mask set")
 		}
 
 		// Generate a new swarm for each host
+		// We disable QUIC to avoid issues with closing UDP socket in QUIC
 		swarm1 := swarmt.GenSwarm(t, swarmt.OptDisableQUIC)
 		defer swarm1.Close()
 		h1 := blhost.NewBlankHost(swarm1)
@@ -303,7 +306,7 @@ func FuzzSignedPeerRecord(f *testing.F) {
 		data = data[1:]
 		envPb := randomSignedPeerRecord(data)
 
-		// Corrupt the envelope using the fuzzing data
+		// Mutate (corrupt) the signed peer record using the fuzzing data
 		err = mutateSignedPeerRecord(ids2, s, envPb, mutationMask)
 		require.NoError(t, err)
 
