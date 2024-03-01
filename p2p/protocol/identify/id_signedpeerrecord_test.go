@@ -273,7 +273,7 @@ func FuzzSignedPeerRecord(f *testing.F) {
 		}
 
 		// Generate a new swarm for each host
-		swarm1 := swarmt.GenSwarm(t)
+		swarm1 := swarmt.GenSwarm(t, swarmt.OptDisableQUIC)
 		defer swarm1.Close()
 		h1 := blhost.NewBlankHost(swarm1)
 		defer h1.Close()
@@ -282,13 +282,14 @@ func FuzzSignedPeerRecord(f *testing.F) {
 		ids1.Start()
 		defer ids1.Close()
 
-		swarm2 := swarmt.GenSwarm(t)
+		// We don't start the ID service on this host, so we can manually corrupt the peer record
+		// and send it to the other host
+		swarm2 := swarmt.GenSwarm(t, swarmt.OptDisableQUIC)
 		defer swarm2.Close()
 		h2 := blhost.NewBlankHost(swarm2)
 		defer h2.Close()
 		ids2, err := NewIDService(h2)
 		require.NoError(t, err)
-		// ids2.Start()
 		defer ids2.Close()
 
 		h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
