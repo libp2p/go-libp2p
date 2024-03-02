@@ -11,8 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
 
-	ggio "github.com/gogo/protobuf/io"
-	"github.com/gogo/protobuf/proto"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // node client version
@@ -146,12 +145,25 @@ func (n *Node) sendProtoMessage(id peer.ID, p protocol.ID, data proto.Message) b
 	}
 	defer s.Close()
 
-	writer := ggio.NewFullWriter(s)
-	err = writer.WriteMsg(data)
+	d, err := proto.Marshal(data)
 	if err != nil {
 		log.Println(err)
-		s.Reset()
+		err2 := s.Reset()
+		if err2 != nil {
+			log.Println(err2)
+		}
 		return false
 	}
+
+	_, err = s.Write(d)
+	if err != nil {
+		log.Println(err)
+		err2 := s.Reset()
+		if err2 != nil {
+			log.Println(err2)
+		}
+		return false
+	}
+
 	return true
 }
