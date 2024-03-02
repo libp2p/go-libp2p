@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package protocols.p2p;
 
+option go_package = "./pb";
+
 // designed to be shared between all app protocols
 message MessageData {
     // shared between all requests
