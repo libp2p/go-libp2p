@@ -102,8 +102,8 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	var clientDone, serverDone atomic.Bool
-	clientStr := newStream(client.dc, client.rwc, func() { clientDone.Store(true) })
-	serverStr := newStream(server.dc, server.rwc, func() { serverDone.Store(true) })
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() { clientDone.Store(true) }, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() { serverDone.Store(true) }, nil)
 
 	// send a foobar from the client
 	n, err := clientStr.Write([]byte("foobar"))
@@ -148,8 +148,8 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 func TestStreamPartialReads(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() {}, nil)
 
 	_, err := serverStr.Write([]byte("foobar"))
 	require.NoError(t, err)
@@ -171,8 +171,8 @@ func TestStreamPartialReads(t *testing.T) {
 func TestStreamSkipEmptyFrames(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() {}, nil)
 
 	for i := 0; i < 10; i++ {
 		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
@@ -206,7 +206,7 @@ func TestStreamSkipEmptyFrames(t *testing.T) {
 func TestStreamReadReturnsOnClose(t *testing.T) {
 	client, _ := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
 	errChan := make(chan error, 1)
 	go func() {
 		_, err := clientStr.Read([]byte{0})
@@ -229,8 +229,8 @@ func TestStreamResets(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	var clientDone, serverDone atomic.Bool
-	clientStr := newStream(client.dc, client.rwc, func() { clientDone.Store(true) })
-	serverStr := newStream(server.dc, server.rwc, func() { serverDone.Store(true) })
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() { clientDone.Store(true) }, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() { serverDone.Store(true) }, nil)
 
 	// send a foobar from the client
 	_, err := clientStr.Write([]byte("foobar"))
@@ -265,8 +265,8 @@ func TestStreamResets(t *testing.T) {
 func TestStreamReadDeadlineAsync(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() {}, nil)
 
 	timeout := 100 * time.Millisecond
 	if os.Getenv("CI") != "" {
@@ -296,8 +296,8 @@ func TestStreamReadDeadlineAsync(t *testing.T) {
 func TestStreamWriteDeadlineAsync(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() {}, nil)
 	_ = serverStr
 
 	b := make([]byte, 1024)
@@ -326,8 +326,8 @@ func TestStreamWriteDeadlineAsync(t *testing.T) {
 func TestStreamReadAfterClose(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() {}, nil)
 
 	serverStr.Close()
 	b := make([]byte, 1)
@@ -338,8 +338,8 @@ func TestStreamReadAfterClose(t *testing.T) {
 
 	client, server = getDetachedDataChannels(t)
 
-	clientStr = newStream(client.dc, client.rwc, func() {})
-	serverStr = newStream(server.dc, server.rwc, func() {})
+	clientStr = newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
+	serverStr = newStream(server.dc, server.rwc, maxRTT, func() {}, nil)
 
 	serverStr.Reset()
 	b = make([]byte, 1)
@@ -351,57 +351,56 @@ func TestStreamReadAfterClose(t *testing.T) {
 
 func TestStreamCloseAfterFINACK(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
-
+	rtt := 500 * time.Millisecond
 	done := make(chan bool, 1)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, rtt, func() { done <- true }, func(_ bool) { done <- true })
+	serverStr := newStream(server.dc, server.rwc, rtt, func() {}, nil)
 
 	go func() {
-		done <- true
 		err := clientStr.Close()
 		assert.NoError(t, err)
 	}()
-	<-done
 
 	select {
 	case <-done:
-		t.Fatalf("Close should not have completed without processing FIN_ACK")
 	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("Close should call onClose immediately")
 	}
 
 	b := make([]byte, 1)
 	_, err := serverStr.Read(b)
 	require.Error(t, err)
 	require.ErrorIs(t, err, io.EOF)
+	serverStr.Close()
 	select {
 	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Errorf("Close should have completed")
+	case <-time.After(rtt):
+		t.Errorf("data channel close should have completed")
 	}
 }
 
-// TestStreamFinAckAfterStopSending tests that FIN_ACK is sent even after the write half
+// TestStreamFinAckAfterStopSending tests that FIN_ACK is sent after the write half
 // of the stream is closed.
 func TestStreamFinAckAfterStopSending(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
+	rtt := 500 * time.Millisecond
 
 	done := make(chan bool, 1)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, rtt, func() { done <- true }, func(_ bool) { done <- true })
+	serverStr := newStream(server.dc, server.rwc, rtt, func() {}, nil)
 
 	go func() {
 		clientStr.CloseRead()
 		clientStr.Write([]byte("hello world"))
-		done <- true
 		err := clientStr.Close()
 		assert.NoError(t, err)
 	}()
-	<-done
 
+	// As the serverStr is not reading clientStr cannot get FIN_ACK
 	select {
 	case <-done:
-		t.Errorf("Close should not have completed without processing FIN_ACK")
 	case <-time.After(500 * time.Millisecond):
+		t.Errorf("onClose should have been called immediately")
 	}
 
 	// serverStr has write half closed and read half open
@@ -409,10 +408,10 @@ func TestStreamFinAckAfterStopSending(t *testing.T) {
 	b := make([]byte, 24)
 	_, err := serverStr.Read(b)
 	require.NoError(t, err)
-	serverStr.Close() // Sends stop_sending, fin
+	serverStr.Close() // Sends stop_sending, fin and closes datachannel
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(rtt):
 		t.Fatalf("Close should have completed")
 	}
 }
@@ -422,8 +421,8 @@ func TestStreamConcurrentClose(t *testing.T) {
 
 	start := make(chan bool, 2)
 	done := make(chan bool, 2)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
-	serverStr := newStream(server.dc, server.rwc, func() { done <- true })
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() { done <- true }, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() { done <- true }, nil)
 
 	go func() {
 		start <- true
@@ -448,39 +447,41 @@ func TestStreamConcurrentClose(t *testing.T) {
 	}
 }
 
+// TestStreamResetAfterClose tests that controlMessageReader skips processing FIN_ACK on Reset
 func TestStreamResetAfterClose(t *testing.T) {
 	client, _ := getDetachedDataChannels(t)
 
+	rtt := 500 * time.Millisecond
 	done := make(chan bool, 2)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
+	clientStr := newStream(client.dc, client.rwc, rtt, func() { done <- true }, func(_ bool) { done <- true })
 	clientStr.Close()
 
 	select {
 	case <-done:
-		t.Fatalf("Close shouldn't run cleanup immediately")
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("Close should run onClose immediately")
 	}
 
 	clientStr.Reset()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Reset should run callback immediately")
+	case <-time.After(rtt + 100*time.Millisecond):
+		t.Fatalf("close should run ")
 	}
 }
 
 func TestStreamDataChannelCloseOnFINACK(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
+	rtt := 200 * time.Millisecond
 	done := make(chan bool, 1)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
-
+	clientStr := newStream(client.dc, client.rwc, rtt, func() { done <- true }, func(_ bool) { done <- true })
 	clientStr.Close()
 
 	select {
 	case <-done:
-		t.Fatalf("Close shouldn't run cleanup immediately")
 	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Close should run onClose immediately")
 	}
 
 	serverWriter := pbio.NewDelimitedWriter(server.rwc)
@@ -488,8 +489,8 @@ func TestStreamDataChannelCloseOnFINACK(t *testing.T) {
 	require.NoError(t, err)
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Callback should be run on reading FIN_ACK")
+	case <-time.After(rtt + (50 * time.Millisecond)):
+		t.Fatalf("data channel close should complete within rtt")
 	}
 	b := make([]byte, 100)
 	N := 0
@@ -507,8 +508,8 @@ func TestStreamDataChannelCloseOnFINACK(t *testing.T) {
 func TestStreamChunking(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxRTT, func() {}, nil)
+	serverStr := newStream(server.dc, server.rwc, maxRTT, func() {}, nil)
 
 	const N = (16 << 10) + 1000
 	go func() {

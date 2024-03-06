@@ -21,7 +21,10 @@ import (
 
 var _ tpt.CapableConn = &connection{}
 
-const maxAcceptQueueLen = 256
+const (
+	maxAcceptQueueLen             = 256
+	maxInvalidDataChannelClosures = 10
+)
 
 type errConnectionTimeout struct{}
 
@@ -51,9 +54,10 @@ type connection struct {
 	remoteKey       ic.PubKey
 	remoteMultiaddr ma.Multiaddr
 
-	m            sync.Mutex
-	streams      map[uint16]*stream
-	nextStreamID atomic.Int32
+	m                          sync.Mutex
+	streams                    map[uint16]*stream
+	nextStreamID               atomic.Int32
+	invalidDataChannelClosures atomic.Int32
 
 	acceptQueue chan dataChannel
 
@@ -158,7 +162,7 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 		dc.Close()
 		return nil, fmt.Errorf("detach channel failed for stream(%d): %w", streamID, err)
 	}
-	str := newStream(dc, rwc, func() { c.removeStream(streamID) })
+	str := newStream(dc, rwc, maxRTT, func() { c.removeStream(streamID) }, c.onDataChannelClose)
 	if err := c.addStream(str); err != nil {
 		str.Reset()
 		return nil, fmt.Errorf("failed to add stream(%d) to connection: %w", streamID, err)
@@ -171,7 +175,7 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	case <-c.ctx.Done():
 		return nil, c.closeErr
 	case dc := <-c.acceptQueue:
-		str := newStream(dc.channel, dc.stream, func() { c.removeStream(*dc.channel.ID()) })
+		str := newStream(dc.channel, dc.stream, maxRTT,func() { c.removeStream(*dc.channel.ID()) }, c.onDataChannelClose)
 		if err := c.addStream(str); err != nil {
 			str.Reset()
 			return nil, err
@@ -205,6 +209,16 @@ func (c *connection) removeStream(id uint16) {
 	c.m.Lock()
 	defer c.m.Unlock()
 	delete(c.streams, id)
+}
+
+func (c *connection) onDataChannelClose(remoteClosed bool) {
+	if !remoteClosed {
+		if c.invalidDataChannelClosures.Add(1) > maxInvalidDataChannelClosures {
+			c.closeOnce.Do(func() {
+				c.closeWithError(errors.New("peer is not closing datachannels"))
+			})
+		}
+	}
 }
 
 func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {

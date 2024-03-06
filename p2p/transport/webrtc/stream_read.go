@@ -103,6 +103,10 @@ func (s *stream) setDataChannelReadDeadline(t time.Time) error {
 func (s *stream) CloseRead() error {
 	s.mx.Lock()
 	defer s.mx.Unlock()
+	return s.closeReadUnlocked()
+}
+
+func (s *stream) closeReadUnlocked() error {
 	var err error
 	if s.receiveState == receiveStateReceiving && s.closeForShutdownErr == nil {
 		err = s.writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})

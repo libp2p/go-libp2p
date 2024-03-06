@@ -119,16 +119,15 @@ func (s *stream) availableSendSpace() int {
 	return availableSpace
 }
 
-func (s *stream) cancelWrite() error {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-
+func (s *stream) cancelWriteUnlocked() error {
 	// There's no need to reset the write half if the write half has been closed
 	// successfully or has been reset previously
 	if s.sendState == sendStateDataReceived || s.sendState == sendStateReset {
 		return nil
 	}
 	s.sendState = sendStateReset
+	// Remove reference to this stream from the datachannel
+	s.dataChannel.OnBufferedAmountLow(nil)
 	s.notifyWriteStateChanged()
 	if err := s.writer.WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()}); err != nil {
 		return err
@@ -139,16 +138,18 @@ func (s *stream) cancelWrite() error {
 func (s *stream) CloseWrite() error {
 	s.mx.Lock()
 	defer s.mx.Unlock()
+	return s.closeWriteUnlocked()
+}
 
+func (s *stream) closeWriteUnlocked() error {
 	if s.sendState != sendStateSending {
 		return nil
 	}
 	s.sendState = sendStateDataSent
+	// Remove reference to this stream from the datachannel
+	s.dataChannel.OnBufferedAmountLow(nil)
 	s.notifyWriteStateChanged()
-	if err := s.writer.WriteMsg(&pb.Message{Flag: pb.Message_FIN.Enum()}); err != nil {
-		return err
-	}
-	return nil
+	return s.writer.WriteMsg(&pb.Message{Flag: pb.Message_FIN.Enum()})
 }
 
 func (s *stream) notifyWriteStateChanged() {

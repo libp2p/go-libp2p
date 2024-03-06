@@ -366,7 +366,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	if err != nil {
 		return nil, err
 	}
-	channel := newStream(w.HandshakeDataChannel, detached, func() {})
+	channel := newStream(w.HandshakeDataChannel, detached, maxRTT, nil, nil)
 
 	remotePubKey, err := t.noiseHandshake(ctx, w.PeerConnection, channel, p, remoteHashFunction, false)
 	if err != nil {
