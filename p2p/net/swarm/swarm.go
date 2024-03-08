@@ -18,11 +18,11 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"golang.org/x/exp/slices"
-	
-        logging "github.com/ipfs/go-log/v2"
-        ma "github.com/multiformats/go-multiaddr"
-        madns "github.com/multiformats/go-multiaddr-dns"
-        manet "github.com/multiformats/go-multiaddr/net"
+
+	logging "github.com/ipfs/go-log/v2"
+	ma "github.com/multiformats/go-multiaddr"
+	madns "github.com/multiformats/go-multiaddr-dns"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (
