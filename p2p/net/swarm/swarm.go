@@ -18,8 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"golang.org/x/exp/slices"
+	
 	manet "github.com/multiformats/go-multiaddr/net"
-
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -575,7 +575,7 @@ func isBetterConn(a, b *Conn) bool {
 	aPriority := connPriority(a)
 	bPriority := connPriority(b)
 	if aPriority >= bPriority {
-		return false
+		return true
 	}
 
 	// Otherwise, prefer the connection with more open streams.
