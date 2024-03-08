@@ -18,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"golang.org/x/exp/slices"
+	manet "github.com/multiformats/go-multiaddr/net"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -571,18 +572,10 @@ func (s *Swarm) ConnsToPeer(p peer.ID) []network.Conn {
 }
 
 func isBetterConn(a, b *Conn) bool {
-	// If one is transient and not the other, prefer the non-transient connection.
-	aTransient := a.Stat().Transient
-	bTransient := b.Stat().Transient
-	if aTransient != bTransient {
-		return !aTransient
-	}
-
-	// If one is direct and not the other, prefer the direct connection.
-	aDirect := isDirectConn(a)
-	bDirect := isDirectConn(b)
-	if aDirect != bDirect {
-		return aDirect
+	aPriority := connPriority(a)
+	bPriority := connPriority(b)
+	if aPriority >= bPriority {
+		return false
 	}
 
 	// Otherwise, prefer the connection with more open streams.
@@ -600,6 +593,38 @@ func isBetterConn(a, b *Conn) bool {
 
 	// finally, pick the last connection.
 	return true
+}
+
+func connPriority(c *Conn) int {
+	if c == nil {
+		return 0
+	}
+
+	var priority int
+	// LAN > WAN > PROXY
+	switch {
+	case c.conn.Transport().Proxy():
+		priority += 10
+	case manet.IsPrivateAddr(c.RemoteMultiaddr()):
+		priority += 20
+	case manet.IsPublicAddr(c.RemoteMultiaddr()):
+		priority += 15
+	}
+
+	// We prefer udp protocols
+	switch c.ConnState().Transport {
+	case "quic", "quic-v1", "webtransport", "webrtc":
+		priority += 5
+	case "tcp", "websocket":
+		priority += 3
+	}
+
+	//  If one is transient and not the other, prefer the non-transient connection.
+	if !c.Stat().Transient {
+		priority += 2
+	}
+
+	return priority
 }
 
 // bestConnToPeer returns the best connection to peer.
