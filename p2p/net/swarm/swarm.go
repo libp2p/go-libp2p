@@ -627,11 +627,6 @@ func connPriority(c *Conn) int {
 		priority += 3
 	}
 
-	//  If one is transient and not the other, prefer the non-transient connection.
-	if !c.Stat().Transient {
-		priority += 2
-	}
-
 	return priority
 }
 
