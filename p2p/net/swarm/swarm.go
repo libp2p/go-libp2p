@@ -572,6 +572,14 @@ func (s *Swarm) ConnsToPeer(p peer.ID) []network.Conn {
 }
 
 func isBetterConn(a, b *Conn) bool {
+	// If one is transient and not the other, prefer the non-transient connection.
+	aTransient := a.Stat().Transient
+	bTransient := b.Stat().Transient
+	if aTransient != bTransient {
+		return !aTransient
+	}
+
+	// Compare connection priorities and choose the better connection
 	aPriority := connPriority(a)
 	bPriority := connPriority(b)
 	if aPriority >= bPriority {
