@@ -304,7 +304,7 @@ func (h *Host) Serve() error {
 		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, h.StreamHost.Addrs()...)
 
 		go func() {
-			errCh <- http.Serve(listener, h.ServeMux)
+			errCh <- http.Serve(listener, doNotDefaultToTransferEncodingHandler{h.ServeMux})
 		}()
 	}
 
@@ -815,4 +815,67 @@ func (h *Host) RemovePeerMetadata(server peer.ID) {
 		return
 	}
 	h.peerMetadata.Remove(server)
+}
+
+// libp2p streams are promised to be cheap so we would rather kill the stream and spawn a new one for each request rather than use Transfer-Encoding
+type doNotDefaultToTransferEncodingHandler struct{ http.Handler }
+
+func (te doNotDefaultToTransferEncodingHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	te.Handler.ServeHTTP(&doNotDefaultToTransferEncodingResonseWriter{ResponseWriter: w}, req)
+}
+
+var _ http.ResponseWriter = (*doNotDefaultToTransferEncodingResonseWriter)(nil)
+var _ io.ReaderFrom = (*doNotDefaultToTransferEncodingResonseWriter)(nil)
+var _ http.Flusher = (*doNotDefaultToTransferEncodingResonseWriter)(nil)
+
+type doNotDefaultToTransferEncodingResonseWriter struct {
+	http.ResponseWriter
+	fixed bool
+}
+
+func (te *doNotDefaultToTransferEncodingResonseWriter) fixHeaders() {
+	if te.fixed {
+		return
+	}
+	te.fixed = true
+
+	headers := te.Header()
+
+	_, explicitelySet := headers["Transfer-Encoding"]
+	if explicitelySet {
+		return
+	}
+
+	_, hasTrailers := headers["Trailer"]
+	if hasTrailers {
+		return
+	}
+
+	headers["Transfer-Encoding"] = identity
+}
+
+var identity = []string{"identity"}
+
+func (te *doNotDefaultToTransferEncodingResonseWriter) Write(b []byte) (int, error) {
+	te.fixHeaders()
+	return te.ResponseWriter.Write(b)
+}
+
+func (te *doNotDefaultToTransferEncodingResonseWriter) ReadFrom(r io.Reader) (int64, error) {
+	te.fixHeaders()
+	return io.Copy(te.ResponseWriter, r)
+}
+
+func (te *doNotDefaultToTransferEncodingResonseWriter) WriteHeader(code int) {
+	te.fixHeaders()
+	te.ResponseWriter.WriteHeader(code)
+}
+
+func (te *doNotDefaultToTransferEncodingResonseWriter) Flush() {
+	flusher, ok := te.ResponseWriter.(http.Flusher)
+	if !ok {
+		return
+	}
+	te.fixHeaders()
+	flusher.Flush()
 }
