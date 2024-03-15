@@ -414,7 +414,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 			}
 			logf("protocol EOF: %s (took %s)", s.Conn().RemotePeer(), took)
 		} else {
-			log.Debugf("protocol mux failed: %s (took %s)", err, took)
+			log.Debugf("protocol mux failed: %s (took %s, id:%s, proto:%s)", err, took, s.ID(), s.Protocol())
 		}
 		s.Reset()
 		return
