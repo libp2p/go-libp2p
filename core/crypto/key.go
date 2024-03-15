@@ -227,6 +227,8 @@ func KeyEqual(k1, k2 Key) bool {
 	return k1.Equals(k2)
 }
 
+// This function takes two keys and comparing their types and raw byte representations.
+// It returns `true` if the keys are equal and `false` otherwise.
 func basicEquals(k1, k2 Key) bool {
 	if k1.Type() != k2.Type() {
 		return false
