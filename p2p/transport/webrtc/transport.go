@@ -39,18 +39,14 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio"
 
-	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multihash"
 
 	"github.com/pion/datachannel"
-	pionlogger "github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
 )
-
-var log = logging.Logger("webrtc-transport")
 
 var dialMatcher = mafmt.And(mafmt.UDP, mafmt.Base(ma.P_WEBRTC_DIRECT), mafmt.Base(ma.P_CERTHASH))
 
@@ -300,12 +296,9 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	// the password using the STUN message.
 	ufrag := genUfrag()
 
-	settingEngine := webrtc.SettingEngine{}
-	// suppress pion logs
-	loggerFactory := pionlogger.NewDefaultLoggerFactory()
-	loggerFactory.DefaultLogLevel = pionlogger.LogLevelDisabled
-	settingEngine.LoggerFactory = loggerFactory
-
+	settingEngine := webrtc.SettingEngine{
+		LoggerFactory: pionLoggerFactory,
+	}
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.DetachDataChannels()
 	// use the first best address candidate

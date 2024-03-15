@@ -182,7 +182,7 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 	}
 
 	if err := str.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for stream: %s, err")
+		log.Debugf("error reserving memory for stream: %s", err)
 		return 0, nil, nil, err
 	}
 	defer str.Scope().ReleaseMemory(maxMsgSize)

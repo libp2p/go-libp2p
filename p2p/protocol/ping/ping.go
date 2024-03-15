@@ -158,11 +158,10 @@ func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 			}
 		}
 	}()
-	go func() {
+	context.AfterFunc(ctx, func() {
 		// forces the ping to abort.
-		<-ctx.Done()
 		s.Reset()
-	}()
+	})
 
 	return out
 }

@@ -80,6 +80,14 @@ func assertNumPeersWithLimit(t *testing.T, ctx context.Context, d discovery.Disc
 	}
 }
 
+// withClock lets you override the default time.Now() call. Useful for tests.
+func withClock(c clock) BackoffDiscoveryOption {
+	return func(b *BackoffDiscovery) error {
+		b.clock = c
+		return nil
+	}
+}
+
 func TestBackoffDiscoverySingleBackoff(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

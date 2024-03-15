@@ -82,14 +82,6 @@ func (c realClock) Now() time.Time {
 	return time.Now()
 }
 
-// withClock lets you override the default time.Now() call. Useful for tests.
-func withClock(c clock) BackoffDiscoveryOption {
-	return func(b *BackoffDiscovery) error {
-		b.clock = c
-		return nil
-	}
-}
-
 type backoffCache struct {
 	// strat is assigned on creation and not written to
 	strat BackoffStrategy

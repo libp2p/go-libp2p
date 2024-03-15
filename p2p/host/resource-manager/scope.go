@@ -118,12 +118,10 @@ func (rc *resources) checkMemory(rsvp int64, prio uint8) error {
 	threshold, mulOk := mulInt64WithOverflow(1+int64(prio), limit)
 	if !mulOk {
 		thresholdBig := big.NewInt(limit)
-		thresholdBig = thresholdBig.Mul(thresholdBig, big.NewInt(1+int64(prio)))
+		thresholdBig.Mul(thresholdBig, big.NewInt(1+int64(prio)))
 		thresholdBig.Rsh(thresholdBig, 8) // Divide 256
-		if !thresholdBig.IsInt64() {
-			// Shouldn't happen since the threshold can only be <= limit
-			threshold = limit
-		}
+		// necessarily a Int64 since we multiplied a int64 != MaxInt64 with
+		// a uint8+1 (max 255+1 = 256) and divided by 256
 		threshold = thresholdBig.Int64()
 	} else {
 		threshold = threshold / 256

@@ -20,9 +20,7 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
-	pionlogger "github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
-	"go.uber.org/zap/zapcore"
 )
 
 type connMultiaddrs struct {
@@ -194,21 +192,7 @@ func (l *listener) setupConnection(
 		}
 	}()
 
-	loggerFactory := pionlogger.NewDefaultLoggerFactory()
-	pionLogLevel := pionlogger.LogLevelDisabled
-	switch log.Level() {
-	case zapcore.DebugLevel:
-		pionLogLevel = pionlogger.LogLevelDebug
-	case zapcore.InfoLevel:
-		pionLogLevel = pionlogger.LogLevelInfo
-	case zapcore.WarnLevel:
-		pionLogLevel = pionlogger.LogLevelWarn
-	case zapcore.ErrorLevel:
-		pionLogLevel = pionlogger.LogLevelError
-	}
-	loggerFactory.DefaultLogLevel = pionLogLevel
-
-	settingEngine := webrtc.SettingEngine{LoggerFactory: loggerFactory}
+	settingEngine := webrtc.SettingEngine{LoggerFactory: pionLoggerFactory}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
 	settingEngine.SetICECredentials(candidate.Ufrag, candidate.Ufrag)
 	settingEngine.SetLite(true)
@@ -220,6 +204,10 @@ func (l *listener) setupConnection(
 		l.transport.peerConnectionTimeouts.Failed,
 		l.transport.peerConnectionTimeouts.Keepalive,
 	)
+	// This is higher than the path MTU due to a bug in the sctp chunking logic.
+	// Remove this after https://github.com/pion/sctp/pull/301 is included
+	// in a release.
+	settingEngine.SetReceiveMTU(udpmux.ReceiveBufSize)
 	settingEngine.DetachDataChannels()
 
 	w, err = newWebRTCConnection(settingEngine, l.config)

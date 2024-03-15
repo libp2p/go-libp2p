@@ -243,16 +243,14 @@ func (s *stream) spawnControlMessageReader() {
 			s.setDataChannelReadDeadline(time.Now().Add(-1 * time.Hour))
 
 			s.readerMx.Lock()
-			// We have the lock any readers blocked on reader.ReadMsg have exited.
+			// We have the lock: any readers blocked on reader.ReadMsg have exited.
+			s.mx.Lock()
+			defer s.mx.Unlock()
 			// From this point onwards only this goroutine will do reader.ReadMsg.
-
-			//lint:ignore SA2001 we just want to ensure any exising readers have exited.
+			// We just wanted to ensure any exising readers have exited.
 			// Read calls from this point onwards will exit immediately on checking
 			// s.readState
 			s.readerMx.Unlock()
-
-			s.mx.Lock()
-			defer s.mx.Unlock()
 
 			if s.nextMessage != nil {
 				s.processIncomingFlag(s.nextMessage.Flag)
