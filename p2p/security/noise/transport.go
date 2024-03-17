@@ -11,7 +11,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/magiselect"
 
+	ma "github.com/multiformats/go-multiaddr"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -27,6 +30,7 @@ type Transport struct {
 }
 
 var _ sec.SecureTransport = &Transport{}
+var _ sec.StraightableSecureTransport = &Transport{}
 
 // New creates a new Noise transport using the given private key as its
 // libp2p identity key.
@@ -128,4 +132,22 @@ func (i *transportEarlyDataHandler) MatchMuxers(isInitiator bool) protocol.ID {
 		return matchMuxers(i.transport.muxers, i.receivedMuxers)
 	}
 	return matchMuxers(i.receivedMuxers, i.transport.muxers)
+}
+
+func (*Transport) Match(s magiselect.Sample) bool {
+	return magiselect.IsNoise(s)
+}
+
+var noiseMaddr = ma.StringCast("/noise")
+
+func (*Transport) Suffix() ma.Multiaddr {
+	return noiseMaddr
+}
+
+func (*Transport) SuffixProtocol() int {
+	return ma.P_NOISE
+}
+
+func (*Transport) SuffixMatcher() mafmt.Pattern {
+	return mafmt.Base(ma.P_NOISE)
 }

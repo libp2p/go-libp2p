@@ -129,7 +129,7 @@ func dial(t *testing.T, upgrader transport.Upgrader, raddr ma.Multiaddr, p peer.
 	if err != nil {
 		return nil, err
 	}
-	return upgrader.Upgrade(context.Background(), nil, macon, network.DirOutbound, p, scope)
+	return upgrader.UpgradeOutbound(context.Background(), nil, macon, nil, p, scope)
 }
 
 func TestOutboundConnectionGating(t *testing.T) {

@@ -119,7 +119,7 @@ func (l *listener) handleIncoming() {
 			ctx, cancel := context.WithTimeout(l.ctx, l.upgrader.acceptTimeout)
 			defer cancel()
 
-			conn, err := l.upgrader.Upgrade(ctx, l.transport, maconn, network.DirInbound, "", connScope)
+			conn, err := l.upgrader.UpgradeInbound(ctx, l.transport, maconn, "", connScope)
 			if err != nil {
 				// Don't bother bubbling this up. We just failed
 				// to completely negotiate the connection.
@@ -179,4 +179,9 @@ func (l *listener) String() string {
 	return fmt.Sprintf("<stream.Listener %s>", l.Multiaddr())
 }
 
+func (l *listener) Upgrader() transport.Upgrader {
+	return l.upgrader
+}
+
 var _ transport.Listener = (*listener)(nil)
+var _ transport.ListenerFromUpgrader = (*listener)(nil)

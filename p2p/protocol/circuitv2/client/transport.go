@@ -70,7 +70,8 @@ func (c *Client) dialAndUpgrade(ctx context.Context, a ma.Multiaddr, p peer.ID, 
 		return nil, err
 	}
 	conn.tagHop()
-	cc, err := c.upgrader.Upgrade(ctx, c, conn, network.DirOutbound, p, connScope)
+	// FIXME: remove our leading maddr and compute suffix
+	cc, err := c.upgrader.UpgradeOutbound(ctx, c, conn, nil, p, connScope)
 	if err != nil {
 		return nil, err
 	}

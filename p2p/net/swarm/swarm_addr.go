@@ -3,6 +3,7 @@ package swarm
 import (
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/transport"
 	manet "github.com/multiformats/go-multiaddr/net"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -18,7 +19,22 @@ func (s *Swarm) ListenAddresses() []ma.Multiaddr {
 func (s *Swarm) listenAddressesNoLock() []ma.Multiaddr {
 	addrs := make([]ma.Multiaddr, 0, len(s.listeners.m)+10) // A bit extra so we may avoid an extra allocation in the for loop below.
 	for l := range s.listeners.m {
-		addrs = append(addrs, l.Multiaddr())
+		addr := l.Multiaddr()
+
+		// FIXME: this is a hack because we don't return multimple addresses from .Multiaddr, see the docs of transport.ListenerFromUpgrader.
+		if lu, ok := l.(transport.ListenerFromUpgrader); ok {
+			u := lu.Upgrader()
+			for _, suffix := range u.Suffixes() {
+				if suffix == nil {
+					// implicit multistream-select
+					addrs = append(addrs, addr)
+				} else {
+					addrs = append(addrs, addr.Encapsulate(suffix))
+				}
+			}
+		} else {
+			addrs = append(addrs, addr)
+		}
 	}
 	return addrs
 }

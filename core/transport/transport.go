@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	ma "github.com/multiformats/go-multiaddr"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -96,6 +97,14 @@ type Listener interface {
 	Multiaddr() ma.Multiaddr
 }
 
+// ListenerFromUpgrader is a workaround to let the swarm append suffixes, it is optionally implemented by Listeners.
+// FIXME: I want 8962b2ae336d94627f2f4361f96799ee3a5bd9e4 but it was reverted in 1c8eaabfd385346a7c41b988e2dbc2e20ddfa460 and I'm not in the mood to figure out this kind of mess.
+type ListenerFromUpgrader interface {
+	Listener
+
+	Upgrader() Upgrader
+}
+
 // ErrListenerClosed is returned by Listener.Accept when the listener is gracefully closed.
 var ErrListenerClosed = errors.New("listener closed")
 
@@ -121,9 +130,18 @@ type TransportNetwork interface {
 // to a full transport connection (secure and multiplexed).
 type Upgrader interface {
 	// UpgradeListener upgrades the passed multiaddr-net listener into a full libp2p-transport listener.
-	UpgradeListener(Transport, manet.Listener) Listener
-	// Upgrade upgrades the multiaddr/net connection into a full libp2p-transport connection.
-	Upgrade(ctx context.Context, t Transport, maconn manet.Conn, dir network.Direction, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
+	UpgradeListener(Transport, manet.Listener) ListenerFromUpgrader
+
+	// UpgradeOutbound/Inbound upgrades the multiaddr/net connection into a full libp2p-transport connection.
+	// suffix can be nil if no suffix is present.
+	UpgradeOutbound(ctx context.Context, t Transport, maconn manet.Conn, suffix ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
+	UpgradeInbound(ctx context.Context, t Transport, maconn manet.Conn, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
+
+	// Suffixes let the Upgrader indicate optional maddr suffixes which can be used to skip parts of the negociation.
+	// A nil maddr indicate that no suffix must be applied (multistream-select will be used).
+	Suffixes() []ma.Multiaddr
+	SuffixesProtocols() []int
+	SuffixMatcher() mafmt.Pattern
 }
 
 // DialUpdater provides updates on in progress dials.
