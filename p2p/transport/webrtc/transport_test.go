@@ -110,14 +110,16 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		assert.NoError(t, err)
+		t.Cleanup(func() { conn.Close() })
 		close(done)
 	}()
 
 	conn, err := listener.Accept()
 	require.NoError(t, err)
 	require.NotNil(t, conn)
+	defer conn.Close()
 
 	require.Equal(t, connectingPeer, conn.RemotePeer())
 	select {
@@ -170,12 +172,14 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 			defer wg.Done()
 			ctr, _ := getTransport(t)
 			conn, err := ctr.Dial(ctx, listener.Multiaddr(), listeningPeer)
+			if conn != nil {
+				t.Cleanup(func() { conn.Close() })
+			}
 			select {
 			case <-ctx.Done():
 			default:
 				assert.NoError(t, err)
 				assert.NotNil(t, conn)
-				t.Cleanup(func() { conn.Close() })
 			}
 		}()
 	}
@@ -792,4 +796,85 @@ func TestMaxInFlightRequests(t *testing.T) {
 	wg.Wait()
 	require.Equal(t, count, int(success.Load()), "expected exactly 3 dial successes")
 	require.Equal(t, 1, int(fails.Load()), "expected exactly 1 dial failure")
+}
+
+func TestTransportWebRTC_ManyConnections(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+	defer listener.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	N := 2000
+	errs := make(chan error, N)
+
+	// exits on listener close
+	go func() {
+		for i := 0; i < N; i++ {
+			lconn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				stream, err := lconn.AcceptStream()
+				if err != nil {
+					return
+				}
+				stream.Write([]byte{1, 2, 3, 4})
+				buf := make([]byte, 10)
+				stream.Read(buf)
+				lconn.Close()
+				fmt.Println("conn done")
+			}()
+		}
+	}()
+
+	dialAndReceiveData := func() {
+		var err error
+		defer func() {
+			errs <- err
+		}()
+		tr1, _ := getTransport(t)
+		conn, err := tr1.Dial(ctx, listener.Multiaddr(), listeningPeer)
+		if !assert.NoError(t, err) {
+			return
+		}
+		defer conn.Close()
+		// create a stream
+		stream, err := conn.OpenStream(context.Background())
+		if !assert.NoError(t, err) {
+			return
+		}
+		stream.SetReadDeadline(time.Now().Add(30 * time.Second))
+		buf := make([]byte, 10)
+		n, err := stream.Read(buf)
+		if !assert.NoError(t, err) {
+			return
+		}
+		if !assert.Equal(t, 4, n) {
+			return
+		}
+	}
+
+	go func() {
+		sem := make(chan struct{}, 10)
+		for i := 0; i < N; i++ {
+			sem <- struct{}{}
+			go func() {
+				dialAndReceiveData()
+				<-sem
+			}()
+		}
+	}()
+
+	for i := 0; i < N; i++ {
+		err := <-errs
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+	}
 }

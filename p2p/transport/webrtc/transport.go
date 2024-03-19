@@ -78,7 +78,7 @@ const (
 const (
 	DefaultDisconnectedTimeout = 20 * time.Second
 	DefaultFailedTimeout       = 30 * time.Second
-	DefaultKeepaliveTimeout    = 15 * time.Second
+	DefaultKeepaliveTimeout    = 5 * time.Second
 )
 
 type WebRTCTransport struct {
@@ -320,7 +320,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		return nil, fmt.Errorf("instantiating peer connection failed: %w", err)
 	}
 
-	errC := addOnConnectionStateChangeCallback(w.PeerConnection)
+	errC := addOnConnectionStateChangeCallback(w.PeerConnection, "dialer", ufrag)
 
 	// do offer-answer exchange
 	offer, err := w.PeerConnection.CreateOffer(nil)

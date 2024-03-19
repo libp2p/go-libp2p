@@ -209,9 +209,11 @@ func (c *connection) removeStream(id uint16) {
 
 func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
 	if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-		c.closeOnce.Do(func() {
-			c.closeWithError(errConnectionTimeout{})
-		})
+		go func() {
+			c.closeOnce.Do(func() {
+				c.closeWithError(errConnectionTimeout{})
+			})
+		}()
 	}
 }
 

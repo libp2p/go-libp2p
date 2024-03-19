@@ -214,8 +214,8 @@ func (l *listener) setupConnection(
 	if err != nil {
 		return nil, fmt.Errorf("instantiating peer connection failed: %w", err)
 	}
-
-	errC := addOnConnectionStateChangeCallback(w.PeerConnection)
+	fmt.Printf("peer connection: %p has addr: %s peer has addr: %s ufrag: %s\n", w.PeerConnection, l.localAddr, candidate.Addr, candidate.Ufrag)
+	errC := addOnConnectionStateChangeCallback(w.PeerConnection, "listener", candidate.Ufrag)
 	// Infer the client SDP from the incoming STUN message by setting the ice-ufrag.
 	if err := w.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		SDP:  createClientSDP(candidate.Addr, candidate.Ufrag),
@@ -318,14 +318,13 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 }
 
 // addOnConnectionStateChangeCallback adds the OnConnectionStateChange to the PeerConnection.
-// The channel returned here:
-// * is closed when the state changes to Connection
-// * receives an error when the state changes to Failed
-// * doesn't receive anything (nor is closed) when the state changes to Disconnected
-func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection) <-chan error {
+// If the connection establishment errors, an error is written to the channel before closing.
+// If the connection establishment is successful, the channel is closed without writing anything.
+func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection, side string, ufrag string) <-chan error {
 	errC := make(chan error, 1)
 	var once sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		fmt.Printf("%p: %s connection state: %v ufrag: %v \n", pc, side, state, ufrag)
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(errC) })
@@ -340,6 +339,13 @@ func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection) <-chan error 
 			// If the connection then receives packets on the connection, it can move back to the connected state.
 			// If no packets are received until the failed timeout is triggered, the connection moves to the failed state.
 			log.Warn("peerconnection disconnected")
+		case webrtc.PeerConnectionStateClosed:
+			// ConnectionStateClosed is a terminal state. This happens when the peer closes the PeerConnection before
+			// connection establishment.
+			once.Do(func() {
+				errC <- errors.New("peerconnection closed")
+				close(errC)
+			})
 		}
 	})
 	return errC
