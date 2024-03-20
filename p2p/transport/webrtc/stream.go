@@ -17,24 +17,19 @@ import (
 const (
 	// maxMessageSize is the maximum message size of the Protobuf message we send / receive.
 	maxMessageSize = 16384
-	// Pion SCTP association has an internal receive buffer of 1MB (roughly, 1MB per connection).
-	// We can change this value in the SettingEngine before creating the peerconnection.
-	// https://github.com/pion/webrtc/blob/v3.1.49/sctptransport.go#L341
-	maxBufferedAmount = 2 * maxMessageSize
+	// maxSendBuffer is the maximum data we enqueue on the underlying data channel for writes.
+	// The underlying SCTP layer has an unbounded buffer for writes. We limit the amount enqueued
+	// per stream is limited to avoid a single stream monopolizing the entire connection.
+	maxSendBuffer = 2 * maxMessageSize
+	// sendBufferLowThreshold is the threshold below which we write more data on the underlying
+	// data channel. We want a notification as soon as we can write 1 full sized message.
+	sendBufferLowThreshold = maxSendBuffer - maxMessageSize
 	// maxTotalControlMessagesSize is the maximum total size of all control messages we will
 	// write on this stream.
 	// 4 control messages of size 10 bytes + 10 bytes buffer. This number doesn't need to be
 	// exact. In the worst case, we enqueue these many bytes more in the webrtc peer connection
 	// send queue.
 	maxTotalControlMessagesSize = 50
-	// bufferedAmountLowThreshold and maxBufferedAmount are bound
-	// to a stream but congestion control is done on the whole
-	// SCTP association. This means that a single stream can monopolize
-	// the complete congestion control window (cwnd) if it does not
-	// read stream data and it's remote continues to send. We can
-	// add messages to the send buffer once there is space for 1 full
-	// sized message.
-	bufferedAmountLowThreshold = maxBufferedAmount / 2
 
 	// Proto overhead assumption is 5 bytes
 	protoOverhead = 5
@@ -120,7 +115,7 @@ func newStream(
 	}
 	// released when the controlMessageReader goroutine exits
 	s.controlMessageReaderDone.Add(1)
-	s.dataChannel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
+	s.dataChannel.SetBufferedAmountLowThreshold(sendBufferLowThreshold)
 	s.dataChannel.OnBufferedAmountLow(func() {
 		s.notifyWriteStateChanged()
 

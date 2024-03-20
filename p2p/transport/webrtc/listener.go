@@ -209,6 +209,10 @@ func (l *listener) setupConnection(
 	// in a release.
 	settingEngine.SetReceiveMTU(udpmux.ReceiveBufSize)
 	settingEngine.DetachDataChannels()
+	settingEngine.SetSCTPMaxReceiveBufferSize(sctpReceiveBufferSize)
+	if err := scope.ReserveMemory(sctpReceiveBufferSize, network.ReservationPriorityMedium); err != nil {
+		return nil, err
+	}
 
 	w, err = newWebRTCConnection(settingEngine, l.config)
 	if err != nil {

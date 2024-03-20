@@ -79,6 +79,8 @@ const (
 	DefaultDisconnectedTimeout = 20 * time.Second
 	DefaultFailedTimeout       = 30 * time.Second
 	DefaultKeepaliveTimeout    = 15 * time.Second
+
+	sctpReceiveBufferSize = 100_000
 )
 
 type WebRTCTransport struct {
@@ -314,6 +316,10 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	// If you run pion on a system with only the loopback interface UP,
 	// it will not connect to anything.
 	settingEngine.SetIncludeLoopbackCandidate(true)
+	settingEngine.SetSCTPMaxReceiveBufferSize(sctpReceiveBufferSize)
+	if err := scope.ReserveMemory(sctpReceiveBufferSize, network.ReservationPriorityMedium); err != nil {
+		return nil, err
+	}
 
 	w, err = newWebRTCConnection(settingEngine, t.webrtcConfig)
 	if err != nil {
