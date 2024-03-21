@@ -15,6 +15,6 @@ concurrency:
 
 jobs:
   go-test:
-    uses: pl-strflt/uci/.github/workflows/go-test.yml@v1.0
+    uses: ipdxco/unified-github-workflows/.github/workflows/go-test.yml@v1.0
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
