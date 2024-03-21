@@ -30,7 +30,6 @@ type protoConf struct {
 
 type quicListener struct {
 	l         *quic.Listener
-	closeMx   sync.Mutex
 	transport refCountedQuicTransport
 	running   chan struct{}
 	addrs     []ma.Multiaddr
@@ -125,13 +124,7 @@ func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 
 func (l *quicListener) Run() error {
 	defer close(l.running)
-	defer func() {
-		// transport close is not safe to use concurrently with listener close.
-		// remove after https://github.com/quic-go/quic-go/issues/4266 is fixed.
-		l.closeMx.Lock()
-		defer l.closeMx.Unlock()
-		l.transport.DecreaseCount()
-	}()
+	defer l.transport.DecreaseCount()
 	for {
 		conn, err := l.l.Accept(context.Background())
 		if err != nil {
@@ -154,12 +147,7 @@ func (l *quicListener) Run() error {
 }
 
 func (l *quicListener) Close() error {
-	// listener close is not safe to use concurrently with transport close.
-	// remove after https://github.com/quic-go/quic-go/issues/4266 is fixed.
-	l.closeMx.Lock()
 	err := l.l.Close()
-	l.closeMx.Unlock()
-
 	<-l.running // wait for Run to return
 	return err
 }
