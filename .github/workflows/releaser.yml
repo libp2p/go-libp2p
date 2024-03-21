@@ -14,4 +14,5 @@ concurrency:
 
 jobs:
   releaser:
-    uses: pl-strflt/uci/.github/workflows/releaser.yml@v0.0
+    uses: pl-strflt/uci/.github/workflows/releaser.yml@v1.0
+    secrets: inherit
