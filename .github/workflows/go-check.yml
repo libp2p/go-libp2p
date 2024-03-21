@@ -3,7 +3,7 @@ name: Go Checks
 on:
   pull_request:
   push:
-    branches: ["master","release-v0[0-9][0-9]"]
+    branches: ["master","release-v018","release-v022","release-v023","release-v026","release-v027","release-v028","release-v029","release-v030","release-v031","release-v032","release-v033"]
   workflow_dispatch:
 
 permissions:
@@ -15,6 +15,5 @@ concurrency:
 
 jobs:
   go-check:
-    uses: pl-strflt/uci/.github/workflows/go-check.yml@v0.0
-    with:
-      go-generate-ignore-protoc-version-comments: true
+    uses: pl-strflt/uci/.github/workflows/go-check.yml@v1.0
+    secrets: inherit
