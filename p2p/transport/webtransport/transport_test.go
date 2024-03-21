@@ -827,3 +827,89 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 		require.True(t, found, "Failed after hour: %v", i)
 	}
 }
+
+func TestNetworkCookie(t *testing.T) {
+	type testcase struct {
+		name            string
+		clientNetCookie string
+		serverNetCookie string
+		error           string
+	}
+
+	testcases := []testcase{
+		{
+			name: "no cookie",
+		},
+		{
+			name:            "cookie ok",
+			clientNetCookie: "01020342",
+			serverNetCookie: "01020342",
+		},
+		{
+			name:            "cookie mismatch",
+			clientNetCookie: "01020342",
+			serverNetCookie: "010203",
+			error:           "message authentication failed",
+		},
+		{
+			name:            "only client cookie",
+			clientNetCookie: "01020342",
+			error:           "message authentication failed",
+		},
+		{
+			name:            "only server cookie",
+			serverNetCookie: "010203",
+			error:           "message authentication failed",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			serverID, serverKey := newIdentity(t)
+			serverNC, err := ic.ParseNetworkCookie(tc.serverNetCookie)
+			require.NoError(t, err)
+			serverKey = ic.AddNetworkCookieToPrivKey(serverKey, serverNC)
+
+			_, clientKey := newIdentity(t)
+			clientNC, err := ic.ParseNetworkCookie(tc.clientNetCookie)
+			require.NoError(t, err)
+			clientKey = ic.AddNetworkCookieToPrivKey(clientKey, clientNC)
+
+			tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, nil)
+			require.NoError(t, err)
+			defer tr.(io.Closer).Close()
+			ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
+			require.NoError(t, err)
+			defer ln.Close()
+
+			done := make(chan struct{})
+			go func() {
+				_, err := ln.Accept()
+				if tc.error == "" {
+					require.NoError(t, err)
+				}
+				close(done)
+			}()
+
+			tr2, err := libp2pwebtransport.New(clientKey, nil, newConnManager(t), nil, nil)
+			require.NoError(t, err)
+			defer tr2.(io.Closer).Close()
+
+			_, err = tr2.Dial(context.Background(), ln.Multiaddr(), serverID)
+			if err != nil {
+				ln.Close()
+				ln = nil
+			}
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.FailNow()
+			}
+			if tc.error == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.error)
+			}
+		})
+	}
+}

@@ -476,6 +476,58 @@ func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
 	<-done
 }
 
+func TestNetworkCookieMatches(t *testing.T) {
+	initCookie, err := crypto.ParseNetworkCookie("012342")
+	require.NoError(t, err)
+	respCookie, err := crypto.ParseNetworkCookie("012342")
+	require.NoError(t, err)
+	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
+	initTransport.privateKey = crypto.AddNetworkCookieToPrivKey(initTransport.privateKey, initCookie)
+	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
+	respTransport.privateKey = crypto.AddNetworkCookieToPrivKey(respTransport.privateKey, respCookie)
+
+	initConn, respConn := newConnPair(t)
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		conn, err := initTransport.SecureOutbound(context.Background(), initConn, respTransport.localID)
+		require.NoError(t, err)
+		defer conn.Close()
+	}()
+
+	conn, err := respTransport.SecureInbound(context.Background(), respConn, "")
+	require.NoError(t, err)
+	defer conn.Close()
+	<-done
+}
+
+func TestNetworkCookieDoesNotMatchFailsHandshake(t *testing.T) {
+	initCookie, err := crypto.ParseNetworkCookie("012342")
+	require.NoError(t, err)
+	respCookie, err := crypto.ParseNetworkCookie("012300")
+	require.NoError(t, err)
+	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
+	initTransport.privateKey = crypto.AddNetworkCookieToPrivKey(initTransport.privateKey, initCookie)
+	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
+	respTransport.privateKey = crypto.AddNetworkCookieToPrivKey(respTransport.privateKey, respCookie)
+
+	initConn, respConn := newConnPair(t)
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		_, err = initTransport.SecureOutbound(context.Background(), initConn, respTransport.localID)
+		require.Error(t, err)
+	}()
+
+	_, err = respTransport.SecureInbound(context.Background(), respConn, "")
+	require.Error(t, err)
+	<-done
+}
+
 type earlyDataHandler struct {
 	send     func(context.Context, net.Conn, peer.ID) *pb.NoiseExtensions
 	received func(context.Context, net.Conn, *pb.NoiseExtensions) error

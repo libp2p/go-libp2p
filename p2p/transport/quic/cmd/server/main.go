@@ -18,17 +18,21 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Printf("Usage: %s <port>", os.Args[0])
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		fmt.Printf("Usage: %s <port> [<netcookie>]", os.Args[0])
 		return
 	}
-	if err := run(os.Args[1]); err != nil {
+	nc := ""
+	if len(os.Args) == 3 {
+		nc = os.Args[2]
+	}
+	if err := run(os.Args[1], nc); err != nil {
 		log.Fatalf(err.Error())
 	}
 }
 
-func run(port string) error {
-	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", port))
+func run(port, ncStr string) error {
+	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic-v1", port))
 	if err != nil {
 		return err
 	}
@@ -40,11 +44,16 @@ func run(port string) error {
 	if err != nil {
 		return err
 	}
+	nc, err := ic.ParseNetworkCookie(ncStr)
+	if err != nil {
+		return err
+	}
 
 	reuse, err := quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
 	if err != nil {
 		return err
 	}
+	priv = ic.AddNetworkCookieToPrivKey(priv, nc)
 	t, err := libp2pquic.NewTransport(priv, reuse, nil, nil, nil)
 	if err != nil {
 		return err

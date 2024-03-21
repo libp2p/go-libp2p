@@ -67,6 +67,7 @@ func (t *Transport) SecureInbound(_ context.Context, insecure net.Conn, p peer.I
 		Conn:        insecure,
 		local:       t.id,
 		localPubKey: t.key.GetPublic(),
+		nc:          ci.NetworkCookieFromPrivKey(t.key),
 	}
 
 	if err := conn.runHandshakeSync(); err != nil {
@@ -93,6 +94,7 @@ func (t *Transport) SecureOutbound(_ context.Context, insecure net.Conn, p peer.
 		Conn:        insecure,
 		local:       t.id,
 		localPubKey: t.key.GetPublic(),
+		nc:          ci.NetworkCookieFromPrivKey(t.key),
 	}
 
 	if err := conn.runHandshakeSync(); err != nil {
@@ -115,9 +117,10 @@ type Conn struct {
 
 	local, remote             peer.ID
 	localPubKey, remotePubKey ci.PubKey
+	nc                        ci.NetworkCookie
 }
 
-func makeExchangeMessage(pubkey ci.PubKey) (*pb.Exchange, error) {
+func makeExchangeMessage(pubkey ci.PubKey, netCookie ci.NetworkCookie) (*pb.Exchange, error) {
 	keyMsg, err := ci.PublicKeyToProto(pubkey)
 	if err != nil {
 		return nil, err
@@ -128,8 +131,9 @@ func makeExchangeMessage(pubkey ci.PubKey) (*pb.Exchange, error) {
 	}
 
 	return &pb.Exchange{
-		Id:     []byte(id),
-		Pubkey: keyMsg,
+		Id:        []byte(id),
+		Pubkey:    keyMsg,
+		NetCookie: netCookie,
 	}, nil
 }
 
@@ -140,7 +144,7 @@ func (ic *Conn) runHandshakeSync() error {
 	}
 
 	// Generate an Exchange message
-	msg, err := makeExchangeMessage(ic.localPubKey)
+	msg, err := makeExchangeMessage(ic.localPubKey, ic.nc)
 	if err != nil {
 		return err
 	}
@@ -167,6 +171,11 @@ func (ic *Conn) runHandshakeSync() error {
 		calculatedID, _ := peer.IDFromPublicKey(remotePubkey)
 		return fmt.Errorf("remote peer id does not match public key. id=%s calculated_id=%s",
 			remoteID, calculatedID)
+	}
+
+	if !ic.nc.Equal(remoteMsg.NetCookie) {
+		return fmt.Errorf("remote peer has different network cookie. Expected %q, got %q",
+			ic.nc, ci.NetworkCookie(remoteMsg.NetCookie))
 	}
 
 	// Add remote ID and key to conn state

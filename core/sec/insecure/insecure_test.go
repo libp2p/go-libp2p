@@ -56,12 +56,67 @@ func TestPeerIDMismatchOutbound(t *testing.T) {
 	require.Contains(t, clientErr.Error(), "remote peer sent unexpected peer ID")
 }
 
-func newTestTransport(t *testing.T, typ, bits int) *Transport {
+func TestNetworkCookies(t *testing.T) {
+	type testcase struct {
+		name         string
+		clientCookie string
+		serverCookie string
+		error        string
+	}
+
+	testcases := []testcase{
+		{
+			name: "No cookie",
+		},
+		{
+			name:         "Matching cookie",
+			clientCookie: "424344aa",
+			serverCookie: "424344aa",
+		},
+		{
+			name:         "Non-matching cookie",
+			clientCookie: "424344aa",
+			serverCookie: "010203",
+			error:        "remote peer has different network cookie",
+		},
+		{
+			name:         "Cookie vs no cookie",
+			clientCookie: "424344aa",
+			error:        "remote peer has different network cookie",
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			clientCookie, err := crypto.ParseNetworkCookie(tc.clientCookie)
+			require.NoError(t, err)
+			clientTpt := newTestTransportWithNetworkCookie(t, crypto.RSA, 2048, clientCookie)
+
+			serverCookie, err := crypto.ParseNetworkCookie(tc.serverCookie)
+			require.NoError(t, err)
+			serverTpt := newTestTransportWithNetworkCookie(t, crypto.Ed25519, 1024, serverCookie)
+
+			_, _, clientErr, serverErr := connect(t, clientTpt, serverTpt, serverTpt.LocalPeer(), clientTpt.LocalPeer())
+			if tc.error == "" {
+				require.NoError(t, clientErr)
+				require.NoError(t, serverErr)
+			} else {
+				require.ErrorContains(t, clientErr, tc.error)
+			}
+		})
+	}
+}
+
+func newTestTransportWithNetworkCookie(t *testing.T, typ, bits int, nc crypto.NetworkCookie) *Transport {
 	priv, pub, err := crypto.GenerateKeyPair(typ, bits)
 	require.NoError(t, err)
 	id, err := peer.IDFromPublicKey(pub)
 	require.NoError(t, err)
+	priv = crypto.AddNetworkCookieToPrivKey(priv, nc)
 	return NewWithIdentity("/test/1.0.0", id, priv)
+}
+
+func newTestTransport(t *testing.T, typ, bits int) *Transport {
+	return newTestTransportWithNetworkCookie(t, typ, bits, nil)
 }
 
 // Create a new pair of connected TCP sockets.

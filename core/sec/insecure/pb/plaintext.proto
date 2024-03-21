@@ -7,4 +7,5 @@ import "core/crypto/pb/crypto.proto";
 message Exchange {
     optional bytes id = 1;
     optional crypto.pb.PublicKey pubkey = 2;
+    optional bytes netCookie = 3;
 }
