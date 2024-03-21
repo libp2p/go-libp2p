@@ -16,4 +16,3 @@ concurrency:
 jobs:
   go-check:
     uses: pl-strflt/uci/.github/workflows/go-check.yml@v1.0
-    secrets: inherit
