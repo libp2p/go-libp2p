@@ -16,4 +16,5 @@ concurrency:
 jobs:
   go-test:
     uses: pl-strflt/uci/.github/workflows/go-test.yml@v1.0
-    secrets: inherit
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
