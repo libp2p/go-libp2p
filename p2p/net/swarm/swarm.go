@@ -613,19 +613,25 @@ func connPriority(c *Conn) int {
 	// LAN > WAN > PROXY
 	switch {
 	case c.conn.Transport().Proxy():
-		priority += 10
-	case manet.IsPrivateAddr(c.RemoteMultiaddr()):
 		priority += 20
+	case manet.IsPrivateAddr(c.RemoteMultiaddr()):
+		priority += 100
 	case manet.IsPublicAddr(c.RemoteMultiaddr()):
-		priority += 15
+		priority += 50
 	}
 
 	// We prefer udp protocols
 	switch c.ConnState().Transport {
-	case "quic", "quic-v1", "webtransport", "webrtc":
+	case "quic", "quic-v1":
+		priority += 10
+	case "webtransport":
+		priority += 9
+	case "webrtc":
+		priority += 8
+	case "tcp":
 		priority += 5
-	case "tcp", "websocket":
-		priority += 3
+	case "websocket":
+		priority += 4
 	}
 
 	return priority
