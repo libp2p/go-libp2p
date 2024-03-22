@@ -18,7 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	coretest "github.com/libp2p/go-libp2p/core/test"
-	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
@@ -855,11 +854,10 @@ func TestOutOfOrderConnectedNotifs(t *testing.T) {
 	// This callback may be called before identify's Connnected callback completes. If it does, the IdentifyWait should still finish successfully.
 	h1.Network().Notify(&network.NotifyBundle{
 		ConnectedF: func(n network.Network, c network.Conn) {
-			bh1 := h1.(*basichost.BasicHost)
-			idChan := bh1.IDService().IdentifyWait(c)
+			idChan := h1.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(c)
 			go func() {
 				<-idChan
-				protos, err := bh1.Peerstore().GetProtocols(h2.ID())
+				protos, err := h1.Peerstore().GetProtocols(h2.ID())
 				if err != nil {
 					errCh <- err
 				}

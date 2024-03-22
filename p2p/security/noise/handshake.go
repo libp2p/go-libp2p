@@ -3,10 +3,8 @@ package noise
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"hash"
 	"os"
 	"runtime/debug"
 	"time"
@@ -27,15 +25,8 @@ import (
 // our libp2p identity key.
 const payloadSigPrefix = "noise-libp2p-static-key:"
 
-type minioSHAFn struct{}
-
-func (h minioSHAFn) Hash() hash.Hash  { return sha256.New() }
-func (h minioSHAFn) HashName() string { return "SHA256" }
-
-var shaHashFn noise.HashFunc = minioSHAFn{}
-
 // All noise session share a fixed cipher suite
-var cipherSuite = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, shaHashFn)
+var cipherSuite = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashSHA256)
 
 // runHandshake exchanges handshake messages with the remote peer to establish
 // a noise-libp2p session. It blocks until the handshake completes or fails.

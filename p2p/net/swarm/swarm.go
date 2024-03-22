@@ -282,9 +282,10 @@ func (s *Swarm) close() {
 
 	// Lots of goroutines but we might as well do this in parallel. We want to shut down as fast as
 	// possible.
-
+	s.refs.Add(len(listeners))
 	for l := range listeners {
 		go func(l transport.Listener) {
+			defer s.refs.Done()
 			if err := l.Close(); err != nil && err != transport.ErrListenerClosed {
 				log.Errorf("error when shutting down listener: %s", err)
 			}

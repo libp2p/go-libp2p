@@ -414,7 +414,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 			}
 			logf("protocol EOF: %s (took %s)", s.Conn().RemotePeer(), took)
 		} else {
-			log.Debugf("protocol mux failed: %s (took %s)", err, took)
+			log.Debugf("protocol mux failed: %s (took %s, id:%s, remote peer:%s, remote addr:%v)", err, took, s.ID(), s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
 		}
 		s.Reset()
 		return
@@ -1029,7 +1029,6 @@ func (h *BasicHost) Close() error {
 
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 		_ = h.emitters.evtLocalAddrsUpdated.Close()
-		h.Network().Close()
 
 		h.psManager.Close()
 		if h.Peerstore() != nil {

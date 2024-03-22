@@ -207,6 +207,7 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				return conn.(quic.EarlyConnection), nil
 			},
+			QuicConfig: t.connManager.ClientConfig().Clone(),
 		},
 	}
 	rsp, sess, err := dialer.Dial(ctx, url, nil)

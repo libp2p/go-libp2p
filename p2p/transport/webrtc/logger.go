@@ -40,7 +40,7 @@ func (l pionLogger) Trace(s string) {
 }
 
 func (l pionLogger) Tracef(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args)
+	l.StandardLogger.Debugf(s, args...)
 }
 
 // loggerFactory returns pLog for all new logger instances

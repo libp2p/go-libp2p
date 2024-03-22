@@ -204,7 +204,15 @@ func (l *listener) setupConnection(
 		l.transport.peerConnectionTimeouts.Failed,
 		l.transport.peerConnectionTimeouts.Keepalive,
 	)
+	// This is higher than the path MTU due to a bug in the sctp chunking logic.
+	// Remove this after https://github.com/pion/sctp/pull/301 is included
+	// in a release.
+	settingEngine.SetReceiveMTU(udpmux.ReceiveBufSize)
 	settingEngine.DetachDataChannels()
+	settingEngine.SetSCTPMaxReceiveBufferSize(sctpReceiveBufferSize)
+	if err := scope.ReserveMemory(sctpReceiveBufferSize, network.ReservationPriorityMedium); err != nil {
+		return nil, err
+	}
 
 	w, err = newWebRTCConnection(settingEngine, l.config)
 	if err != nil {

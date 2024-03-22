@@ -14,4 +14,4 @@ concurrency:
 
 jobs:
   releaser:
-    uses: pl-strflt/uci/.github/workflows/releaser.yml@v0.0
+    uses: ipdxco/unified-github-workflows/.github/workflows/releaser.yml@v1.0
