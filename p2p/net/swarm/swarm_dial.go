@@ -489,8 +489,19 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAdd
 			}
 			return true
 		},
-		// TODO: Consider allowing link-local addresses
-		func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },
+		func(addr ma.Multiaddr) bool {
+			if manet.IsIP6LinkLocal(addr) {
+				var hasZone bool
+				ma.ForEach(addr, func(c ma.Component) bool {
+					if c.Protocol().Code == ma.P_IP6ZONE {
+						hasZone = true
+					}
+					return false
+				})
+				return hasZone
+			}
+			return true
+		},
 		func(addr ma.Multiaddr) bool {
 			if s.gater != nil && !s.gater.InterceptAddrDial(p, addr) {
 				addrErrs = append(addrErrs, TransportError{Address: addr, Cause: ErrGaterDisallowedConnection})
