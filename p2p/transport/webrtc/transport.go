@@ -113,6 +113,9 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		log.Error("WebRTC doesn't support private networks yet.")
 		return nil, fmt.Errorf("WebRTC doesn't support private networks yet")
 	}
+	if rcmgr == nil {
+		rcmgr = &network.NullResourceManager{}
+	}
 	localPeerID, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
 		return nil, fmt.Errorf("get local peer ID: %w", err)
