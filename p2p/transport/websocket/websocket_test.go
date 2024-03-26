@@ -15,7 +15,9 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -548,4 +551,152 @@ func TestResolveMultiaddr(t *testing.T) {
 			require.Equal(t, expectedMA, addrs[0].String())
 		})
 	}
+}
+
+func TestReusePortOnDial(t *testing.T) {
+
+	// Create an endpoint that will accept connections.
+	// We'll use this to verify that the party initiating the connection reused port.
+	serverID, cu := newUpgrader(t)
+	transport, err := New(cu, &network.NullResourceManager{})
+	require.NoError(t, err)
+
+	server, err := transport.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	require.NoError(t, err)
+	defer server.Close()
+
+	// Create an endpoint that will initiate connection.
+	_, u := newUpgrader(t)
+	tpt, err := New(u, &network.NullResourceManager{}, EnableReuseport())
+	require.NoError(t, err)
+
+	// Start listening.
+	listener, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	require.NoError(t, err)
+	defer listener.Close()
+
+	// Take a note of the multiaddress on which we listen. This should be the address from which we dial too.
+	expectedAddr := listener.Multiaddr()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		conn, err := server.Accept()
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// The meat of this test - verify that the connection was received from the same port as the listen port recorded above.
+		remote := conn.RemoteMultiaddr()
+		require.Equal(t, expectedAddr, remote)
+	}()
+
+	conn, err := tpt.Dial(context.Background(), server.Multiaddr(), serverID)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	<-done
+}
+
+func TestReusePortOnListen(t *testing.T) {
+
+	const (
+		// how many connections we try to establish.
+		connectionCount = 20
+	)
+
+	// Create an endpoint that will accept connections.
+	// We'll use this to verify that the party initiating the connection reused port.
+	_, cu := newUpgrader(t)
+	tpt, err := New(cu, &network.NullResourceManager{}, EnableReuseport())
+	require.NoError(t, err)
+
+	listener1, err := tpt.maListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	require.NoError(t, err)
+
+	// Get the port on which we should start the second listener
+	addr, ok := listener1.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	port := addr.Port
+	listener2, err := tpt.maListen(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%v/ws", port)))
+	require.NoError(t, err)
+
+	listeners := []manet.Listener{listener1, listener2}
+
+	// Record which listener accepted how many connections.
+	requestCount := make(map[int]int)
+	var lock sync.Mutex
+
+	var connsHandled sync.WaitGroup
+	connsHandled.Add(connectionCount)
+	// For both listeners spin up goroutines to accept incoming connections.
+	for i, listener := range listeners {
+		for j := 0; j < connectionCount; j++ {
+			go func(index int, listener manet.Listener) {
+
+				conn, err := listener.Accept()
+				if err != nil {
+					// Stop condition - this happens when the listener is closed.
+					require.ErrorIs(t, err, transport.ErrListenerClosed)
+					return
+				}
+				defer conn.Close()
+				connsHandled.Done()
+
+				// Record which listener accepted the connection.
+				lock.Lock()
+				defer lock.Unlock()
+				requestCount[index]++
+			}(i, listener)
+		}
+	}
+
+	// Create a different transport as you cannot self-dial using reuseport.
+	tpt2, err := New(cu, &network.NullResourceManager{})
+	require.NoError(t, err)
+
+	var dialers sync.WaitGroup
+	dialers.Add(connectionCount)
+
+	for i := 0; i < connectionCount; i++ {
+		go func() {
+			defer dialers.Done()
+			conn, err := tpt2.maDial(context.Background(), listener1.Multiaddr())
+			require.NoError(t, err)
+			defer conn.Close()
+		}()
+	}
+
+	// Wait for all dialers to complete.
+	dialers.Wait()
+
+	// Wait for listeners to complete their part.
+	connsHandled.Wait()
+
+	// Cancel listeners to unblock any further pending accepts.
+	listener1.Close()
+	listener2.Close()
+
+	// For Windows we can't make any assumptions with regards to connection distribution:
+	// 		"Once the second socket has successfully bound, the behavior for all sockets bound to that port is indeterminate.
+	//		For example, if all of the sockets on the same port provide TCP service, any incoming TCP connection requests over
+	//		the port cannot be guaranteed to be handled by the correct socket — the behavior is non-deterministic."
+	// => https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse
+
+	// For MacOS (FreeBSD) it's the last socket to bind that receives the connections. Anegdotal evidence but:
+	//		"Ironically it's the BSD semantics which support seamless server restarts. In my tests OS X's behavior (which I presume
+	// 		is identical to FreeBSD and other BSDs) is that the last socket to bind is the only one to receive new connections."
+	// => https://lwn.net/Articles/542629/
+	// On FreeBSD it's the SO_REUSEPORT_LB variant that provides load balancing.
+
+	// For Linux only - verify that both listeners handled some connections.
+	if runtime.GOOS == "linux" {
+		// We're not trying to verify an even distribution as it's not a perfect world.
+		require.NotZero(t, requestCount[0], "first listener accepted no connections")
+		require.NotZero(t, requestCount[1], "second listener accepted no connections")
+	}
+
+	total := requestCount[0] + requestCount[1]
+	require.Equal(t, connectionCount, total, "not all requests were handled")
 }
