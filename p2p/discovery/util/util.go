@@ -28,6 +28,45 @@ func FindPeers(ctx context.Context, d discovery.Discoverer, ns string, opts ...d
 	return res, nil
 }
 
+func FindPeersRegularly(ctx context.Context, d discovery.Discoverer, ns string, interval time.Duration, opts ...discovery.Option) <-chan peer.AddrInfo {
+	peerChan := make(chan peer.AddrInfo, 10)
+	go func() {
+		defer close(peerChan)
+		t := time.NewTicker(interval)
+		defer t.Stop()
+
+		var (
+			fctx   context.Context
+			cancel context.CancelFunc
+		)
+		var ch <-chan peer.AddrInfo
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case pi := <-ch:
+				select {
+				case peerChan <- pi:
+				case <-fctx.Done():
+					continue
+				}
+			case <-t.C:
+				if cancel != nil {
+					cancel()
+				}
+				fctx, cancel = context.WithCancel(ctx)
+				var err error
+				ch, err = d.FindPeers(fctx, ns, opts...)
+				if err != nil {
+					log.Errorf("FindPeers failed: %s", err)
+					return
+				}
+			}
+		}
+	}()
+	return peerChan
+}
+
 // Advertise is a utility function that persistently advertises a service through an Advertiser.
 func Advertise(ctx context.Context, a discovery.Advertiser, ns string, opts ...discovery.Option) {
 	go func() {
