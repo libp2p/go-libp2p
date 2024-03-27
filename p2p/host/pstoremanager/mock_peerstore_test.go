@@ -204,6 +204,21 @@ func (mr *MockPeerstoreMockRecorder) Get(arg0, arg1 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockPeerstore)(nil).Get), arg0, arg1)
 }
 
+// GetPeersForProtocol mocks base method.
+func (m *MockPeerstore) GetPeersForProtocol(arg0 protocol.ID) ([]peer.ID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPeersForProtocol", arg0)
+	ret0, _ := ret[0].([]peer.ID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPeersForProtocol indicates an expected call of GetPeersForProtocol.
+func (mr *MockPeerstoreMockRecorder) GetPeersForProtocol(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeersForProtocol", reflect.TypeOf((*MockPeerstore)(nil).GetPeersForProtocol), arg0)
+}
+
 // GetProtocols mocks base method.
 func (m *MockPeerstore) GetProtocols(arg0 peer.ID) ([]protocol.ID, error) {
 	m.ctrl.T.Helper()

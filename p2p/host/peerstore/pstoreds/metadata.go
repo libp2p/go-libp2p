@@ -42,7 +42,11 @@ func NewPeerMetadata(_ context.Context, store ds.Datastore, _ Options) (*dsPeerM
 }
 
 func (pm *dsPeerMetadata) Get(p peer.ID, key string) (interface{}, error) {
-	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(p))).ChildString(key)
+	return pm.getFromDS(p.String(), key)
+}
+
+func (pm *dsPeerMetadata) getFromDS(uid string, key string) (interface{}, error) {
+	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(uid))).ChildString(key)
 	value, err := pm.ds.Get(context.TODO(), k)
 	if err != nil {
 		if err == ds.ErrNotFound {
@@ -79,4 +83,17 @@ func (pm *dsPeerMetadata) RemovePeer(p peer.ID) {
 	for entry := range result.Next() {
 		pm.ds.Delete(context.TODO(), ds.NewKey(entry.Key))
 	}
+}
+
+func (pm *dsPeerMetadata) getPeers(p protocol.ID, key string) (interface{}, error) {
+	return pm.getFromDS(string(p), key)
+}
+
+func (pm *dsPeerMetadata) setPeers(ctx context.Context, p protocol.ID, key string, val interface{}) error {
+	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(p))).ChildString(key)
+	var buf pool.Buffer
+	if err := gob.NewEncoder(&buf).Encode(&val); err != nil {
+		return err
+	}
+	return pm.ds.Put(ctx, k, buf.Bytes())
 }

@@ -246,5 +246,7 @@ type ProtoBook interface {
 	FirstSupportedProtocol(peer.ID, ...protocol.ID) (protocol.ID, error)
 
 	// RemovePeer removes all protocols associated with a peer.
+
+	GetPeersForProtocol(protocol.ID) ([]peer.ID, error)
 	RemovePeer(peer.ID)
 }
