@@ -15,7 +15,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
+	"github.com/libp2p/go-libp2p/p2p/transport/magiselect"
 
+	ma "github.com/multiformats/go-multiaddr"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 	mss "github.com/multiformats/go-multistream"
 )
@@ -61,6 +64,9 @@ type upgrader struct {
 	securityMuxer *mss.MultistreamMuxer[protocol.ID]
 	securityIDs   []protocol.ID
 
+	straightSecurity []sec.StraightableSecureTransport
+	straightMatcher  mafmt.Pattern
+
 	// AcceptTimeout is the maximum duration an Accept is allowed to take.
 	// This includes the time between accepting the raw network connection,
 	// protocol selection as well as the handshake, if applicable.
@@ -96,15 +102,25 @@ func New(security []sec.SecureTransport, muxers []StreamMuxer, psk ipnet.PSK, rc
 		u.muxerIDs = append(u.muxerIDs, m.ID)
 	}
 	u.securityIDs = make([]protocol.ID, 0, len(security))
+	u.straightSecurity = make([]sec.StraightableSecureTransport, 0, len(security))
+	suffixes := []mafmt.Pattern{mafmt.Nothing}
 	for _, s := range security {
 		u.securityMuxer.AddHandler(s.ID(), nil)
 		u.securityIDs = append(u.securityIDs, s.ID())
+		if straight, ok := s.(sec.StraightableSecureTransport); ok {
+			u.straightSecurity = append(u.straightSecurity, straight)
+			if straight.Suffix() == nil {
+				return nil, fmt.Errorf("StraightSecureTransport %q returned an empty suffix", straight.ID())
+			}
+			suffixes = append(suffixes, straight.SuffixMatcher())
+		}
 	}
+	u.straightMatcher = mafmt.Or(suffixes...)
 	return u, nil
 }
 
 // UpgradeListener upgrades the passed multiaddr-net listener into a full libp2p-transport listener.
-func (u *upgrader) UpgradeListener(t transport.Transport, list manet.Listener) transport.Listener {
+func (u *upgrader) UpgradeListener(t transport.Transport, list manet.Listener) transport.ListenerFromUpgrader {
 	ctx, cancel := context.WithCancel(context.Background())
 	l := &listener{
 		Listener:  list,
@@ -120,17 +136,20 @@ func (u *upgrader) UpgradeListener(t transport.Transport, list manet.Listener) t
 	return l
 }
 
-// Upgrade upgrades the multiaddr/net connection into a full libp2p-transport connection.
-func (u *upgrader) Upgrade(ctx context.Context, t transport.Transport, maconn manet.Conn, dir network.Direction, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {
-	c, err := u.upgrade(ctx, t, maconn, dir, p, connScope)
-	if err != nil {
-		connScope.Done()
-		return nil, err
-	}
-	return c, nil
+func (u *upgrader) UpgradeOutbound(ctx context.Context, t transport.Transport, maconn manet.Conn, suffix ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (transport.CapableConn, error) {
+	return u.upgrade(ctx, t, maconn, network.DirOutbound, suffix, p, scope)
+}
+func (u *upgrader) UpgradeInbound(ctx context.Context, t transport.Transport, maconn manet.Conn, p peer.ID, scope network.ConnManagementScope) (transport.CapableConn, error) {
+	return u.upgrade(ctx, t, maconn, network.DirInbound, nil, p, scope)
 }
 
-func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn manet.Conn, dir network.Direction, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {
+// suffix is only used for Outbound connections
+func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn manet.Conn, dir network.Direction, suffix ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope) (_ transport.CapableConn, err error) {
+	defer func() {
+		if err != nil {
+			connScope.Done()
+		}
+	}()
 	if dir == network.DirOutbound && p == "" {
 		return nil, ErrNilPeer
 	}
@@ -153,7 +172,7 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 	}
 
 	isServer := dir == network.DirInbound
-	sconn, security, err := u.setupSecurity(ctx, conn, p, isServer)
+	sconn, security, err := u.setupSecurity(ctx, conn, suffix, p, isServer)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to negotiate security protocol: %w", err)
@@ -200,8 +219,8 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 	return tc, nil
 }
 
-func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, isServer bool) (sec.SecureConn, protocol.ID, error) {
-	st, err := u.negotiateSecurity(ctx, conn, isServer)
+func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, suffix ma.Multiaddr, p peer.ID, isServer bool) (_ sec.SecureConn, _ protocol.ID, err error) {
+	st, conn, err := u.negotiateSecurity(ctx, conn, suffix, isServer)
 	if err != nil {
 		return nil, "", err
 	}
@@ -306,38 +325,92 @@ func (u *upgrader) getSecurityByID(id protocol.ID) sec.SecureTransport {
 	return nil
 }
 
-func (u *upgrader) negotiateSecurity(ctx context.Context, insecure net.Conn, server bool) (sec.SecureTransport, error) {
+var ErrNoMagiselectMatch = errors.New("no magiselect match")
+
+func (u *upgrader) negotiateSecurity(ctx context.Context, insecure net.Conn, suffix ma.Multiaddr, server bool) (sec.SecureTransport, net.Conn, error) {
+	if suffix != nil {
+		for _, straight := range u.straightSecurity {
+			if straight.SuffixMatcher().Matches(suffix) {
+				return straight, insecure, nil
+			}
+		}
+		return nil, nil, fmt.Errorf("suffix was provided but does not match anything %q %q", insecure, suffix) // buggy transport
+	}
+
 	type result struct {
 		proto protocol.ID
+		st    sec.SecureTransport
 		err   error
 	}
 
 	done := make(chan result, 1)
 	go func() {
-		if server {
-			var r result
-			r.proto, _, r.err = u.securityMuxer.Negotiate(insecure)
-			done <- r
-			return
-		}
 		var r result
-		r.proto, r.err = mss.SelectOneOf(u.securityIDs, insecure)
+		r.proto, r.st, r.err = func() (protocol.ID, sec.SecureTransport, error) {
+			if server {
+				var s magiselect.Sample
+				var err error
+				s, insecure, err = magiselect.ReadSampleFromConn(insecure)
+				if err != nil {
+					return "", nil, err
+				}
+
+				if magiselect.IsMultistreamSelect(s) {
+					proto, _, err := u.securityMuxer.Negotiate(insecure)
+					return proto, nil, err
+				}
+
+				for _, ss := range u.straightSecurity {
+					if ss.Match(s) {
+						return "", ss, nil
+					}
+				}
+
+				return "", nil, ErrNoMagiselectMatch
+			}
+
+			proto, err := mss.SelectOneOf(u.securityIDs, insecure)
+			return proto, nil, err
+		}()
 		done <- r
 	}()
 
 	select {
 	case r := <-done:
 		if r.err != nil {
-			return nil, r.err
+			return nil, nil, r.err
+		}
+		if r.st != nil {
+			return r.st, insecure, nil
 		}
 		if s := u.getSecurityByID(r.proto); s != nil {
-			return s, nil
+			return s, insecure, nil
 		}
-		return nil, fmt.Errorf("selected unknown security transport: %s", r.proto)
+		return nil, nil, fmt.Errorf("selected unknown security transport: %s", r.proto)
 	case <-ctx.Done():
 		// We *must* do this. We have outstanding work on the connection, and it's no longer safe to use.
 		insecure.Close()
 		<-done // wait to stop using the connection.
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
+}
+
+func (u *upgrader) Suffixes() []ma.Multiaddr {
+	r := make([]ma.Multiaddr, len(u.straightSecurity)+1) // +1 for nil indicating multistream-select
+	for i, s := range u.straightSecurity {
+		r[i] = s.Suffix()
+	}
+	return r
+}
+
+func (u *upgrader) SuffixesProtocols() []int {
+	r := make([]int, len(u.straightSecurity))
+	for i, s := range u.straightSecurity {
+		r[i] = s.SuffixProtocol()
+	}
+	return r
+}
+
+func (u *upgrader) SuffixMatcher() mafmt.Pattern {
+	return u.straightMatcher
 }
