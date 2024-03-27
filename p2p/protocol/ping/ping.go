@@ -20,8 +20,9 @@ import (
 var log = logging.Logger("ping")
 
 const (
-	PingSize    = 32
-	pingTimeout = time.Second * 60
+	PingSize     = 32
+	pingTimeout  = 10 * time.Second
+	pingDuration = 30 * time.Second
 
 	ID = "/ipfs/ping/1.0.0"
 
@@ -51,6 +52,8 @@ func (p *PingService) PingHandler(s network.Stream) {
 		return
 	}
 	defer s.Scope().ReleaseMemory(PingSize)
+
+	s.SetDeadline(time.Now().Add(pingDuration))
 
 	buf := pool.Get(PingSize)
 	defer pool.Put(buf)
