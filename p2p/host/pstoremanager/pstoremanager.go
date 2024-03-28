@@ -103,15 +103,16 @@ func (m *PeerstoreManager) background(ctx context.Context, sub event.Subscriptio
 			ev := e.(event.EvtPeerConnectednessChanged)
 			p := ev.Peer
 			switch ev.Connectedness {
-			case network.NotConnected:
+			case network.Connected, network.Limited:
+				// If we reconnect to the peer before we've cleared the information,
+				// keep it. This is an optimization to keep the disconnected map
+				// small. We still need to check that a peer is actually
+				// disconnected before removing it from the peer store.
+				delete(disconnected, p)
+			default:
 				if _, ok := disconnected[p]; !ok {
 					disconnected[p] = time.Now()
 				}
-			case network.Connected:
-				// If we reconnect to the peer before we've cleared the information, keep it.
-				// This is an optimization to keep the disconnected map small.
-				// We still need to check that a peer is actually disconnected before removing it from the peer store.
-				delete(disconnected, p)
 			}
 		case <-ticker.C:
 			now := time.Now()

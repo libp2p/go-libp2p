@@ -55,16 +55,23 @@ const (
 	// Connected means has an open, live connection to peer
 	Connected
 
+	// Deprecated: CanConnect is deprecated and will be removed in a future release.
+	//
 	// CanConnect means recently connected to peer, terminated gracefully
 	CanConnect
 
+	// Deprecated: CannotConnect is deprecated and will be removed in a future release.
+	//
 	// CannotConnect means recently attempted connecting but failed to connect.
 	// (should signal "made effort, failed")
 	CannotConnect
+
+	// Limited means we have a transient connection to the peer, but aren't fully connected.
+	Limited
 )
 
 func (c Connectedness) String() string {
-	str := [...]string{"NotConnected", "Connected", "CanConnect", "CannotConnect"}
+	str := [...]string{"NotConnected", "Connected", "CanConnect", "CannotConnect", "Limited"}
 	if c < 0 || int(c) >= len(str) {
 		return unrecognized
 	}

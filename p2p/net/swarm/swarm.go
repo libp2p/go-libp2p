@@ -350,6 +350,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	}
 	stat.Direction = dir
 	stat.Opened = time.Now()
+	isTransient := stat.Transient
 
 	// Wrap and register the connection.
 	c := &Conn{
@@ -389,9 +390,11 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 		return nil, ErrSwarmClosed
 	}
 
+	oldState := s.connectednessUnlocked(p, true)
+
 	c.streams.m = make(map[*Stream]struct{})
-	isFirstConnection := len(s.conns.m[p]) == 0
 	s.conns.m[p] = append(s.conns.m[p], c)
+	newState := s.connectednessUnlocked(p, true)
 
 	// Add two swarm refs:
 	// * One will be decremented after the close notifications fire in Conn.doClose
@@ -403,8 +406,9 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	c.notifyLk.Lock()
 	s.conns.Unlock()
 
-	// Notify goroutines waiting for a direct connection
-	if !c.Stat().Transient {
+	if !isTransient {
+		// Notify goroutines waiting for a direct connection
+		//
 		// Go routines interested in waiting for direct connection first acquire this lock
 		// and then acquire s.conns.RLock. Do not acquire this lock before conns.Unlock to
 		// prevent deadlock.
@@ -418,10 +422,10 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 
 	// Emit event after releasing `s.conns` lock so that a consumer can still
 	// use swarm methods that need the `s.conns` lock.
-	if isFirstConnection {
+	if oldState != newState {
 		s.emitter.Emit(event.EvtPeerConnectednessChanged{
 			Peer:          p,
-			Connectedness: network.Connected,
+			Connectedness: newState,
 		})
 	}
 
@@ -652,10 +656,34 @@ func isDirectConn(c *Conn) bool {
 // To check if we have an open connection, use `s.Connectedness(p) ==
 // network.Connected`.
 func (s *Swarm) Connectedness(p peer.ID) network.Connectedness {
-	if s.bestConnToPeer(p) != nil {
-		return network.Connected
+	s.conns.RLock()
+	defer s.conns.RUnlock()
+
+	return s.connectednessUnlocked(p, false)
+}
+
+// connectednessUnlocked returns the connectedness of a peer. For sending peer connectedness
+// changed notifications consider closed connections. When remote closes a connection
+// the underlying transport connection is closed first, so tracking changes to the connectedness
+// state requires considering this recently closed connections impact on Connectedness.
+func (s *Swarm) connectednessUnlocked(p peer.ID, considerClosed bool) network.Connectedness {
+	var haveTransient bool
+	for _, c := range s.conns.m[p] {
+		if !considerClosed && c.IsClosed() {
+			// These will be garbage collected soon
+			continue
+		}
+		if c.Stat().Transient {
+			haveTransient = true
+		} else {
+			return network.Connected
+		}
 	}
-	return network.NotConnected
+	if haveTransient {
+		return network.Limited
+	} else {
+		return network.NotConnected
+	}
 }
 
 // Conns returns a slice of all connections.
@@ -754,31 +782,33 @@ func (s *Swarm) removeConn(c *Conn) {
 
 	cs := s.conns.m[p]
 
+	oldState := s.connectednessUnlocked(p, true)
+
 	if len(cs) == 1 {
 		delete(s.conns.m, p)
-		s.conns.Unlock()
-
-		// Emit event after releasing `s.conns` lock so that a consumer can still
-		// use swarm methods that need the `s.conns` lock.
-		s.emitter.Emit(event.EvtPeerConnectednessChanged{
-			Peer:          p,
-			Connectedness: network.NotConnected,
-		})
-		return
+	} else {
+		for i, ci := range cs {
+			if ci == c {
+				// NOTE: We're intentionally preserving order.
+				// This way, connections to a peer are always
+				// sorted oldest to newest.
+				copy(cs[i:], cs[i+1:])
+				cs[len(cs)-1] = nil
+				s.conns.m[p] = cs[:len(cs)-1]
+				break
+			}
+		}
 	}
 
-	defer s.conns.Unlock()
+	newState := s.connectednessUnlocked(p, true)
 
-	for i, ci := range cs {
-		if ci == c {
-			// NOTE: We're intentionally preserving order.
-			// This way, connections to a peer are always
-			// sorted oldest to newest.
-			copy(cs[i:], cs[i+1:])
-			cs[len(cs)-1] = nil
-			s.conns.m[p] = cs[:len(cs)-1]
-			break
-		}
+	s.conns.Unlock()
+
+	if oldState != newState {
+		s.emitter.Emit(event.EvtPeerConnectednessChanged{
+			Peer:          p,
+			Connectedness: newState,
+		})
 	}
 }
 
