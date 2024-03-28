@@ -193,6 +193,7 @@ func TestLimitStreamsWhenHangingHandlers(t *testing.T) {
 
 	// Open streamLimit streams
 	success := 0
+	errCnt := 0
 	// we make a lot of tries because identify and identify push take up a few streams
 	for i := 0; i < 1000 && success < streamLimit; i++ {
 		mgr, err = rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.InfiniteLimits))
@@ -206,6 +207,7 @@ func TestLimitStreamsWhenHangingHandlers(t *testing.T) {
 
 		s, err := sender.NewStream(context.Background(), receiver.ID(), pid)
 		if err != nil {
+			errCnt++
 			continue
 		}
 
@@ -227,7 +229,11 @@ func TestLimitStreamsWhenHangingHandlers(t *testing.T) {
 
 	sender.Peerstore().AddAddrs(receiver.ID(), receiver.Addrs(), peerstore.PermanentAddrTTL)
 
-	_, err = sender.NewStream(context.Background(), receiver.ID(), pid)
+	s, err := sender.NewStream(context.Background(), receiver.ID(), pid)
+	// stream is not received by the peer before the first write or read
+	require.NoError(t, err)
+	var b [1]byte
+	_, err = io.ReadFull(s, b[:])
 	require.Error(t, err)
 
 	// Close the open streams
@@ -236,6 +242,10 @@ func TestLimitStreamsWhenHangingHandlers(t *testing.T) {
 	// Next call should succeed
 	require.Eventually(t, func() bool {
 		s, err := sender.NewStream(context.Background(), receiver.ID(), pid)
+		// stream is not received by the peer before the first write or read
+		require.NoError(t, err)
+		var b [1]byte
+		_, err = io.ReadFull(s, b[:])
 		if err == nil {
 			s.Close()
 			return true

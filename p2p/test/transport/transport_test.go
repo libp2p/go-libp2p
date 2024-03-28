@@ -549,14 +549,19 @@ func TestListenerStreamResets(t *testing.T) {
 			}))
 
 			h1.SetStreamHandler("reset", func(s network.Stream) {
+				// Make sure the multistream negotiation actually succeeds before resetting.
+				// This is necessary because we don't have stream error codes yet.
+				s.Read(make([]byte, 4))
+				s.Write([]byte("pong"))
+				s.Read(make([]byte, 4))
 				s.Reset()
 			})
 
 			s, err := h2.NewStream(context.Background(), h1.ID(), "reset")
-			if err != nil {
-				require.ErrorIs(t, err, network.ErrReset)
-				return
-			}
+			require.NoError(t, err)
+			s.Write([]byte("ping"))
+			s.Read(make([]byte, 4))
+			s.Write([]byte("ping"))
 
 			_, err = s.Read([]byte{0})
 			require.ErrorIs(t, err, network.ErrReset)

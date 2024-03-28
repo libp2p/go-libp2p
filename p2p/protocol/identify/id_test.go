@@ -472,25 +472,25 @@ func TestUserAgent(t *testing.T) {
 	defer cancel()
 
 	h1, err := libp2p.New(libp2p.UserAgent("foo"), libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer h1.Close()
 
 	h2, err := libp2p.New(libp2p.UserAgent("bar"), libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer h2.Close()
 
-	err = h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
-	if err != nil {
-		t.Fatal(err)
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
+	require.NoError(t, err)
+	defer sub.Close()
+
+	require.NoError(t, h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
+	select {
+	case <-sub.Out():
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
 	}
 	av, err := h1.Peerstore().Get(h2.ID(), "AgentVersion")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if ver, ok := av.(string); !ok || ver != "bar" {
 		t.Errorf("expected agent version %q, got %q", "bar", av)
 	}

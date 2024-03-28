@@ -123,7 +123,8 @@ func TestDirectDialWorks(t *testing.T) {
 	require.Empty(t, h1.Network().ConnsToPeer(h2.ID()))
 	require.NoError(t, h1ps.DirectConnect(h2.ID()))
 	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
-	require.GreaterOrEqual(t, len(h2.Network().ConnsToPeer(h1.ID())), 1)
+	// h1 might finish the handshake first, but h2 should see the connection shortly after
+	require.Eventually(t, func() bool { return len(h2.Network().ConnsToPeer(h1.ID())) > 0 }, time.Second, 25*time.Millisecond)
 	events := tr.getEvents()
 	require.Len(t, events, 1)
 	require.Equal(t, holepunch.DirectDialEvtT, events[0].Type)
@@ -340,9 +341,10 @@ func TestFailuresOnResponder(t *testing.T) {
 			defer relay.Close()
 
 			s, err := h2.NewStream(network.WithUseTransient(context.Background(), "holepunch"), h1.ID(), holepunch.Protocol)
-			require.NoError(t, err)
-
-			go tc.initiator(s)
+			// h1 will reset the stream. This might or might not happen before multistream has finished.
+			if err == nil {
+				go tc.initiator(s)
+			}
 
 			getTracerError := func(tr *mockEventTracer) []string {
 				var errs []string
@@ -487,6 +489,7 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePunc
 		ID:    h2.ID(),
 		Addrs: []ma.Multiaddr{raddr},
 	}))
+	require.Eventually(t, func() bool { return len(h2.Network().ConnsToPeer(h1.ID())) > 0 }, time.Second, 50*time.Millisecond)
 	return
 }
 

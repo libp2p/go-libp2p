@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -646,24 +647,32 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		return nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 
-	// Wait for any in-progress identifies on the connection to finish. This
-	// is faster than negotiating.
-	//
-	// If the other side doesn't support identify, that's fine. This will
-	// just be a no-op.
-	select {
-	case <-h.ids.IdentifyWait(s.Conn()):
-	case <-ctx.Done():
-		_ = s.Reset()
-		return nil, fmt.Errorf("identify failed to complete: %w", ctx.Err())
-	}
+	// If pids contains only a single protocol, optimistically use that protocol (i.e. don't wait for
+	// multistream negotiation).
+	var pref protocol.ID
+	if len(pids) == 1 {
+		pref = pids[0]
+	} else if len(pids) > 1 {
+		// Wait for any in-progress identifies on the connection to finish.
+		// This is faster than negotiating.
+		// If the other side doesn't support identify, that's fine. This will just be a no-op.
+		select {
+		case <-h.ids.IdentifyWait(s.Conn()):
+		case <-ctx.Done():
+			_ = s.Reset()
+			return nil, fmt.Errorf("identify failed to complete: %w", ctx.Err())
+		}
 
-	pref, err := h.preferredProtocol(p, pids)
-	if err != nil {
-		_ = s.Reset()
-		return nil, err
+		// If Identify has finished, we know which protocols the peer supports.
+		// We don't need to do a multistream negotiation.
+		// Instead, we just pick the first supported protocol.
+		var err error
+		pref, err = h.preferredProtocol(p, pids)
+		if err != nil {
+			_ = s.Reset()
+			return nil, err
+		}
 	}
-
 	if pref != "" {
 		if err := s.SetProtocol(pref); err != nil {
 			return nil, err
@@ -736,20 +745,8 @@ func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 // the connection once it has been opened.
 func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 	log.Debugf("host %s dialing %s", h.ID(), p)
-	c, err := h.Network().DialPeer(ctx, p)
-	if err != nil {
+	if _, err := h.Network().DialPeer(ctx, p); err != nil {
 		return fmt.Errorf("failed to dial: %w", err)
-	}
-
-	// TODO: Consider removing this? On one hand, it's nice because we can
-	// assume that things like the agent version are usually set when this
-	// returns. On the other hand, we don't _really_ need to wait for this.
-	//
-	// This is mostly here to preserve existing behavior.
-	select {
-	case <-h.ids.IdentifyWait(c):
-	case <-ctx.Done():
-		return fmt.Errorf("identify failed to complete: %w", ctx.Err())
 	}
 
 	log.Debugf("host %s finished dialing %s", h.ID(), p)
@@ -1048,14 +1045,26 @@ func (h *BasicHost) Close() error {
 type streamWrapper struct {
 	network.Stream
 	rw io.ReadWriteCloser
+
+	calledRead atomic.Bool
 }
 
 func (s *streamWrapper) Read(b []byte) (int, error) {
-	return s.rw.Read(b)
+	n, err := s.rw.Read(b)
+	if s.calledRead.CompareAndSwap(false, true) {
+		if errors.Is(err, network.ErrReset) {
+			return n, msmux.ErrNotSupported[protocol.ID]{Protos: []protocol.ID{s.Protocol()}}
+		}
+	}
+	return n, err
 }
 
 func (s *streamWrapper) Write(b []byte) (int, error) {
-	return s.rw.Write(b)
+	n, err := s.rw.Write(b)
+	if s.calledRead.Load() && errors.Is(err, network.ErrReset) {
+		return n, msmux.ErrNotSupported[protocol.ID]{Protos: []protocol.ID{s.Protocol()}}
+	}
+	return n, err
 }
 
 func (s *streamWrapper) Close() error {
