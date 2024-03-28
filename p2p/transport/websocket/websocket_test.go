@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,7 @@ import (
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -548,4 +550,103 @@ func TestResolveMultiaddr(t *testing.T) {
 			require.Equal(t, expectedMA, addrs[0].String())
 		})
 	}
+}
+
+func startListeners(t *testing.T, tpt *WebsocketTransport) (ma.Multiaddr, []*manet.Listener, error) {
+	t.Helper()
+	laddr := ma.StringCast("/ip4/127.0.0.1/tcp/0/ws")
+	listeners := make([]*manet.Listener, 2)
+
+	l, err := tpt.maListen(laddr)
+	require.NoError(t, err)
+	listeners[0] = &l
+
+	port := l.Addr().(*net.TCPAddr).Port
+	t.Logf("Port allocated for listener: %d", port)
+	laddr = ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/ws", port))
+	l1, err := tpt.maListen(laddr)
+	require.NoError(t, err)
+	listeners[1] = &l1
+	return laddr, listeners, nil
+}
+
+func TestListenerReusePort(t *testing.T) {
+	noOfClientConns := 20
+	var opts []Option
+	opts = append(opts, EnableReuseport())
+	_, u := newUpgrader(t)
+	tpt, err := New(u, &network.NullResourceManager{}, opts...)
+	require.NoError(t, err)
+	c := make(chan int, noOfClientConns)
+	raddr, listeners, err := startListeners(t, tpt)
+	require.NoErrorf(t, err, "failed to start listeners")
+	for i := 0; i < 2; i++ {
+		go func(index int, ln *manet.Listener, ch chan int) {
+			l := *ln
+			defer l.Close()
+			/* Looping noOfClientConns times to ensure all 4 connections are handled.
+				With SO_REUSEPORT the distribution happens based on threads that are waiting on Accept call as mentioned below.
+				We cannot gaurantee when Server go-routines would block on Accept.
+				Sometimes the client routines get scheduled first causing unequal distribution of connections.
+				Ref: https://lwn.net/Articles/542629/
+				By contrast, the SO_REUSEPORT implementation distributes connections evenly across all of the threads (or processes)
+			 	that are blocked in accept() on the same port. */
+			for j := 0; j < noOfClientConns; j++ {
+				//j := 0
+				conn, err := l.Accept()
+				require.NoErrorf(t, err, "Server Routine-", index, " Failed accepting connection ", j, " due to error ")
+				defer conn.Close()
+				buf := make([]byte, 5)
+				n, err := conn.Read(buf)
+				require.NoError(t, err)
+				require.Equal(t, 5, n)
+				n, err = conn.Write(buf)
+				require.NoError(t, err)
+				require.Equal(t, 5, n)
+				ch <- index
+			}
+
+		}(i, listeners[i], c)
+	}
+
+	for i := 0; i < noOfClientConns; i++ {
+		go func(index int) {
+			conn, err := tpt.maDial(context.Background(), raddr)
+			require.NoError(t, err)
+			defer conn.Close()
+			msg := "Hello"
+			n, err := conn.Write([]byte(msg))
+			require.Equal(t, 5, n)
+			require.NoError(t, err)
+			buf := make([]byte, 5)
+			n, err = conn.Read(buf)
+			require.NoError(t, err)
+			require.Equal(t, 5, n)
+		}(i)
+	}
+	var connsHandled [2]int
+	//Waiting to ensure all 4 connections are handled.
+	for i := 0; i < noOfClientConns; i++ {
+		temp := <-c
+		connsHandled[temp]++
+	}
+	/*
+		 For windows and macOS load balancing is not done by kernel as per references below.
+		 For other architectures, behaviour is not known.
+		 For ubuntu load balancing doesn't seem to happen consistently.
+		 In order to not have a flaky test, commenting this additiona check.
+		 Hence, Check for load balancing only for linux based architectures.
+		 Refer https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse?redirectedfrom=MSDN for windows
+		 References for MACOS
+			Ref - (https://stackoverflow.com/questions/41247790/so-reuseport-on-macos-with-libuv)
+			Ref -(https://github.com/uNetworking/uWebSockets/issues/1194)
+	*/
+	if runtime.GOOS == "linux" {
+		for i := 0; i < 2; i++ {
+			/*Not checking for equal distribution of connections due to above explanation.*/
+			require.NotEqualf(t, 0, connsHandled[i], "No connections handled by listener %d", i)
+			t.Logf("Listener %d handled %d connections.", i, connsHandled[i])
+		}
+	}
+
 }
