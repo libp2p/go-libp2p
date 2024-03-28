@@ -2,6 +2,7 @@ package basichost
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -26,8 +27,8 @@ type NATManager interface {
 }
 
 // NewNATManager creates a NAT manager.
-func NewNATManager(net network.Network) NATManager {
-	return newNATManager(net)
+func NewNATManager(net network.Network, opt ...Option) (NATManager, error) {
+	return newNATManager(net, opt...)
 }
 
 type entry struct {
@@ -43,7 +44,13 @@ type nat interface {
 }
 
 // so we can mock it in tests
-var discoverNAT = func(ctx context.Context) (nat, error) { return inat.DiscoverNAT(ctx) }
+var discoverNAT = func(ctx context.Context, userAgent string) (nat, error) {
+	if userAgent != "" {
+		return inat.DiscoverNATWithUserAgent(ctx, userAgent)
+	} else {
+		return inat.DiscoverNAT(ctx)
+	}
+}
 
 // natManager takes care of adding + removing port mappings to the nat.
 // Initialized with the host if it has a NATPortMap option enabled.
@@ -56,6 +63,8 @@ type natManager struct {
 	natMx sync.RWMutex
 	nat   nat
 
+	userAgent string
+
 	syncFlag chan struct{} // cap: 1
 
 	tracked map[entry]bool // the bool is only used in doSync and has no meaning outside of that function
@@ -65,7 +74,7 @@ type natManager struct {
 	ctxCancel context.CancelFunc
 }
 
-func newNATManager(net network.Network) *natManager {
+func newNATManager(net network.Network, opts ...Option) (*natManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	nmgr := &natManager{
 		net:       net,
@@ -74,9 +83,17 @@ func newNATManager(net network.Network) *natManager {
 		ctxCancel: cancel,
 		tracked:   make(map[entry]bool),
 	}
+
+	for _, opt := range opts {
+		err := opt(nmgr)
+		if err != nil {
+			return nil, fmt.Errorf("error applying NAT manager option: %w", err)
+		}
+	}
+
 	nmgr.refCount.Add(1)
 	go nmgr.background(ctx)
-	return nmgr
+	return nmgr, nil
 }
 
 // Close closes the natManager, closing the underlying nat
@@ -107,7 +124,7 @@ func (nmgr *natManager) background(ctx context.Context) {
 
 	discoverCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	natInstance, err := discoverNAT(discoverCtx)
+	natInstance, err := discoverNAT(discoverCtx, nmgr.userAgent)
 	if err != nil {
 		log.Info("DiscoverNAT error:", err)
 		return

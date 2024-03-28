@@ -20,7 +20,7 @@ func setupMockNAT(t *testing.T) (mockNAT *MockNAT, reset func()) {
 	ctrl := gomock.NewController(t)
 	mockNAT = NewMockNAT(ctrl)
 	origDiscoverNAT := discoverNAT
-	discoverNAT = func(ctx context.Context) (nat, error) { return mockNAT, nil }
+	discoverNAT = func(ctx context.Context, userAgent string) (nat, error) { return mockNAT, nil }
 	return mockNAT, func() {
 		discoverNAT = origDiscoverNAT
 		ctrl.Finish()
@@ -33,7 +33,8 @@ func TestMapping(t *testing.T) {
 
 	sw := swarmt.GenSwarm(t)
 	defer sw.Close()
-	m := newNATManager(sw)
+	m, err := newNATManager(sw)
+	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		m.natMx.Lock()
 		defer m.natMx.Unlock()
@@ -67,7 +68,8 @@ func TestAddAndRemoveListeners(t *testing.T) {
 
 	sw := swarmt.GenSwarm(t)
 	defer sw.Close()
-	m := newNATManager(sw)
+	m, err := newNATManager(sw)
+	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		m.natMx.Lock()
 		defer m.natMx.Unlock()
