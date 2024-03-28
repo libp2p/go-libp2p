@@ -236,6 +236,16 @@ func (nat *NAT) establishMapping(ctx context.Context, protocol string, internalP
 	if err != nil || externalPort == 0 {
 		// TODO: log.Event
 		if err != nil {
+			natInstance, errorDiscover := discoverGateway(ctx)
+			if errorDiscover == nil {
+				var extAddr netip.Addr
+				extIP, errorGetAddress := natInstance.GetExternalAddress()
+				if errorGetAddress == nil {
+					extAddr, _ = netip.AddrFromSlice(extIP)
+				}
+				nat.extAddr = extAddr
+				nat.nat = natInstance
+			}
 			log.Warnf("failed to establish port mapping: %s", err)
 		} else {
 			log.Warnf("failed to establish port mapping: newport = 0")
