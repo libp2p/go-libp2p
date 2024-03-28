@@ -57,7 +57,7 @@ func ExampleHost_withAStockGoHTTPClient() {
 }
 
 func ExampleHost_listenOnHTTPTransportAndStreams() {
-	serverStreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/50124/quic-v1"))
+	serverStreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -65,14 +65,18 @@ func ExampleHost_listenOnHTTPTransportAndStreams() {
 
 	server := libp2phttp.Host{
 		InsecureAllowHTTP: true, // For our example, we'll allow insecure HTTP
-		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50124/http")},
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 		StreamHost:        serverStreamHost,
 	}
 	go server.Serve()
 	defer server.Close()
 
-	fmt.Println("Server listening on:", server.Addrs())
-	// Output: Server listening on: [/ip4/127.0.0.1/udp/50124/quic-v1 /ip4/127.0.0.1/tcp/50124/http]
+	for _, a := range server.Addrs() {
+		_, transport := ma.SplitLast(a)
+		fmt.Printf("Server listening on transport: %s\n", transport)
+	}
+	// Output: Server listening on transport: /quic-v1
+	// Server listening on transport: /http
 }
 
 func ExampleHost_overLibp2pStreams() {
