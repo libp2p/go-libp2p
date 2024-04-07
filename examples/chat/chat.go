@@ -88,16 +88,11 @@ func main() {
 	if *dest == "" {
 		startPeer(ctx, h, handleStream)
 	} else {
-		rw, err := startPeerAndConnect(ctx, h, *dest)
+		_, err := startPeerAndConnect(ctx, h, *dest)
 		if err != nil {
 			log.Println(err)
 			return
 		}
-
-		// Create a thread to read and write data.
-		go writeData(rw)
-		go readData(rw)
-
 	}
 
 	// Wait forever
@@ -229,6 +224,10 @@ func startPeerAndConnect(ctx context.Context, h host.Host, destination string) (
 
 	// Create a buffered stream so that read and writes are non-blocking.
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
+
+	// Create a thread to read and write data.
+	go writeData(rw)
+	go readData(rw)
 
 	return rw, nil
 }
