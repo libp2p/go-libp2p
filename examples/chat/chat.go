@@ -222,12 +222,7 @@ func startPeerAndConnect(ctx context.Context, h host.Host, destination string) e
 	}
 	log.Println("Established connection to destination")
 
-	// Create a buffered stream so that read and writes are non-blocking.
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
-	// Create a thread to read and write data.
-	go writeData(rw)
-	go readData(rw)
+	handleStream(s)
 
 	return nil
 }
