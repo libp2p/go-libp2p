@@ -88,7 +88,7 @@ func main() {
 	if *dest == "" {
 		startPeer(ctx, h, handleStream)
 	} else {
-		_, err := startPeerAndConnect(ctx, h, *dest)
+		err := startPeerAndConnect(ctx, h, *dest)
 		if err != nil {
 			log.Println(err)
 			return
@@ -188,7 +188,7 @@ func startPeer(ctx context.Context, h host.Host, streamHandler network.StreamHan
 	log.Println()
 }
 
-func startPeerAndConnect(ctx context.Context, h host.Host, destination string) (*bufio.ReadWriter, error) {
+func startPeerAndConnect(ctx context.Context, h host.Host, destination string) error {
 	log.Println("This node's multiaddresses:")
 	for _, la := range h.Addrs() {
 		log.Printf(" - %v\n", la)
@@ -199,14 +199,14 @@ func startPeerAndConnect(ctx context.Context, h host.Host, destination string) (
 	maddr, err := multiaddr.NewMultiaddr(destination)
 	if err != nil {
 		log.Println(err)
-		return nil, err
+		return err
 	}
 
 	// Extract the peer ID from the multiaddr.
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		log.Println(err)
-		return nil, err
+		return err
 	}
 
 	// Add the destination's peer multiaddress in the peerstore.
@@ -218,7 +218,7 @@ func startPeerAndConnect(ctx context.Context, h host.Host, destination string) (
 	s, err := h.NewStream(context.Background(), info.ID, "/chat/1.0.0")
 	if err != nil {
 		log.Println(err)
-		return nil, err
+		return err
 	}
 	log.Println("Established connection to destination")
 
@@ -229,5 +229,5 @@ func startPeerAndConnect(ctx context.Context, h host.Host, destination string) (
 	go writeData(rw)
 	go readData(rw)
 
-	return rw, nil
+	return nil
 }
