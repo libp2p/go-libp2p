@@ -27,6 +27,55 @@ import (
 // libp2p handle them to the right handler functions.
 const Protocol = "/proxy-example/0.0.1"
 
+const help = `
+This example creates a simple HTTP Proxy using two libp2p peers. The first peer
+provides an HTTP server locally which tunnels the HTTP requests with libp2p
+to a remote peer. The remote peer performs the requests and 
+send the sends the response back.
+
+Usage: Start remote peer first with:   ./proxy
+       Then start the local peer with: ./proxy -d <remote-peer-multiaddress>
+
+Then you can do something like: curl -x "localhost:9900" "http://ipfs.io".
+This proxies sends the request through the local peer, which proxies it to
+the remote peer, which makes it and sends the response back.`
+
+func main() {
+	flag.Usage = func() {
+		fmt.Println(help)
+		flag.PrintDefaults()
+	}
+
+	// Parse some flags
+	destPeer := flag.String("d", "", "destination peer address")
+	port := flag.Int("p", 9900, "proxy port")
+	p2pport := flag.Int("l", 12000, "libp2p listen port")
+	flag.Parse()
+
+	// If we have a destination peer we will start a local server
+	if *destPeer != "" {
+		// We use p2pport+1 in order to not collide if the user
+		// is running the remote peer locally on that port
+		host := makeRandomHost(*p2pport + 1)
+		// Make sure our host knows how to reach destPeer
+		destPeerID := addAddrToPeerstore(host, *destPeer)
+		proxyAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", *port))
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// Create the proxy service and start the http server
+		proxy := NewProxyService(host, proxyAddr, destPeerID)
+		proxy.Serve() // serve hangs forever
+	} else {
+		host := makeRandomHost(*p2pport)
+		// In this case we only need to make sure our host
+		// knows how to handle incoming proxied requests from
+		// another peer.
+		_ = NewProxyService(host, nil, "")
+		<-make(chan struct{}) // hang forever
+	}
+}
+
 // makeRandomHost creates a libp2p host with a randomly generated identity.
 // This step is described in depth in other tutorials.
 func makeRandomHost(port int) host.Host {
@@ -220,54 +269,4 @@ func addAddrToPeerstore(h host.Host, addr string) peer.ID {
 	// it to the peerstore so LibP2P knows how to contact it
 	h.Peerstore().AddAddr(peerid, targetAddr, peerstore.PermanentAddrTTL)
 	return peerid
-}
-
-const help = `
-This example creates a simple HTTP Proxy using two libp2p peers. The first peer
-provides an HTTP server locally which tunnels the HTTP requests with libp2p
-to a remote peer. The remote peer performs the requests and 
-send the sends the response back.
-
-Usage: Start remote peer first with:   ./proxy
-       Then start the local peer with: ./proxy -d <remote-peer-multiaddress>
-
-Then you can do something like: curl -x "localhost:9900" "http://ipfs.io".
-This proxies sends the request through the local peer, which proxies it to
-the remote peer, which makes it and sends the response back.`
-
-func main() {
-	flag.Usage = func() {
-		fmt.Println(help)
-		flag.PrintDefaults()
-	}
-
-	// Parse some flags
-	destPeer := flag.String("d", "", "destination peer address")
-	port := flag.Int("p", 9900, "proxy port")
-	p2pport := flag.Int("l", 12000, "libp2p listen port")
-	flag.Parse()
-
-	// If we have a destination peer we will start a local server
-	if *destPeer != "" {
-		// We use p2pport+1 in order to not collide if the user
-		// is running the remote peer locally on that port
-		host := makeRandomHost(*p2pport + 1)
-		// Make sure our host knows how to reach destPeer
-		destPeerID := addAddrToPeerstore(host, *destPeer)
-		proxyAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", *port))
-		if err != nil {
-			log.Fatalln(err)
-		}
-		// Create the proxy service and start the http server
-		proxy := NewProxyService(host, proxyAddr, destPeerID)
-		proxy.Serve() // serve hangs forever
-	} else {
-		host := makeRandomHost(*p2pport)
-		// In this case we only need to make sure our host
-		// knows how to handle incoming proxied requests from
-		// another peer.
-		_ = NewProxyService(host, nil, "")
-		<-make(chan struct{}) // hang forever
-	}
-
 }
