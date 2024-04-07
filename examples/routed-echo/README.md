@@ -27,7 +27,7 @@ From `go-libp2p/examples` base folder:
 2018/02/19 12:22:32 listening for connections
 ```
 
-The listener libp2p host will print its randomly generated Base58 encoded ID string, which combined with the ipfs DHT, can be used to reach the host, despite lacking other connection details.  By default, this example will bootstrap off your local IPFS peer (assuming one is running). If you'd rather bootstrap off the same peers go-ipfs uses, pass the `-global` flag in both terminals.
+The listener libp2p host will print its randomly generated Base58 encoded ID string, which combined with the ipfs DHT, can be used to reach the host, despite lacking other connection details.  By **default**, this example will bootstrap off your **local IPFS peer** (assuming one is running). If you'd rather bootstrap off the same peers go-ipfs uses, pass the `-global` flag in both terminals.
 
 Now, launch another node that talks to the listener:
 
