@@ -30,6 +30,20 @@ If you want more control over the configuration, you can specify some options to
 In this snippet we set a number of useful options like a custom ID and enable routing. This will improve discoverability and reachability of the peer on NAT'ed environments:
 
 ```go
+import (
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/routing"
+
+	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+)
+
+// The context governs the lifetime of the libp2p node.
+// Cancelling it will stop the host.
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
 // Set your own keypair
 priv, _, err := crypto.GenerateKeyPair(
 	crypto.Ed25519, // Select your key type. Ed25519 are nice short
@@ -40,6 +54,12 @@ if err != nil {
 }
 
 var idht *dht.IpfsDHT
+
+connmgr, err := connmgr.NewConnManager(
+	100, // Lowwater
+	400, // HighWater,
+	connmgr.WithGracePeriod(time.Minute),
+)
 
 h2, err := libp2p.New(
 	// Use the keypair we generated
@@ -59,11 +79,7 @@ h2, err := libp2p.New(
 	libp2p.DefaultTransports,
 	// Let's prevent our peer from having too many
 	// connections by attaching a connection manager.
-	libp2p.ConnectionManager(connmgr.NewConnManager(
-		100,         // Lowwater
-		400,         // HighWater,
-		time.Minute, // GracePeriod
-	)),
+	libp2p.ConnectionManager(connmgr),
 	// Attempt to open ports using uPNP for NATed hosts.
 	libp2p.NATPortMap(),
 	// Let this host use the DHT to find other hosts
@@ -71,11 +87,14 @@ h2, err := libp2p.New(
 		idht, err = dht.New(ctx, h)
 		return idht, err
 	}),
-	// Let this host use relays and advertise itself on relays if
-	// it finds it is behind NAT. Use libp2p.Relay(options...) to
-	// enable active relays and more.
-	libp2p.EnableAutoRelay(),
-)
+	// If you want to help other peers to figure out if they are behind
+	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
+	// already runs the client)
+	//
+	// This service is highly rate-limited and should not cause any
+	// performance issues.
+	libp2p.EnableNATService(),
+	)
 if err != nil {
 	panic(err)
 }
