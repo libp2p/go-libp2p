@@ -671,7 +671,7 @@ func (rf *relayFinder) usingRelay(p peer.ID) bool {
 	return ok
 }
 
-// addCandidates adds a candidate to the candidates set. Assumes caller holds candidateMx mutex
+// addCandidate adds a candidate to the candidates set. Assumes caller holds candidateMx mutex
 func (rf *relayFinder) addCandidate(cand *candidate) {
 	_, exists := rf.candidates[cand.ai.ID]
 	rf.candidates[cand.ai.ID] = cand
