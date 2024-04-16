@@ -30,6 +30,7 @@ import (
 var log = logging.Logger("libp2phttp")
 
 const ProtocolIDForMultistreamSelect = "/http/1.1"
+const WellKnownProtocols = "/.well-known/libp2p/protocols"
 const peerMetadataLimit = 8 << 10 // 8KB
 const peerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
 
@@ -41,7 +42,7 @@ type ProtocolMeta struct {
 
 type PeerMeta map[protocol.ID]ProtocolMeta
 
-// WellKnownHandler is an http.Handler that serves the .well-known/libp2p resource
+// WellKnownHandler is an http.Handler that serves the well-known resource
 type WellKnownHandler struct {
 	wellknownMapMu   sync.Mutex
 	wellKnownMapping PeerMeta
@@ -137,7 +138,7 @@ type Host struct {
 	// `http.Transport` on first use.
 	DefaultClientRoundTripper *http.Transport
 
-	// WellKnownHandler is the http handler for the `.well-known/libp2p`
+	// WellKnownHandler is the http handler for the well-known
 	// resource. It is responsible for sharing this node's protocol metadata
 	// with other nodes. Users only care about this if they set their own
 	// ServeMux with pre-existing routes. By default, new protocols are added
@@ -270,7 +271,7 @@ func (h *Host) Serve() error {
 	}
 
 	h.serveMuxInit()
-	h.ServeMux.Handle("/.well-known/libp2p", &h.WellKnownHandler)
+	h.ServeMux.Handle(WellKnownProtocols, &h.WellKnownHandler)
 
 	h.httpTransportInit()
 
@@ -352,7 +353,7 @@ func (h *Host) Close() error {
 }
 
 // SetHTTPHandler sets the HTTP handler for a given protocol. Automatically
-// manages the .well-known/libp2p mapping.
+// manages the well-known resource mapping.
 // http.StripPrefix is called on the handler, so the handler will be unaware of
 // its prefix path.
 func (h *Host) SetHTTPHandler(p protocol.ID, handler http.Handler) {
@@ -360,7 +361,7 @@ func (h *Host) SetHTTPHandler(p protocol.ID, handler http.Handler) {
 }
 
 // SetHTTPHandlerAtPath sets the HTTP handler for a given protocol using the
-// given path. Automatically manages the .well-known/libp2p mapping.
+// given path. Automatically manages the well-known resource mapping.
 // http.StripPrefix is called on the handler, so the handler will be unaware of
 // its prefix path.
 func (h *Host) SetHTTPHandlerAtPath(p protocol.ID, path string, handler http.Handler) {
@@ -743,7 +744,7 @@ func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server pe
 		return meta, nil
 	}
 
-	req, err := http.NewRequest("GET", "/.well-known/libp2p", nil)
+	req, err := http.NewRequest("GET", WellKnownProtocols, nil)
 	if err != nil {
 		return nil, err
 	}

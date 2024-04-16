@@ -10,7 +10,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0
 	github.com/flynn/noise v1.1.0
 	github.com/google/gopacket v1.1.19
-	github.com/gorilla/websocket v1.5.1
+	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru/arc/v2 v2.0.5
 	github.com/hashicorp/golang-lru/v2 v2.0.5
 	github.com/ipfs/go-cid v0.4.1

@@ -339,11 +339,11 @@ func ExampleWellKnownHandler() {
 	}
 
 	defer listener.Close()
-	// Serve `.well-known/libp2p`. Note, this is handled automatically if you use the libp2phttp.Host.
+	// Serve the well-known resource. Note, this is handled automatically if you use the libp2phttp.Host.
 	go http.Serve(listener, &h)
 
-	// Get the `.well-known/libp2p` resource
-	resp, err := http.Get("http://" + listener.Addr().String() + "/.well-known/libp2p")
+	// Get the well-known resource
+	resp, err := http.Get("http://" + listener.Addr().String() + libp2phttp.WellKnownProtocols)
 	if err != nil {
 		log.Fatal(err)
 	}

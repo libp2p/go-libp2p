@@ -205,7 +205,7 @@ func TestRoundTrippers(t *testing.T) {
 				})
 			}
 
-			// Read the .well-known/libp2p resource
+			// Read the well-known resource
 			wk, err := rt.(libp2phttp.PeerMetadataGetter).GetPeerMetadata()
 			require.NoError(t, err)
 
@@ -219,7 +219,7 @@ func TestRoundTrippers(t *testing.T) {
 func TestPlainOldHTTPServer(t *testing.T) {
 	mux := http.NewServeMux()
 	wk := libp2phttp.WellKnownHandler{}
-	mux.Handle("/.well-known/libp2p", &wk)
+	mux.Handle(libp2phttp.WellKnownProtocols, &wk)
 
 	mux.Handle("/ping/", httpping.Ping{})
 	wk.AddProtocolMeta(httpping.PingProtocolID, libp2phttp.ProtocolMeta{Path: "/ping/"})
@@ -270,7 +270,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 			},
 			getWellKnown: func(t *testing.T) (libp2phttp.PeerMeta, error) {
 				client := http.Client{}
-				resp, err := client.Get("http://" + l.Addr().String() + "/.well-known/libp2p")
+				resp, err := client.Get("http://" + l.Addr().String() + libp2phttp.WellKnownProtocols)
 				require.NoError(t, err)
 
 				b, err := io.ReadAll(resp.Body)
