@@ -89,7 +89,7 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 
 	if err := rd.ReadMsg(&msg); err != nil {
 		s.Reset()
-		return nil, ReservationError{Status: pbv2.Status_CONNECTION_FAILED, Reason: "error reading reservation response message: %w", err: err}
+		return nil, ReservationError{Status: pbv2.Status_CONNECTION_FAILED, Reason: "error reading reservation response message", err: err}
 	}
 
 	if msg.GetType() != pbv2.HopMessage_STATUS {

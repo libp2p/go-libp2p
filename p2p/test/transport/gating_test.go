@@ -181,7 +181,8 @@ func TestInterceptAccept(t *testing.T) {
 			}
 
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
-			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
+			// use two protocols here, so we actually enter multistream negotiation
+			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID, protocol.TestingID)
 			require.Error(t, err)
 			if _, err := h2.Addrs()[0].ValueForProtocol(ma.P_WEBRTC_DIRECT); err != nil {
 				// WebRTC rejects connection attempt before an error can be sent to the client.
@@ -218,7 +219,8 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 				}),
 			)
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
-			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
+			// use two protocols here, so we actually enter multistream negotiation
+			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID, protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
 		})
@@ -254,7 +256,8 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 				}),
 			)
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
-			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
+			// use two protocols here, so we actually enter multistream negotiation
+			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID, protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
 		})

@@ -535,8 +535,17 @@ func TestProtoDowngrade(t *testing.T) {
 	// This is _almost_ instantaneous, but this test fails once every ~1k runs without this.
 	time.Sleep(time.Millisecond)
 
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
+	require.NoError(t, err)
+	defer sub.Close()
+
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
 	require.NoError(t, h1.Connect(ctx, h2pi))
+	select {
+	case <-sub.Out():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout")
+	}
 
 	s2, err := h1.NewStream(ctx, h2.ID(), "/testing/1.0.0", "/testing")
 	require.NoError(t, err)
@@ -704,13 +713,12 @@ func TestHostAddrChangeDetection(t *testing.T) {
 }
 
 func TestNegotiationCancel(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	h1, h2 := getHostPair(t)
 	defer h1.Close()
 	defer h2.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	// pre-negotiation so we can make the negotiation hang.
 	h2.Network().SetStreamHandler(func(s network.Stream) {
 		<-ctx.Done() // wait till the test is done.
@@ -722,7 +730,7 @@ func TestNegotiationCancel(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		s, err := h1.NewStream(ctx2, h2.ID(), "/testing")
+		s, err := h1.NewStream(ctx2, h2.ID(), "/testing", "/testing2")
 		if s != nil {
 			errCh <- fmt.Errorf("expected to fail negotiation")
 			return

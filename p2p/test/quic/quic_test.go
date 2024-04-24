@@ -61,6 +61,7 @@ func TestQUICAndWebTransport(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NoError(t, h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	require.Eventually(t, func() bool { return len(h1.Network().ConnsToPeer(h2.ID())) > 0 }, time.Second, 25*time.Millisecond)
 	for _, conns := range [][]network.Conn{h2.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h2.ID())} {
 		require.Len(t, conns, 1)
 		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
@@ -78,6 +79,7 @@ func TestQUICAndWebTransport(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NoError(t, h3.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	require.Eventually(t, func() bool { return len(h1.Network().ConnsToPeer(h3.ID())) > 0 }, time.Second, 25*time.Millisecond)
 	for _, conns := range [][]network.Conn{h3.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h3.ID())} {
 		require.Len(t, conns, 1)
 		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err != nil {
