@@ -15,7 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate sh -c "go run go.uber.org/mock/mockgen -package pstoremanager_test -destination mock_peerstore_test.go github.com/libp2p/go-libp2p/core/peerstore Peerstore"
+//go:generate sh -c "go run go.uber.org/mock/mockgen@v0.4.0 -package pstoremanager_test -destination mock_peerstore_test.go github.com/libp2p/go-libp2p/core/peerstore Peerstore"
 
 func TestGracePeriod(t *testing.T) {
 	t.Parallel()

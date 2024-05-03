@@ -8,4 +8,4 @@ runs:
         repo-token: ${{ github.token }}
     - name: Install Protobuf compiler
       shell: bash
-      run: go install google.golang.org/protobuf/cmd/protoc-gen-go
+      run: go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.0

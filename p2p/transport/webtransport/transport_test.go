@@ -360,7 +360,7 @@ func TestResourceManagerListening(t *testing.T) {
 }
 
 // TODO: unify somehow. We do the same in libp2pquic.
-//go:generate sh -c "go run go.uber.org/mock/mockgen -package libp2pwebtransport_test -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater && go run golang.org/x/tools/cmd/goimports -w mock_connection_gater_test.go"
+//go:generate sh -c "go run go.uber.org/mock/mockgen@v0.4.0 -package libp2pwebtransport_test -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater && go run golang.org/x/tools/cmd/goimports@v0.20.0 -w mock_connection_gater_test.go"
 
 func TestConnectionGaterDialing(t *testing.T) {
 	ctrl := gomock.NewController(t)
