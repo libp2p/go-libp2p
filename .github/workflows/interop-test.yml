@@ -23,7 +23,7 @@ jobs:
     name: Run transport interoperability tests
     runs-on: ${{ fromJSON(vars['INTEROP_TEST_RUNNER_UBUNTU'] || '"ubuntu-22.04"') }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t go-libp2p-head -f test-plans/PingDockerfile .
       - uses: libp2p/test-plans/.github/actions/run-transport-interop-test@master
