@@ -455,7 +455,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 						var err error
 						// maxRetries is an arbitrary retry amount if there's any error.
 						maxRetries := streamCount * 4
-						shouldRetry := func(err error) bool {
+						shouldRetry := func(error) bool {
 							didErr = true
 							sawFirstErr.Store(true)
 							maxRetries--

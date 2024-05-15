@@ -18,7 +18,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate go run go.uber.org/mock/mockgen@v0.4.0 -package transport_integration -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater
+//go:generate mockgen -package transport_integration -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater
 
 func stripCertHash(addr ma.Multiaddr) ma.Multiaddr {
 	for {

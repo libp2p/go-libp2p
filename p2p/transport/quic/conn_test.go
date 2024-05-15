@@ -27,7 +27,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate sh -c "go run go.uber.org/mock/mockgen@v0.4.0 -package libp2pquic -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater && go run golang.org/x/tools/cmd/goimports@v0.20.0 -w mock_connection_gater_test.go"
+//go:generate mockgen -package libp2pquic -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater
 
 type connTestCase struct {
 	Name    string
