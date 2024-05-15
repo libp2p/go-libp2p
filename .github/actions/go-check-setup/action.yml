@@ -1,6 +1,12 @@
+name: go check setup
+description: prepares environment for go-check workflow
+
 runs:
   using: "composite"
   steps:
     - name: Install tools
       shell: bash
       run: make install
+    - name: Set env
+      shell: bash
+      run: echo "PATH=$PWD/bin:$PATH" >> $GITHUB_ENV
