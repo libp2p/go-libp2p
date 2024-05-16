@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -146,8 +147,8 @@ func TestHTTPOverStreamsContextAndClientTimeout(t *testing.T) {
 	client := &http.Client{Transport: clientRT}
 	_, err = client.Do(req)
 	require.Error(t, err)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	t.Log("OK, context deadline exceeded waiting for response as expected")
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	t.Log("OK, deadline exceeded waiting for response as expected")
 
 	// Make another request, this time using http.Client.Timeout.
 	clientRT, err = (&libp2phttp.Host{StreamHost: clientHost}).NewConstrainedRoundTripper(peer.AddrInfo{ID: serverHost.ID()})

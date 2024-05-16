@@ -4,7 +4,6 @@ package libp2phttp
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -16,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	logging "github.com/ipfs/go-log/v2"
@@ -436,18 +434,11 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		}
 	}()
 
-	var rdr io.Reader
-	if r.Context() == context.Background() {
-		rdr = s
-	} else {
-		// Adhere to the request.Context if context is cancelable.
-		rdr = &readerCtx{
-			ctx: r.Context(),
-			s:   s,
-		}
+	if deadline, ok := r.Context().Deadline(); ok {
+		s.SetReadDeadline(deadline)
 	}
 
-	resp, err := http.ReadResponse(bufio.NewReader(rdr), r)
+	resp, err := http.ReadResponse(bufio.NewReader(s), r)
 	if err != nil {
 		s.Close()
 		return nil, err
@@ -455,29 +446,6 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	resp.Body = &streamReadCloser{resp.Body, s}
 
 	return resp, nil
-}
-
-type readerCtx struct {
-	ctx context.Context
-	s   network.Stream
-}
-
-func (r *readerCtx) Read(p []byte) (int, error) {
-	var n int
-	var err error
-	done := make(chan struct{})
-	go func() {
-		n, err = r.s.Read(p)
-		close(done)
-	}()
-	select {
-	case <-r.ctx.Done():
-		r.s.SetReadDeadline(time.Now().Add(-1)) // Set deadline in the past to cancel the read
-		<-done
-		return n, r.ctx.Err()
-	case <-done:
-	}
-	return n, err
 }
 
 // roundTripperForSpecificServer is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
