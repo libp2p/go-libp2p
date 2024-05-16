@@ -4,6 +4,7 @@ package libp2phttp
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -434,14 +435,46 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		}
 	}()
 
-	// TODO: Adhere to the request.Context
-	resp, err := http.ReadResponse(bufio.NewReader(s), r)
+	var rdr io.Reader
+	if r.Context() == context.Background() {
+		rdr = s
+	} else {
+		// Adhere to the request.Context if context is cancelable.
+		rdr = &readerCtx{
+			ctx: r.Context(),
+			r:   s,
+		}
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(rdr), r)
 	if err != nil {
+		s.Close()
 		return nil, err
 	}
 	resp.Body = &streamReadCloser{resp.Body, s}
 
 	return resp, nil
+}
+
+type readerCtx struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (r *readerCtx) Read(p []byte) (int, error) {
+	var n int
+	var err error
+	done := make(chan struct{})
+	go func() {
+		n, err = r.r.Read(p)
+		close(done)
+	}()
+	select {
+	case <-r.ctx.Done():
+		return 0, r.ctx.Err()
+	case <-done:
+	}
+	return n, err
 }
 
 // roundTripperForSpecificServer is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
