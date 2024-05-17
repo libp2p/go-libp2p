@@ -4,6 +4,7 @@ package libp2phttp
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	logging "github.com/ipfs/go-log/v2"
@@ -29,8 +31,16 @@ import (
 
 var log = logging.Logger("libp2phttp")
 
+var WellKnownRequestTimeout = 30 * time.Second
+
 const ProtocolIDForMultistreamSelect = "/http/1.1"
 const WellKnownProtocols = "/.well-known/libp2p/protocols"
+
+// LegacyWellKnownProtocols refer to a the well-known resource used in an early
+// draft of the libp2p+http spec. Some users have deployed this, and need backwards compatibility.
+// Hopefully we can phase this out in the future. Context: https://github.com/libp2p/go-libp2p/pull/2797
+const LegacyWellKnownProtocols = "/.well-known/libp2p"
+
 const peerMetadataLimit = 8 << 10 // 8KB
 const peerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
 
@@ -144,6 +154,17 @@ type Host struct {
 	// ServeMux with pre-existing routes. By default, new protocols are added
 	// here when a user calls `SetHTTPHandler` or `SetHTTPHandlerAtPath`.
 	WellKnownHandler WellKnownHandler
+
+	// EnableCompatibilityWithLegacyWellKnownEndpoint allows compatibility with
+	// an older version of the spec that defined the well-known resource as:
+	// .well-known/libp2p.
+	// For servers, this means hosting the well-known resource at both the
+	// legacy and current paths.
+	// For clients it means making two parallel requests and picking the first one that succeeds.
+	//
+	// Long term this should be deprecated once enough users have upgraded to a
+	// newer go-libp2p version and we can remove all this code.
+	EnableCompatibilityWithLegacyWellKnownEndpoint bool
 
 	// peerMetadata is an LRU cache of a peer's well-known protocol map.
 	peerMetadata *lru.Cache[peer.ID, PeerMeta]
@@ -272,6 +293,9 @@ func (h *Host) Serve() error {
 
 	h.serveMuxInit()
 	h.ServeMux.Handle(WellKnownProtocols, &h.WellKnownHandler)
+	if h.EnableCompatibilityWithLegacyWellKnownEndpoint {
+		h.ServeMux.Handle(LegacyWellKnownProtocols, &h.WellKnownHandler)
+	}
 
 	h.httpTransportInit()
 
@@ -405,7 +429,10 @@ func (s *streamReadCloser) Close() error {
 }
 
 func (rt *streamRoundTripper) GetPeerMetadata() (PeerMeta, error) {
-	return rt.httpHost.getAndStorePeerMetadata(rt, rt.server)
+	ctx := context.Background()
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(WellKnownRequestTimeout))
+	defer cancel()
+	return rt.httpHost.getAndStorePeerMetadata(ctx, rt, rt.server)
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -476,7 +503,10 @@ func (rt *roundTripperForSpecificServer) GetPeerMetadata() (PeerMeta, error) {
 		}
 	}
 
-	wk, err := rt.httpHost.getAndStorePeerMetadata(rt, rt.server)
+	ctx := context.Background()
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(WellKnownRequestTimeout))
+	defer cancel()
+	wk, err := rt.httpHost.getAndStorePeerMetadata(ctx, rt, rt.server)
 	if err == nil {
 		rt.cachedProtos = wk
 		return wk, nil
@@ -541,7 +571,10 @@ func (rt *namespacedRoundTripper) RoundTrip(r *http.Request) (*http.Response, er
 
 // NamespaceRoundTripper returns an http.RoundTripper that are scoped to the given protocol on the given server.
 func (h *Host) NamespaceRoundTripper(roundtripper http.RoundTripper, p protocol.ID, server peer.ID) (*namespacedRoundTripper, error) {
-	protos, err := h.getAndStorePeerMetadata(roundtripper, server)
+	ctx := context.Background()
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(WellKnownRequestTimeout))
+	defer cancel()
+	protos, err := h.getAndStorePeerMetadata(ctx, roundtripper, server)
 	if err != nil {
 		return &namespacedRoundTripper{}, err
 	}
@@ -740,10 +773,10 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 	return ma.Join(beforeHTTPS, tlsComponent, httpComponent, afterHTTPS), isHTTPMultiaddr
 }
 
-// ProtocolPathPrefix looks up the protocol path in the well-known mapping and
+// getAndStorePeerMetadata looks up the protocol path in the well-known mapping and
 // returns it. Will only store the peer's protocol mapping if the server ID is
 // provided.
-func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server peer.ID) (PeerMeta, error) {
+func (h *Host) getAndStorePeerMetadata(ctx context.Context, roundtripper http.RoundTripper, server peer.ID) (PeerMeta, error) {
 	if h.peerMetadata == nil {
 		h.peerMetadata = newPeerMetadataCache()
 	}
@@ -751,7 +784,61 @@ func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server pe
 		return meta, nil
 	}
 
-	req, err := http.NewRequest("GET", WellKnownProtocols, nil)
+	var meta PeerMeta
+	var err error
+	if h.EnableCompatibilityWithLegacyWellKnownEndpoint {
+		type metaAndErr struct {
+			m   PeerMeta
+			err error
+		}
+		legacyRespCh := make(chan metaAndErr, 1)
+		wellKnownRespCh := make(chan metaAndErr, 1)
+		ctx, cancel := context.WithCancel(ctx)
+		go func() {
+			meta, err := requestPeerMeta(ctx, roundtripper, LegacyWellKnownProtocols)
+			legacyRespCh <- metaAndErr{meta, err}
+		}()
+		go func() {
+			meta, err := requestPeerMeta(ctx, roundtripper, WellKnownProtocols)
+			wellKnownRespCh <- metaAndErr{meta, err}
+		}()
+		select {
+		case resp := <-legacyRespCh:
+			if resp.err != nil {
+				resp = <-wellKnownRespCh
+			}
+			meta, err = resp.m, resp.err
+		case resp := <-wellKnownRespCh:
+			if resp.err != nil {
+				legacyResp := <-legacyRespCh
+				if legacyResp.err != nil {
+					// If both endpoints error, return the error from the well
+					// known resource (not the legacy well known resource)
+					meta, err = resp.m, resp.err
+				} else {
+					meta, err = legacyResp.m, legacyResp.err
+				}
+			} else {
+				meta, err = resp.m, resp.err
+			}
+		}
+		cancel()
+	} else {
+		meta, err = requestPeerMeta(ctx, roundtripper, WellKnownProtocols)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if server != "" {
+		h.peerMetadata.Add(server, meta)
+	}
+
+	return meta, nil
+}
+
+func requestPeerMeta(ctx context.Context, roundtripper http.RoundTripper, wellKnownResource string) (PeerMeta, error) {
+	req, err := http.NewRequest("GET", wellKnownResource, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -775,9 +862,6 @@ func (h *Host) getAndStorePeerMetadata(roundtripper http.RoundTripper, server pe
 	}).Decode(&meta)
 	if err != nil {
 		return nil, err
-	}
-	if server != "" {
-		h.peerMetadata.Add(server, meta)
 	}
 
 	return meta, nil
