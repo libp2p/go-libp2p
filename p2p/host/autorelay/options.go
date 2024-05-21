@@ -42,6 +42,8 @@ type config struct {
 	setMinCandidates bool
 	// see WithMetricsTracer
 	metricsTracer MetricsTracer
+	// see WithFilterPublic
+	sortByRTT bool
 }
 
 var defaultConfig = config{
@@ -53,6 +55,7 @@ var defaultConfig = config{
 	desiredRelays:   2,
 	maxCandidateAge: 30 * time.Minute,
 	minInterval:     30 * time.Second,
+	sortByRTT:       true,
 }
 
 var (
@@ -228,6 +231,14 @@ func WithMinInterval(interval time.Duration) Option {
 func WithMetricsTracer(mt MetricsTracer) Option {
 	return func(c *config) error {
 		c.metricsTracer = mt
+		return nil
+	}
+}
+
+// WithSortByRTT configure whether a ping speed test is required for the candidate; enable by default.
+func WithSortByRTT(enable bool) Option {
+	return func(c *config) error {
+		c.sortByRTT = enable
 		return nil
 	}
 }
