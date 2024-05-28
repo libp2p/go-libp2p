@@ -707,14 +707,14 @@ func (rf *relayFinder) selectCandidates() []*candidate {
 	return candidates
 }
 
-// This function is computes the NATed relay addrs when our status is private:
+// RelayAddrs computes the NATed relay addrs when our status is private:
 //   - The public addrs are removed from the address set.
 //   - The non-public addrs are included verbatim so that peers behind the same NAT/firewall
 //     can still dial us directly.
 //   - On top of those, we add the relay-specific addrs for the relays to which we are
 //     connected. For each non-private relay addr, we encapsulate the p2p-circuit addr
 //     through which we can be dialed.
-func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
+func (rf *relayFinder) RelayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	rf.relayMx.Lock()
 	defer rf.relayMx.Unlock()
 

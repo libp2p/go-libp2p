@@ -3,6 +3,7 @@ package autorelay
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -42,6 +43,8 @@ type config struct {
 	setMinCandidates bool
 	// see WithMetricsTracer
 	metricsTracer MetricsTracer
+	// see WithRelayFinder
+	rf RelayFinder
 }
 
 var defaultConfig = config{
@@ -228,6 +231,17 @@ func WithMinInterval(interval time.Duration) Option {
 func WithMetricsTracer(mt MetricsTracer) Option {
 	return func(c *config) error {
 		c.metricsTracer = mt
+		return nil
+	}
+}
+
+// WithRelayFinder configures autorelay to use the given RelayFinder to manage relay connections
+func WithRelayFinder(rf RelayFinder) Option {
+	return func(c *config) error {
+		if rf == nil {
+			return fmt.Errorf("cannot specify RelayFinder")
+		}
+		c.rf = rf
 		return nil
 	}
 }

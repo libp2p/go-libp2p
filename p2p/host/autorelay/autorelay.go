@@ -17,6 +17,15 @@ import (
 
 var log = logging.Logger("autorelay")
 
+type RelayFinder interface {
+	// Start relay finder module
+	Start() error
+	// Stop relay finder module
+	Stop() error
+	// RelayAddrs computes the NATed relay addrs when our status is private
+	RelayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr
+}
+
 type AutoRelay struct {
 	refCount  sync.WaitGroup
 	ctx       context.Context
@@ -27,7 +36,7 @@ type AutoRelay struct {
 	mx     sync.Mutex
 	status network.Reachability
 
-	relayFinder *relayFinder
+	relayFinder RelayFinder
 
 	host   host.Host
 	addrsF basic.AddrsFactory
@@ -49,7 +58,12 @@ func NewAutoRelay(bhost *basic.BasicHost, opts ...Option) (*AutoRelay, error) {
 	}
 	r.ctx, r.ctxCancel = context.WithCancel(context.Background())
 	r.conf = &conf
-	r.relayFinder = newRelayFinder(bhost, conf.peerSource, &conf)
+	if r.conf.rf != nil {
+		r.relayFinder = r.conf.rf
+	} else {
+		r.relayFinder = newRelayFinder(bhost, conf.peerSource, &conf)
+	}
+
 	r.metricsTracer = &wrappedMetricsTracer{conf.metricsTracer}
 	bhost.AddrsFactory = r.hostAddrs
 
@@ -114,7 +128,7 @@ func (r *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if r.status != network.ReachabilityPrivate {
 		return addrs
 	}
-	return r.relayFinder.relayAddrs(addrs)
+	return r.relayFinder.RelayAddrs(addrs)
 }
 
 func (r *AutoRelay) Close() error {
