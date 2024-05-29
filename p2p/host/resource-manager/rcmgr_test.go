@@ -1,12 +1,14 @@
 package rcmgr
 
 import (
+	"net/netip"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/test"
+	"github.com/stretchr/testify/require"
 
 	"github.com/multiformats/go-multiaddr"
 )
@@ -1050,4 +1052,62 @@ func TestResourceManagerWithAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestAllowlistAndConnLimiterPlayNice checks that the connLimiter learns about network prefix limits from the allowlist.
+func TestAllowlistAndConnLimiterPlayNice(t *testing.T) {
+	limits := DefaultLimits.AutoScale()
+	limits.allowlistedSystem.Conns = 8
+	limits.allowlistedSystem.ConnsInbound = 8
+	limits.allowlistedSystem.ConnsOutbound = 8
+	t.Run("IPv4", func(t *testing.T) {
+		rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithAllowlistedMultiaddrs([]multiaddr.Multiaddr{
+			multiaddr.StringCast("/ip4/1.2.3.0/ipcidr/24"),
+		}), WithNetworkPrefixLimit([]NetworkPrefixLimit{}, []NetworkPrefixLimit{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rcmgr.Close()
+
+		// The connLimiter should have the allowlisted network prefix
+		require.Equal(t, netip.MustParsePrefix("1.2.3.0/24"), rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV4[0].Network)
+
+		// The connLimiter should use the limit from the allowlist
+		require.Equal(t, 8, rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV4[0].ConnCount)
+	})
+	t.Run("IPv6", func(t *testing.T) {
+		rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithAllowlistedMultiaddrs([]multiaddr.Multiaddr{
+			multiaddr.StringCast("/ip6/1:2:3::/ipcidr/58"),
+		}), WithNetworkPrefixLimit([]NetworkPrefixLimit{}, []NetworkPrefixLimit{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rcmgr.Close()
+
+		// The connLimiter should have the allowlisted network prefix
+		require.Equal(t, netip.MustParsePrefix("1:2:3::/58"), rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV6[0].Network)
+
+		// The connLimiter should use the limit from the allowlist
+		require.Equal(t, 8, rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV6[0].ConnCount)
+	})
+
+	t.Run("Does not override if you set a limit directly", func(t *testing.T) {
+		rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithAllowlistedMultiaddrs([]multiaddr.Multiaddr{
+			multiaddr.StringCast("/ip4/1.2.3.0/ipcidr/24"),
+		}), WithNetworkPrefixLimit([]NetworkPrefixLimit{
+			{Network: netip.MustParsePrefix("1.2.3.0/24"), ConnCount: 1},
+		}, []NetworkPrefixLimit{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rcmgr.Close()
+
+		// The connLimiter should have it because we set it
+		require.Equal(t, netip.MustParsePrefix("1.2.3.0/24"), rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV4[0].Network)
+		// should only have one network prefix limit
+		require.Equal(t, 1, len(rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV4))
+
+		// The connLimiter should use the limit we defined explicitly
+		require.Equal(t, 1, rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV4[0].ConnCount)
+	})
 }

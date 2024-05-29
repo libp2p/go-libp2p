@@ -22,6 +22,8 @@ func (c *Client) handleStreamV2(s network.Stream) {
 	defer rd.Close()
 
 	writeResponse := func(status pbv2.Status) error {
+		s.SetWriteDeadline(time.Now().Add(StreamTimeout))
+		defer s.SetWriteDeadline(time.Time{})
 		wr := util.NewDelimitedWriter(s)
 
 		var msg pbv2.StopMessage

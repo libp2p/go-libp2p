@@ -1,10 +1,11 @@
 package identify
 
 type config struct {
-	protocolVersion         string
-	userAgent               string
-	disableSignedPeerRecord bool
-	metricsTracer           MetricsTracer
+	protocolVersion            string
+	userAgent                  string
+	disableSignedPeerRecord    bool
+	metricsTracer              MetricsTracer
+	disableObservedAddrManager bool
 }
 
 // Option is an option function for identify.
@@ -36,5 +37,13 @@ func DisableSignedPeerRecord() Option {
 func WithMetricsTracer(tr MetricsTracer) Option {
 	return func(cfg *config) {
 		cfg.metricsTracer = tr
+	}
+}
+
+// DisableObservedAddrManager disables the observed address manager. It also
+// effectively disables the nat emitter and EvtNATDeviceTypeChanged
+func DisableObservedAddrManager() Option {
+	return func(cfg *config) {
+		cfg.disableObservedAddrManager = true
 	}
 }

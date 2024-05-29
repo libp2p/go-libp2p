@@ -7,14 +7,20 @@ import (
 	"fmt"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/transport"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
@@ -376,6 +382,27 @@ func TestAutoNATService(t *testing.T) {
 	h.Close()
 }
 
+func TestInsecureConstructor(t *testing.T) {
+	h, err := New(
+		EnableNATService(),
+		NoSecurity,
+	)
+	require.NoError(t, err)
+	h.Close()
+
+	h, err = New(
+		NoSecurity,
+	)
+	require.NoError(t, err)
+	h.Close()
+}
+
+func TestDisableIdentifyAddressDiscovery(t *testing.T) {
+	h, err := New(DisableIdentifyAddressDiscovery())
+	require.NoError(t, err)
+	h.Close()
+}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
@@ -386,4 +413,49 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
 		goleak.IgnoreAnyFunction("github.com/jackpal/go-nat-pmp.(*Client).GetExternalAddress"),
 	)
+}
+
+func TestDialCircuitAddrWithWrappedResourceManager(t *testing.T) {
+	relay, err := New(EnableRelayService())
+	require.NoError(t, err)
+	defer relay.Close()
+
+	// Fake that the relay is publicly reachable
+	emitterForRelay, err := relay.EventBus().Emitter(&event.EvtLocalReachabilityChanged{})
+	require.NoError(t, err)
+	defer emitterForRelay.Close()
+	emitterForRelay.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
+
+	peerBehindRelay, err := New(EnableAutoRelayWithStaticRelays([]peer.AddrInfo{{ID: relay.ID(), Addrs: relay.Addrs()}}))
+	require.NoError(t, err)
+	defer peerBehindRelay.Close()
+	// Emit an event to tell this peer it is private
+	emitterForPeerBehindRelay, err := peerBehindRelay.EventBus().Emitter(&event.EvtLocalReachabilityChanged{})
+	require.NoError(t, err)
+	defer emitterForPeerBehindRelay.Close()
+	emitterForPeerBehindRelay.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+
+	// Use a wrapped resource manager to test that the circuit dialing works
+	// with it. Look at the PR introducing this test for context
+	type wrappedRcmgr struct{ network.ResourceManager }
+	mgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()))
+	require.NoError(t, err)
+	wmgr := wrappedRcmgr{mgr}
+	h, err := New(ResourceManager(wmgr))
+	require.NoError(t, err)
+	defer h.Close()
+
+	h.Peerstore().AddAddrs(relay.ID(), relay.Addrs(), 10*time.Minute)
+	h.Peerstore().AddAddr(peerBehindRelay.ID(),
+		ma.StringCast(
+			fmt.Sprintf("/p2p/%s/p2p-circuit", relay.ID()),
+		),
+		peerstore.TempAddrTTL,
+	)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	res := <-ping.Ping(ctx, h, peerBehindRelay.ID())
+	require.NoError(t, res.Error)
+	defer cancel()
 }

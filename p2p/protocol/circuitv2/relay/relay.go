@@ -556,6 +556,8 @@ func (r *Relay) handleError(s network.Stream, status pbv2.Status) {
 }
 
 func (r *Relay) writeResponse(s network.Stream, status pbv2.Status, rsvp *pbv2.Reservation, limit *pbv2.Limit) error {
+	s.SetWriteDeadline(time.Now().Add(StreamTimeout))
+	defer s.SetWriteDeadline(time.Time{})
 	wr := util.NewDelimitedWriter(s)
 
 	var msg pbv2.HopMessage
