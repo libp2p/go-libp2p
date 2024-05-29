@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Install tools
       shell: bash
-      run: make install
+      run: cd tools; make install
     - name: Set env
       shell: bash
-      run: echo "PATH=$PWD/bin:$PATH" >> $GITHUB_ENV
+      run: echo "PATH=$PWD/tools/bin:$PATH" >> $GITHUB_ENV
