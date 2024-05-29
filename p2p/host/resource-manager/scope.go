@@ -743,10 +743,13 @@ func (s *resourceScope) Done() {
 	s.Lock()
 	defer s.Unlock()
 
+	s.doneUnlocked()
+}
+
+func (s *resourceScope) doneUnlocked() {
 	if s.done {
 		return
 	}
-
 	stat := s.rc.stat()
 	if s.owner != nil {
 		s.owner.ReleaseResources(stat)

@@ -28,9 +28,10 @@ var (
 
 	// RecentlyConnectedAddrTTL is used when we recently connected to a peer.
 	// It means that we are reasonably certain of the peer's address.
-	RecentlyConnectedAddrTTL = time.Minute * 30
+	RecentlyConnectedAddrTTL = time.Minute * 15
 
 	// OwnObservedAddrTTL is used for our own external addresses observed by peers.
+	// Deprecated: observed addresses are maintained till we disconnect from the peer which provided it
 	OwnObservedAddrTTL = time.Minute * 30
 )
 

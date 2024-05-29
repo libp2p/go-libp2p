@@ -15,6 +15,9 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -106,6 +109,63 @@ func TestHTTPOverStreamsSendsConnectionClose(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for connection header")
 	}
+}
+
+func TestHTTPOverStreamsContextAndClientTimeout(t *testing.T) {
+	const clientTimeout = 200 * time.Millisecond
+
+	serverHost, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+	)
+	require.NoError(t, err)
+
+	httpHost := libp2phttp.Host{StreamHost: serverHost}
+	httpHost.SetHTTPHandler("/hello/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * clientTimeout)
+		w.Write([]byte("hello"))
+	}))
+
+	// Start server
+	go httpHost.Serve()
+	defer httpHost.Close()
+
+	// Start client
+	clientHost, err := libp2p.New(libp2p.NoListenAddrs)
+	require.NoError(t, err)
+	clientHost.Connect(context.Background(), peer.AddrInfo{
+		ID:    serverHost.ID(),
+		Addrs: serverHost.Addrs(),
+	})
+
+	clientRT, err := (&libp2phttp.Host{StreamHost: clientHost}).NewConstrainedRoundTripper(peer.AddrInfo{ID: serverHost.ID()})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/hello/", nil)
+	require.NoError(t, err)
+
+	client := &http.Client{Transport: clientRT}
+	_, err = client.Do(req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	t.Log("OK, deadline exceeded waiting for response as expected")
+
+	// Make another request, this time using http.Client.Timeout.
+	clientRT, err = (&libp2phttp.Host{StreamHost: clientHost}).NewConstrainedRoundTripper(peer.AddrInfo{ID: serverHost.ID()})
+	require.NoError(t, err)
+
+	client = &http.Client{
+		Transport: clientRT,
+		Timeout:   clientTimeout,
+	}
+
+	_, err = client.Get("/hello/")
+	require.Error(t, err)
+	var uerr *url.Error
+	require.ErrorAs(t, err, &uerr)
+	require.True(t, uerr.Timeout())
+	t.Log("OK, timed out waiting for response as expected")
 }
 
 func TestHTTPOverStreamsReturnsConnectionClose(t *testing.T) {
@@ -561,4 +621,101 @@ func TestSetHandlerAtPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServerLegacyWellKnownResource(t *testing.T) {
+	mkHTTPServer := func(wellKnown string) ma.Multiaddr {
+		mux := http.NewServeMux()
+		wk := libp2phttp.WellKnownHandler{}
+		mux.Handle(wellKnown, &wk)
+
+		mux.Handle("/ping/", httpping.Ping{})
+		wk.AddProtocolMeta(httpping.PingProtocolID, libp2phttp.ProtocolMeta{Path: "/ping/"})
+
+		server := &http.Server{Addr: "127.0.0.1:0", Handler: mux}
+
+		l, err := net.Listen("tcp", server.Addr)
+		require.NoError(t, err)
+
+		go server.Serve(l)
+		t.Cleanup(func() { server.Close() })
+		addrPort, err := netip.ParseAddrPort(l.Addr().String())
+		require.NoError(t, err)
+		return ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%d/http", addrPort.Addr().String(), addrPort.Port()))
+	}
+
+	mkServerlibp2phttp := func(enableLegacyWellKnown bool) ma.Multiaddr {
+		server := libp2phttp.Host{
+			EnableCompatibilityWithLegacyWellKnownEndpoint: enableLegacyWellKnown,
+			ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+			InsecureAllowHTTP: true,
+		}
+		server.SetHTTPHandler(httpping.PingProtocolID, httpping.Ping{})
+		go server.Serve()
+		t.Cleanup(func() { server.Close() })
+		return server.Addrs()[0]
+	}
+
+	type testCase struct {
+		name       string
+		client     libp2phttp.Host
+		serverAddr ma.Multiaddr
+		expectErr  bool
+	}
+
+	var testCases = []testCase{
+		{
+			name:       "legacy server, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkHTTPServer(libp2phttp.LegacyWellKnownProtocols),
+		},
+		{
+			name:       "up-to-date http server, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkHTTPServer(libp2phttp.WellKnownProtocols),
+		},
+		{
+			name:       "up-to-date http server, client without compat",
+			client:     libp2phttp.Host{},
+			serverAddr: mkHTTPServer(libp2phttp.WellKnownProtocols),
+		},
+		{
+			name:       "libp2phttp server with compat, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkServerlibp2phttp(true),
+		},
+		{
+			name:       "libp2phttp server without compat, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkServerlibp2phttp(false),
+		},
+		{
+			name:       "libp2phttp server with compat, client without compat",
+			client:     libp2phttp.Host{},
+			serverAddr: mkServerlibp2phttp(true),
+		},
+		{
+			name:       "legacy server, client without compat",
+			client:     libp2phttp.Host{},
+			serverAddr: mkHTTPServer(libp2phttp.LegacyWellKnownProtocols),
+			expectErr:  true,
+		},
+	}
+
+	for i := range testCases {
+		tc := &testCases[i] // to not copy the lock in libp2phttp.Host
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.expectErr {
+				_, err := tc.client.NamespacedClient(httpping.PingProtocolID, peer.AddrInfo{Addrs: []ma.Multiaddr{tc.serverAddr}})
+				require.Error(t, err)
+				return
+			}
+			httpClient, err := tc.client.NamespacedClient(httpping.PingProtocolID, peer.AddrInfo{Addrs: []ma.Multiaddr{tc.serverAddr}})
+			require.NoError(t, err)
+
+			err = httpping.SendPing(httpClient)
+			require.NoError(t, err)
+		})
+	}
+
 }

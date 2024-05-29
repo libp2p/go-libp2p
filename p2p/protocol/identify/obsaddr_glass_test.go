@@ -5,77 +5,16 @@ package identify
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
-func TestObservedAddrGroupKey(t *testing.T) {
-	oa1 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.4/tcp/2345")}
-	oa2 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.4/tcp/1231")}
-	oa3 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.5/tcp/1231")}
-	oa4 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.4/udp/1231")}
-	oa5 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.4/udp/1531")}
-	oa6 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.4/udp/1531/quic-v1")}
-	oa7 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.4/udp/1111/quic-v1")}
-	oa8 := &observedAddr{addr: ma.StringCast("/ip4/1.2.3.5/udp/1111/quic-v1")}
-
-	// different ports, same IP => same key
-	require.Equal(t, oa1.groupKey(), oa2.groupKey())
-	// different IPs => different key
-	require.NotEqual(t, oa2.groupKey(), oa3.groupKey())
-	// same port, different protos => different keys
-	require.NotEqual(t, oa3.groupKey(), oa4.groupKey())
-	// same port, same address, different protos => different keys
-	require.NotEqual(t, oa2.groupKey(), oa4.groupKey())
-	// udp works as well
-	require.Equal(t, oa4.groupKey(), oa5.groupKey())
-	// udp and quic are different
-	require.NotEqual(t, oa5.groupKey(), oa6.groupKey())
-	// quic works as well
-	require.Equal(t, oa6.groupKey(), oa7.groupKey())
-	require.NotEqual(t, oa7.groupKey(), oa8.groupKey())
-}
-
-type mockHost struct {
-	addrs            []ma.Multiaddr
-	listenAddrs      []ma.Multiaddr
-	ifaceListenAddrs []ma.Multiaddr
-}
-
-// InterfaceListenAddresses implements listenAddrsProvider
-func (h *mockHost) InterfaceListenAddresses() ([]ma.Multiaddr, error) {
-	return h.ifaceListenAddrs, nil
-}
-
-// ListenAddresses implements listenAddrsProvider
-func (h *mockHost) ListenAddresses() []ma.Multiaddr {
-	return h.listenAddrs
-}
-
-// Addrs implements addrsProvider
-func (h *mockHost) Addrs() []ma.Multiaddr {
-	return h.addrs
-}
-
-// NormalizeMultiaddr implements normalizeMultiaddrer
-func (h *mockHost) NormalizeMultiaddr(m ma.Multiaddr) ma.Multiaddr {
-	original := m
-	for {
-		rest, tail := ma.SplitLast(m)
-		if rest == nil {
-			return original
-		}
-		if tail.Protocol().Code == ma.P_WEBTRANSPORT {
-			return m
-		}
-		m = rest
-	}
-}
-
 type mockConn struct {
 	local, remote ma.Multiaddr
+	isClosed      atomic.Bool
 }
 
 // LocalMultiaddr implements connMultiaddrProvider
@@ -88,21 +27,30 @@ func (c *mockConn) RemoteMultiaddr() ma.Multiaddr {
 	return c.remote
 }
 
+func (c *mockConn) Close() {
+	c.isClosed.Store(true)
+}
+
+func (c *mockConn) IsClosed() bool {
+	return c.isClosed.Load()
+}
+
 func TestShouldRecordObservationWithWebTransport(t *testing.T) {
 	listenAddr := ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1/webtransport/certhash/uEgNmb28")
 	ifaceAddr := ma.StringCast("/ip4/10.0.0.2/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")
-	h := &mockHost{
-		listenAddrs:      []ma.Multiaddr{listenAddr},
-		ifaceListenAddrs: []ma.Multiaddr{ifaceAddr},
-		addrs:            []ma.Multiaddr{listenAddr},
-	}
+	listenAddrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
+	ifaceListenAddrs := func() ([]ma.Multiaddr, error) { return []ma.Multiaddr{ifaceAddr}, nil }
+	addrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
+
 	c := &mockConn{
 		local:  listenAddr,
 		remote: ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/webtransport"),
 	}
 	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/webtransport")
-
-	require.True(t, shouldRecordObservation(h, h, c, observedAddr))
+	o, err := NewObservedAddrManager(listenAddrs, addrs, ifaceListenAddrs, normalize)
+	require.NoError(t, err)
+	shouldRecord, _, _ := o.shouldRecordObservation(c, observedAddr)
+	require.True(t, shouldRecord)
 }
 
 func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
@@ -111,11 +59,11 @@ func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
 	listenAddr2 := ma.StringCast("/ip6/::/tcp/1234")
 	ifaceAddr2 := ma.StringCast("/ip6/1::1/tcp/4321")
 
-	h := &mockHost{
-		listenAddrs:      []ma.Multiaddr{listenAddr1, listenAddr2},
-		ifaceListenAddrs: []ma.Multiaddr{ifaceAddr1, ifaceAddr2},
-		addrs:            []ma.Multiaddr{listenAddr1, listenAddr2},
-	}
+	var (
+		listenAddrs      = func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr1, listenAddr2} }
+		ifaceListenAddrs = func() ([]ma.Multiaddr, error) { return []ma.Multiaddr{ifaceAddr1, ifaceAddr2}, nil }
+		addrs            = func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr1, listenAddr2} }
+	)
 	c := &mockConn{
 		local:  listenAddr1,
 		remote: ma.StringCast("/ip4/1.2.3.6/tcp/4321"),
@@ -142,12 +90,70 @@ func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
 			failureReason: "NAT64 IPv6 address shouldn't be observed",
 		},
 	}
+
+	o, err := NewObservedAddrManager(listenAddrs, addrs, ifaceListenAddrs, normalize)
+	require.NoError(t, err)
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 
-			if shouldRecordObservation(h, h, c, tc.addr) != tc.want {
+			if shouldRecord, _, _ := o.shouldRecordObservation(c, tc.addr); shouldRecord != tc.want {
 				t.Fatalf("%s %s", tc.addr, tc.failureReason)
 			}
 		})
 	}
+}
+
+func TestThinWaistForm(t *testing.T) {
+	tc := []struct {
+		input string
+		tw    string
+		rest  string
+		err   bool
+	}{{
+		input: "/ip4/1.2.3.4/tcp/1",
+		tw:    "/ip4/1.2.3.4/tcp/1",
+		rest:  "",
+	}, {
+		input: "/ip4/1.2.3.4/tcp/1/ws",
+		tw:    "/ip4/1.2.3.4/tcp/1",
+		rest:  "/ws",
+	}, {
+		input: "/ip4/127.0.0.1/udp/1/quic-v1",
+		tw:    "/ip4/127.0.0.1/udp/1",
+		rest:  "/quic-v1",
+	}, {
+		input: "/ip4/1.2.3.4/udp/1/quic-v1/webtransport",
+		tw:    "/ip4/1.2.3.4/udp/1",
+		rest:  "/quic-v1/webtransport",
+	}, {
+		input: "/ip4/1.2.3.4/",
+		err:   true,
+	}, {
+		input: "/tcp/1",
+		err:   true,
+	}, {
+		input: "/ip6/::1/tcp/1",
+		tw:    "/ip6/::1/tcp/1",
+		rest:  "",
+	}}
+	for i, tt := range tc {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			inputAddr := ma.StringCast(tt.input)
+			tw, err := thinWaistForm(inputAddr)
+			if tt.err {
+				require.Equal(t, tw, thinWaist{})
+				require.Error(t, err)
+				return
+			}
+			wantTW := ma.StringCast(tt.tw)
+			var restTW ma.Multiaddr
+			if tt.rest != "" {
+				restTW = ma.StringCast(tt.rest)
+			}
+			require.Equal(t, tw.Addr, inputAddr, "%s %s", tw.Addr, inputAddr)
+			require.Equal(t, wantTW, tw.TW, "%s %s", tw.TW, wantTW)
+			require.Equal(t, restTW, tw.Rest, "%s %s", restTW, tw.Rest)
+		})
+	}
+
 }

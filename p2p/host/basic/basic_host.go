@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -52,6 +53,8 @@ var (
 	// DefaultAddrsFactory is the default value for HostOpts.AddrsFactory.
 	DefaultAddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 )
+
+const maxPeerRecordSize = 8 * 1024 // 8k to be compatible with identify's limit
 
 // AddrsFactory functions can be passed to New in order to override
 // addresses returned by Addrs.
@@ -161,6 +164,9 @@ type HostOpts struct {
 	EnableMetrics bool
 	// PrometheusRegisterer is the PrometheusRegisterer used for metrics
 	PrometheusRegisterer prometheus.Registerer
+
+	// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses in identify
+	DisableIdentifyAddressDiscovery bool
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -243,6 +249,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		idOpts = append(idOpts,
 			identify.WithMetricsTracer(
 				identify.NewMetricsTracer(identify.WithRegisterer(opts.PrometheusRegisterer))))
+	}
+	if opts.DisableIdentifyAddressDiscovery {
+		idOpts = append(idOpts, identify.DisableObservedAddrManager())
 	}
 
 	h.ids, err = identify.NewIDService(h, idOpts...)
@@ -482,15 +491,18 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 	return &evt
 }
 
-func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*record.Envelope, error) {
-	current := make([]ma.Multiaddr, 0, len(evt.Current))
-	for _, a := range evt.Current {
-		current = append(current, a.Address)
+func (h *BasicHost) makeSignedPeerRecord(addrs []ma.Multiaddr) (*record.Envelope, error) {
+	// Limit the length of currentAddrs to ensure that our signed peer records aren't rejected
+	peerRecordSize := 64 // HostID
+	k, err := h.signKey.Raw()
+	if err != nil {
+		peerRecordSize += 2 * len(k) // 1 for signature, 1 for public key
 	}
-
+	// we want the final address list to be small for keeping the signed peer record in size
+	addrs = trimHostAddrList(addrs, maxPeerRecordSize-peerRecordSize-256) // 256 B of buffer
 	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
 		ID:    h.ID(),
-		Addrs: current,
+		Addrs: addrs,
 	})
 	return record.Seal(rec, h.signKey)
 }
@@ -513,7 +525,7 @@ func (h *BasicHost) background() {
 
 		if !h.disableSignedPeerRecord {
 			// add signed peer record to the event
-			sr, err := h.makeSignedPeerRecord(changeEvt)
+			sr, err := h.makeSignedPeerRecord(currentAddrs)
 			if err != nil {
 				log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
 				return
@@ -805,6 +817,7 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 			addrs[i] = addrWithCerthash
 		}
 	}
+
 	return addrs
 }
 
@@ -995,6 +1008,58 @@ func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 	}
 
 	return out
+}
+
+func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
+	totalSize := 0
+	for _, a := range addrs {
+		totalSize += len(a.Bytes())
+	}
+	if totalSize <= maxSize {
+		return addrs
+	}
+
+	score := func(addr ma.Multiaddr) int {
+		var res int
+		if manet.IsPublicAddr(addr) {
+			res |= 1 << 12
+		} else if !manet.IsIPLoopback(addr) {
+			res |= 1 << 11
+		}
+		var protocolWeight int
+		ma.ForEach(addr, func(c ma.Component) bool {
+			switch c.Protocol().Code {
+			case ma.P_QUIC_V1:
+				protocolWeight = 5
+			case ma.P_TCP:
+				protocolWeight = 4
+			case ma.P_WSS:
+				protocolWeight = 3
+			case ma.P_WEBTRANSPORT:
+				protocolWeight = 2
+			case ma.P_WEBRTC_DIRECT:
+				protocolWeight = 1
+			case ma.P_P2P:
+				return false
+			}
+			return true
+		})
+		res |= 1 << protocolWeight
+		return res
+	}
+
+	slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
+		return score(b) - score(a) // b-a for reverse order
+	})
+	totalSize = 0
+	for i, a := range addrs {
+		totalSize += len(a.Bytes())
+		if totalSize > maxSize {
+			addrs = addrs[:i]
+			break
+		}
+	}
+	return addrs
 }
 
 // SetAutoNat sets the autonat service for the host.
