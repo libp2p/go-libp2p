@@ -452,6 +452,12 @@ func (o *ObservedAddrManager) removeConn(conn connMultiaddrs) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
+	observedTWAddr, ok := o.connObservedTWAddrs[conn]
+	if !ok {
+		return
+	}
+	delete(o.connObservedTWAddrs, conn)
+
 	// normalize before obtaining the thinWaist so that we are always dealing
 	// with the normalized form of the address
 	localTW, err := thinWaistForm(o.normalize(conn.LocalMultiaddr()))
@@ -467,11 +473,6 @@ func (o *ObservedAddrManager) removeConn(conn connMultiaddrs) {
 		delete(o.localAddrs, string(localTW.Addr.Bytes()))
 	}
 
-	observedTWAddr, ok := o.connObservedTWAddrs[conn]
-	if !ok {
-		return
-	}
-	delete(o.connObservedTWAddrs, conn)
 	observer, err := getObserver(conn.RemoteMultiaddr())
 	if err != nil {
 		return
