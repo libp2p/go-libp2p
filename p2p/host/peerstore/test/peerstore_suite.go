@@ -160,7 +160,7 @@ func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 		}
 
 		if count != 10 {
-			t.Fatal("should have received exactly ten addresses, got", count)
+			t.Fatal("should have received exactly ten addresses, got ", count)
 		}
 
 		for _, a := range addrs {
