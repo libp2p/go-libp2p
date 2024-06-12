@@ -744,13 +744,13 @@ func TestResourceScopeDAG(t *testing.T) {
 	checkResources(t, &s1.rc, network.ScopeStat{Memory: 3072})
 
 	if err := s4.ReserveMemory(1024, network.ReservationPriorityAlways); err == nil {
-		t.Fatal("expcted ReserveMemory to fail")
+		t.Fatal("expected ReserveMemory to fail")
 	}
 	if err := s5.ReserveMemory(1024, network.ReservationPriorityAlways); err == nil {
-		t.Fatal("expcted ReserveMemory to fail")
+		t.Fatal("expected ReserveMemory to fail")
 	}
 	if err := s6.ReserveMemory(1024, network.ReservationPriorityAlways); err == nil {
-		t.Fatal("expcted ReserveMemory to fail")
+		t.Fatal("expected ReserveMemory to fail")
 	}
 
 	checkResources(t, &s6.rc, network.ScopeStat{Memory: 1024})
