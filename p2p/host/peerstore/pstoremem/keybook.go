@@ -10,7 +10,7 @@ import (
 )
 
 type memoryKeyBook struct {
-	sync.RWMutex // same lock. wont happen a ton.
+	sync.RWMutex // same lock. won't happen a ton.
 	pks          map[peer.ID]ic.PubKey
 	sks          map[peer.ID]ic.PrivKey
 }
