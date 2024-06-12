@@ -127,7 +127,7 @@ func (gc *dsAddrBookGc) background() {
 	}
 }
 
-// purgeCycle runs a single GC purge cycle. It operates within the lookahead window if lookahead is enabled; else it
+// purgeLookahead runs a single GC purge cycle. It operates within the lookahead window if lookahead is enabled; else it
 // visits all entries in the datastore, deleting the addresses that have expired.
 func (gc *dsAddrBookGc) purgeLookahead() {
 	select {
