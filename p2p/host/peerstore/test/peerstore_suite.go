@@ -58,7 +58,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 		addrch := ps.AddrStream(ctx, pid)
 
 		// while that subscription is active, publish ten more addrs
-		// this tests that it doesnt hang
+		// this tests that it doesn't hang
 		for i := 10; i < 20; i++ {
 			ps.AddAddr(pid, addrs[i], time.Hour)
 		}
@@ -116,7 +116,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 
 		cancel2()
 
-		// and add a few more addresses it doesnt hang afterwards
+		// and add a few more addresses so that it doesn't hang afterwards
 		for _, a := range addrs[80:] {
 			ps.AddAddr(pid, a, time.Hour)
 		}
@@ -141,7 +141,7 @@ func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			a, ok := <-ach
 			if !ok {
-				t.Fatal("channel shouldnt be closed yet")
+				t.Fatal("channel shouldn't be closed yet")
 			}
 			if a == nil {
 				t.Fatal("got a nil address, that's weird")
@@ -155,12 +155,12 @@ func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 
 		select {
 		case <-ach:
-			t.Fatal("shouldnt have received any more addresses")
+			t.Fatal("shouldn't have received any more addresses")
 		default:
 		}
 
 		if count != 10 {
-			t.Fatal("should have received exactly ten addresses, got ", count)
+			t.Fatal("should have received exactly ten addresses, got", count)
 		}
 
 		for _, a := range addrs {
