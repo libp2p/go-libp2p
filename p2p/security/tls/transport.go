@@ -16,7 +16,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
+	"github.com/libp2p/go-libp2p/p2p/transport/magiselect"
 
+	ma "github.com/multiformats/go-multiaddr"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -34,6 +37,7 @@ type Transport struct {
 }
 
 var _ sec.SecureTransport = &Transport{}
+var _ sec.StraightableSecureTransport = &Transport{}
 
 // New creates a TLS encrypted transport
 func New(id protocol.ID, key ci.PrivKey, muxers []tptu.StreamMuxer) (*Transport, error) {
@@ -179,4 +183,22 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 
 func (t *Transport) ID() protocol.ID {
 	return t.protocolID
+}
+
+func (*Transport) Match(s magiselect.Sample) bool {
+	return magiselect.IsTLS(s)
+}
+
+var tlsMaddr = ma.StringCast("/tls")
+
+func (*Transport) Suffix() ma.Multiaddr {
+	return tlsMaddr
+}
+
+func (*Transport) SuffixProtocol() int {
+	return ma.P_TLS
+}
+
+func (*Transport) SuffixMatcher() mafmt.Pattern {
+	return mafmt.Base(ma.P_TLS)
 }
