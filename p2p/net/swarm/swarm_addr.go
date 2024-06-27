@@ -18,7 +18,17 @@ func (s *Swarm) ListenAddresses() []ma.Multiaddr {
 func (s *Swarm) listenAddressesNoLock() []ma.Multiaddr {
 	addrs := make([]ma.Multiaddr, 0, len(s.listeners.m)+10) // A bit extra so we may avoid an extra allocation in the for loop below.
 	for l := range s.listeners.m {
-		addrs = append(addrs, l.Multiaddr())
+		a := l.Multiaddr()
+		// remove ip6zone from the addresses
+		ma.ForEach(a, func(c ma.Component) bool {
+			if c.Protocol().Code == ma.P_IP6ZONE {
+				_, a = ma.SplitFirst(a)
+			}
+			return false
+		})
+		if a != nil {
+			addrs = append(addrs, a)
+		}
 	}
 	return addrs
 }
@@ -29,11 +39,10 @@ const ifaceAddrsCacheDuration = 1 * time.Minute
 // listens. It expands "any interface" addresses (/ip4/0.0.0.0, /ip6/::) to
 // use the known local interfaces.
 func (s *Swarm) InterfaceListenAddresses() ([]ma.Multiaddr, error) {
-	s.listeners.RLock() // RLock start
-
+	s.listeners.RLock()
 	ifaceListenAddres := s.listeners.ifaceListenAddres
 	isEOL := time.Now().After(s.listeners.cacheEOL)
-	s.listeners.RUnlock() // RLock end
+	s.listeners.RUnlock()
 
 	if !isEOL {
 		// Cache is valid, clone the slice
@@ -41,13 +50,10 @@ func (s *Swarm) InterfaceListenAddresses() ([]ma.Multiaddr, error) {
 	}
 
 	// Cache is not valid
-	// Perfrom double checked locking
-
 	s.listeners.Lock() // Lock start
 
 	ifaceListenAddres = s.listeners.ifaceListenAddres
-	isEOL = time.Now().After(s.listeners.cacheEOL)
-	if isEOL {
+	if time.Now().After(s.listeners.cacheEOL) {
 		// Cache is still invalid
 		listenAddres := s.listenAddressesNoLock()
 		if len(listenAddres) > 0 {
