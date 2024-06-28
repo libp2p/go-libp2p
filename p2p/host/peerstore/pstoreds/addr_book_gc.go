@@ -145,9 +145,9 @@ func (gc *dsAddrBookGc) purgeLookahead() {
 		log.Warnf("failed while creating batch to purge GC entries: %v", err)
 	}
 
-	// This function drops an unparseable GC entry; this is for safety. It is an escape hatch in case
+	// This function drops an unparsable GC entry; this is for safety. It is an escape hatch in case
 	// we modify the format of keys going forward. If a user runs a new version against an old DB,
-	// if we don't clean up unparseable entries we'll end up accumulating garbage.
+	// if we don't clean up unparsable entries we'll end up accumulating garbage.
 	dropInError := func(key ds.Key, err error, msg string) {
 		if err != nil {
 			log.Warnf("failed while %s record with GC key: %v, err: %v; deleting", msg, key, err)
