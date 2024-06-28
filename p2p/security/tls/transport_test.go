@@ -501,7 +501,7 @@ func TestInvalidCerts(t *testing.T) {
 		identity.config.Certificates = []tls.Certificate{cert}
 	}
 
-	unparseableKeyExtension := func(identity *Identity) {
+	unparsableKeyExtension := func(identity *Identity) {
 		cert := getCert(&x509.Certificate{
 			SerialNumber: big.NewInt(1),
 			NotBefore:    time.Now().Add(-time.Hour),
@@ -513,7 +513,7 @@ func TestInvalidCerts(t *testing.T) {
 		identity.config.Certificates = []tls.Certificate{cert}
 	}
 
-	unparseableKey := func(identity *Identity) {
+	unparsableKey := func(identity *Identity) {
 		data, err := asn1.Marshal(signedKey{PubKey: []byte("foobar")})
 		require.NoError(t, err)
 		cert := getCert(&x509.Certificate{
@@ -605,12 +605,12 @@ func TestInvalidCerts(t *testing.T) {
 		},
 		{
 			name:     "key extension not parseable",
-			apply:    unparseableKeyExtension,
+			apply:    unparsableKeyExtension,
 			checkErr: func(t *testing.T, err error) { require.Contains(t, err.Error(), "asn1") },
 		},
 		{
 			name:  "key protobuf not parseable",
-			apply: unparseableKey,
+			apply: unparsableKey,
 			checkErr: func(t *testing.T, err error) {
 				require.Contains(t, err.Error(), "unmarshalling public key failed: proto:")
 			},

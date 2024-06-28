@@ -43,7 +43,7 @@ type secureSession struct {
 
 	initiatorEarlyDataHandler, responderEarlyDataHandler EarlyDataHandler
 
-	// ConnectionState holds state information releated to the secureSession entity.
+	// ConnectionState holds state information related to the secureSession entity.
 	connectionState network.ConnectionState
 }
 
