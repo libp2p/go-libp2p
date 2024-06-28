@@ -922,7 +922,7 @@ func TestTrimHostAddrList(t *testing.T) {
 			out:       []ma.Multiaddr{tcpPublic},
 		},
 		{
-			name:      "Public and private preffered over local",
+			name:      "Public and private preferred over local",
 			in:        []ma.Multiaddr{tcpPublic, tcpPrivate, quicLocal},
 			threshold: len(tcpPublic.Bytes()) + len(tcpPrivate.Bytes()),
 			out:       []ma.Multiaddr{tcpPublic, tcpPrivate},
