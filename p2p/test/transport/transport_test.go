@@ -18,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
@@ -719,6 +720,53 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 			_, err := client.NewStream(ctx, server.ID(), ping.ID)
 			require.Error(t, err)
 			require.False(t, errors.Is(err, context.DeadlineExceeded), "expected error to be not be context deadline exceeded")
+		})
+	}
+}
+
+// TestConnDroppedWhenBlocked is similar to TestCloseConnWhenBlocked, but for
+// transports like WebRTC we don't have a connection when we block it.  Instead
+// we just ignore the connection attempt. This tests that the client hits the
+// connection attempt deadline and neither server nor client see a successful
+// connection attempt
+func TestConnDroppedWhenBlocked(t *testing.T) {
+	for _, tc := range transportsToTest {
+		if tc.Name != "WebRTC" {
+			continue
+		}
+		t.Run(tc.Name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
+			mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
+				// Block the connection
+				return nil, fmt.Errorf("connections blocked")
+			})
+			mockRcmgr.EXPECT().Close().AnyTimes()
+
+			server := tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: mockRcmgr})
+			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer server.Close()
+			defer client.Close()
+
+			serverSub, err := server.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
+			require.NoError(t, err)
+			clientSub, err := client.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
+			require.NoError(t, err)
+
+			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_, err = client.NewStream(ctx, server.ID(), ping.ID)
+			require.Error(t, err)
+			require.True(t, errors.Is(err, context.DeadlineExceeded), "The client should have hit the deadline when connecting")
+			select {
+			case <-serverSub.Out():
+				t.Fatal("expected no connected event. Connection should have failed")
+			case <-clientSub.Out():
+				t.Fatal("expected no connected event. Connection should have failed")
+			case <-time.After(time.Second):
+			}
 		})
 	}
 }
