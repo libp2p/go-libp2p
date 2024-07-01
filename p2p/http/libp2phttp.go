@@ -227,7 +227,10 @@ var ErrNoListeners = errors.New("nothing to listen on")
 
 func (h *Host) setupListeners(listenerErrCh chan error) error {
 	for _, addr := range h.ListenAddrs {
-		parsedAddr := parseMultiaddr(addr)
+		parsedAddr, err := parseMultiaddr(addr)
+		if err != nil {
+			return err
+		}
 		// resolve the host
 		ipaddr, err := net.ResolveIPAddr("ip", parsedAddr.host)
 		if err != nil {
@@ -477,7 +480,57 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 	resp.Body = &streamReadCloser{resp.Body, s}
 
+	locUrl, err := resp.Location()
+	if err == nil {
+		// Location url in response. Is this a multiaddr uri? and is it relative?
+		// If it's relative we want to convert it to an absolute multiaddr uri
+		// so that the next request knows how to reach the endpoint.
+		if locUrl.Scheme == "multiaddr" && resp.Request.URL.Scheme == "multiaddr" {
+			// Check if it's a relative URI and turn it into an absolute one
+			u, err := relativeMultiaddrURIToAbs(resp.Request.URL, locUrl)
+			if err == nil {
+				// It was a relative URI and we were able to convert it to an absolute one
+				// Update the location header to be an absolute multiaddr uri
+				resp.Header.Set("Location", u.String())
+			}
+		}
+	}
+
 	return resp, nil
+}
+
+// relativeMultiaddrURIToAbs takes a relative multiaddr URI and turns it into an
+// absolute one. Useful, for example, when a server gives us a relative URI for a redirect.
+// It allows the following request (the one after redirected) to reach the correct server.
+func relativeMultiaddrURIToAbs(original *url.URL, relative *url.URL) (*url.URL, error) {
+	// Is this a relative uri? We know if it is because non-relative URI's of the form:
+	// "multiaddr:/ip4/1.2.3.4/tcp/9899" when parsed by Go's url package will have url.OmitHost == true
+	// But if it is relative (just a path to an http resource e.g. /here-instead)
+	// a redirect will inherit the multiaddr scheme, but set url.OmitHost == false. It will also stringify as something like
+	// multiaddr://here-instead.
+	if relative.OmitHost {
+		// Not relative (at least we can't tell). Nothing we can do here
+		return nil, errors.New("not relative")
+	}
+	originalStr := original.RawPath
+	if originalStr == "" {
+		originalStr = original.Path
+	}
+	originalMa, err := ma.NewMultiaddr(originalStr)
+	if err != nil {
+		return nil, errors.New("original uri is not a multiaddr")
+	}
+
+	relativePathComponent, err := ma.NewComponent("http-path", relative.Path)
+	if err != nil {
+		return nil, errors.New("relative path is not a valid http-path")
+	}
+
+	withoutPath, _ := ma.SplitFunc(originalMa, func(c ma.Component) bool {
+		return c.Protocol().Code == ma.P_HTTP_PATH
+	})
+	withNewPath := withoutPath.Encapsulate(relativePathComponent)
+	return url.Parse("multiaddr:" + withNewPath.String())
 }
 
 // roundTripperForSpecificServer is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
@@ -657,12 +710,23 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	addr, isHTTP := normalizeHTTPMultiaddr(addr)
+	parsed, err := parseMultiaddr(addr)
+	if err != nil {
+		return nil, err
+	}
+
 	if isHTTP {
-		parsed := parseMultiaddr(addr)
 		scheme := "http"
 		if parsed.useHTTPS {
 			scheme = "https"
 		}
+		u := url.URL{
+			Scheme: scheme,
+			Host:   parsed.host + ":" + parsed.port,
+			Path:   parsed.httpPath,
+		}
+		r.URL = &u
+
 		h.initDefaultRT()
 		rt := h.DefaultClientRoundTripper
 		if parsed.sni != parsed.host {
@@ -676,13 +740,6 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 			rt.TLSClientConfig.ServerName = parsed.sni
 		}
 
-		// TODO add http-path support
-		url := url.URL{
-			Scheme: scheme,
-			Host:   parsed.host + ":" + parsed.port,
-		}
-
-		r.URL = &url
 		return rt.RoundTrip(r)
 	}
 
@@ -690,14 +747,23 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("can not do HTTP over streams. Missing StreamHost")
 	}
 
-	addr, pid := peer.SplitAddr(addr)
-	if pid == "" {
+	if parsed.peer == "" {
 		return nil, fmt.Errorf("no peer ID in multiaddr")
 	}
-	h.StreamHost.Peerstore().AddAddrs(pid, []ma.Multiaddr{addr}, peerstore.TempAddrTTL)
+	withoutHTTPPath, _ := ma.SplitFunc(addr, func(c ma.Component) bool {
+		return c.Protocol().Code == ma.P_HTTP_PATH
+	})
+	h.StreamHost.Peerstore().AddAddrs(parsed.peer, []ma.Multiaddr{withoutHTTPPath}, peerstore.TempAddrTTL)
 
+	// Set the Opaque field to the http-path so that the HTTP request only makes
+	// a reference to that path and not the whole multiaddr uri
+	r.URL.Opaque = parsed.httpPath
+	if r.Host == "" {
+		// Fill in the host if it's not already set
+		r.Host = parsed.host + ":" + parsed.port
+	}
 	srt := streamRoundTripper{
-		server:       pid,
+		server:       parsed.peer,
 		skipAddAddrs: true,
 		httpHost:     h,
 		h:            h.StreamHost,
@@ -750,7 +816,10 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 
 	// Currently the HTTP transport can not authenticate peer IDs.
 	if !options.serverMustAuthenticatePeerID && len(httpAddrs) > 0 && (options.preferHTTPTransport || (firstAddrIsHTTP && !existingStreamConn)) {
-		parsed := parseMultiaddr(httpAddrs[0])
+		parsed, err := parseMultiaddr(httpAddrs[0])
+		if err != nil {
+			return nil, err
+		}
 		scheme := "http"
 		if parsed.useHTTPS {
 			scheme = "https"
@@ -791,15 +860,18 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 	return &streamRoundTripper{h: h.StreamHost, server: server.ID, serverAddrs: nonHTTPAddrs, httpHost: h}, nil
 }
 
-type httpMultiaddr struct {
+type explodedMultiaddr struct {
 	useHTTPS bool
 	host     string
 	port     string
 	sni      string
+	httpPath string
+	peer     peer.ID
 }
 
-func parseMultiaddr(addr ma.Multiaddr) httpMultiaddr {
-	out := httpMultiaddr{}
+func parseMultiaddr(addr ma.Multiaddr) (explodedMultiaddr, error) {
+	out := explodedMultiaddr{}
+	var err error
 	ma.ForEach(addr, func(c ma.Component) bool {
 		switch c.Protocol().Code {
 		case ma.P_IP4, ma.P_IP6, ma.P_DNS, ma.P_DNS4, ma.P_DNS6:
@@ -810,15 +882,27 @@ func parseMultiaddr(addr ma.Multiaddr) httpMultiaddr {
 			out.useHTTPS = true
 		case ma.P_SNI:
 			out.sni = c.Value()
-
+		case ma.P_HTTP_PATH:
+			out.httpPath, err = url.QueryUnescape(c.Value())
+			if err == nil && out.httpPath[0] != '/' {
+				out.httpPath = "/" + out.httpPath
+			}
+		case ma.P_P2P:
+			out.peer, err = peer.Decode(c.Value())
 		}
-		return out.host == "" || out.port == "" || !out.useHTTPS || out.sni == ""
+
+		// stop if there is an error, otherwise iterate over all components in case this is a circuit address
+		return err == nil
 	})
 
 	if out.useHTTPS && out.sni == "" {
 		out.sni = out.host
 	}
-	return out
+
+	if out.httpPath == "" {
+		out.httpPath = "/"
+	}
+	return out, err
 }
 
 var httpComponent, _ = ma.NewComponent("http", "")
@@ -839,6 +923,9 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 		}
 		return false
 	})
+	if beforeHTTPS == nil || !isHTTPMultiaddr {
+		return addr, false
+	}
 
 	if afterIncludingHTTPS == nil {
 		// No HTTPS component, just return the original
@@ -918,7 +1005,7 @@ func (h *Host) getAndStorePeerMetadata(ctx context.Context, roundtripper http.Ro
 }
 
 func requestPeerMeta(ctx context.Context, roundtripper http.RoundTripper, wellKnownResource string) (PeerMeta, error) {
-	req, err := http.NewRequest("GET", wellKnownResource, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", wellKnownResource, nil)
 	if err != nil {
 		return nil, err
 	}
