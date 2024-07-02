@@ -343,7 +343,11 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 	} else {
 		fxopts = append(fxopts,
 			fx.Provide(func(key quic.StatelessResetKey, tokenGenerator quic.TokenGeneratorKey, _ *swarm.Swarm, lifecycle fx.Lifecycle) (*quicreuse.ConnManager, error) {
-				cm, err := quicreuse.NewConnManager(key, tokenGenerator)
+				var opts []quicreuse.Option
+				if !cfg.DisableMetrics {
+					opts = append(opts, quicreuse.EnableMetrics(cfg.PrometheusRegisterer))
+				}
+				cm, err := quicreuse.NewConnManager(key, tokenGenerator, opts...)
 				if err != nil {
 					return nil, err
 				}
