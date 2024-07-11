@@ -598,3 +598,40 @@ func SwarmOpts(opts ...swarm.Option) Option {
 		return nil
 	}
 }
+
+// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses
+// in identify. If you know your public addresses upfront, the recommended way is to use
+// AddressFactory to provide the external adddress to the host and use this option to disable
+// discovery from identify.
+func DisableIdentifyAddressDiscovery() Option {
+	return func(cfg *Config) error {
+		cfg.DisableIdentifyAddressDiscovery = true
+		return nil
+	}
+}
+
+// EnableAutoNATv2 enables autonat v2
+func EnableAutoNATv2() Option {
+	return func(cfg *Config) error {
+		cfg.EnableAutoNATv2 = true
+		return nil
+	}
+}
+
+// UDPBlackHoleSuccessCounter configures libp2p to use f as the black hole filter for UDP addrs
+func UDPBlackHoleSuccessCounter(f *swarm.BlackHoleSuccessCounter) Option {
+	return func(cfg *Config) error {
+		cfg.UDPBlackHoleSuccessCounter = f
+		cfg.CustomUDPBlackHoleSuccessCounter = true
+		return nil
+	}
+}
+
+// IPv6BlackHoleSuccessCounter configures libp2p to use f as the black hole filter for IPv6 addrs
+func IPv6BlackHoleSuccessCounter(f *swarm.BlackHoleSuccessCounter) Option {
+	return func(cfg *Config) error {
+		cfg.IPv6BlackHoleSuccessCounter = f
+		cfg.CustomIPv6BlackHoleSuccessCounter = true
+		return nil
+	}
+}

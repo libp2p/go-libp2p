@@ -10,6 +10,7 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
@@ -133,6 +134,18 @@ var DefaultPrometheusRegisterer = func(cfg *Config) error {
 	return cfg.Apply(PrometheusRegisterer(prometheus.DefaultRegisterer))
 }
 
+var defaultUDPBlackHoleDetector = func(cfg *Config) error {
+	// A black hole is a binary property. On a network if UDP dials are blocked, all dials will
+	// fail. So a low success rate of 5 out 100 dials is good enough.
+	return cfg.Apply(UDPBlackHoleSuccessCounter(&swarm.BlackHoleSuccessCounter{N: 100, MinSuccesses: 5, Name: "UDP"}))
+}
+
+var defaultIPv6BlackHoleDetector = func(cfg *Config) error {
+	// A black hole is a binary property. On a network if there is no IPv6 connectivity, all
+	// dials will fail. So a low success rate of 5 out 100 dials is good enough.
+	return cfg.Apply(IPv6BlackHoleSuccessCounter(&swarm.BlackHoleSuccessCounter{N: 100, MinSuccesses: 5, Name: "IPv6"}))
+}
+
 // Complete list of default options and when to fallback on them.
 //
 // Please *DON'T* specify default options any other way. Putting this all here
@@ -188,6 +201,18 @@ var defaults = []struct {
 	{
 		fallback: func(cfg *Config) bool { return !cfg.DisableMetrics && cfg.PrometheusRegisterer == nil },
 		opt:      DefaultPrometheusRegisterer,
+	},
+	{
+		fallback: func(cfg *Config) bool {
+			return !cfg.CustomUDPBlackHoleSuccessCounter && cfg.UDPBlackHoleSuccessCounter == nil
+		},
+		opt: defaultUDPBlackHoleDetector,
+	},
+	{
+		fallback: func(cfg *Config) bool {
+			return !cfg.CustomIPv6BlackHoleSuccessCounter && cfg.IPv6BlackHoleSuccessCounter == nil
+		},
+		opt: defaultIPv6BlackHoleDetector,
 	},
 }
 

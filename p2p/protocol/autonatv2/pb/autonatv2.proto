@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package autonatv2.pb;
+
+message Message {
+    oneof msg {
+        DialRequest dialRequest   = 1;
+        DialResponse dialResponse = 2;
+        DialDataRequest dialDataRequest = 3;
+        DialDataResponse dialDataResponse = 4;
+    }
+}
+
+message DialRequest {
+    repeated bytes addrs = 1;
+    fixed64 nonce = 2;
+}
+
+
+message DialDataRequest {
+    uint32 addrIdx = 1;
+    uint64 numBytes = 2;
+}
+
+
+enum DialStatus {
+    UNUSED            = 0;
+    E_DIAL_ERROR      = 100;
+    E_DIAL_BACK_ERROR = 101;
+    OK                = 200;
+}
+
+
+message DialResponse {
+    enum ResponseStatus {
+        E_INTERNAL_ERROR   = 0;
+        E_REQUEST_REJECTED = 100; 
+        E_DIAL_REFUSED     = 101;
+        OK  = 200; 
+    }
+
+    ResponseStatus status = 1;
+    uint32 addrIdx        = 2; 
+    DialStatus dialStatus = 3;
+}
+
+
+message DialDataResponse {
+    bytes data = 1;
+}
+
+
+message DialBack {
+    fixed64 nonce = 1;
+}
+
+
+message DialBackResponse {
+    enum DialBackStatus {
+        OK = 0;
+    }
+
+    DialBackStatus status = 1;
+}

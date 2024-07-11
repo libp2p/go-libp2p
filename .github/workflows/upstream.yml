@@ -32,10 +32,10 @@ jobs:
         run: |
           go version
           go env
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           path: 'libp2p'
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           repository: ${{ matrix.upstream }}
           path: upstream

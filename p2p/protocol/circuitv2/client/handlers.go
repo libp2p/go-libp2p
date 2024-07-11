@@ -22,6 +22,8 @@ func (c *Client) handleStreamV2(s network.Stream) {
 	defer rd.Close()
 
 	writeResponse := func(status pbv2.Status) error {
+		s.SetWriteDeadline(time.Now().Add(StreamTimeout))
+		defer s.SetWriteDeadline(time.Time{})
 		wr := util.NewDelimitedWriter(s)
 
 		var msg pbv2.StopMessage
@@ -67,7 +69,7 @@ func (c *Client) handleStreamV2(s network.Stream) {
 	// relay connection and we mark the connection as transient.
 	var stat network.ConnStats
 	if limit := msg.GetLimit(); limit != nil {
-		stat.Transient = true
+		stat.Limited = true
 		stat.Extra = make(map[interface{}]interface{})
 		stat.Extra[StatLimitDuration] = time.Duration(limit.GetDuration()) * time.Second
 		stat.Extra[StatLimitData] = limit.GetData()

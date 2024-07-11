@@ -53,63 +53,63 @@ func (rc realclock) Now() time.Time {
 }
 
 // Option is an option that can be passed when constructing a test swarm.
-type Option func(*testing.T, *config)
+type Option func(testing.TB, *config)
 
 // WithClock sets the clock to use for this swarm
 func WithClock(clock clock) Option {
-	return func(_ *testing.T, c *config) {
+	return func(_ testing.TB, c *config) {
 		c.clock = clock
 	}
 }
 
 func WithSwarmOpts(swarmOpts ...swarm.Option) Option {
-	return func(_ *testing.T, c *config) {
+	return func(_ testing.TB, c *config) {
 		c.swarmOpts = swarmOpts
 	}
 }
 
 // OptDisableReuseport disables reuseport in this test swarm.
-var OptDisableReuseport Option = func(_ *testing.T, c *config) {
+var OptDisableReuseport Option = func(_ testing.TB, c *config) {
 	c.disableReuseport = true
 }
 
 // OptDialOnly prevents the test swarm from listening.
-var OptDialOnly Option = func(_ *testing.T, c *config) {
+var OptDialOnly Option = func(_ testing.TB, c *config) {
 	c.dialOnly = true
 }
 
 // OptDisableTCP disables TCP.
-var OptDisableTCP Option = func(_ *testing.T, c *config) {
+var OptDisableTCP Option = func(_ testing.TB, c *config) {
 	c.disableTCP = true
 }
 
 // OptDisableQUIC disables QUIC.
-var OptDisableQUIC Option = func(_ *testing.T, c *config) {
+var OptDisableQUIC Option = func(_ testing.TB, c *config) {
 	c.disableQUIC = true
 }
 
 // OptConnGater configures the given connection gater on the test
 func OptConnGater(cg connmgr.ConnectionGater) Option {
-	return func(_ *testing.T, c *config) {
+	return func(_ testing.TB, c *config) {
 		c.connectionGater = cg
 	}
 }
 
 // OptPeerPrivateKey configures the peer private key which is then used to derive the public key and peer ID.
 func OptPeerPrivateKey(sk crypto.PrivKey) Option {
-	return func(_ *testing.T, c *config) {
+	return func(_ testing.TB, c *config) {
 		c.sk = sk
 	}
 }
 
 func EventBus(b event.Bus) Option {
-	return func(_ *testing.T, c *config) {
+	return func(_ testing.TB, c *config) {
 		c.eventBus = b
 	}
 }
 
 // GenUpgrader creates a new connection upgrader for use with this swarm.
-func GenUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater, opts ...tptu.Option) transport.Upgrader {
+func GenUpgrader(t testing.TB, n *swarm.Swarm, connGater connmgr.ConnectionGater, opts ...tptu.Option) transport.Upgrader {
 	id := n.LocalPeer()
 	pk := n.Peerstore().PrivKey(id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
@@ -120,7 +120,7 @@ func GenUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater
 }
 
 // GenSwarm generates a new test swarm.
-func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
+func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 	var cfg config
 	cfg.clock = realclock{}
 	for _, o := range opts {

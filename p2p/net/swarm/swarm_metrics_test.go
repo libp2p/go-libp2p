@@ -94,8 +94,8 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		"FailedDialing":    func() { mt.FailedDialing(randItem(addrs), randItem(errors), randItem(errors)) },
 		"DialCompleted":    func() { mt.DialCompleted(mrand.Intn(2) == 1, mrand.Intn(10)) },
 		"DialRankingDelay": func() { mt.DialRankingDelay(time.Duration(mrand.Intn(1e10))) },
-		"UpdatedBlackHoleFilterState": func() {
-			mt.UpdatedBlackHoleFilterState(
+		"UpdatedBlackHoleSuccessCounter": func() {
+			mt.UpdatedBlackHoleSuccessCounter(
 				randItem(bhfNames),
 				randItem(bhfState),
 				mrand.Intn(100),

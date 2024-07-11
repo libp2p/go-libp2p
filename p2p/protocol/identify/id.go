@@ -34,24 +34,27 @@ import (
 
 var log = logging.Logger("net/identify")
 
+var Timeout = 30 * time.Second // timeout on all incoming Identify interactions
+
 const (
 	// ID is the protocol.ID of version 1.0.0 of the identify service.
 	ID = "/ipfs/id/1.0.0"
 	// IDPush is the protocol.ID of the Identify push protocol.
 	// It sends full identify messages containing the current state of the peer.
 	IDPush = "/ipfs/id/push/1.0.0"
-)
 
-const ServiceName = "libp2p.identify"
+	ServiceName = "libp2p.identify"
 
-const maxPushConcurrency = 32
-
-var Timeout = 60 * time.Second // timeout on all incoming Identify interactions
-
-const (
-	legacyIDSize = 2 * 1024 // 2k Bytes
-	signedIDSize = 8 * 1024 // 8K
-	maxMessages  = 10
+	legacyIDSize          = 2 * 1024
+	signedIDSize          = 8 * 1024
+	maxOwnIdentifyMsgSize = 4 * 1024 // smaller than what we accept. This is 4k to be compatible with rust-libp2p
+	maxMessages           = 10
+	maxPushConcurrency    = 32
+	// number of addresses to keep for peers we have disconnected from for peerstore.RecentlyConnectedTTL time
+	// This number can be small as we already filter peer addresses based on whether the peer is connected to us over
+	// localhost, private IP or public IP address
+	recentlyConnectedPeerMaxAddrs = 20
+	connectedPeerMaxAddrs         = 500
 )
 
 var defaultUserAgent = "github.com/libp2p/go-libp2p"
@@ -159,7 +162,8 @@ type idService struct {
 	addrMu sync.Mutex
 
 	// our own observed addresses.
-	observedAddrs *ObservedAddrManager
+	observedAddrMgr            *ObservedAddrManager
+	disableObservedAddrManager bool
 
 	emitters struct {
 		evtPeerProtocolsUpdated        event.Emitter
@@ -171,6 +175,12 @@ type idService struct {
 		sync.Mutex
 		snapshot identifySnapshot
 	}
+
+	natEmitter *natEmitter
+}
+
+type normalizer interface {
+	NormalizeMultiaddr(ma.Multiaddr) ma.Multiaddr
 }
 
 // NewIDService constructs a new *idService and activates it by
@@ -199,11 +209,27 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		metricsTracer:           cfg.metricsTracer,
 	}
 
-	observedAddrs, err := NewObservedAddrManager(h)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create observed address manager: %s", err)
+	var normalize func(ma.Multiaddr) ma.Multiaddr
+	if hn, ok := h.(normalizer); ok {
+		normalize = hn.NormalizeMultiaddr
 	}
-	s.observedAddrs = observedAddrs
+
+	var err error
+	if cfg.disableObservedAddrManager {
+		s.disableObservedAddrManager = true
+	} else {
+		observedAddrs, err := NewObservedAddrManager(h.Network().ListenAddresses,
+			h.Addrs, h.Network().InterfaceListenAddresses, normalize)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create observed address manager: %s", err)
+		}
+		natEmitter, err := newNATEmitter(h, observedAddrs, time.Minute)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create nat emitter: %s", err)
+		}
+		s.natEmitter = natEmitter
+		s.observedAddrMgr = observedAddrs
+	}
 
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
@@ -341,17 +367,26 @@ func (ids *idService) sendPushes(ctx context.Context) {
 // Close shuts down the idService
 func (ids *idService) Close() error {
 	ids.ctxCancel()
-	ids.observedAddrs.Close()
+	if !ids.disableObservedAddrManager {
+		ids.observedAddrMgr.Close()
+		ids.natEmitter.Close()
+	}
 	ids.refCount.Wait()
 	return nil
 }
 
 func (ids *idService) OwnObservedAddrs() []ma.Multiaddr {
-	return ids.observedAddrs.Addrs()
+	if ids.disableObservedAddrManager {
+		return nil
+	}
+	return ids.observedAddrMgr.Addrs()
 }
 
 func (ids *idService) ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr {
-	return ids.observedAddrs.AddrsFor(local)
+	if ids.disableObservedAddrManager {
+		return nil
+	}
+	return ids.observedAddrMgr.AddrsFor(local)
 }
 
 // IdentifyConn runs the Identify protocol on a connection.
@@ -400,8 +435,6 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 			ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
 			return
 		}
-
-		ids.emitters.evtPeerIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: c.RemotePeer()})
 	}()
 
 	return e.IdentifyWaitChan
@@ -410,7 +443,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 func (ids *idService) identifyConn(c network.Conn) error {
 	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
 	defer cancel()
-	s, err := c.NewStream(network.WithUseTransient(ctx, "identify"))
+	s, err := c.NewStream(network.WithAllowLimitedConn(ctx, "identify"))
 	if err != nil {
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return err
@@ -555,10 +588,18 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 }
 
 func (ids *idService) updateSnapshot() (updated bool) {
-	addrs := ids.Host.Addrs()
-	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
 	protos := ids.Host.Mux().Protocols()
 	slices.Sort(protos)
+
+	addrs := ids.Host.Addrs()
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
+
+	usedSpace := len(ids.ProtocolVersion) + len(ids.UserAgent)
+	for i := 0; i < len(protos); i++ {
+		usedSpace += len(protos[i])
+	}
+	addrs = trimHostAddrList(addrs, maxOwnIdentifyMsgSize-usedSpace-256) // 256 bytes of buffer
+
 	snapshot := identifySnapshot{
 		addrs:     addrs,
 		protocols: protos,
@@ -711,8 +752,16 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 		})
 	}
 
-	// mes.ObservedAddr
-	ids.consumeObservedAddress(mes.GetObservedAddr(), c)
+	obsAddr, err := ma.NewMultiaddrBytes(mes.GetObservedAddr())
+	if err != nil {
+		log.Debugf("error parsing received observed addr for %s: %s", c, err)
+		obsAddr = nil
+	}
+
+	if obsAddr != nil && !ids.disableObservedAddrManager {
+		// TODO refactor this to use the emitted events instead of having this func call explicitly.
+		ids.observedAddrMgr.Record(c, obsAddr)
+	}
 
 	// mes.ListenAddrs
 	laddrs := mes.GetListenAddrs()
@@ -746,7 +795,8 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	// Taking the lock ensures that we don't concurrently process a disconnect.
 	ids.addrMu.Lock()
 	ttl := peerstore.RecentlyConnectedAddrTTL
-	if ids.Host.Network().Connectedness(p) == network.Connected {
+	switch ids.Host.Network().Connectedness(p) {
+	case network.Limited, network.Connected:
 		ttl = peerstore.ConnectedAddrTTL
 	}
 
@@ -763,19 +813,25 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 		signedAddrs, err := ids.consumeSignedPeerRecord(c.RemotePeer(), signedPeerRecord)
 		if err != nil {
 			log.Debugf("failed to consume signed peer record: %s", err)
+			signedPeerRecord = nil
 		} else {
 			addrs = signedAddrs
 		}
 	} else {
 		addrs = lmaddrs
 	}
-	ids.Host.Peerstore().AddAddrs(p, filterAddrs(addrs, c.RemoteMultiaddr()), ttl)
+	addrs = filterAddrs(addrs, c.RemoteMultiaddr())
+	if len(addrs) > connectedPeerMaxAddrs {
+		addrs = addrs[:connectedPeerMaxAddrs]
+	}
+
+	ids.Host.Peerstore().AddAddrs(p, addrs, ttl)
 
 	// Finally, expire all temporary addrs.
 	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
 	ids.addrMu.Unlock()
 
-	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
+	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), addrs)
 
 	// get protocol versions
 	pv := mes.GetProtocolVersion()
@@ -786,6 +842,18 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 
 	// get the key from the other side. we may not have it (no-auth transport)
 	ids.consumeReceivedPubKey(c, mes.PublicKey)
+
+	ids.emitters.evtPeerIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{
+		Peer:             c.RemotePeer(),
+		Conn:             c,
+		ListenAddrs:      lmaddrs,
+		Protocols:        mesProtocols,
+		SignedPeerRecord: signedPeerRecord,
+		ObservedAddr:     obsAddr,
+		ProtocolVersion:  pv,
+		AgentVersion:     av,
+	})
+
 }
 
 func (ids *idService) consumeSignedPeerRecord(p peer.ID, signedPeerRecord *record.Envelope) ([]ma.Multiaddr, error) {
@@ -919,20 +987,6 @@ func HasConsistentTransport(a ma.Multiaddr, green []ma.Multiaddr) bool {
 	return false
 }
 
-func (ids *idService) consumeObservedAddress(observed []byte, c network.Conn) {
-	if observed == nil {
-		return
-	}
-
-	maddr, err := ma.NewMultiaddrBytes(observed)
-	if err != nil {
-		log.Debugf("error parsing received observed addr for %s: %s", c, err)
-		return
-	}
-
-	ids.observedAddrs.Record(c, maddr)
-}
-
 // addConnWithLock assuems caller holds the connsMu lock
 func (ids *idService) addConnWithLock(c network.Conn) {
 	_, found := ids.conns[c]
@@ -975,28 +1029,108 @@ func (nn *netNotifiee) Disconnected(_ network.Network, c network.Conn) {
 	delete(ids.conns, c)
 	ids.connsMu.Unlock()
 
-	if ids.Host.Network().Connectedness(c.RemotePeer()) != network.Connected {
-		// Last disconnect.
-		// Undo the setting of addresses to peer.ConnectedAddrTTL we did
-		ids.addrMu.Lock()
-		defer ids.addrMu.Unlock()
-		ids.Host.Peerstore().UpdateAddrs(c.RemotePeer(), peerstore.ConnectedAddrTTL, peerstore.RecentlyConnectedAddrTTL)
+	if !ids.disableObservedAddrManager {
+		ids.observedAddrMgr.removeConn(c)
 	}
+
+	// Last disconnect.
+	// Undo the setting of addresses to peer.ConnectedAddrTTL we did
+	ids.addrMu.Lock()
+	defer ids.addrMu.Unlock()
+
+	// This check MUST happen after acquiring the Lock as identify on a different connection
+	// might be trying to add addresses.
+	switch ids.Host.Network().Connectedness(c.RemotePeer()) {
+	case network.Connected, network.Limited:
+		return
+	}
+	// peerstore returns the elements in a random order as it uses a map to store the addresses
+	addrs := ids.Host.Peerstore().Addrs(c.RemotePeer())
+	n := len(addrs)
+	if n > recentlyConnectedPeerMaxAddrs {
+		// We want to always save the address we are connected to
+		for i, a := range addrs {
+			if a.Equal(c.RemoteMultiaddr()) {
+				addrs[i], addrs[0] = addrs[0], addrs[i]
+			}
+		}
+		n = recentlyConnectedPeerMaxAddrs
+	}
+	ids.Host.Peerstore().UpdateAddrs(c.RemotePeer(), peerstore.ConnectedAddrTTL, peerstore.TempAddrTTL)
+	ids.Host.Peerstore().AddAddrs(c.RemotePeer(), addrs[:n], peerstore.RecentlyConnectedAddrTTL)
+	ids.Host.Peerstore().UpdateAddrs(c.RemotePeer(), peerstore.TempAddrTTL, 0)
 }
 
 func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)      {}
 func (nn *netNotifiee) ListenClose(n network.Network, a ma.Multiaddr) {}
 
-// filterAddrs filters the address slice based on the remove multiaddr:
-// * if it's a localhost address, no filtering is applied
-// * if it's a local network address, all localhost addresses are filtered out
-// * if it's a public address, all localhost and local network addresses are filtered out
+// filterAddrs filters the address slice based on the remote multiaddr:
+//   - if it's a localhost address, no filtering is applied
+//   - if it's a private network address, all localhost addresses are filtered out
+//   - if it's a public address, all non-public addresses are filtered out
+//   - if none of the above, (e.g. discard prefix), no filtering is applied.
+//     We can't do anything meaningful here so we do nothing.
 func filterAddrs(addrs []ma.Multiaddr, remote ma.Multiaddr) []ma.Multiaddr {
-	if manet.IsIPLoopback(remote) {
+	switch {
+	case manet.IsIPLoopback(remote):
+		return addrs
+	case manet.IsPrivateAddr(remote):
+		return ma.FilterAddrs(addrs, func(a ma.Multiaddr) bool { return !manet.IsIPLoopback(a) })
+	case manet.IsPublicAddr(remote):
+		return ma.FilterAddrs(addrs, manet.IsPublicAddr)
+	default:
 		return addrs
 	}
-	if manet.IsPrivateAddr(remote) {
-		return ma.FilterAddrs(addrs, func(a ma.Multiaddr) bool { return !manet.IsIPLoopback(a) })
+}
+
+func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
+	totalSize := 0
+	for _, a := range addrs {
+		totalSize += len(a.Bytes())
 	}
-	return ma.FilterAddrs(addrs, manet.IsPublicAddr)
+	if totalSize <= maxSize {
+		return addrs
+	}
+
+	score := func(addr ma.Multiaddr) int {
+		var res int
+		if manet.IsPublicAddr(addr) {
+			res |= 1 << 12
+		} else if !manet.IsIPLoopback(addr) {
+			res |= 1 << 11
+		}
+		var protocolWeight int
+		ma.ForEach(addr, func(c ma.Component) bool {
+			switch c.Protocol().Code {
+			case ma.P_QUIC_V1:
+				protocolWeight = 5
+			case ma.P_TCP:
+				protocolWeight = 4
+			case ma.P_WSS:
+				protocolWeight = 3
+			case ma.P_WEBTRANSPORT:
+				protocolWeight = 2
+			case ma.P_WEBRTC_DIRECT:
+				protocolWeight = 1
+			case ma.P_P2P:
+				return false
+			}
+			return true
+		})
+		res |= 1 << protocolWeight
+		return res
+	}
+
+	slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
+		return score(b) - score(a) // b-a for reverse order
+	})
+	totalSize = 0
+	for i, a := range addrs {
+		totalSize += len(a.Bytes())
+		if totalSize > maxSize {
+			addrs = addrs[:i]
+			break
+		}
+	}
+	return addrs
 }

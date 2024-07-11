@@ -15,11 +15,60 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 )
 
 const queueLen = 16
 const handshakeTimeout = 10 * time.Second
+
+type connKey struct{}
+
+// negotiatingConn is a wrapper around a quic.Connection that lets us wrap it in
+// our own context for the duration of the upgrade process. Upgrading a quic
+// connection to an h3 connection to a webtransport session.
+type negotiatingConn struct {
+	quic.Connection
+	ctx    context.Context
+	cancel context.CancelFunc
+	// stopClose is a function that stops the connection from being closed when
+	// the context is done. Returns true if the connection close function was
+	// not called.
+	stopClose func() bool
+	err       error
+}
+
+func (c *negotiatingConn) Unwrap() (quic.Connection, error) {
+	defer c.cancel()
+	if c.stopClose != nil {
+		// unwrap the first time
+		if !c.stopClose() {
+			c.err = errTimeout
+		}
+		c.stopClose = nil
+	}
+	if c.err != nil {
+		return nil, c.err
+	}
+	return c.Connection, nil
+}
+
+func wrapConn(ctx context.Context, c quic.Connection, handshakeTimeout time.Duration) *negotiatingConn {
+	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
+	stopClose := context.AfterFunc(ctx, func() {
+		log.Debugf("failed to handshake on conn: %s", c.RemoteAddr())
+		c.CloseWithError(1, "")
+	})
+	return &negotiatingConn{
+		Connection: c,
+		ctx:        ctx,
+		cancel:     cancel,
+		stopClose:  stopClose,
+	}
+}
+
+var errTimeout = errors.New("timeout")
 
 type listener struct {
 	transport       *transport
@@ -56,6 +105,11 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 		addr:            reuseListener.Addr(),
 		multiaddr:       localMultiaddr,
 		server: webtransport.Server{
+			H3: http3.Server{
+				ConnContext: func(ctx context.Context, c quic.Connection) context.Context {
+					return context.WithValue(ctx, connKey{}, c)
+				},
+			},
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 	}
@@ -71,7 +125,8 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 				log.Debugw("serving failed", "addr", ln.Addr(), "error", err)
 				return
 			}
-			go ln.server.ServeQUICConn(conn)
+			wrapped := wrapConn(ln.ctx, conn, t.handshakeTimeout)
+			go ln.server.ServeQUICConn(wrapped)
 		}
 	}()
 	return ln, nil
@@ -137,13 +192,32 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 		return err
 	}
 
-	conn := newConn(l.transport, sess, sconn, connScope)
+	connVal := r.Context().Value(connKey{})
+	if connVal == nil {
+		log.Errorf("missing conn from context")
+		sess.CloseWithError(1, "")
+		return errors.New("invalid context")
+	}
+	nconn, ok := connVal.(*negotiatingConn)
+	if !ok {
+		log.Errorf("unexpected connection in context. invalid conn type: %T", nconn)
+		sess.CloseWithError(1, "")
+		return errors.New("invalid context")
+	}
+	qconn, err := nconn.Unwrap()
+	if err != nil {
+		log.Debugf("handshake timed out: %s", r.RemoteAddr)
+		sess.CloseWithError(1, "")
+		return err
+	}
+
+	conn := newConn(l.transport, sess, sconn, connScope, qconn)
 	l.transport.addConn(sess, conn)
 	select {
 	case l.queue <- conn:
 	default:
 		log.Debugw("accept queue full, dropping incoming connection", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
-		sess.CloseWithError(1, "")
+		conn.Close()
 		return errors.New("accept queue full")
 	}
 

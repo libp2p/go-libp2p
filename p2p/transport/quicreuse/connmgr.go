@@ -222,3 +222,7 @@ func (c *ConnManager) Close() error {
 	}
 	return c.reuseUDP4.Close()
 }
+
+func (c *ConnManager) ClientConfig() *quic.Config {
+	return c.clientConfig
+}

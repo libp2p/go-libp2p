@@ -13,12 +13,12 @@ var DialPeerTimeout = 60 * time.Second
 type noDialCtxKey struct{}
 type dialPeerTimeoutCtxKey struct{}
 type forceDirectDialCtxKey struct{}
-type useTransientCtxKey struct{}
+type allowLimitedConnCtxKey struct{}
 type simConnectCtxKey struct{ isClient bool }
 
 var noDial = noDialCtxKey{}
 var forceDirectDial = forceDirectDialCtxKey{}
-var useTransient = useTransientCtxKey{}
+var allowLimitedConn = allowLimitedConnCtxKey{}
 var simConnectIsServer = simConnectCtxKey{}
 var simConnectIsClient = simConnectCtxKey{isClient: true}
 
@@ -94,15 +94,35 @@ func WithDialPeerTimeout(ctx context.Context, timeout time.Duration) context.Con
 	return context.WithValue(ctx, dialPeerTimeoutCtxKey{}, timeout)
 }
 
+// WithAllowLimitedConn constructs a new context with an option that instructs
+// the network that it is acceptable to use a limited connection when opening a
+// new stream.
+func WithAllowLimitedConn(ctx context.Context, reason string) context.Context {
+	return context.WithValue(ctx, allowLimitedConn, reason)
+}
+
 // WithUseTransient constructs a new context with an option that instructs the network
 // that it is acceptable to use a transient connection when opening a new stream.
+//
+// Deprecated: Use WithAllowLimitedConn instead.
 func WithUseTransient(ctx context.Context, reason string) context.Context {
-	return context.WithValue(ctx, useTransient, reason)
+	return context.WithValue(ctx, allowLimitedConn, reason)
+}
+
+// GetAllowLimitedConn returns true if the allow limited conn option is set in the context.
+func GetAllowLimitedConn(ctx context.Context) (usetransient bool, reason string) {
+	v := ctx.Value(allowLimitedConn)
+	if v != nil {
+		return true, v.(string)
+	}
+	return false, ""
 }
 
 // GetUseTransient returns true if the use transient option is set in the context.
+//
+// Deprecated: Use GetAllowLimitedConn instead.
 func GetUseTransient(ctx context.Context) (usetransient bool, reason string) {
-	v := ctx.Value(useTransient)
+	v := ctx.Value(allowLimitedConn)
 	if v != nil {
 		return true, v.(string)
 	}

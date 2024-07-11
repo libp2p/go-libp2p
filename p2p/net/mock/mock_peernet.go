@@ -434,3 +434,7 @@ func (pn *peernet) notifyAll(notification func(f network.Notifiee)) {
 func (pn *peernet) ResourceManager() network.ResourceManager {
 	return &network.NullResourceManager{}
 }
+
+func (pn *peernet) CanDial(p peer.ID, addr ma.Multiaddr) bool {
+	return true
+}

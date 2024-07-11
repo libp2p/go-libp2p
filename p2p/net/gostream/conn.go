@@ -2,6 +2,7 @@ package gostream
 
 import (
 	"context"
+	"io"
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/host"
@@ -14,11 +15,20 @@ import (
 // libp2p streams.
 type conn struct {
 	network.Stream
+	ignoreEOF bool
+}
+
+func (c *conn) Read(b []byte) (int, error) {
+	n, err := c.Stream.Read(b)
+	if err != nil && c.ignoreEOF && err == io.EOF {
+		return n, nil
+	}
+	return n, err
 }
 
 // newConn creates a conn given a libp2p stream
-func newConn(s network.Stream) net.Conn {
-	return &conn{s}
+func newConn(s network.Stream, ignoreEOF bool) net.Conn {
+	return &conn{s, ignoreEOF}
 }
 
 // LocalAddr returns the local network address.
@@ -39,5 +49,5 @@ func Dial(ctx context.Context, h host.Host, pid peer.ID, tag protocol.ID) (net.C
 	if err != nil {
 		return nil, err
 	}
-	return newConn(s), nil
+	return newConn(s, false), nil
 }

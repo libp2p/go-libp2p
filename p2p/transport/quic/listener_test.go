@@ -1,9 +1,11 @@
 package libp2pquic
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -12,8 +14,11 @@ import (
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
+	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+	"github.com/quic-go/quic-go"
+	"go.uber.org/mock/gomock"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -112,4 +117,52 @@ func TestCorrectNumberOfVirtualListeners(t *testing.T) {
 	require.Len(t, tpt.listeners[udpAddr.String()], 1)
 	ln.Close()
 	require.Empty(t, tpt.listeners[udpAddr.String()])
+}
+
+func TestCleanupConnWhenBlocked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
+	mockRcmgr.EXPECT().OpenConnection(network.DirInbound, false, gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
+		// Block the connection
+		return nil, fmt.Errorf("connections blocked")
+	})
+
+	server := newTransport(t, mockRcmgr)
+	serverTpt := server.(*transport)
+	defer server.(io.Closer).Close()
+
+	localAddrV1 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
+	ln, err := server.Listen(localAddrV1)
+	require.NoError(t, err)
+	defer ln.Close()
+	go ln.Accept()
+
+	client := newTransport(t, nil)
+	ctx := context.Background()
+
+	var quicErr *quic.ApplicationError = &quic.ApplicationError{}
+	conn, err := client.Dial(ctx, ln.Multiaddr(), serverTpt.localPeer)
+	if err != nil && errors.As(err, &quicErr) {
+		// We hit our expected application error
+		return
+	}
+
+	// No error yet, let's continue using the conn
+	s, err := conn.OpenStream(ctx)
+	if err != nil && errors.As(err, &quicErr) {
+		// We hit our expected application error
+		return
+	}
+
+	// No error yet, let's continue using the conn
+	s.SetReadDeadline(time.Now().Add(10 * time.Second))
+	b := [1]byte{}
+	_, err = s.Read(b[:])
+	if err != nil && errors.As(err, &quicErr) {
+		// We hit our expected application error
+		return
+	}
+
+	t.Fatalf("expected application error, got %v", err)
 }

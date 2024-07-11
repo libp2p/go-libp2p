@@ -22,7 +22,13 @@ var ErrNoConn = errors.New("no usable connection to peer")
 
 // ErrTransientConn is returned when attempting to open a stream to a peer with only a transient
 // connection, without specifying the UseTransient option.
-var ErrTransientConn = errors.New("transient connection to peer")
+//
+// Deprecated: Use ErrLimitedConn instead.
+var ErrTransientConn = ErrLimitedConn
+
+// ErrLimitedConn is returned when attempting to open a stream to a peer with only a conn
+// connection, without specifying the AllowLimitedConn option.
+var ErrLimitedConn = errors.New("limited connection to peer")
 
 // ErrResourceLimitExceeded is returned when attempting to perform an operation that would
 // exceed system resource limits.

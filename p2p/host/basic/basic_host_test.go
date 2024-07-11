@@ -896,3 +896,55 @@ func TestInferWebtransportAddrsFromQuic(t *testing.T) {
 	}
 
 }
+
+func TestTrimHostAddrList(t *testing.T) {
+	type testCase struct {
+		name      string
+		in        []ma.Multiaddr
+		threshold int
+		out       []ma.Multiaddr
+	}
+
+	tcpPublic := ma.StringCast("/ip4/1.1.1.1/tcp/1")
+	quicPublic := ma.StringCast("/ip4/1.1.1.1/udp/1/quic-v1")
+
+	tcpPrivate := ma.StringCast("/ip4/192.168.1.1/tcp/1")
+	quicPrivate := ma.StringCast("/ip4/192.168.1.1/udp/1/quic-v1")
+
+	tcpLocal := ma.StringCast("/ip4/127.0.0.1/tcp/1")
+	quicLocal := ma.StringCast("/ip4/127.0.0.1/udp/1/quic-v1")
+
+	testCases := []testCase{
+		{
+			name:      "Public preferred over private",
+			in:        []ma.Multiaddr{tcpPublic, quicPrivate},
+			threshold: len(tcpLocal.Bytes()),
+			out:       []ma.Multiaddr{tcpPublic},
+		},
+		{
+			name:      "Public and private preffered over local",
+			in:        []ma.Multiaddr{tcpPublic, tcpPrivate, quicLocal},
+			threshold: len(tcpPublic.Bytes()) + len(tcpPrivate.Bytes()),
+			out:       []ma.Multiaddr{tcpPublic, tcpPrivate},
+		},
+		{
+			name:      "quic preferred over tcp",
+			in:        []ma.Multiaddr{tcpPublic, quicPublic},
+			threshold: len(quicPublic.Bytes()),
+			out:       []ma.Multiaddr{quicPublic},
+		},
+		{
+			name:      "no filtering on large threshold",
+			in:        []ma.Multiaddr{tcpPublic, quicPublic, quicLocal, tcpLocal, tcpPrivate},
+			threshold: 10000,
+			out:       []ma.Multiaddr{tcpPublic, quicPublic, quicLocal, tcpLocal, tcpPrivate},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := trimHostAddrList(tc.in, tc.threshold)
+			require.ElementsMatch(t, got, tc.out)
+		})
+	}
+}

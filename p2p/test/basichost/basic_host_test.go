@@ -3,6 +3,7 @@ package basichost
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,7 +77,7 @@ func TestNoStreamOverTransientConnection(t *testing.T) {
 
 	require.Error(t, err)
 
-	_, err = h1.NewStream(network.WithUseTransient(context.Background(), "test"), h2.ID(), "/testprotocol")
+	_, err = h1.NewStream(network.WithAllowLimitedConn(context.Background(), "test"), h2.ID(), "/testprotocol")
 	require.NoError(t, err)
 }
 
@@ -157,4 +160,42 @@ func TestNewStreamTransientConnection(t *testing.T) {
 	}()
 	<-done
 	<-done
+}
+
+func TestAddrFactorCertHashAppend(t *testing.T) {
+	wtAddr := "/ip4/1.2.3.4/udp/1/quic-v1/webtransport"
+	webrtcAddr := "/ip4/1.2.3.4/udp/2/webrtc-direct"
+	addrsFactory := func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		return append(addrs,
+			ma.StringCast(wtAddr),
+			ma.StringCast(webrtcAddr),
+		)
+	}
+	h, err := libp2p.New(
+		libp2p.AddrsFactory(addrsFactory),
+		libp2p.Transport(libp2pwebrtc.New),
+		libp2p.Transport(libp2pwebtransport.New),
+		libp2p.ListenAddrStrings(
+			"/ip4/0.0.0.0/udp/0/quic-v1/webtransport",
+			"/ip4/0.0.0.0/udp/0/webrtc-direct",
+		),
+	)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		addrs := h.Addrs()
+		var hasWebRTC, hasWebTransport bool
+		for _, addr := range addrs {
+			if strings.HasPrefix(addr.String(), webrtcAddr) {
+				if _, err := addr.ValueForProtocol(ma.P_CERTHASH); err == nil {
+					hasWebRTC = true
+				}
+			}
+			if strings.HasPrefix(addr.String(), wtAddr) {
+				if _, err := addr.ValueForProtocol(ma.P_CERTHASH); err == nil {
+					hasWebTransport = true
+				}
+			}
+		}
+		return hasWebRTC && hasWebTransport
+	}, 5*time.Second, 100*time.Millisecond)
 }

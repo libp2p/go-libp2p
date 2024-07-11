@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"sync/atomic"
@@ -826,4 +827,38 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 
 		require.True(t, found, "Failed after hour: %v", i)
 	}
+}
+
+func TestH3ConnClosed(t *testing.T) {
+	_, serverKey := newIdentity(t)
+	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, nil, libp2pwebtransport.WithHandshakeTimeout(1*time.Second))
+	require.NoError(t, err)
+	defer tr.(io.Closer).Close()
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
+	require.NoError(t, err)
+	defer ln.Close()
+
+	p, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	conn, err := quic.Dial(context.Background(), p, ln.Addr(), &tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{http3.NextProtoH3},
+	}, nil)
+	require.NoError(t, err)
+	rt := &http3.SingleDestinationRoundTripper{
+		Connection: conn,
+	}
+	rt.Start()
+	require.Eventually(t, func() bool {
+		c := http.Client{
+			Transport: rt,
+			Timeout:   1 * time.Second,
+		}
+		resp, err := c.Get(fmt.Sprintf("https://%s", ln.Addr().String()))
+		if err != nil {
+			return true
+		}
+		resp.Body.Close()
+		return false
+	}, 10*time.Second, 1*time.Second)
 }

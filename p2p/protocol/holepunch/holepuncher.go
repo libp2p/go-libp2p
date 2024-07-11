@@ -174,7 +174,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 // initiateHolePunch opens a new hole punching coordination stream,
 // exchanges the addresses and measures the RTT.
 func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multiaddr, time.Duration, error) {
-	hpCtx := network.WithUseTransient(hp.ctx, "hole-punch")
+	hpCtx := network.WithAllowLimitedConn(hp.ctx, "hole-punch")
 	sCtx := network.WithNoDial(hpCtx, "hole-punch")
 
 	str, err := hp.host.NewStream(sCtx, rp, Protocol)

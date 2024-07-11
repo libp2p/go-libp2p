@@ -21,11 +21,6 @@ func main() {
 }
 
 func run() {
-	// The context governs the lifetime of the libp2p node.
-	// Cancelling it will stop the host.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// To construct a simple host with all the default settings, just use `New`
 	h, err := libp2p.New()
 	if err != nil {
@@ -79,7 +74,7 @@ func run() {
 		libp2p.NATPortMap(),
 		// Let this host use the DHT to find other hosts
 		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
-			idht, err = dht.New(ctx, h)
+			idht, err = dht.New(context.Background(), h)
 			return idht, err
 		}),
 		// If you want to help other peers to figure out if they are behind

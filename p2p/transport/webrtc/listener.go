@@ -209,6 +209,10 @@ func (l *listener) setupConnection(
 	// in a release.
 	settingEngine.SetReceiveMTU(udpmux.ReceiveBufSize)
 	settingEngine.DetachDataChannels()
+	settingEngine.SetSCTPMaxReceiveBufferSize(sctpReceiveBufferSize)
+	if err := scope.ReserveMemory(sctpReceiveBufferSize, network.ReservationPriorityMedium); err != nil {
+		return nil, err
+	}
 
 	w, err = newWebRTCConnection(settingEngine, l.config)
 	if err != nil {
@@ -326,7 +330,7 @@ func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection) <-chan error 
 	errC := make(chan error, 1)
 	var once sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		switch state {
+		switch pc.ConnectionState() {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(errC) })
 		case webrtc.PeerConnectionStateFailed:

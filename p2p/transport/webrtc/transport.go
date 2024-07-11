@@ -40,15 +40,12 @@ import (
 	"github.com/libp2p/go-msgio"
 
 	ma "github.com/multiformats/go-multiaddr"
-	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multihash"
 
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
 )
-
-var dialMatcher = mafmt.And(mafmt.UDP, mafmt.Base(ma.P_WEBRTC_DIRECT), mafmt.Base(ma.P_CERTHASH))
 
 var webrtcComponent *ma.Component
 
@@ -79,6 +76,8 @@ const (
 	DefaultDisconnectedTimeout = 20 * time.Second
 	DefaultFailedTimeout       = 30 * time.Second
 	DefaultKeepaliveTimeout    = 15 * time.Second
+
+	sctpReceiveBufferSize = 100_000
 )
 
 type WebRTCTransport struct {
@@ -110,6 +109,9 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 	if psk != nil {
 		log.Error("WebRTC doesn't support private networks yet.")
 		return nil, fmt.Errorf("WebRTC doesn't support private networks yet")
+	}
+	if rcmgr == nil {
+		rcmgr = &network.NullResourceManager{}
 	}
 	localPeerID, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
@@ -174,7 +176,8 @@ func (t *WebRTCTransport) Proxy() bool {
 }
 
 func (t *WebRTCTransport) CanDial(addr ma.Multiaddr) bool {
-	return dialMatcher.Matches(addr)
+	isValid, n := IsWebRTCDirectMultiaddr(addr)
+	return isValid && n > 0
 }
 
 // Listen returns a listener for addr.
@@ -314,6 +317,10 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	// If you run pion on a system with only the loopback interface UP,
 	// it will not connect to anything.
 	settingEngine.SetIncludeLoopbackCandidate(true)
+	settingEngine.SetSCTPMaxReceiveBufferSize(sctpReceiveBufferSize)
+	if err := scope.ReserveMemory(sctpReceiveBufferSize, network.ReservationPriorityMedium); err != nil {
+		return nil, err
+	}
 
 	w, err = newWebRTCConnection(settingEngine, t.webrtcConfig)
 	if err != nil {
@@ -408,15 +415,17 @@ func genUfrag() string {
 		uFragAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 		uFragPrefix   = "libp2p+webrtc+v1/"
 		uFragIdLength = 32
-		uFragIdOffset = len(uFragPrefix)
-		uFragLength   = uFragIdOffset + uFragIdLength
+		uFragLength   = len(uFragPrefix) + uFragIdLength
 	)
 
 	seed := [8]byte{}
 	rand.Read(seed[:])
 	r := mrand.New(mrand.NewSource(binary.BigEndian.Uint64(seed[:])))
 	b := make([]byte, uFragLength)
-	for i := uFragIdOffset; i < uFragLength; i++ {
+	for i := 0; i < len(uFragPrefix); i++ {
+		b[i] = uFragPrefix[i]
+	}
+	for i := len(uFragPrefix); i < uFragLength; i++ {
 		b[i] = uFragAlphabet[r.Intn(len(uFragAlphabet))]
 	}
 	return string(b)
@@ -505,6 +514,24 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	return secureConn.RemotePublicKey(), nil
 }
 
+func (t *WebRTCTransport) AddCertHashes(addr ma.Multiaddr) (ma.Multiaddr, bool) {
+	listenerFingerprint, err := t.getCertificateFingerprint()
+	if err != nil {
+		return nil, false
+	}
+
+	encodedLocalFingerprint, err := encodeDTLSFingerprint(listenerFingerprint)
+	if err != nil {
+		return nil, false
+	}
+
+	certComp, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_CERTHASH).Name, encodedLocalFingerprint)
+	if err != nil {
+		return nil, false
+	}
+	return addr.Encapsulate(certComp), true
+}
+
 type netConnWrapper struct {
 	*stream
 }
@@ -591,4 +618,36 @@ func newWebRTCConnection(settings webrtc.SettingEngine, config webrtc.Configurat
 		HandshakeDataChannel: handshakeDataChannel,
 		IncomingDataChannels: incomingDataChannels,
 	}, nil
+}
+
+// IsWebRTCDirectMultiaddr returns whether addr is a /webrtc-direct multiaddr with the count of certhashes
+// in addr
+func IsWebRTCDirectMultiaddr(addr ma.Multiaddr) (bool, int) {
+	var foundUDP, foundWebRTC bool
+	certHashCount := 0
+	ma.ForEach(addr, func(c ma.Component) bool {
+		if !foundUDP {
+			if c.Protocol().Code == ma.P_UDP {
+				foundUDP = true
+			}
+			return true
+		}
+		if !foundWebRTC && foundUDP {
+			// protocol after udp must be webrtc-direct
+			if c.Protocol().Code != ma.P_WEBRTC_DIRECT {
+				return false
+			}
+			foundWebRTC = true
+			return true
+		}
+		if foundWebRTC {
+			if c.Protocol().Code == ma.P_CERTHASH {
+				certHashCount++
+			} else {
+				return false
+			}
+		}
+		return true
+	})
+	return foundUDP && foundWebRTC, certHashCount
 }

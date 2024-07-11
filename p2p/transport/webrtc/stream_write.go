@@ -112,9 +112,9 @@ func (s *stream) SetWriteDeadline(t time.Time) error {
 
 func (s *stream) availableSendSpace() int {
 	buffered := int(s.dataChannel.BufferedAmount())
-	availableSpace := maxBufferedAmount - buffered
+	availableSpace := maxSendBuffer - buffered
 	if availableSpace+maxTotalControlMessagesSize < 0 { // this should never happen, but better check
-		log.Errorw("data channel buffered more data than the maximum amount", "max", maxBufferedAmount, "buffered", buffered)
+		log.Errorw("data channel buffered more data than the maximum amount", "max", maxSendBuffer, "buffered", buffered)
 	}
 	return availableSpace
 }
@@ -129,11 +129,10 @@ func (s *stream) cancelWrite() error {
 		return nil
 	}
 	s.sendState = sendStateReset
+	// Remove reference to this stream from data channel
+	s.dataChannel.OnBufferedAmountLow(nil)
 	s.notifyWriteStateChanged()
-	if err := s.writer.WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()}); err != nil {
-		return err
-	}
-	return nil
+	return s.writer.WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()})
 }
 
 func (s *stream) CloseWrite() error {
@@ -144,11 +143,10 @@ func (s *stream) CloseWrite() error {
 		return nil
 	}
 	s.sendState = sendStateDataSent
+	// Remove reference to this stream from data channel
+	s.dataChannel.OnBufferedAmountLow(nil)
 	s.notifyWriteStateChanged()
-	if err := s.writer.WriteMsg(&pb.Message{Flag: pb.Message_FIN.Enum()}); err != nil {
-		return err
-	}
-	return nil
+	return s.writer.WriteMsg(&pb.Message{Flag: pb.Message_FIN.Enum()})
 }
 
 func (s *stream) notifyWriteStateChanged() {

@@ -254,7 +254,7 @@ loop:
 						if simConnect, _, _ := network.GetSimultaneousConnect(ad.ctx); !simConnect {
 							ad.ctx = network.WithSimultaneousConnect(ad.ctx, isClient, reason)
 							// update the element in dq to use the simultaneous connect delay.
-							dq.Add(network.AddrDelay{
+							dq.UpdateOrAdd(network.AddrDelay{
 								Addr:  ad.addr,
 								Delay: addrDelay[string(ad.addr.Bytes())],
 							})
@@ -436,12 +436,31 @@ type dialQueue struct {
 
 // newDialQueue returns a new dialQueue
 func newDialQueue() *dialQueue {
-	return &dialQueue{q: make([]network.AddrDelay, 0, 16)}
+	return &dialQueue{
+		q: make([]network.AddrDelay, 0, 16),
+	}
 }
 
-// Add adds adelay to the queue. If another element exists in the queue with
-// the same address, it replaces that element.
+// Add adds a new element to the dialQueue. To update an element use UpdateOrAdd.
 func (dq *dialQueue) Add(adelay network.AddrDelay) {
+	for i := dq.Len() - 1; i >= 0; i-- {
+		if dq.q[i].Delay <= adelay.Delay {
+			// insert at pos i+1
+			dq.q = append(dq.q, network.AddrDelay{}) // extend the slice
+			copy(dq.q[i+2:], dq.q[i+1:])
+			dq.q[i+1] = adelay
+			return
+		}
+	}
+	// insert at position 0
+	dq.q = append(dq.q, network.AddrDelay{}) // extend the slice
+	copy(dq.q[1:], dq.q[0:])
+	dq.q[0] = adelay
+}
+
+// UpdateOrAdd updates the elements with address adelay.Addr to the new delay
+// Useful when hole punching
+func (dq *dialQueue) UpdateOrAdd(adelay network.AddrDelay) {
 	for i := 0; i < dq.Len(); i++ {
 		if dq.q[i].Addr.Equal(adelay.Addr) {
 			if dq.q[i].Delay == adelay.Delay {
@@ -451,19 +470,9 @@ func (dq *dialQueue) Add(adelay network.AddrDelay) {
 			// remove the element
 			copy(dq.q[i:], dq.q[i+1:])
 			dq.q = dq.q[:len(dq.q)-1]
-			break
 		}
 	}
-
-	for i := 0; i < dq.Len(); i++ {
-		if dq.q[i].Delay > adelay.Delay {
-			dq.q = append(dq.q, network.AddrDelay{}) // extend the slice
-			copy(dq.q[i+1:], dq.q[i:])
-			dq.q[i] = adelay
-			return
-		}
-	}
-	dq.q = append(dq.q, adelay)
+	dq.Add(adelay)
 }
 
 // NextBatch returns all the elements in the queue with the highest priority

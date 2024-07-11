@@ -93,10 +93,7 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 	}
 
 	if msg.GetType() != pbv2.HopMessage_STATUS {
-		return nil, ReservationError{
-			Status: pbv2.Status_MALFORMED_MESSAGE,
-			Reason: fmt.Sprintf("unexpected relay response: not a status message (%d)", msg.GetType()),
-			err:    err}
+		return nil, ReservationError{Status: pbv2.Status_MALFORMED_MESSAGE, Reason: fmt.Sprintf("unexpected relay response: not a status message (%d)", msg.GetType())}
 	}
 
 	if status := msg.GetStatus(); status != pbv2.Status_OK {
@@ -130,7 +127,7 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 
 	voucherBytes := rsvp.GetVoucher()
 	if voucherBytes != nil {
-		_, rec, err := record.ConsumeEnvelope(voucherBytes, proto.RecordDomain)
+		env, rec, err := record.ConsumeEnvelope(voucherBytes, proto.RecordDomain)
 		if err != nil {
 			return nil, ReservationError{
 				Status: pbv2.Status_MALFORMED_MESSAGE,
@@ -145,6 +142,27 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 				Status: pbv2.Status_MALFORMED_MESSAGE,
 				Reason: fmt.Sprintf("unexpected voucher record type: %+T", rec),
 			}
+		}
+		signerPeerID, err := peer.IDFromPublicKey(env.PublicKey)
+		if err != nil {
+			return nil, ReservationError{
+				Status: pbv2.Status_MALFORMED_MESSAGE,
+				Reason: fmt.Sprintf("invalid voucher signing public key: %s", err),
+				err:    err,
+			}
+		}
+		if signerPeerID != voucher.Relay {
+			return nil, ReservationError{
+				Status: pbv2.Status_MALFORMED_MESSAGE,
+				Reason: fmt.Sprintf("invalid voucher relay id: expected %s, got %s", signerPeerID, voucher.Relay),
+			}
+		}
+		if h.ID() != voucher.Peer {
+			return nil, ReservationError{
+				Status: pbv2.Status_MALFORMED_MESSAGE,
+				Reason: fmt.Sprintf("invalid voucher peer id: expected %s, got %s", h.ID(), voucher.Peer),
+			}
+
 		}
 		result.Voucher = voucher
 	}

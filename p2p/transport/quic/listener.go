@@ -51,8 +51,10 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		if err != nil {
 			return nil, err
 		}
-		c, err := l.setupConn(qconn)
+		c, err := l.wrapConn(qconn)
 		if err != nil {
+			log.Debugf("failed to setup connection: %s", err)
+			qconn.CloseWithError(1, "")
 			continue
 		}
 		l.transport.addConn(qconn, c)
@@ -79,7 +81,10 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 	}
 }
 
-func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
+// wrapConn wraps a QUIC connection into a libp2p [tpt.CapableConn].
+// If wrapping fails. The caller is responsible for cleaning up the
+// connection.
+func (l *listener) wrapConn(qconn quic.Connection) (*conn, error) {
 	remoteMultiaddr, err := quicreuse.ToQuicMultiaddr(qconn.RemoteAddr(), qconn.ConnectionState().Version)
 	if err != nil {
 		return nil, err
@@ -90,18 +95,16 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 		log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
 		return nil, err
 	}
-	c, err := l.setupConnWithScope(qconn, connScope, remoteMultiaddr)
+	c, err := l.wrapConnWithScope(qconn, connScope, remoteMultiaddr)
 	if err != nil {
 		connScope.Done()
-		qconn.CloseWithError(1, "")
 		return nil, err
 	}
 
 	return c, nil
 }
 
-func (l *listener) setupConnWithScope(qconn quic.Connection, connScope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr) (*conn, error) {
-
+func (l *listener) wrapConnWithScope(qconn quic.Connection, connScope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr) (*conn, error) {
 	// The tls.Config used to establish this connection already verified the certificate chain.
 	// Since we don't have any way of knowing which tls.Config was used though,
 	// we have to re-determine the peer's identity here.

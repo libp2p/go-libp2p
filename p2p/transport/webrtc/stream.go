@@ -17,24 +17,19 @@ import (
 const (
 	// maxMessageSize is the maximum message size of the Protobuf message we send / receive.
 	maxMessageSize = 16384
-	// Pion SCTP association has an internal receive buffer of 1MB (roughly, 1MB per connection).
-	// We can change this value in the SettingEngine before creating the peerconnection.
-	// https://github.com/pion/webrtc/blob/v3.1.49/sctptransport.go#L341
-	maxBufferedAmount = 2 * maxMessageSize
+	// maxSendBuffer is the maximum data we enqueue on the underlying data channel for writes.
+	// The underlying SCTP layer has an unbounded buffer for writes. We limit the amount enqueued
+	// per stream is limited to avoid a single stream monopolizing the entire connection.
+	maxSendBuffer = 2 * maxMessageSize
+	// sendBufferLowThreshold is the threshold below which we write more data on the underlying
+	// data channel. We want a notification as soon as we can write 1 full sized message.
+	sendBufferLowThreshold = maxSendBuffer - maxMessageSize
 	// maxTotalControlMessagesSize is the maximum total size of all control messages we will
 	// write on this stream.
 	// 4 control messages of size 10 bytes + 10 bytes buffer. This number doesn't need to be
 	// exact. In the worst case, we enqueue these many bytes more in the webrtc peer connection
 	// send queue.
 	maxTotalControlMessagesSize = 50
-	// bufferedAmountLowThreshold and maxBufferedAmount are bound
-	// to a stream but congestion control is done on the whole
-	// SCTP association. This means that a single stream can monopolize
-	// the complete congestion control window (cwnd) if it does not
-	// read stream data and it's remote continues to send. We can
-	// add messages to the send buffer once there is space for 1 full
-	// sized message.
-	bufferedAmountLowThreshold = maxBufferedAmount / 2
 
 	// Proto overhead assumption is 5 bytes
 	protoOverhead = 5
@@ -95,8 +90,8 @@ type stream struct {
 	// SetReadDeadline
 	// See: https://github.com/pion/sctp/pull/290
 	controlMessageReaderEndTime time.Time
-	controlMessageReaderDone    sync.WaitGroup
 
+	onDoneOnce          sync.Once
 	onDone              func()
 	id                  uint16 // for logging purposes
 	dataChannel         *datachannel.DataChannel
@@ -118,9 +113,7 @@ func newStream(
 		dataChannel:       rwc.(*datachannel.DataChannel),
 		onDone:            onDone,
 	}
-	// released when the controlMessageReader goroutine exits
-	s.controlMessageReaderDone.Add(1)
-	s.dataChannel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
+	s.dataChannel.SetBufferedAmountLowThreshold(sendBufferLowThreshold)
 	s.dataChannel.OnBufferedAmountLow(func() {
 		s.notifyWriteStateChanged()
 
@@ -135,7 +128,7 @@ func (s *stream) Close() error {
 	if isClosed {
 		return nil
 	}
-
+	defer s.cleanup()
 	closeWriteErr := s.CloseWrite()
 	closeReadErr := s.CloseRead()
 	if closeWriteErr != nil || closeReadErr != nil {
@@ -147,10 +140,6 @@ func (s *stream) Close() error {
 	if s.controlMessageReaderEndTime.IsZero() {
 		s.controlMessageReaderEndTime = time.Now().Add(maxFINACKWait)
 		s.setDataChannelReadDeadline(time.Now().Add(-1 * time.Hour))
-		go func() {
-			s.controlMessageReaderDone.Wait()
-			s.cleanup()
-		}()
 	}
 	s.mx.Unlock()
 	return nil
@@ -227,17 +216,10 @@ func (s *stream) spawnControlMessageReader() {
 	s.controlMessageReaderOnce.Do(func() {
 		// Spawn a goroutine to ensure that we're not holding any locks
 		go func() {
-			defer s.controlMessageReaderDone.Done()
 			// cleanup the sctp deadline timer goroutine
 			defer s.setDataChannelReadDeadline(time.Time{})
 
-			setDeadline := func() bool {
-				if s.controlMessageReaderEndTime.IsZero() || time.Now().Before(s.controlMessageReaderEndTime) {
-					s.setDataChannelReadDeadline(s.controlMessageReaderEndTime)
-					return true
-				}
-				return false
-			}
+			defer s.dataChannel.Close()
 
 			// Unblock any Read call waiting on reader.ReadMsg
 			s.setDataChannelReadDeadline(time.Now().Add(-1 * time.Hour))
@@ -256,12 +238,22 @@ func (s *stream) spawnControlMessageReader() {
 				s.processIncomingFlag(s.nextMessage.Flag)
 				s.nextMessage = nil
 			}
-			for s.closeForShutdownErr == nil &&
-				s.sendState != sendStateDataReceived && s.sendState != sendStateReset {
-				var msg pb.Message
-				if !setDeadline() {
+			var msg pb.Message
+			for {
+				// Connection closed. No need to cleanup the data channel.
+				if s.closeForShutdownErr != nil {
 					return
 				}
+				// Write half of the stream completed.
+				if s.sendState == sendStateDataReceived || s.sendState == sendStateReset {
+					return
+				}
+				// FIN_ACK wait deadling exceeded.
+				if !s.controlMessageReaderEndTime.IsZero() && time.Now().After(s.controlMessageReaderEndTime) {
+					return
+				}
+
+				s.setDataChannelReadDeadline(s.controlMessageReaderEndTime)
 				s.mx.Unlock()
 				err := s.reader.ReadMsg(&msg)
 				s.mx.Lock()
@@ -281,12 +273,9 @@ func (s *stream) spawnControlMessageReader() {
 }
 
 func (s *stream) cleanup() {
-	// Even if we close the datachannel pion keeps a reference to the datachannel around.
-	// Remove the onBufferedAmountLow callback to ensure that we at least garbage collect
-	// memory we allocated for this stream.
-	s.dataChannel.OnBufferedAmountLow(nil)
-	s.dataChannel.Close()
-	if s.onDone != nil {
-		s.onDone()
-	}
+	s.onDoneOnce.Do(func() {
+		if s.onDone != nil {
+			s.onDone()
+		}
+	})
 }

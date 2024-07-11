@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/record"
+	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
@@ -82,6 +85,45 @@ func TestReservationFailures(t *testing.T) {
 				})
 			},
 			err:    "error consuming voucher envelope: failed when unmarshalling the envelope",
+			status: pbv2.Status_MALFORMED_MESSAGE,
+		},
+		{
+			name: "invalid voucher 2",
+			streamHandler: func(s network.Stream) {
+				status := pbv2.Status_OK
+				expire := uint64(time.Now().Add(time.Hour).UnixNano())
+				priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
+				if err != nil {
+					s.Reset()
+					return
+				}
+				relay, _ := test.RandPeerID()
+				peer, _ := test.RandPeerID()
+				voucher := &proto.ReservationVoucher{
+					Relay:      relay,
+					Peer:       peer,
+					Expiration: time.Now().Add(time.Hour),
+				}
+				signedVoucher, err := record.Seal(voucher, priv)
+				if err != nil {
+					s.Reset()
+					return
+				}
+				env, err := signedVoucher.Marshal()
+				if err != nil {
+					s.Reset()
+					return
+				}
+				util.NewDelimitedWriter(s).WriteMsg(&pbv2.HopMessage{
+					Type:   pbv2.HopMessage_STATUS.Enum(),
+					Status: &status,
+					Reservation: &pbv2.Reservation{
+						Expire:  &expire,
+						Voucher: env,
+					},
+				})
+			},
+			err:    "invalid voucher relay id",
 			status: pbv2.Status_MALFORMED_MESSAGE,
 		},
 	}

@@ -339,7 +339,7 @@ func TestFailuresOnResponder(t *testing.T) {
 			defer h2.Close()
 			defer relay.Close()
 
-			s, err := h2.NewStream(network.WithUseTransient(context.Background(), "holepunch"), h1.ID(), holepunch.Protocol)
+			s, err := h2.NewStream(network.WithAllowLimitedConn(context.Background(), "holepunch"), h1.ID(), holepunch.Protocol)
 			require.NoError(t, err)
 
 			go tc.initiator(s)

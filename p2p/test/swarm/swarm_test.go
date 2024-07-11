@@ -110,16 +110,16 @@ func TestNewStreamTransientConnection(t *testing.T) {
 
 	h1.Peerstore().AddAddr(h2.ID(), relayaddr, peerstore.TempAddrTTL)
 
-	// WithUseTransient should succeed
+	// WithAllowLimitedConn should succeed
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	ctx = network.WithUseTransient(ctx, "test")
+	ctx = network.WithAllowLimitedConn(ctx, "test")
 	s, err := h1.Network().NewStream(ctx, h2.ID())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	defer s.Close()
 
-	// Without WithUseTransient should fail with context deadline exceeded
+	// Without WithAllowLimitedConn should fail with context deadline exceeded
 	ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	s, err = h1.Network().NewStream(ctx, h2.ID())

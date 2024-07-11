@@ -73,6 +73,11 @@ func (c *Conn) doClose() {
 
 	c.err = c.conn.Close()
 
+	// Send the connectedness event after closing the connection.
+	// This ensures that both remote connection close and local connection
+	// close events are sent after the underlying transport connection is closed.
+	c.swarm.connectednessEventEmitter.RemoveConn(c.RemotePeer())
+
 	// This is just for cleaning up state. The connection has already been closed.
 	// We *could* optimize this but it really isn't worth it.
 	for s := range streams {
@@ -85,10 +90,11 @@ func (c *Conn) doClose() {
 		c.notifyLk.Lock()
 		defer c.notifyLk.Unlock()
 
+		// Only notify for disconnection if we notified for connection
 		c.swarm.notifyAll(func(f network.Notifiee) {
 			f.Disconnected(c.swarm, c)
 		})
-		c.swarm.refs.Done() // taken in Swarm.addConn
+		c.swarm.refs.Done()
 	}()
 }
 
@@ -108,7 +114,6 @@ func (c *Conn) start() {
 	go func() {
 		defer c.swarm.refs.Done()
 		defer c.Close()
-
 		for {
 			ts, err := c.conn.AcceptStream()
 			if err != nil {
@@ -193,9 +198,9 @@ func (c *Conn) Stat() network.ConnStats {
 
 // NewStream returns a new Stream from this connection
 func (c *Conn) NewStream(ctx context.Context) (network.Stream, error) {
-	if c.Stat().Transient {
-		if useTransient, _ := network.GetUseTransient(ctx); !useTransient {
-			return nil, network.ErrTransientConn
+	if c.Stat().Limited {
+		if useLimited, _ := network.GetAllowLimitedConn(ctx); !useLimited {
+			return nil, network.ErrLimitedConn
 		}
 	}
 

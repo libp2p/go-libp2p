@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -114,7 +114,12 @@ func main() {
 	// DHT, so that the bootstrapping node of the DHT can go down without
 	// inhibiting future peer discovery.
 	ctx := context.Background()
-	kademliaDHT, err := dht.New(ctx, host)
+	bootstrapPeers := make([]peer.AddrInfo, len(config.BootstrapPeers))
+	for i, addr := range config.BootstrapPeers {
+		peerinfo, _ := peer.AddrInfoFromP2pAddr(addr)
+		bootstrapPeers[i] = *peerinfo
+	}
+	kademliaDHT, err := dht.New(ctx, host, dht.BootstrapPeers(bootstrapPeers...))
 	if err != nil {
 		panic(err)
 	}
@@ -126,22 +131,8 @@ func main() {
 		panic(err)
 	}
 
-	// Let's connect to the bootstrap nodes first. They will tell us about the
-	// other nodes in the network.
-	var wg sync.WaitGroup
-	for _, peerAddr := range config.BootstrapPeers {
-		peerinfo, _ := peer.AddrInfoFromP2pAddr(peerAddr)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := host.Connect(ctx, *peerinfo); err != nil {
-				logger.Warning(err)
-			} else {
-				logger.Info("Connection established with bootstrap node:", *peerinfo)
-			}
-		}()
-	}
-	wg.Wait()
+	// Wait a bit to let bootstrapping finish (really bootstrap should block until it's ready, but that isn't the case yet.)
+	time.Sleep(1 * time.Second)
 
 	// We use a rendezvous point "meet me here" to announce our location.
 	// This is like telling your friends to meet you at the Eiffel Tower.

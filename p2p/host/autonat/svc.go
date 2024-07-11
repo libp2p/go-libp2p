@@ -273,6 +273,11 @@ func (as *autoNATService) Disable() {
 	}
 }
 
+func (as *autoNATService) Close() error {
+	as.Disable()
+	return as.config.dialer.Close()
+}
+
 func (as *autoNATService) background(ctx context.Context) {
 	defer close(as.backgroundRunning)
 

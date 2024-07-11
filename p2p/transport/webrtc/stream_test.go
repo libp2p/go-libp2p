@@ -11,10 +11,12 @@ import (
 
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/libp2p/go-libp2p/core/network"
 
 	"github.com/pion/datachannel"
+	"github.com/pion/sctp"
 	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -96,6 +98,50 @@ func getDetachedDataChannels(t *testing.T) (detachedChan, detachedChan) {
 	require.NoError(t, answerPC.SetLocalDescription(answer))
 
 	return <-answerChan, <-offerRWCChan
+}
+
+// assertDataChannelOpen checks if the datachannel is open.
+// It sends empty messages on the data channel to check if the channel is still open.
+// The control message reader goroutine depends on exclusive access to datachannel.Read
+// so we have to depend on Write to determine whether the channel has been closed.
+func assertDataChannelOpen(t *testing.T, dc *datachannel.DataChannel) {
+	t.Helper()
+	emptyMsg := &pb.Message{}
+	msg, err := proto.Marshal(emptyMsg)
+	if err != nil {
+		t.Fatal("unexpected mashalling error", err)
+	}
+	for i := 0; i < 3; i++ {
+		_, err := dc.Write(msg)
+		if err != nil {
+			t.Fatal("unexpected write err: ", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// assertDataChannelClosed checks if the datachannel is closed.
+// It sends empty messages on the data channel to check if the channel has been closed.
+// The control message reader goroutine depends on exclusive access to datachannel.Read
+// so we have to depend on Write to determine whether the channel has been closed.
+func assertDataChannelClosed(t *testing.T, dc *datachannel.DataChannel) {
+	t.Helper()
+	emptyMsg := &pb.Message{}
+	msg, err := proto.Marshal(emptyMsg)
+	if err != nil {
+		t.Fatal("unexpected mashalling error", err)
+	}
+	for i := 0; i < 5; i++ {
+		_, err := dc.Write(msg)
+		if err != nil {
+			if errors.Is(err, sctp.ErrStreamClosed) {
+				return
+			} else {
+				t.Fatal("unexpected write err: ", err)
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func TestStreamSimpleReadWriteClose(t *testing.T) {
@@ -357,27 +403,22 @@ func TestStreamCloseAfterFINACK(t *testing.T) {
 	serverStr := newStream(server.dc, server.rwc, func() {})
 
 	go func() {
-		done <- true
 		err := clientStr.Close()
 		assert.NoError(t, err)
 	}()
-	<-done
 
 	select {
 	case <-done:
-		t.Fatalf("Close should not have completed without processing FIN_ACK")
 	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("Close should signal OnDone immediately")
 	}
 
+	// Reading FIN_ACK on server should trigger data channel close on the client
 	b := make([]byte, 1)
 	_, err := serverStr.Read(b)
 	require.Error(t, err)
 	require.ErrorIs(t, err, io.EOF)
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Errorf("Close should have completed")
-	}
+	assertDataChannelClosed(t, client.rwc.(*datachannel.DataChannel))
 }
 
 // TestStreamFinAckAfterStopSending tests that FIN_ACK is sent even after the write half
@@ -400,8 +441,8 @@ func TestStreamFinAckAfterStopSending(t *testing.T) {
 
 	select {
 	case <-done:
-		t.Errorf("Close should not have completed without processing FIN_ACK")
 	case <-time.After(500 * time.Millisecond):
+		t.Errorf("Close should signal onDone immediately")
 	}
 
 	// serverStr has write half closed and read half open
@@ -410,11 +451,8 @@ func TestStreamFinAckAfterStopSending(t *testing.T) {
 	_, err := serverStr.Read(b)
 	require.NoError(t, err)
 	serverStr.Close() // Sends stop_sending, fin
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatalf("Close should have completed")
-	}
+	assertDataChannelClosed(t, server.rwc.(*datachannel.DataChannel))
+	assertDataChannelClosed(t, client.rwc.(*datachannel.DataChannel))
 }
 
 func TestStreamConcurrentClose(t *testing.T) {
@@ -446,10 +484,15 @@ func TestStreamConcurrentClose(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatalf("concurrent close should succeed quickly")
 	}
+
+	// Wait for FIN_ACK AND datachannel close
+	assertDataChannelClosed(t, client.rwc.(*datachannel.DataChannel))
+	assertDataChannelClosed(t, server.rwc.(*datachannel.DataChannel))
+
 }
 
 func TestStreamResetAfterClose(t *testing.T) {
-	client, _ := getDetachedDataChannels(t)
+	client, server := getDetachedDataChannels(t)
 
 	done := make(chan bool, 2)
 	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
@@ -457,15 +500,19 @@ func TestStreamResetAfterClose(t *testing.T) {
 
 	select {
 	case <-done:
-		t.Fatalf("Close shouldn't run cleanup immediately")
 	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Close should run cleanup immediately")
 	}
-
+	// The server data channel should still be open
+	assertDataChannelOpen(t, server.rwc.(*datachannel.DataChannel))
 	clientStr.Reset()
+	// Reset closes the datachannels
+	assertDataChannelClosed(t, server.rwc.(*datachannel.DataChannel))
+	assertDataChannelClosed(t, client.rwc.(*datachannel.DataChannel))
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Reset should run callback immediately")
+		t.Fatalf("onDone should not be called twice")
+	case <-time.After(50 * time.Millisecond):
 	}
 }
 
@@ -478,30 +525,18 @@ func TestStreamDataChannelCloseOnFINACK(t *testing.T) {
 	clientStr.Close()
 
 	select {
-	case <-done:
-		t.Fatalf("Close shouldn't run cleanup immediately")
 	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Close should run cleanup immediately")
+	case <-done:
 	}
 
+	// sending FIN_ACK closes the datachannel
 	serverWriter := pbio.NewDelimitedWriter(server.rwc)
 	err := serverWriter.WriteMsg(&pb.Message{Flag: pb.Message_FIN_ACK.Enum()})
 	require.NoError(t, err)
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Callback should be run on reading FIN_ACK")
-	}
-	b := make([]byte, 100)
-	N := 0
-	for {
-		n, err := server.rwc.Read(b)
-		N += n
-		if err != nil {
-			require.ErrorIs(t, err, io.EOF)
-			break
-		}
-	}
-	require.Less(t, N, 10)
+
+	assertDataChannelClosed(t, server.rwc.(*datachannel.DataChannel))
+	assertDataChannelClosed(t, client.rwc.(*datachannel.DataChannel))
 }
 
 func TestStreamChunking(t *testing.T) {

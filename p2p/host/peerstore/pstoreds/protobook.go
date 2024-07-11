@@ -48,7 +48,7 @@ func NewProtoBook(meta pstore.PeerMetadata, opts ...ProtoBookOption) (*dsProtoBo
 			}
 			return ret
 		}(),
-		maxProtos: 1024,
+		maxProtos: 128,
 	}
 
 	for _, opt := range opts {

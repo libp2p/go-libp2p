@@ -63,9 +63,10 @@ func NewBlankHost(n network.Network, options ...Option) *BlankHost {
 	}
 
 	bh := &BlankHost{
-		n:    n,
-		cmgr: cfg.cmgr,
-		mux:  mstream.NewMultistreamMuxer[protocol.ID](),
+		n:        n,
+		cmgr:     cfg.cmgr,
+		mux:      mstream.NewMultistreamMuxer[protocol.ID](),
+		eventbus: cfg.eventBus,
 	}
 	if bh.eventbus == nil {
 		bh.eventbus = eventbus.NewBus(eventbus.WithMetricsTracer(eventbus.NewMetricsTracer()))

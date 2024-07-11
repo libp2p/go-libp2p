@@ -15,6 +15,9 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -66,6 +69,141 @@ func TestHTTPOverStreams(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "hello", string(body))
+}
+
+func TestHTTPOverStreamsSendsConnectionClose(t *testing.T) {
+	serverHost, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+	)
+	require.NoError(t, err)
+
+	httpHost := libp2phttp.Host{StreamHost: serverHost}
+
+	connectionHeaderVal := make(chan string, 1)
+	httpHost.SetHTTPHandlerAtPath("/hello", "/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello"))
+		connectionHeaderVal <- r.Header.Get("Connection")
+	}))
+
+	// Start server
+	go httpHost.Serve()
+	defer httpHost.Close()
+
+	// run client
+	clientHost, err := libp2p.New(libp2p.NoListenAddrs)
+	require.NoError(t, err)
+	clientHost.Connect(context.Background(), peer.AddrInfo{
+		ID:    serverHost.ID(),
+		Addrs: serverHost.Addrs(),
+	})
+	clientHttpHost := libp2phttp.Host{StreamHost: clientHost}
+	rt, err := clientHttpHost.NewConstrainedRoundTripper(peer.AddrInfo{ID: serverHost.ID()})
+	require.NoError(t, err)
+	client := &http.Client{Transport: rt}
+	_, err = client.Get("/")
+	require.NoError(t, err)
+
+	select {
+	case val := <-connectionHeaderVal:
+		require.Equal(t, "close", strings.ToLower(val))
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for connection header")
+	}
+}
+
+func TestHTTPOverStreamsContextAndClientTimeout(t *testing.T) {
+	const clientTimeout = 200 * time.Millisecond
+
+	serverHost, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+	)
+	require.NoError(t, err)
+
+	httpHost := libp2phttp.Host{StreamHost: serverHost}
+	httpHost.SetHTTPHandler("/hello/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * clientTimeout)
+		w.Write([]byte("hello"))
+	}))
+
+	// Start server
+	go httpHost.Serve()
+	defer httpHost.Close()
+
+	// Start client
+	clientHost, err := libp2p.New(libp2p.NoListenAddrs)
+	require.NoError(t, err)
+	clientHost.Connect(context.Background(), peer.AddrInfo{
+		ID:    serverHost.ID(),
+		Addrs: serverHost.Addrs(),
+	})
+
+	clientRT, err := (&libp2phttp.Host{StreamHost: clientHost}).NewConstrainedRoundTripper(peer.AddrInfo{ID: serverHost.ID()})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/hello/", nil)
+	require.NoError(t, err)
+
+	client := &http.Client{Transport: clientRT}
+	_, err = client.Do(req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	t.Log("OK, deadline exceeded waiting for response as expected")
+
+	// Make another request, this time using http.Client.Timeout.
+	clientRT, err = (&libp2phttp.Host{StreamHost: clientHost}).NewConstrainedRoundTripper(peer.AddrInfo{ID: serverHost.ID()})
+	require.NoError(t, err)
+
+	client = &http.Client{
+		Transport: clientRT,
+		Timeout:   clientTimeout,
+	}
+
+	_, err = client.Get("/hello/")
+	require.Error(t, err)
+	var uerr *url.Error
+	require.ErrorAs(t, err, &uerr)
+	require.True(t, uerr.Timeout())
+	t.Log("OK, timed out waiting for response as expected")
+}
+
+func TestHTTPOverStreamsReturnsConnectionClose(t *testing.T) {
+	serverHost, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+	)
+	require.NoError(t, err)
+
+	httpHost := libp2phttp.Host{StreamHost: serverHost}
+
+	httpHost.SetHTTPHandlerAtPath("/hello", "/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello"))
+	}))
+
+	// Start server
+	go httpHost.Serve()
+	defer httpHost.Close()
+
+	// Start client
+	clientHost, err := libp2p.New(libp2p.NoListenAddrs)
+	require.NoError(t, err)
+	clientHost.Connect(context.Background(), peer.AddrInfo{
+		ID:    serverHost.ID(),
+		Addrs: serverHost.Addrs(),
+	})
+
+	s, err := clientHost.NewStream(context.Background(), serverHost.ID(), libp2phttp.ProtocolIDForMultistreamSelect)
+	require.NoError(t, err)
+	_, err = s.Write([]byte("GET / HTTP/1.1\r\nHost: \r\n\r\n"))
+	require.NoError(t, err)
+
+	out := make([]byte, 1024)
+	n, err := s.Read(out)
+	if err != io.EOF {
+		require.NoError(t, err)
+	}
+
+	require.Contains(t, strings.ToLower(string(out[:n])), "connection: close")
 }
 
 func TestRoundTrippers(t *testing.T) {
@@ -205,7 +343,7 @@ func TestRoundTrippers(t *testing.T) {
 				})
 			}
 
-			// Read the .well-known/libp2p resource
+			// Read the well-known resource
 			wk, err := rt.(libp2phttp.PeerMetadataGetter).GetPeerMetadata()
 			require.NoError(t, err)
 
@@ -219,7 +357,7 @@ func TestRoundTrippers(t *testing.T) {
 func TestPlainOldHTTPServer(t *testing.T) {
 	mux := http.NewServeMux()
 	wk := libp2phttp.WellKnownHandler{}
-	mux.Handle("/.well-known/libp2p", &wk)
+	mux.Handle(libp2phttp.WellKnownProtocols, &wk)
 
 	mux.Handle("/ping/", httpping.Ping{})
 	wk.AddProtocolMeta(httpping.PingProtocolID, libp2phttp.ProtocolMeta{Path: "/ping/"})
@@ -270,7 +408,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 			},
 			getWellKnown: func(t *testing.T) (libp2phttp.PeerMeta, error) {
 				client := http.Client{}
-				resp, err := client.Get("http://" + l.Addr().String() + "/.well-known/libp2p")
+				resp, err := client.Get("http://" + l.Addr().String() + libp2phttp.WellKnownProtocols)
 				require.NoError(t, err)
 
 				b, err := io.ReadAll(resp.Body)
@@ -483,4 +621,205 @@ func TestSetHandlerAtPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServerLegacyWellKnownResource(t *testing.T) {
+	mkHTTPServer := func(wellKnown string) ma.Multiaddr {
+		mux := http.NewServeMux()
+		wk := libp2phttp.WellKnownHandler{}
+		mux.Handle(wellKnown, &wk)
+
+		mux.Handle("/ping/", httpping.Ping{})
+		wk.AddProtocolMeta(httpping.PingProtocolID, libp2phttp.ProtocolMeta{Path: "/ping/"})
+
+		server := &http.Server{Addr: "127.0.0.1:0", Handler: mux}
+
+		l, err := net.Listen("tcp", server.Addr)
+		require.NoError(t, err)
+
+		go server.Serve(l)
+		t.Cleanup(func() { server.Close() })
+		addrPort, err := netip.ParseAddrPort(l.Addr().String())
+		require.NoError(t, err)
+		return ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%d/http", addrPort.Addr().String(), addrPort.Port()))
+	}
+
+	mkServerlibp2phttp := func(enableLegacyWellKnown bool) ma.Multiaddr {
+		server := libp2phttp.Host{
+			EnableCompatibilityWithLegacyWellKnownEndpoint: enableLegacyWellKnown,
+			ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+			InsecureAllowHTTP: true,
+		}
+		server.SetHTTPHandler(httpping.PingProtocolID, httpping.Ping{})
+		go server.Serve()
+		t.Cleanup(func() { server.Close() })
+		return server.Addrs()[0]
+	}
+
+	type testCase struct {
+		name       string
+		client     libp2phttp.Host
+		serverAddr ma.Multiaddr
+		expectErr  bool
+	}
+
+	var testCases = []testCase{
+		{
+			name:       "legacy server, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkHTTPServer(libp2phttp.LegacyWellKnownProtocols),
+		},
+		{
+			name:       "up-to-date http server, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkHTTPServer(libp2phttp.WellKnownProtocols),
+		},
+		{
+			name:       "up-to-date http server, client without compat",
+			client:     libp2phttp.Host{},
+			serverAddr: mkHTTPServer(libp2phttp.WellKnownProtocols),
+		},
+		{
+			name:       "libp2phttp server with compat, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkServerlibp2phttp(true),
+		},
+		{
+			name:       "libp2phttp server without compat, client with compat",
+			client:     libp2phttp.Host{EnableCompatibilityWithLegacyWellKnownEndpoint: true},
+			serverAddr: mkServerlibp2phttp(false),
+		},
+		{
+			name:       "libp2phttp server with compat, client without compat",
+			client:     libp2phttp.Host{},
+			serverAddr: mkServerlibp2phttp(true),
+		},
+		{
+			name:       "legacy server, client without compat",
+			client:     libp2phttp.Host{},
+			serverAddr: mkHTTPServer(libp2phttp.LegacyWellKnownProtocols),
+			expectErr:  true,
+		},
+	}
+
+	for i := range testCases {
+		tc := &testCases[i] // to not copy the lock in libp2phttp.Host
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.expectErr {
+				_, err := tc.client.NamespacedClient(httpping.PingProtocolID, peer.AddrInfo{Addrs: []ma.Multiaddr{tc.serverAddr}})
+				require.Error(t, err)
+				return
+			}
+			httpClient, err := tc.client.NamespacedClient(httpping.PingProtocolID, peer.AddrInfo{Addrs: []ma.Multiaddr{tc.serverAddr}})
+			require.NoError(t, err)
+
+			err = httpping.SendPing(httpClient)
+			require.NoError(t, err)
+		})
+	}
+
+}
+
+func TestResponseWriterShouldNotHaveCancelledContext(t *testing.T) {
+	h, err := libp2p.New()
+	require.NoError(t, err)
+	defer h.Close()
+	httpHost := libp2phttp.Host{StreamHost: h}
+	go httpHost.Serve()
+	defer httpHost.Close()
+
+	closeNotifyCh := make(chan bool, 1)
+	httpHost.SetHTTPHandlerAtPath("/test", "/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Legacy code uses this to check if the connection was closed
+		//lint:ignore SA1019 This is a test to assert we do the right thing since Go HTTP stdlib depends on this.
+		ch := w.(http.CloseNotifier).CloseNotify()
+		select {
+		case <-ch:
+			closeNotifyCh <- true
+		case <-time.After(100 * time.Millisecond):
+			closeNotifyCh <- false
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	clientH, err := libp2p.New()
+	require.NoError(t, err)
+	defer clientH.Close()
+	clientHost := libp2phttp.Host{StreamHost: clientH}
+
+	rt, err := clientHost.NewConstrainedRoundTripper(peer.AddrInfo{ID: h.ID(), Addrs: h.Addrs()})
+	require.NoError(t, err)
+	httpClient := &http.Client{Transport: rt}
+	_, err = httpClient.Get("/")
+	require.NoError(t, err)
+
+	require.False(t, <-closeNotifyCh)
+}
+
+func TestHTTPHostAsRoundTripper(t *testing.T) {
+	serverHost, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+	)
+	require.NoError(t, err)
+
+	serverHttpHost := libp2phttp.Host{
+		InsecureAllowHTTP: true,
+		StreamHost:        serverHost,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+
+	serverHttpHost.SetHTTPHandlerAtPath("/hello", "/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello"))
+	}))
+
+	// Uncomment when we get the http-path changes in go-multiaddr
+	// // Different protocol.ID and mounted at a different path
+	// serverHttpHost.SetHTTPHandlerAtPath("/hello-again", "/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// 	w.Write([]byte("hello"))
+	// }))
+
+	go serverHttpHost.Serve()
+	defer serverHttpHost.Close()
+
+	testCases := []string{
+		// Version that has an http-path. Will uncomment when we get the http-path changes in go-multiaddr
+		// "multiaddr:" + serverHost.Addrs()[0].String() + "/http-path/hello",
+	}
+	for _, a := range serverHttpHost.Addrs() {
+		if _, err := a.ValueForProtocol(ma.P_HTTP); err == nil {
+			testCases = append(testCases, "multiaddr:"+a.String())
+			serverPort, err := a.ValueForProtocol(ma.P_TCP)
+			require.NoError(t, err)
+			testCases = append(testCases, "http://127.0.0.1:"+serverPort)
+		} else {
+			testCases = append(testCases, "multiaddr:"+a.String()+"/p2p/"+serverHost.ID().String())
+		}
+	}
+
+	clientStreamHost, err := libp2p.New()
+	require.NoError(t, err)
+	defer clientStreamHost.Close()
+
+	clientHttpHost := libp2phttp.Host{StreamHost: clientStreamHost}
+	client := http.Client{Transport: &clientHttpHost}
+	for _, tc := range testCases {
+		t.Run(tc, func(t *testing.T) {
+			resp, err := client.Get(tc)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "hello", string(body))
+		})
+	}
+}
+
+func TestHTTPHostAsRoundTripperFailsWhenNoStreamHostPresent(t *testing.T) {
+	clientHttpHost := libp2phttp.Host{}
+	client := http.Client{Transport: &clientHttpHost}
+
+	_, err := client.Get("multiaddr:/ip4/127.0.0.1/udp/1111/quic-v1")
+	// Fails because we don't have a stream host available to make the request
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Missing StreamHost")
 }

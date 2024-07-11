@@ -364,10 +364,11 @@ func TestBlackHoledAddrBlocked(t *testing.T) {
 	defer s.Close()
 
 	n := 3
-	s.bhd.ipv6 = &blackHoleFilter{n: n, minSuccesses: 1, name: "IPv6"}
+	s.bhd.ipv6 = &BlackHoleSuccessCounter{N: n, MinSuccesses: 1, Name: "IPv6"}
 
-	// all dials to the address will fail. RFC6666 Discard Prefix
-	addr := ma.StringCast("/ip6/0100::1/tcp/54321/")
+	// All dials to this addr will fail.
+	// manet.IsPublic is aggressive for IPv6 addresses. Use a NAT64 address.
+	addr := ma.StringCast("/ip6/64:ff9b::1.2.3.4/tcp/54321/")
 
 	p, err := test.RandPeerID()
 	if err != nil {

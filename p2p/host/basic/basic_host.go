@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -23,10 +24,12 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -51,6 +54,8 @@ var (
 	// DefaultAddrsFactory is the default value for HostOpts.AddrsFactory.
 	DefaultAddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 )
+
+const maxPeerRecordSize = 8 * 1024 // 8k to be compatible with identify's limit
 
 // AddrsFactory functions can be passed to New in order to override
 // addresses returned by Addrs.
@@ -101,6 +106,8 @@ type BasicHost struct {
 	caBook                  peerstore.CertifiedAddrBook
 
 	autoNat autonat.AutoNAT
+
+	autonatv2 *autonatv2.AutoNAT
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -160,6 +167,11 @@ type HostOpts struct {
 	EnableMetrics bool
 	// PrometheusRegisterer is the PrometheusRegisterer used for metrics
 	PrometheusRegisterer prometheus.Registerer
+
+	// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses in identify
+	DisableIdentifyAddressDiscovery bool
+	EnableAutoNATv2                 bool
+	AutoNATv2Dialer                 host.Host
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -243,6 +255,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			identify.WithMetricsTracer(
 				identify.NewMetricsTracer(identify.WithRegisterer(opts.PrometheusRegisterer))))
 	}
+	if opts.DisableIdentifyAddressDiscovery {
+		idOpts = append(idOpts, identify.DisableObservedAddrManager())
+	}
 
 	h.ids, err = identify.NewIDService(h, idOpts...)
 	if err != nil {
@@ -298,6 +313,17 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	if opts.EnablePing {
 		h.pings = ping.NewPingService(h)
+	}
+
+	if opts.EnableAutoNATv2 {
+		var mt autonatv2.MetricsTracer
+		if opts.EnableMetrics {
+			mt = autonatv2.NewMetricsTracer(opts.PrometheusRegisterer)
+		}
+		h.autonatv2, err = autonatv2.New(h, opts.AutoNATv2Dialer, autonatv2.WithMetricsTracer(mt))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create autonatv2: %w", err)
+		}
 	}
 
 	n.SetStreamHandler(h.newStreamHandler)
@@ -388,6 +414,12 @@ func (h *BasicHost) Start() {
 	h.psManager.Start()
 	h.refCount.Add(1)
 	h.ids.Start()
+	if h.autonatv2 != nil {
+		err := h.autonatv2.Start()
+		if err != nil {
+			log.Errorf("autonat v2 failed to start: %s", err)
+		}
+	}
 	go h.background()
 }
 
@@ -414,7 +446,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 			}
 			logf("protocol EOF: %s (took %s)", s.Conn().RemotePeer(), took)
 		} else {
-			log.Debugf("protocol mux failed: %s (took %s)", err, took)
+			log.Debugf("protocol mux failed: %s (took %s, id:%s, remote peer:%s, remote addr:%v)", err, took, s.ID(), s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
 		}
 		s.Reset()
 		return
@@ -481,15 +513,18 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 	return &evt
 }
 
-func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*record.Envelope, error) {
-	current := make([]ma.Multiaddr, 0, len(evt.Current))
-	for _, a := range evt.Current {
-		current = append(current, a.Address)
+func (h *BasicHost) makeSignedPeerRecord(addrs []ma.Multiaddr) (*record.Envelope, error) {
+	// Limit the length of currentAddrs to ensure that our signed peer records aren't rejected
+	peerRecordSize := 64 // HostID
+	k, err := h.signKey.Raw()
+	if err != nil {
+		peerRecordSize += 2 * len(k) // 1 for signature, 1 for public key
 	}
-
+	// we want the final address list to be small for keeping the signed peer record in size
+	addrs = trimHostAddrList(addrs, maxPeerRecordSize-peerRecordSize-256) // 256 B of buffer
 	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
 		ID:    h.ID(),
-		Addrs: current,
+		Addrs: addrs,
 	})
 	return record.Seal(rec, h.signKey)
 }
@@ -512,7 +547,7 @@ func (h *BasicHost) background() {
 
 		if !h.disableSignedPeerRecord {
 			// add signed peer record to the event
-			sr, err := h.makeSignedPeerRecord(changeEvt)
+			sr, err := h.makeSignedPeerRecord(currentAddrs)
 			if err != nil {
 				log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
 				return
@@ -723,8 +758,10 @@ func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	h.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.TempAddrTTL)
 
 	forceDirect, _ := network.GetForceDirectDial(ctx)
+	canUseLimitedConn, _ := network.GetAllowLimitedConn(ctx)
 	if !forceDirect {
-		if h.Network().Connectedness(pi.ID) == network.Connected {
+		connectedness := h.Network().Connectedness(pi.ID)
+		if connectedness == network.Connected || (canUseLimitedConn && connectedness == network.Limited) {
 			return nil
 		}
 	}
@@ -786,7 +823,9 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 	copy(addrs, addrsOld)
 
 	for i, addr := range addrs {
-		if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n == 0 {
+		wtOK, wtN := libp2pwebtransport.IsWebtransportMultiaddr(addr)
+		webrtcOK, webrtcN := libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
+		if (wtOK && wtN == 0) || (webrtcOK && webrtcN == 0) {
 			t := s.TransportForListening(addr)
 			tpt, ok := t.(addCertHasher)
 			if !ok {
@@ -794,19 +833,24 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 			}
 			addrWithCerthash, added := tpt.AddCertHashes(addr)
 			if !added {
-				log.Debug("Couldn't add certhashes to webtransport multiaddr because we aren't listening on webtransport")
+				log.Debugf("Couldn't add certhashes to multiaddr: %s", addr)
 				continue
 			}
 			addrs[i] = addrWithCerthash
 		}
 	}
+
 	return addrs
 }
 
 // NormalizeMultiaddr returns a multiaddr suitable for equality checks.
 // If the multiaddr is a webtransport component, it removes the certhashes.
 func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
-	if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n > 0 {
+	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
+	if !ok {
+		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
+	}
+	if ok && n > 0 {
 		out := addr
 		for i := 0; i < n; i++ {
 			out, _ = ma.SplitLast(out)
@@ -988,6 +1032,58 @@ func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 	return out
 }
 
+func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
+	totalSize := 0
+	for _, a := range addrs {
+		totalSize += len(a.Bytes())
+	}
+	if totalSize <= maxSize {
+		return addrs
+	}
+
+	score := func(addr ma.Multiaddr) int {
+		var res int
+		if manet.IsPublicAddr(addr) {
+			res |= 1 << 12
+		} else if !manet.IsIPLoopback(addr) {
+			res |= 1 << 11
+		}
+		var protocolWeight int
+		ma.ForEach(addr, func(c ma.Component) bool {
+			switch c.Protocol().Code {
+			case ma.P_QUIC_V1:
+				protocolWeight = 5
+			case ma.P_TCP:
+				protocolWeight = 4
+			case ma.P_WSS:
+				protocolWeight = 3
+			case ma.P_WEBTRANSPORT:
+				protocolWeight = 2
+			case ma.P_WEBRTC_DIRECT:
+				protocolWeight = 1
+			case ma.P_P2P:
+				return false
+			}
+			return true
+		})
+		res |= 1 << protocolWeight
+		return res
+	}
+
+	slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
+		return score(b) - score(a) // b-a for reverse order
+	})
+	totalSize = 0
+	for i, a := range addrs {
+		totalSize += len(a.Bytes())
+		if totalSize > maxSize {
+			addrs = addrs[:i]
+			break
+		}
+	}
+	return addrs
+}
+
 // SetAutoNat sets the autonat service for the host.
 func (h *BasicHost) SetAutoNat(a autonat.AutoNAT) {
 	h.addrMu.Lock()
@@ -1026,10 +1122,12 @@ func (h *BasicHost) Close() error {
 		if h.hps != nil {
 			h.hps.Close()
 		}
+		if h.autonatv2 != nil {
+			h.autonatv2.Close()
+		}
 
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 		_ = h.emitters.evtLocalAddrsUpdated.Close()
-		h.Network().Close()
 
 		h.psManager.Close()
 		if h.Peerstore() != nil {

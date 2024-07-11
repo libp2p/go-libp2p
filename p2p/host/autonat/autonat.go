@@ -431,7 +431,7 @@ func (as *AmbientAutoNAT) getPeerToProbe() peer.ID {
 func (as *AmbientAutoNAT) Close() error {
 	as.ctxCancel()
 	if as.service != nil {
-		as.service.Disable()
+		return as.service.Close()
 	}
 	<-as.backgroundRunning
 	return nil
@@ -444,7 +444,7 @@ func (s *StaticAutoNAT) Status() network.Reachability {
 
 func (s *StaticAutoNAT) Close() error {
 	if s.service != nil {
-		s.service.Disable()
+		return s.service.Close()
 	}
 	return nil
 }
