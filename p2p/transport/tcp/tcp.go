@@ -143,10 +143,14 @@ func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager,
 	}
 	tr := &TcpTransport{
 		upgrader:       upgrader,
-		matcher:        mafmt.And(dialMatcher, upgrader.SuffixMatcher()),
-		protocols:      append([]int{ma.P_TCP}, upgrader.SuffixesProtocols()...),
+		matcher:        dialMatcher,
+		protocols:      []int{ma.P_TCP},
 		connectTimeout: defaultConnectTimeout, // can be set by using the WithConnectionTimeout option
 		rcmgr:          rcmgr,
+	}
+	if upgrader != nil {
+		tr.matcher = mafmt.And(tr.matcher, upgrader.SuffixMatcher())
+		tr.protocols = append(tr.protocols, upgrader.SuffixesProtocols()...)
 	}
 	for _, o := range opts {
 		if err := o(tr); err != nil {
