@@ -179,7 +179,7 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, sconn) {
 		sess.CloseWithError(errorCodeConnectionGating, "")
-		return nil, fmt.Errorf("secured connection gated")
+		return nil, errors.New("secured connection gated")
 	}
 	conn := newConn(t, sess, sconn, scope, qconn)
 	t.addConn(sess, conn)

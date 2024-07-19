@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -93,10 +94,10 @@ retry:
 				}
 
 				// don't try the same relay if it failed to connect with a protocol error
-				return nil, fmt.Errorf("concurrent active dial through the same relay failed with a protocol error")
+				return nil, errors.New("concurrent active dial through the same relay failed with a protocol error")
 			}
 
-			return nil, fmt.Errorf("concurrent active dial succeeded")
+			return nil, errors.New("concurrent active dial succeeded")
 
 		case <-ctx.Done():
 			return nil, ctx.Err()

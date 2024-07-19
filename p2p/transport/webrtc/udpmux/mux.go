@@ -3,6 +3,7 @@ package udpmux
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -250,7 +251,7 @@ func ufragFromSTUNMessage(msg *stun.Message) (string, error) {
 	}
 	index := bytes.Index(attr, []byte{':'})
 	if index == -1 {
-		return "", fmt.Errorf("invalid STUN username attribute")
+		return "", errors.New("invalid STUN username attribute")
 	}
 	return string(attr[index+1:]), nil
 }

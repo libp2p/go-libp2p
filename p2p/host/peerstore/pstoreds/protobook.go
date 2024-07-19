@@ -2,7 +2,6 @@ package pstoreds
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -184,7 +183,7 @@ func (pb *dsProtoBook) getProtocolMap(p peer.ID) (map[protocol.ID]struct{}, erro
 	case nil:
 		cast, ok := iprotomap.(map[protocol.ID]struct{})
 		if !ok {
-			return nil, fmt.Errorf("stored protocol set was not a map")
+			return nil, errors.New("stored protocol set was not a map")
 		}
 
 		return cast, nil

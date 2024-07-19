@@ -2,6 +2,7 @@ package upgrader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -63,7 +64,7 @@ func (l *listener) handleIncoming() {
 		// make sure we're closed
 		l.Listener.Close()
 		if l.err == nil {
-			l.err = fmt.Errorf("listener closed")
+			l.err = errors.New("listener closed")
 		}
 
 		wg.Wait()

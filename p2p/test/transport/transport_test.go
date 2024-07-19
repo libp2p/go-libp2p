@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"runtime"
@@ -219,7 +218,7 @@ func TestBigPing(t *testing.T) {
 							return
 						}
 						if !bytes.Equal(sendBuf, recvBuf) {
-							errCh <- fmt.Errorf("received data does not match sent data")
+							errCh <- errors.New("received data does not match sent data")
 						}
 
 					}
@@ -352,7 +351,7 @@ func TestManyStreams(t *testing.T) {
 					b, err := io.ReadAll(s)
 					if err == nil {
 						if !bytes.Equal(b, []byte("hello")) {
-							err = fmt.Errorf("received data does not match sent data")
+							err = errors.New("received data does not match sent data")
 						}
 					}
 					if err != nil {
@@ -705,7 +704,7 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
 			mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
 				// Block the connection
-				return nil, fmt.Errorf("connections blocked")
+				return nil, errors.New("connections blocked")
 			})
 			mockRcmgr.EXPECT().Close().AnyTimes()
 
@@ -740,7 +739,7 @@ func TestConnDroppedWhenBlocked(t *testing.T) {
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
 			mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
 				// Block the connection
-				return nil, fmt.Errorf("connections blocked")
+				return nil, errors.New("connections blocked")
 			})
 			mockRcmgr.EXPECT().Close().AnyTimes()
 

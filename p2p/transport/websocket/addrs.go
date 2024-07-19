@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -57,7 +58,7 @@ func ConvertWebsocketMultiaddrToNetAddr(maddr ma.Multiaddr) (net.Addr, error) {
 func ParseWebsocketNetAddr(a net.Addr) (ma.Multiaddr, error) {
 	wsa, ok := a.(*Addr)
 	if !ok {
-		return nil, fmt.Errorf("not a websocket address")
+		return nil, errors.New("not a websocket address")
 	}
 
 	var (
@@ -149,7 +150,7 @@ func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
 	// Remove the ws component
 	withoutWs := a.Decapsulate(wsComponent)
 	if withoutWs.Equal(a) {
-		return out, fmt.Errorf("not a websocket multiaddr")
+		return out, errors.New("not a websocket multiaddr")
 	}
 
 	rest := withoutWs

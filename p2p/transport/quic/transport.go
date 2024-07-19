@@ -163,7 +163,7 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, c) {
 		pconn.CloseWithError(errorCodeConnectionGating, "connection gated")
-		return nil, fmt.Errorf("secured connection gated")
+		return nil, errors.New("secured connection gated")
 	}
 	t.addConn(pconn, c)
 	return c, nil

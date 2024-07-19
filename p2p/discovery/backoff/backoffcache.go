@@ -2,7 +2,7 @@ package backoff
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"time"
 
@@ -53,7 +53,7 @@ func NewBackoffDiscovery(disc discovery.Discovery, stratFactory BackoffFactory, 
 func WithBackoffDiscoverySimultaneousQueryBufferSize(size int) BackoffDiscoveryOption {
 	return func(b *BackoffDiscovery) error {
 		if size < 0 {
-			return fmt.Errorf("cannot set size to be smaller than 0")
+			return errors.New("cannot set size to be smaller than 0")
 		}
 		b.parallelBufSz = size
 		return nil
@@ -65,7 +65,7 @@ func WithBackoffDiscoverySimultaneousQueryBufferSize(size int) BackoffDiscoveryO
 func WithBackoffDiscoveryReturnedChannelSize(size int) BackoffDiscoveryOption {
 	return func(b *BackoffDiscovery) error {
 		if size < 0 {
-			return fmt.Errorf("cannot set size to be smaller than 0")
+			return errors.New("cannot set size to be smaller than 0")
 		}
 		b.returnedBufSz = size
 		return nil

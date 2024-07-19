@@ -2,7 +2,7 @@ package swarm
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -163,7 +163,7 @@ func TestDialSyncAllCancel(t *testing.T) {
 
 func TestFailFirst(t *testing.T) {
 	var handledFirst atomic.Bool
-	dialErr := fmt.Errorf("gophers ate the modem")
+	dialErr := errors.New("gophers ate the modem")
 	f := func(p peer.ID, reqch <-chan dialRequest) {
 		go func() {
 			for {

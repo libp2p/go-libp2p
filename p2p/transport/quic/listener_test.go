@@ -125,7 +125,7 @@ func TestCleanupConnWhenBlocked(t *testing.T) {
 	mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	mockRcmgr.EXPECT().OpenConnection(network.DirInbound, false, gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
 		// Block the connection
-		return nil, fmt.Errorf("connections blocked")
+		return nil, errors.New("connections blocked")
 	})
 
 	server := newTransport(t, mockRcmgr)

@@ -2,6 +2,7 @@ package autonatv2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -141,7 +142,7 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 			pb.DialResponse_ResponseStatus_name[int32(resp.GetStatus())])
 	}
 	if resp.GetDialStatus() == pb.DialStatus_UNUSED {
-		return Result{}, fmt.Errorf("invalid response: invalid dial status UNUSED")
+		return Result{}, errors.New("invalid response: invalid dial status UNUSED")
 	}
 	if int(resp.AddrIdx) >= len(reqs) {
 		return Result{}, fmt.Errorf("invalid response: addr index out of range: %d [0-%d)", resp.AddrIdx, len(reqs))

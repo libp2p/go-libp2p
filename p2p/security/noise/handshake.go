@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -278,7 +279,7 @@ func (s *secureSession) handleRemoteHandshakePayload(payload []byte, remoteStati
 	if err != nil {
 		return nil, fmt.Errorf("error verifying signature: %w", err)
 	} else if !ok {
-		return nil, fmt.Errorf("handshake signature invalid")
+		return nil, errors.New("handshake signature invalid")
 	}
 
 	// set remote peer key and id

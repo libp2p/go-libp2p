@@ -148,7 +148,7 @@ func testWSSServer(t *testing.T, listenAddr ma.Multiaddr) (ma.Multiaddr, peer.ID
 	tlsConf := getTLSConf(t, ip, time.Now(), time.Now().Add(time.Hour))
 	tlsConf.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 		if chi.ServerName != "example.com" {
-			errChan <- fmt.Errorf("didn't get the expected sni")
+			errChan <- errors.New("didn't get the expected sni")
 		}
 		return tlsConf, nil
 	}

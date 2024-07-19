@@ -2,7 +2,7 @@ package pstoremem
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -194,10 +194,10 @@ func (mab *memoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, tt
 	}
 	rec, ok := r.(*peer.PeerRecord)
 	if !ok {
-		return false, fmt.Errorf("unable to process envelope: not a PeerRecord")
+		return false, errors.New("unable to process envelope: not a PeerRecord")
 	}
 	if !rec.PeerID.MatchesPublicKey(recordEnvelope.PublicKey) {
-		return false, fmt.Errorf("signing key does not match PeerID in PeerRecord")
+		return false, errors.New("signing key does not match PeerID in PeerRecord")
 	}
 
 	// ensure seq is greater than, or equal to, the last received

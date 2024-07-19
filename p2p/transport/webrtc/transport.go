@@ -108,7 +108,7 @@ type iceTimeouts struct {
 func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (*WebRTCTransport, error) {
 	if psk != nil {
 		log.Error("WebRTC doesn't support private networks yet.")
-		return nil, fmt.Errorf("WebRTC doesn't support private networks yet")
+		return nil, errors.New("WebRTC doesn't support private networks yet")
 	}
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
@@ -189,7 +189,7 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	addr, wrtcComponent := ma.SplitLast(addr)
 	isWebrtc := wrtcComponent.Equal(webrtcComponent)
 	if !isWebrtc {
-		return nil, fmt.Errorf("must listen on webrtc multiaddr")
+		return nil, errors.New("must listen on webrtc multiaddr")
 	}
 	nw, host, err := manet.DialArgs(addr)
 	if err != nil {
@@ -405,7 +405,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	}
 
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, conn) {
-		return nil, fmt.Errorf("secured connection gated")
+		return nil, errors.New("secured connection gated")
 	}
 	return conn, nil
 }

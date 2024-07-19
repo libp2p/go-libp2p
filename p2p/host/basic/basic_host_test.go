@@ -2,7 +2,7 @@ package basichost
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"reflect"
 	"sort"
@@ -724,7 +724,7 @@ func TestNegotiationCancel(t *testing.T) {
 	go func() {
 		s, err := h1.NewStream(ctx2, h2.ID(), "/testing")
 		if s != nil {
-			errCh <- fmt.Errorf("expected to fail negotiation")
+			errCh <- errors.New("expected to fail negotiation")
 			return
 		}
 		errCh <- err

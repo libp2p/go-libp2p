@@ -614,7 +614,7 @@ func (rt *namespacedRoundTripper) GetPeerMetadata() (PeerMeta, error) {
 		return g.GetPeerMetadata()
 	}
 
-	return nil, fmt.Errorf("can not get peer protocol map. Inner roundtripper does not implement GetPeerMetadata")
+	return nil, errors.New("can not get peer protocol map. Inner roundtripper does not implement GetPeerMetadata")
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -746,11 +746,11 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 
 	if h.StreamHost == nil {
-		return nil, fmt.Errorf("can not do HTTP over streams. Missing StreamHost")
+		return nil, errors.New("can not do HTTP over streams. Missing StreamHost")
 	}
 
 	if parsed.peer == "" {
-		return nil, fmt.Errorf("no peer ID in multiaddr")
+		return nil, errors.New("no peer ID in multiaddr")
 	}
 	withoutHTTPPath, _ := ma.SplitFunc(addr, func(c ma.Component) bool {
 		return c.Protocol().Code == ma.P_HTTP_PATH
@@ -790,7 +790,7 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 	}
 
 	if options.serverMustAuthenticatePeerID && server.ID == "" {
-		return nil, fmt.Errorf("server must authenticate peer ID, but no peer ID provided")
+		return nil, errors.New("server must authenticate peer ID, but no peer ID provided")
 	}
 
 	httpAddrs := make([]ma.Multiaddr, 0, 1) // The common case of a single http address
@@ -851,11 +851,11 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 
 	// Otherwise use a stream based transport
 	if h.StreamHost == nil {
-		return nil, fmt.Errorf("can not use the HTTP transport (either no address or PeerID auth is required), and no stream host provided")
+		return nil, errors.New("can not use the HTTP transport (either no address or PeerID auth is required), and no stream host provided")
 	}
 	if !existingStreamConn {
 		if server.ID == "" {
-			return nil, fmt.Errorf("can not use the HTTP transport, and no server peer ID provided")
+			return nil, errors.New("can not use the HTTP transport, and no server peer ID provided")
 		}
 	}
 

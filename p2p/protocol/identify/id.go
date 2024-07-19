@@ -584,7 +584,7 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 		}
 	}
 
-	return fmt.Errorf("too many parts")
+	return errors.New("too many parts")
 }
 
 func (ids *idService) updateSnapshot() (updated bool) {

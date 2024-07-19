@@ -2,6 +2,7 @@ package itest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -275,7 +276,7 @@ func waitForBarrier(count int32, timeout time.Duration) func() error {
 		case <-ready:
 			return nil
 		case <-time.After(timeout):
-			return fmt.Errorf("timeout")
+			return errors.New("timeout")
 		}
 	}
 }
@@ -286,7 +287,7 @@ func waitForChannel(ready chan struct{}, timeout time.Duration) func() error {
 		case <-ready:
 			return nil
 		case <-time.After(timeout):
-			return fmt.Errorf("timeout")
+			return errors.New("timeout")
 		}
 	}
 }

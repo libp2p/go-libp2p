@@ -66,7 +66,7 @@ func hangDialFunc(hang chan struct{}) dialfunc {
 		}
 
 		<-hang
-		return nil, fmt.Errorf("test bad dial")
+		return nil, errors.New("test bad dial")
 	}
 }
 
@@ -197,7 +197,7 @@ func TestTokenRedistribution(t *testing.T) {
 		ch := hangchs[p]
 		lk.Unlock()
 		<-ch
-		return nil, fmt.Errorf("test bad dial")
+		return nil, errors.New("test bad dial")
 	}
 	l := newDialLimiterWithParams(df, 8, 4)
 
@@ -287,7 +287,7 @@ func TestStressLimiter(t *testing.T) {
 		}
 
 		time.Sleep(time.Millisecond * time.Duration(5+rand.Intn(100)))
-		return nil, fmt.Errorf("test bad dial")
+		return nil, errors.New("test bad dial")
 	}
 
 	l := newDialLimiterWithParams(df, 20, 5)
@@ -340,7 +340,7 @@ func TestFDLimitUnderflow(t *testing.T) {
 		case <-ctx.Done():
 		case <-time.After(5 * time.Second):
 		}
-		return nil, fmt.Errorf("df timed out")
+		return nil, errors.New("df timed out")
 	}
 
 	const fdLimit = 20
