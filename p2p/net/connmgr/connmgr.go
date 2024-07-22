@@ -104,7 +104,7 @@ func (s *segment) tagInfoFor(p peer.ID, now time.Time) *peerInfo {
 }
 
 // NewConnManager creates a new BasicConnMgr with the provided params:
-// lo and hi are watermarks governing the number of connections that'll be maintained.
+// low and hi are watermarks governing the number of connections that'll be maintained.
 // When the peer count exceeds the 'high watermark', as many peers will be pruned (and
 // their connections terminated) until 'low watermark' peers remain.
 func NewConnManager(low, hi int, opts ...Option) (*BasicConnMgr, error) {
