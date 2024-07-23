@@ -34,7 +34,7 @@ import (
 
 var log = logging.Logger("net/identify")
 
-var Timeout = 30 * time.Second // timeout on all incoming Identify interactions
+const Timeout = 30 * time.Second // timeout on all incoming Identify interactions
 
 const (
 	// ID is the protocol.ID of version 1.0.0 of the identify service.
