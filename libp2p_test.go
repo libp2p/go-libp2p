@@ -108,10 +108,10 @@ func TestDefaultListenAddrs(t *testing.T) {
 	h.Close()
 
 	// Test 2: Listen addr only include relay if user defined transport is passed.
-	h, err = New(Transport(tcp.NewTCPTransport))
+	h, err = New(Transport(tcp.NewTCPTransport), Security(noise.ID, noise.New))
 	require.NoError(t, err)
 
-	if len(h.Network().ListenAddresses()) != 1 {
+	if len(h.Network().ListenAddresses()) != 2 /* /tcp and /tcp/noise */ {
 		t.Error("expected one listen addr with user defined transport")
 	}
 	if reCircuit.FindStringSubmatchIndex(h.Network().ListenAddresses()[0].String()) == nil {
