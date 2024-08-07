@@ -1,0 +1,5 @@
+{
+    "skip32bit": true,
+    "gotestflags": "-p 1",
+    "goraceflags": "-p 1"
+}

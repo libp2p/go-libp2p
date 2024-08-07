@@ -366,7 +366,7 @@ func (h *Host) Serve() error {
 	// Close all listeners
 	closeAllListeners()
 	for i := 0; i < expectedErrCount; i++ {
-		<-errCh
+		err = errors.Join(err, <-errCh)
 	}
 	close(errCh)
 

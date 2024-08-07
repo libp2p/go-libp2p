@@ -3,7 +3,7 @@ name: Go Test
 on:
   pull_request:
   push:
-    branches: ["master","release-v0[0-9][0-9]"]
+    branches: ["master", "release-v0[0-9][0-9]"]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   go-test:
-    uses: libp2p/uci/.github/workflows/go-test.yml@v1.0
+    uses: ./.github/workflows/go-test-template.yml
     with:
       go-versions: '["1.21.x", "1.22.x"]'
     secrets:

@@ -1,11 +1,13 @@
 package libp2phttp_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/libp2p/go-libp2p"
@@ -125,18 +127,35 @@ func ExampleHost_overLibp2pStreams() {
 	// Output: Hello HTTP
 }
 
+var portRe = regexp.MustCompile(`/(tcp|udp)/(?P<port>\d+)/http`)
+
+// Given a multiaddr string, return the multiaddr with port filled in as <port>.
+// Useful for showing examples without hardcoding the port.
+func elidePort(addr string) string {
+	port := portRe.FindStringSubmatch(addr)[2]
+	return strings.Replace(addr, port, "<port>", 1)
+}
+
 func ExampleHost_Serve() {
 	server := libp2phttp.Host{
 		InsecureAllowHTTP: true, // For our example, we'll allow insecure HTTP
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50221/http")},
 	}
 
-	go server.Serve()
+	serveDone := make(chan struct{})
+	go func() {
+		defer close(serveDone)
+		err := server.Serve()
+		if !errors.Is(err, net.ErrClosed) {
+			fmt.Println("Unexpected error:", err)
+		}
+	}()
+	defer func() { <-serveDone }()
 	defer server.Close()
 
-	fmt.Println(server.Addrs())
+	fmt.Println(elidePort(server.Addrs()[0].String()))
 
-	// Output: [/ip4/127.0.0.1/tcp/50221/http]
+	// Output: /ip4/127.0.0.1/tcp/<port>/http
 }
 
 func ExampleHost_SetHTTPHandler() {
