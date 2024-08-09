@@ -399,6 +399,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		remotePubKey,
 		remoteMultiaddrWithoutCerthash,
 		w.IncomingDataChannels,
+		w.PeerConnectionClosedCh,
 	)
 	if err != nil {
 		return nil, err
@@ -572,9 +573,10 @@ func detachHandshakeDataChannel(ctx context.Context, dc *webrtc.DataChannel) (da
 // a small window of time where datachannels created by the peer may not surface to us and cause a
 // memory leak.
 type webRTCConnection struct {
-	PeerConnection       *webrtc.PeerConnection
-	HandshakeDataChannel *webrtc.DataChannel
-	IncomingDataChannels chan dataChannel
+	PeerConnection         *webrtc.PeerConnection
+	HandshakeDataChannel   *webrtc.DataChannel
+	IncomingDataChannels   chan dataChannel
+	PeerConnectionClosedCh chan struct{}
 }
 
 func newWebRTCConnection(settings webrtc.SettingEngine, config webrtc.Configuration) (webRTCConnection, error) {
@@ -613,10 +615,20 @@ func newWebRTCConnection(settings webrtc.SettingEngine, config webrtc.Configurat
 			}
 		})
 	})
+
+	connectionClosedCh := make(chan struct{}, 1)
+	pc.SCTP().OnClose(func(err error) {
+		// We only need one message. Closing a connection is a problem as pion might invoke the callback more than once.
+		select {
+		case connectionClosedCh <- struct{}{}:
+		default:
+		}
+	})
 	return webRTCConnection{
-		PeerConnection:       pc,
-		HandshakeDataChannel: handshakeDataChannel,
-		IncomingDataChannels: incomingDataChannels,
+		PeerConnection:         pc,
+		HandshakeDataChannel:   handshakeDataChannel,
+		IncomingDataChannels:   incomingDataChannels,
+		PeerConnectionClosedCh: connectionClosedCh,
 	}, nil
 }
 

@@ -276,6 +276,7 @@ func (l *listener) setupConnection(
 		remotePubKey,
 		remoteMultiaddr,
 		w.IncomingDataChannels,
+		w.PeerConnectionClosedCh,
 	)
 	if err != nil {
 		return nil, err
