@@ -770,3 +770,31 @@ func TestConnDroppedWhenBlocked(t *testing.T) {
 		})
 	}
 }
+
+// TestConnClosedWhenRemoteCloses tests that a connection is closed locally when it's closed by remote
+func TestConnClosedWhenRemoteCloses(t *testing.T) {
+	for _, tc := range transportsToTest {
+		t.Run(tc.Name, func(t *testing.T) {
+			server := tc.HostGenerator(t, TransportTestCaseOpts{})
+			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer server.Close()
+			defer client.Close()
+
+			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			err := client.Connect(ctx, peer.AddrInfo{ID: server.ID(), Addrs: server.Addrs()})
+			require.NoError(t, err)
+
+			require.Eventually(t, func() bool {
+				return server.Network().Connectedness(client.ID()) != network.NotConnected
+			}, 5*time.Second, 50*time.Millisecond)
+			for _, c := range client.Network().ConnsToPeer(server.ID()) {
+				c.Close()
+			}
+			require.Eventually(t, func() bool {
+				return server.Network().Connectedness(client.ID()) == network.NotConnected
+			}, 5*time.Second, 50*time.Millisecond)
+		})
+	}
+}
