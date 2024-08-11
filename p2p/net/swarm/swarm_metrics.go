@@ -131,7 +131,7 @@ type MetricsTracer interface {
 	FailedDialing(ma.Multiaddr, error, error)
 	DialCompleted(success bool, totalDials int)
 	DialRankingDelay(d time.Duration)
-	UpdatedBlackHoleSuccessCounter(name string, state blackHoleState, nextProbeAfter int, successFraction float64)
+	UpdatedBlackHoleSuccessCounter(name string, state BlackHoleState, nextProbeAfter int, successFraction float64)
 }
 
 type metricsTracer struct{}
@@ -274,7 +274,7 @@ func (m *metricsTracer) DialRankingDelay(d time.Duration) {
 	dialRankingDelay.Observe(d.Seconds())
 }
 
-func (m *metricsTracer) UpdatedBlackHoleSuccessCounter(name string, state blackHoleState,
+func (m *metricsTracer) UpdatedBlackHoleSuccessCounter(name string, state BlackHoleState,
 	nextProbeAfter int, successFraction float64) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)

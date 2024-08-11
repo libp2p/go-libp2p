@@ -79,7 +79,7 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 	}
 
 	bhfNames := []string{"udp", "ipv6", "tcp", "icmp"}
-	bhfState := []blackHoleState{blackHoleStateAllowed, blackHoleStateBlocked}
+	bhfState := []BlackHoleState{blackHoleStateAllowed, blackHoleStateBlocked}
 
 	tests := map[string]func(){
 		"OpenedConnection": func() {

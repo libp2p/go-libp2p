@@ -59,7 +59,7 @@ func TestBlackHoleSuccessCounterSuccessFraction(t *testing.T) {
 	n := 10
 	tests := []struct {
 		minSuccesses, successes int
-		result                  blackHoleState
+		result                  BlackHoleState
 	}{
 		{minSuccesses: 5, successes: 5, result: blackHoleStateAllowed},
 		{minSuccesses: 3, successes: 3, result: blackHoleStateAllowed},

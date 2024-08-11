@@ -8,15 +8,15 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-type blackHoleState int
+type BlackHoleState int
 
 const (
-	blackHoleStateProbing blackHoleState = iota
+	blackHoleStateProbing BlackHoleState = iota
 	blackHoleStateAllowed
 	blackHoleStateBlocked
 )
 
-func (st blackHoleState) String() string {
+func (st BlackHoleState) String() string {
 	switch st {
 	case blackHoleStateProbing:
 		return "Probing"
@@ -57,7 +57,7 @@ type BlackHoleSuccessCounter struct {
 	// successes is the count of successful dials in outcomes
 	successes int
 	// state is the current state of the detector
-	state blackHoleState
+	state BlackHoleState
 }
 
 // RecordResult records the outcome of a dial. A successful dial in Blocked state will change the
@@ -91,7 +91,7 @@ func (b *BlackHoleSuccessCounter) RecordResult(success bool) {
 }
 
 // HandleRequest returns the result of applying the black hole filter for the request.
-func (b *BlackHoleSuccessCounter) HandleRequest() blackHoleState {
+func (b *BlackHoleSuccessCounter) HandleRequest() BlackHoleState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -129,7 +129,7 @@ func (b *BlackHoleSuccessCounter) updateState() {
 	}
 }
 
-func (b *BlackHoleSuccessCounter) State() blackHoleState {
+func (b *BlackHoleSuccessCounter) State() BlackHoleState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -138,7 +138,7 @@ func (b *BlackHoleSuccessCounter) State() blackHoleState {
 
 type blackHoleInfo struct {
 	name            string
-	state           blackHoleState
+	state           BlackHoleState
 	nextProbeAfter  int
 	successFraction float64
 }
@@ -251,7 +251,7 @@ func (d *blackHoleDetector) RecordResult(addr ma.Multiaddr, success bool) {
 	}
 }
 
-func (d *blackHoleDetector) getFilterState(f *BlackHoleSuccessCounter) blackHoleState {
+func (d *blackHoleDetector) getFilterState(f *BlackHoleSuccessCounter) BlackHoleState {
 	if d.readOnly {
 		if f.State() != blackHoleStateAllowed {
 			return blackHoleStateBlocked
