@@ -30,17 +30,29 @@ func (l pionLogger) Error(s string) {
 	l.StandardLogger.Debug(s)
 }
 
+func (l pionLogger) Errorf(s string, args ...interface{}) {
+	l.StandardLogger.Debugf(s, args...)
+}
+
 func (l pionLogger) Info(s string) {
 	l.StandardLogger.Debug(s)
 }
+
+func (l pionLogger) Infof(s string, args ...interface{}) {
+	l.StandardLogger.Debugf(s, args...)
+}
+
 func (l pionLogger) Warn(s string) {
 	l.StandardLogger.Debug(s)
+}
+
+func (l pionLogger) Warnf(s string, args ...interface{}) {
+	l.StandardLogger.Debugf(s, args...)
 }
 
 func (l pionLogger) Trace(s string) {
 	l.StandardLogger.Debug(s)
 }
-
 func (l pionLogger) Tracef(s string, args ...interface{}) {
 	l.StandardLogger.Debugf(s, args...)
 }
