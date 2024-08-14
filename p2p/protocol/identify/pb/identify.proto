@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package identify.pb;
 
+option go_package = "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb";
+
 message Identify {
 
   // protocolVersion determines compatibility between peers

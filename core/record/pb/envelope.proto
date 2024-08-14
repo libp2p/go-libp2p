@@ -4,6 +4,8 @@ package record.pb;
 
 import "core/crypto/pb/crypto.proto";
 
+option go_package = "github.com/libp2p/go-libp2p/core/record/pb";
+
 // Envelope encloses a signed payload produced by a peer, along with the public
 // key of the keypair it was signed with so that it can be statelessly validated
 // by the receiver.

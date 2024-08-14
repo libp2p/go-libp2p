@@ -1,6 +1,8 @@
 syntax = "proto3";
 package pstore.pb;
 
+option go_package = "github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoreds/pb";
+
 // AddrBookRecord represents a record for a peer in the address book.
 message AddrBookRecord {
 	// The peer ID.

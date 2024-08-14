@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package holepunch.pb;
 
+option go_package = "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb";
+
 // spec: https://github.com/libp2p/specs/blob/master/relay/DCUtR.md
 message HolePunch {
   enum Type {

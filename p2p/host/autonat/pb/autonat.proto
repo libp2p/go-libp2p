@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package autonat.pb;
 
+option go_package = "github.com/libp2p/go-libp2p/p2p/host/autonat/pb";
+
 message Message {
   enum MessageType {
     DIAL          = 0;

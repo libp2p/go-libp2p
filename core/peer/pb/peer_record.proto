@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package peer.pb;
 
+option go_package = "github.com/libp2p/go-libp2p/core/peer/pb";
+
 // PeerRecord messages contain information that is useful to share with other peers.
 // Currently, a PeerRecord contains the public listen addresses for a peer, but this
 // is expected to expand to include other information in the future.
