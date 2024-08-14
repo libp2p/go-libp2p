@@ -15,8 +15,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate protoc --go_out=. --go_opt=Mpb/crypto.proto=./pb pb/crypto.proto
-
 const (
 	// RSA is an enum for the supported RSA key type
 	RSA = iota

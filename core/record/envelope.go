@@ -16,8 +16,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate protoc --proto_path=$PWD:$PWD/../.. --go_out=. --go_opt=Mpb/envelope.proto=./pb pb/envelope.proto
-
 // Envelope contains an arbitrary []byte payload, signed by a libp2p peer.
 //
 // Envelopes are signed in the context of a particular "domain", which is a

@@ -7,8 +7,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-//go:generate protoc --proto_path=$PWD:$PWD/../../.. --go_out=. --go_opt=Mpb/autonat.proto=./pb pb/autonat.proto
-
 // AutoNATProto identifies the autonat service protocol
 const AutoNATProto = "/libp2p/autonat/1.0.0"
 

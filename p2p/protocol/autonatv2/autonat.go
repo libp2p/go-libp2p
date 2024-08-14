@@ -19,8 +19,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-//go:generate protoc --go_out=. --go_opt=Mpb/autonatv2.proto=./pb pb/autonatv2.proto
-
 const (
 	ServiceName      = "libp2p.autonatv2"
 	DialBackProtocol = "/libp2p/autonat/2/dial-back"

@@ -15,8 +15,6 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-//go:generate protoc --go_out=. --go_opt=Mpb/autonatv2.proto=./pb pb/autonatv2.proto
-
 // client implements the client for making dial requests for AutoNAT v2. It verifies successful
 // dials and provides an option to send data for dial requests.
 type client struct {

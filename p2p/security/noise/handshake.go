@@ -19,8 +19,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate protoc --go_out=. --go_opt=Mpb/payload.proto=./pb pb/payload.proto
-
 // payloadSigPrefix is prepended to our Noise static key before signing with
 // our libp2p identity key.
 const payloadSigPrefix = "noise-libp2p-static-key:"

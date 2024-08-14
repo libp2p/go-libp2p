@@ -21,8 +21,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate protoc --proto_path=$PWD:$PWD/../../.. --go_out=. --go_opt=Mpb/plaintext.proto=./pb pb/plaintext.proto
-
 // ID is the multistream-select protocol ID that should be used when identifying
 // this security transport.
 const ID = "/plaintext/2.0.0"

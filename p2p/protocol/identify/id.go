@@ -30,8 +30,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate protoc --proto_path=$PWD:$PWD/../../.. --go_out=. --go_opt=Mpb/identify.proto=./pb pb/identify.proto
-
 var log = logging.Logger("net/identify")
 
 var Timeout = 30 * time.Second // timeout on all incoming Identify interactions
