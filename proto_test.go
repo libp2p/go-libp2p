@@ -22,6 +22,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
+//go:generate scripts/gen-proto.sh .
+
 func TestProtoImportsAndPathsAreConsistent(t *testing.T) {
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		imports := fd.Imports()
