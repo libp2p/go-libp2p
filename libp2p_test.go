@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -489,9 +491,17 @@ func TestHostAddrsFactoryAddsCerthashes(t *testing.T) {
 }
 
 func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
+	// Find an available port
+	c, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	c.LocalAddr().Network()
+	ipPort := netip.MustParseAddrPort(c.LocalAddr().String())
+	port := strconv.Itoa(int(ipPort.Port()))
+	require.NoError(t, c.Close())
+
 	order := [][]string{
-		{"/ip4/127.0.0.1/udp/54322/quic-v1", "/ip4/127.0.0.1/udp/54322/webrtc-direct"},
-		{"/ip4/127.0.0.1/udp/54322/webrtc-direct", "/ip4/127.0.0.1/udp/54322/quic-v1"},
+		{"/ip4/127.0.0.1/udp/" + port + "/quic-v1", "/ip4/127.0.0.1/udp/" + port + "/webrtc-direct"},
+		{"/ip4/127.0.0.1/udp/" + port + "/webrtc-direct", "/ip4/127.0.0.1/udp/" + port + "/quic-v1"},
 		// We do not support WebRTC automatically reusing QUIC addresses if port is not specified, yet.
 		// {"/ip4/127.0.0.1/udp/0/webrtc-direct", "/ip4/127.0.0.1/udp/0/quic-v1"},
 	}
