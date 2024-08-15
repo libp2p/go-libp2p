@@ -108,13 +108,13 @@ jobs:
         with:
           run: test_analysis ${{ env.GOTESTFLAGS }}
       - name: Upload test results
-        if: (steps.test.conclusion == 'success' || steps.test.conclusion == 'failure')
+        if: always()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}_${{ matrix.go }}_test_results.db
           path: ./test_results.db
       - name: Add failure summary
-        if: (steps.test.conclusion == 'success' || steps.test.conclusion == 'failure')
+        if: always()
         run: |
           echo "### Failure Summary" >> $GITHUB_STEP_SUMMARY
           test_analysis summarize >> $GITHUB_STEP_SUMMARY
