@@ -490,7 +490,8 @@ func TestHostAddrsFactoryAddsCerthashes(t *testing.T) {
 	h.Close()
 }
 
-func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
+func newRandomPort(t *testing.T) string {
+	t.Helper()
 	// Find an available port
 	c, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
@@ -498,7 +499,11 @@ func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
 	ipPort := netip.MustParseAddrPort(c.LocalAddr().String())
 	port := strconv.Itoa(int(ipPort.Port()))
 	require.NoError(t, c.Close())
+	return port
+}
 
+func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
+	port := newRandomPort(t)
 	order := [][]string{
 		{"/ip4/127.0.0.1/udp/" + port + "/quic-v1", "/ip4/127.0.0.1/udp/" + port + "/webrtc-direct"},
 		{"/ip4/127.0.0.1/udp/" + port + "/webrtc-direct", "/ip4/127.0.0.1/udp/" + port + "/quic-v1"},
@@ -552,16 +557,18 @@ func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
 		})
 	}
 
-	swapPort := func(addrStrs []string, newPort string) []string {
+	swapPort := func(addrStrs []string, oldPort, newPort string) []string {
 		out := make([]string, 0, len(addrStrs))
 		for _, addrStr := range addrStrs {
-			out = append(out, strings.Replace(addrStr, "54322", newPort, 1))
+			out = append(out, strings.Replace(addrStr, oldPort, newPort, 1))
 		}
 		return out
 	}
 
 	t.Run("setup with no reuseport. Should fail", func(t *testing.T) {
-		h1, err := New(ListenAddrStrings(swapPort(order[0], "54323")...), Transport(quic.NewTransport), Transport(libp2pwebrtc.New), QUICReuse(quicreuse.NewConnManager, quicreuse.DisableReuseport()))
+		oldPort := port
+		newPort := newRandomPort(t)
+		h1, err := New(ListenAddrStrings(swapPort(order[0], oldPort, newPort)...), Transport(quic.NewTransport), Transport(libp2pwebrtc.New), QUICReuse(quicreuse.NewConnManager, quicreuse.DisableReuseport()))
 		require.NoError(t, err) // It's a bug/feature that swarm.Listen does not error if at least one transport succeeds in listening.
 		defer h1.Close()
 		// Check that webrtc did fail to listen
@@ -570,7 +577,9 @@ func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
 	})
 
 	t.Run("setup with autonat", func(t *testing.T) {
-		h1, err := New(EnableAutoNATv2(), ListenAddrStrings(swapPort(order[0], "54324")...), Transport(quic.NewTransport), Transport(libp2pwebrtc.New), QUICReuse(quicreuse.NewConnManager, quicreuse.DisableReuseport()))
+		oldPort := port
+		newPort := newRandomPort(t)
+		h1, err := New(EnableAutoNATv2(), ListenAddrStrings(swapPort(order[0], oldPort, newPort)...), Transport(quic.NewTransport), Transport(libp2pwebrtc.New), QUICReuse(quicreuse.NewConnManager, quicreuse.DisableReuseport()))
 		require.NoError(t, err) // It's a bug/feature that swarm.Listen does not error if at least one transport succeeds in listening.
 		defer h1.Close()
 		// Check that webrtc did fail to listen
