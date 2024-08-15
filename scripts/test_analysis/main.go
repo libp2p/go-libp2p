@@ -186,7 +186,7 @@ func (t *tester) summarize() (string, error) {
 	rows, err := db.QueryContext(ctx, `SELECT
     tr_output.Package,
     tr_output.Test,
-    GROUP_CONCAT(tr_output.Output,  x'0a') AS Outputs
+    GROUP_CONCAT(tr_output.Output,  "") AS Outputs
 FROM
     test_results tr_fail
 JOIN
