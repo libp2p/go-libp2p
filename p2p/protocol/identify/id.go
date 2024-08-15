@@ -997,7 +997,7 @@ func (ids *idService) addConnWithLock(c network.Conn) {
 }
 
 func signedPeerRecordFromMessage(msg *pb.Identify) (*record.Envelope, error) {
-	if msg.SignedPeerRecord == nil || len(msg.SignedPeerRecord) == 0 {
+	if len(msg.SignedPeerRecord) == 0 {
 		return nil, nil
 	}
 	env, _, err := record.ConsumeEnvelope(msg.SignedPeerRecord, peer.PeerRecordEnvelopeDomain)
