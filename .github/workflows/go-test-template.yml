@@ -106,6 +106,7 @@ jobs:
         with:
           run: test_analysis ${{ env.GOTESTFLAGS }}
       - name: Upload test results
+        if: success() || failure() # always upload test results
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}_${{ matrix.go }}_test_results.db
@@ -125,7 +126,8 @@ jobs:
         with:
           run: test_analysis -race ${{ env.GORACEFLAGS }} ./...
       - name: Upload test results (Race)
-        if: matrix.os == 'ubuntu' &&
+        if: (success() || failure()) &&
+          matrix.os == 'ubuntu' &&
           fromJSON(steps.config.outputs.json).skipRace != true &&
           contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: actions/upload-artifact@v3
