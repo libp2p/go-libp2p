@@ -43,7 +43,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: stable
-          cache: matrix.os != 'windows' # Windows VMs are slow to use caching. Can add ~15m to the job
+          cache: ${{ matrix.os != 'windows' }} # Windows VMs are slow to use caching. Can add ~15m to the job
       - name: Read the Unified GitHub Workflows configuration
         id: config
         uses: ipdxco/unified-github-workflows/.github/actions/read-config@main
@@ -93,7 +93,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ steps.go.outputs.version }}
-          cache: matrix.os != 'windows' # Windows VMs are slow to use caching. Can add ~15m to the job
+          cache: ${{ matrix.os != 'windows' }} # Windows VMs are slow to use caching. Can add ~15m to the job
       - name: Display the Go version and environment
         run: |
           go version
