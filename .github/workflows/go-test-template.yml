@@ -114,7 +114,7 @@ jobs:
           name: ${{ matrix.os }}_${{ matrix.go }}_test_results.db
           path: ./test_results.db
       - name: Add failure summary
-        if: success() || failure() # always upload test results
+        if: (steps.test.conclusion == 'success' || steps.test.conclusion == 'failure')
         run: |
           echo "### Failure Summary" >> $GITHUB_STEP_SUMMARY
           test_analysis summarize >> $GITHUB_STEP_SUMMARY
