@@ -20,9 +20,10 @@ const retryCount = 4 // For a total of 5 runs
 var coverRegex = regexp.MustCompile(`-cover`)
 
 func main() {
+	var t tester
 	if len(os.Args) >= 2 {
 		if os.Args[1] == "summarize" {
-			md, err := summarize()
+			md, err := t.summarize()
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -32,31 +33,46 @@ func main() {
 	}
 
 	passThruFlags := os.Args[1:]
+	err := t.runTests(passThruFlags)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
-	err := goTestAll(passThruFlags)
+type tester struct {
+	Dir string
+}
+
+func (t *tester) runTests(passThruFlags []string) error {
+	err := t.goTestAll(passThruFlags)
 	if err == nil {
 		// No failed tests, nothing to do
-		return
+		return nil
 	}
 	log.Printf("Not all tests passed: %v", err)
 
-	failedTests, err := findFailedTests(context.Background())
+	failedTests, err := t.findFailedTests(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Printf("Found %d failed tests. Retrying them %d times", len(failedTests), retryCount)
 	hasOneNonFlakyFailure := false
+	loggedFlaky := map[string]struct{}{}
 
 	for _, ft := range failedTests {
 		isFlaky := false
 		for i := 0; i < retryCount; i++ {
 			log.Printf("Retrying %s.%s", ft.Package, ft.Test)
-			if err := goTestPkgTest(ft.Package, ft.Test, filterOutFlags(passThruFlags, coverRegex)); err != nil {
+			if err := t.goTestPkgTest(ft.Package, ft.Test, filterOutFlags(passThruFlags, coverRegex)); err != nil {
 				log.Printf("Failed to run %s.%s: %v", ft.Package, ft.Test, err)
 			} else {
 				isFlaky = true
-				log.Printf("Test %s.%s is flaky.", ft.Package, ft.Test)
+				flakyName := ft.Package + "." + ft.Test
+				if _, ok := loggedFlaky[flakyName]; !ok {
+					loggedFlaky[flakyName] = struct{}{}
+					log.Printf("Test %s.%s is flaky.", ft.Package, ft.Test)
+				}
 			}
 		}
 		if !isFlaky {
@@ -66,33 +82,36 @@ func main() {
 
 	// A test consistently failed, so we should exit with a non-zero exit code.
 	if hasOneNonFlakyFailure {
-		os.Exit(1)
+		return errors.New("one or more tests consistently failed")
 	}
+	return nil
 }
 
-func goTestAll(extraFlags []string) error {
+func (t *tester) goTestAll(extraFlags []string) error {
 	flags := []string{"./..."}
 	flags = append(flags, extraFlags...)
-	return goTest(flags)
+	return t.goTest(flags)
 }
 
-func goTestPkgTest(pkg, testname string, extraFlags []string) error {
+func (t *tester) goTestPkgTest(pkg, testname string, extraFlags []string) error {
 	flags := []string{
 		pkg, "-run", "^" + testname + "$", "-count", "1",
 	}
 	flags = append(flags, extraFlags...)
-	return goTest(flags)
+	return t.goTest(flags)
 }
 
-func goTest(extraFlags []string) error {
+func (t *tester) goTest(extraFlags []string) error {
 	flags := []string{
 		"test", "-json",
 	}
 	flags = append(flags, extraFlags...)
 	cmd := exec.Command("go", flags...)
+	cmd.Dir = t.Dir
 	cmd.Stderr = os.Stderr
 
 	gotest2sql := exec.Command("gotest2sql", "-v", "-output", dbPath)
+	gotest2sql.Dir = t.Dir
 	gotest2sql.Stdin, _ = cmd.StdoutPipe()
 	gotest2sql.Stdout = os.Stdout
 	gotest2sql.Stderr = os.Stderr
@@ -110,10 +129,10 @@ type failedTest struct {
 	Test    string
 }
 
-func findFailedTests(ctx context.Context) ([]failedTest, error) {
-	db, err := sql.Open("sqlite", dbPath)
+func (t *tester) findFailedTests(ctx context.Context) ([]failedTest, error) {
+	db, err := sql.Open("sqlite", t.Dir+dbPath)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	rows, err := db.QueryContext(ctx, "SELECT DISTINCT Package, Test FROM test_results where Action='fail' and Test != ''")
@@ -138,16 +157,15 @@ func filterOutFlags(flags []string, exclude *regexp.Regexp) []string {
 			out = append(out, f)
 		}
 	}
-	fmt.Println(out)
 	return out
 }
 
 // summarize returns a markdown string of the test results.
-func summarize() (string, error) {
+func (t *tester) summarize() (string, error) {
 	ctx := context.Background()
 	var out strings.Builder
 
-	testFailures, err := findFailedTests(ctx)
+	testFailures, err := t.findFailedTests(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -158,7 +176,7 @@ func summarize() (string, error) {
 	}
 	out.WriteString(fmt.Sprintf("## %d Test Failure%s\n\n", len(testFailures), plural))
 
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", t.Dir+dbPath)
 	if err != nil {
 		return "", err
 	}
