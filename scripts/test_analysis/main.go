@@ -134,6 +134,7 @@ func (t *tester) findFailedTests(ctx context.Context) ([]failedTest, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer db.Close()
 
 	rows, err := db.QueryContext(ctx, "SELECT DISTINCT Package, Test FROM test_results where Action='fail' and Test != ''")
 	if err != nil {
@@ -180,6 +181,7 @@ func (t *tester) summarize() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer db.Close()
 
 	rows, err := db.QueryContext(ctx, `SELECT
     tr_output.Package,
