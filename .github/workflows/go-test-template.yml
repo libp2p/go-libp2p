@@ -1,0 +1,153 @@
+name: Go Test
+on:
+  workflow_call:
+    inputs:
+      go-versions:
+        required: false
+        type: string
+        default: '["this", "next"]'
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu", "macos", "windows"]
+        go: ${{ fromJSON(inputs.go-versions) }}
+    env:
+      GOTESTFLAGS: -cover -coverprofile=module-coverage.txt -coverpkg=./...
+      GO386FLAGS: ""
+      GORACEFLAGS: ""
+    runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
+    name: ${{ matrix.os }} (go ${{ matrix.go }})
+    steps:
+      - name: Use msys2 on windows
+        if: matrix.os == 'windows'
+        # The executable for msys2 is also called bash.cmd
+        #   https://github.com/actions/virtual-environments/blob/main/images/win/Windows2019-Readme.md#shells
+        # If we prepend its location to the PATH
+        #   subsequent 'shell: bash' steps will use msys2 instead of gitbash
+        run: echo "C:/msys64/usr/bin" >> $GITHUB_PATH
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Check out the latest stable version of Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          # cache: false
+      - name: Read the Unified GitHub Workflows configuration
+        id: config
+        uses: ipdxco/unified-github-workflows/.github/actions/read-config@main
+      - name: Read the go.mod file
+        id: go-mod
+        uses: ipdxco/unified-github-workflows/.github/actions/read-go-mod@main
+      - name: Determine the Go version to use based on the go.mod file
+        id: go
+        env:
+          MATRIX_GO: ${{ matrix.go }}
+          GO_MOD_VERSION: ${{ fromJSON(steps.go-mod.outputs.json).Go }}
+        run: |
+          if [[ "$MATRIX_GO" == "this" ]]; then
+            echo "version=$GO_MOD_VERSION.x" >> $GITHUB_OUTPUT
+          elif [[ "$MATRIX_GO" == "next" ]]; then
+            MAJOR="${GO_MOD_VERSION%.[0-9]*}"
+            MINOR="${GO_MOD_VERSION#[0-9]*.}"
+            echo "version=$MAJOR.$(($MINOR+1)).x" >> $GITHUB_OUTPUT
+          elif [[ "$MATRIX_GO" == "prev" ]]; then
+            MAJOR="${GO_MOD_VERSION%.[0-9]*}"
+            MINOR="${GO_MOD_VERSION#[0-9]*.}"
+            echo "version=$MAJOR.$(($MINOR-1)).x" >> $GITHUB_OUTPUT
+          else
+            echo "version=$MATRIX_GO" >> $GITHUB_OUTPUT
+          fi
+      - name: Enable shuffle flag for go test command
+        if: toJSON(fromJSON(steps.config.outputs.json).shuffle) != 'false'
+        run: |
+          echo "GOTESTFLAGS=-shuffle=on $GOTESTFLAGS" >> $GITHUB_ENV
+          echo "GO386FLAGS=-shuffle=on $GO386FLAGS" >> $GITHUB_ENV
+          echo "GORACEFLAGS=-shuffle=on $GORACEFLAGS" >> $GITHUB_ENV
+      - name: Enable verbose flag for go test command
+        if: toJSON(fromJSON(steps.config.outputs.json).verbose) != 'false'
+        run: |
+          echo "GOTESTFLAGS=-v $GOTESTFLAGS" >> $GITHUB_ENV
+          echo "GO386FLAGS=-v $GO386FLAGS" >> $GITHUB_ENV
+          echo "GORACEFLAGS=-v $GORACEFLAGS" >> $GITHUB_ENV
+      - name: Set extra flags for go test command
+        if: fromJSON(steps.config.outputs.json).gotestflags != ''
+        run: |
+          echo "GOTESTFLAGS=${{ fromJSON(steps.config.outputs.json).gotestflags }} $GOTESTFLAGS" >> $GITHUB_ENV
+      - name: Set extra flags for go test race command
+        if: fromJSON(steps.config.outputs.json).goraceflags != ''
+        run: |
+          echo "GORACEFLAGS=${{ fromJSON(steps.config.outputs.json).goraceflags }} $GORACEFLAGS" >> $GITHUB_ENV
+      - name: Set up the Go version read from the go.mod file
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+      - name: Display the Go version and environment
+        run: |
+          go version
+          go env
+      - name: Run repo-specific setup
+        uses: ./.github/actions/go-test-setup
+        if: hashFiles('./.github/actions/go-test-setup') != ''
+      - name: Run tests
+        if: contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: test_analysis ${{ env.GOTESTFLAGS }}
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}_${{ matrix.go }}_test_results.db
+          path: ./test_results.db
+      - name: Add failure summary
+        run: |
+          echo "### Failure Summary" >> $GITHUB_STEP_SUMMARY
+          test_analysis summarize >> $GITHUB_STEP_SUMMARY
+      - name: Remove test results
+        run: rm ./test_results.db
+      - name: Run tests with race detector
+        # speed things up. Windows and OSX VMs are slow
+        if: matrix.os == 'ubuntu' &&
+          fromJSON(steps.config.outputs.json).skipRace != true &&
+          contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: test_analysis -race ${{ env.GORACEFLAGS }} ./...
+      - name: Upload test results (Race)
+        if: matrix.os == 'ubuntu' &&
+          fromJSON(steps.config.outputs.json).skipRace != true &&
+          contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}_${{ matrix.go }}_test_results_race.db
+          path: ./test_results.db
+      - name: Add failure summary
+        if: matrix.os == 'ubuntu' &&
+          fromJSON(steps.config.outputs.json).skipRace != true &&
+          contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
+        run: |
+          echo "# Tests with race detector failure summary" >> $GITHUB_STEP_SUMMARY
+          test_analysis summarize >> $GITHUB_STEP_SUMMARY
+      - name: Adding Link to Run Analysis
+        run: echo "### [Test flakiness analysis](https://observablehq.com/d/d74435ea5bbf24c7?run-id=$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
+      - name: Collect coverage files
+        id: coverages
+        run: echo "files=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@54bcd8715eee62d40e33596ef5e8f0f48dbbccab # v4.1.0
+        with:
+          files: ${{ steps.coverages.outputs.files }}
+          env_vars: OS=${{ matrix.os }}, GO=${{ steps.go.outputs.version }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

@@ -9,3 +9,9 @@ runs:
       shell: bash
       # This matches only tests with "NoCover" in their test name to avoid running all tests again.
       run: go test -tags nocover -run NoCover -v ./...
+    - name: Install testing tools
+      shell: bash
+      run: cd scripts/test_analysis && go install ./cmd/gotest2sql
+    - name: Install test_analysis
+      shell: bash
+      run: cd scripts/test_analysis && go install .
