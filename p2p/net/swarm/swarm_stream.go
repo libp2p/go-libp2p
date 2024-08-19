@@ -91,6 +91,17 @@ func (s *Stream) Reset() error {
 	return err
 }
 
+func (s *Stream) ResetWithError(errCode network.StreamErrorCode) error {
+	var err error
+	if se, ok := s.stream.(network.ResetWithErrorer); ok {
+		err = se.ResetWithError(errCode)
+	} else {
+		err = s.stream.Reset()
+	}
+	s.closeAndRemoveStream()
+	return err
+}
+
 func (s *Stream) closeAndRemoveStream() {
 	s.closeMx.Lock()
 	defer s.closeMx.Unlock()

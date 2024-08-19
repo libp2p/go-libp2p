@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -10,6 +11,29 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 )
+
+type ConnErrorCode uint32
+
+type ConnError struct {
+	Remote         bool
+	ErrorCode      ConnErrorCode
+	TransportError error
+}
+
+func (c *ConnError) Error() string {
+	side := "local"
+	if c.Remote {
+		side = "remote"
+	}
+	if c.TransportError != nil {
+		return fmt.Sprintf("connection closed (%s): code: %d: transport error: %s", side, c.ErrorCode, c.TransportError)
+	}
+	return fmt.Sprintf("connection closed (%s): code: %d", side, c.ErrorCode)
+}
+
+func (c *ConnError) Unwrap() error {
+	return c.TransportError
+}
 
 // Conn is a connection to a remote peer. It multiplexes streams.
 // Usually there is no need to use a Conn directly, but it may
@@ -23,6 +47,11 @@ type Conn interface {
 	ConnMultiaddrs
 	ConnStat
 	ConnScoper
+
+	// CloseWithError closes the connection with errCode. The errCode is sent to the
+	// peer on a best effort basis. For transports that do not support sending error
+	// codes on connection close, the behavior is identical to calling Close.
+	CloseWithError(errCode ConnErrorCode) error
 
 	// ID returns an identifier that uniquely identifies this Conn within this
 	// host, during this run. Connection IDs may repeat across restarts.

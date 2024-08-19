@@ -63,3 +63,10 @@ func (t *transportConn) ConnState() network.ConnectionState {
 		UsedEarlyMuxerNegotiation: t.usedEarlyMuxerNegotiation,
 	}
 }
+
+func (t *transportConn) CloseWithError(errCode network.ConnErrorCode) error {
+	if ce, ok := t.MuxedConn.(network.CloseWithErrorer); ok {
+		return ce.CloseWithError(errCode)
+	}
+	return t.Close()
+}

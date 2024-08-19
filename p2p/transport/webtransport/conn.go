@@ -78,6 +78,10 @@ func (c *conn) Close() error {
 	return err
 }
 
+func (c *conn) CloseWithError(errCode network.ConnErrorCode) error {
+	return c.Close()
+}
+
 func (c *conn) IsClosed() bool           { return c.session.Context().Err() != nil }
 func (c *conn) Scope() network.ConnScope { return c.scope }
 func (c *conn) Transport() tpt.Transport { return c.transport }

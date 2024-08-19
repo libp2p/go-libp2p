@@ -132,6 +132,10 @@ func (c *connection) Close() error {
 	return nil
 }
 
+func (c *connection) CloseWithError(errCode network.ConnErrorCode) error {
+	return c.Close()
+}
+
 // closeWithError is used to Close the connection when the underlying DTLS connection fails
 func (c *connection) closeWithError(err error) {
 	c.closeOnce.Do(func() {
