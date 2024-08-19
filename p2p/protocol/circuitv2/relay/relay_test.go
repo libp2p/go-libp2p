@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -267,12 +268,12 @@ func TestRelayLimitTime(t *testing.T) {
 	if n > 0 {
 		t.Fatalf("expected to write 0 bytes, wrote %d", n)
 	}
-	if err != network.ErrReset {
+	if !errors.Is(err, network.ErrReset) {
 		t.Fatalf("expected reset, but got %s", err)
 	}
 
 	err = <-rch
-	if err != network.ErrReset {
+	if !errors.Is(err, network.ErrReset) {
 		t.Fatalf("expected reset, but got %s", err)
 	}
 }
@@ -300,7 +301,7 @@ func TestRelayLimitData(t *testing.T) {
 		}
 
 		n, err := s.Read(buf)
-		if err != network.ErrReset {
+		if !errors.Is(err, network.ErrReset) {
 			t.Fatalf("expected reset but got %s", err)
 		}
 		rch <- n
@@ -308,6 +309,7 @@ func TestRelayLimitData(t *testing.T) {
 
 	rc := relay.DefaultResources()
 	rc.Limit.Duration = time.Second
+	// Due to yamux framing, 4 blocks of 1024 bytes will exceed the data limit
 	rc.Limit.Data = 4096
 
 	r, err := relay.New(hosts[1], relay.WithResources(rc))
@@ -367,7 +369,6 @@ func TestRelayLimitData(t *testing.T) {
 			t.Fatalf("expected to read %d bytes but read %d", len(buf), n)
 		}
 	}
-
 	buf = make([]byte, 4096)
 	if _, err := rand.Read(buf); err != nil {
 		t.Fatal(err)

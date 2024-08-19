@@ -2,6 +2,7 @@ package libp2pquic
 
 import (
 	"context"
+	"fmt"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -34,6 +35,13 @@ func (c *conn) Close() error {
 	return c.closeWithError(0, "")
 }
 
+// CloseWithError closes the connection
+// It must be called even if the peer closed the connection in order for
+// garbage collection to properly work in this package.
+func (c *conn) CloseWithError(errCode network.ConnErrorCode) error {
+	return c.closeWithError(quic.ApplicationErrorCode(errCode), "")
+}
+
 func (c *conn) closeWithError(errCode quic.ApplicationErrorCode, errString string) error {
 	c.transport.removeConn(c.quicConn)
 	err := c.quicConn.CloseWithError(errCode, errString)
@@ -53,13 +61,20 @@ func (c *conn) allowWindowIncrease(size uint64) bool {
 // OpenStream creates a new stream.
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 	qstr, err := c.quicConn.OpenStreamSync(ctx)
-	return &stream{Stream: qstr}, err
+	if err != nil {
+		return nil, parseStreamError(err)
+	}
+	return &stream{Stream: qstr}, nil
 }
 
 // AcceptStream accepts a stream opened by the other side.
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	qstr, err := c.quicConn.AcceptStream(context.Background())
-	return &stream{Stream: qstr}, err
+	if err != nil {
+		fmt.Println("got error", err)
+		return nil, parseStreamError(err)
+	}
+	return &stream{Stream: qstr}, nil
 }
 
 // LocalPeer returns our peer ID

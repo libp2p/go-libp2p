@@ -144,6 +144,10 @@ func (s *stream) Reset() error {
 	return nil
 }
 
+func (s *stream) ResetWithError(errCode network.StreamErrorCode) error {
+	panic("not implemented")
+}
+
 func (s *stream) teardown() {
 	// at this point, no streams are writing.
 	s.conn.removeStream(s)

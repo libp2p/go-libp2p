@@ -794,6 +794,7 @@ type mockConn struct {
 }
 
 func (m mockConn) Close() error                                          { panic("implement me") }
+func (m mockConn) CloseWithError(errCode network.ConnErrorCode) error    { panic("implement me") }
 func (m mockConn) LocalPeer() peer.ID                                    { panic("implement me") }
 func (m mockConn) RemotePeer() peer.ID                                   { panic("implement me") }
 func (m mockConn) RemotePublicKey() crypto.PubKey                        { panic("implement me") }

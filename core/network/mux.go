@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -10,6 +11,33 @@ import (
 
 // ErrReset is returned when reading or writing on a reset stream.
 var ErrReset = errors.New("stream reset")
+
+type StreamErrorCode uint32
+
+type StreamError struct {
+	ErrorCode      StreamErrorCode
+	Remote         bool
+	TransportError error
+}
+
+func (s *StreamError) Error() string {
+	side := "local"
+	if s.Remote {
+		side = "remote"
+	}
+	if s.TransportError != nil {
+		return fmt.Sprintf("stream reset (%s): code: %d: transport error: %s", side, s.ErrorCode, s.TransportError)
+	}
+	return fmt.Sprintf("stream reset (%s): code: %d", side, s.ErrorCode)
+}
+
+func (s *StreamError) Is(target error) bool {
+	return target == ErrReset
+}
+
+func (s *StreamError) Unwrap() error {
+	return s.TransportError
+}
 
 // MuxedStream is a bidirectional io pipe within a connection.
 type MuxedStream interface {
@@ -61,6 +89,13 @@ type MuxedStream interface {
 	SetWriteDeadline(time.Time) error
 }
 
+type ResetWithErrorer interface {
+	// ResetWithError closes both ends of the stream with errCode. The errCode is sent
+	// to the peer on a best effort basis. For transports that do not support sending
+	// error codes to remote peer, the behavior is identical to calling Reset
+	ResetWithError(errCode StreamErrorCode) error
+}
+
 // MuxedConn represents a connection to a remote peer that has been
 // extended to support stream multiplexing.
 //
@@ -84,6 +119,12 @@ type MuxedConn interface {
 
 	// AcceptStream accepts a stream opened by the other side.
 	AcceptStream() (MuxedStream, error)
+}
+
+type CloseWithErrorer interface {
+	// CloseWithError closes the connection with errCode. The errCode is sent
+	// to the peer.
+	CloseWithError(errCode ConnErrorCode) error
 }
 
 // Multiplexer wraps a net.Conn with a stream multiplexing

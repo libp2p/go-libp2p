@@ -845,6 +845,14 @@ func (c *connWithMetrics) Close() error {
 	return c.closeErr
 }
 
+func (c *connWithMetrics) CloseWithError(errCode network.ConnErrorCode) error {
+	c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
+	if ce, ok := c.CapableConn.(network.CloseWithErrorer); ok {
+		return ce.CloseWithError(errCode)
+	}
+	return c.CapableConn.Close()
+}
+
 func (c *connWithMetrics) Stat() network.ConnStats {
 	if cs, ok := c.CapableConn.(network.ConnStat); ok {
 		return cs.Stat()
