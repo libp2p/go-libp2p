@@ -1,0 +1,122 @@
+name: Go Checks
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        required: false
+        type: string
+      go-generate-ignore-protoc-version-comments:
+        required: false
+        type: boolean
+      go-cache:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    name: All
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Check out the latest stable version of Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Read the Unified GitHub Workflows configuration
+        id: config
+        uses: ipdxco/unified-github-workflows/.github/actions/read-config@main
+      - name: Read the go.mod file
+        id: go-mod
+        uses: ipdxco/unified-github-workflows/.github/actions/read-go-mod@main
+      - name: Set up the Go version read from the go.mod file
+        id: go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version || (fromJSON(steps.go-mod.outputs.json).Go && format('{0}.x', fromJSON(steps.go-mod.outputs.json).Go)) }}
+          cache: ${{ inputs.go-cache }}
+      - name: Run repo-specific setup
+        uses: ./.github/actions/go-check-setup
+        if: hashFiles('./.github/actions/go-check-setup') != ''
+      - name: Install staticcheck
+        env:
+          STATICCHECK_VERSIONS: |
+            {
+              "1.22": "d6ea1871680239ae8b74127d81b7053024fa6580",
+              "1.21": "f57fec247eddf41c04774af84b91e41dd78a3173",
+              "1.20": "9e12e6014d3b0a854950490051ad1338fc6badd1",
+              "1.19": "376210a89477dedbe6fdc4484b233998650d7b3c",
+              "1.18": "376210a89477dedbe6fdc4484b233998650d7b3c",
+              "1.17": "c8caa92bad8c27ae734c6725b8a04932d54a147b",
+              "1.16": "4dc1992c9bb4310ba1e98b30c8d7d46444891d3b",
+              "1.15": "5b7de96f09104e2be384aa93a7c821eb5e77378b",
+              "1.14": "5b7de96f09104e2be384aa93a7c821eb5e77378b",
+              "1.13": "afd67930eec2a9ed3e9b19f684d17a062285f16a"
+            }
+          GO_VERSION: ${{ steps.go.outputs.go-version }}
+          GO111MODULE: on
+        run: |
+          version="$(jq -nr 'env.STATICCHECK_VERSIONS | fromjson | .[env.GO_VERSION | sub("\\.[^.]+$"; "")] // "latest"')"
+          echo "Installing staticcheck@$version"
+          go install honnef.co/go/tools/cmd/staticcheck@$version || go get honnef.co/go/tools/cmd/staticcheck@$version
+      - name: Check that go.mod is tidy
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: |
+            go mod tidy
+            if [[ -n $(git ls-files --other --exclude-standard --directory -- go.sum) ]]; then
+              echo "go.sum was added by go mod tidy"
+              exit 1
+            fi
+            git diff --exit-code -- go.sum go.mod
+      - name: gofmt
+        if: success() || failure() # run this step even if the previous one failed
+        run: |
+          out=$(gofmt -s -l .)
+          if [[ -n "$out" ]]; then
+            echo $out | awk '{print "::error file=" $0 ",line=0,col=0::File is not gofmt-ed."}'
+            exit 1
+          fi
+      - name: go vet
+        if: success() || failure() # run this step even if the previous one failed
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: go vet ./...
+      - name: staticcheck
+        if: success() || failure() # run this step even if the previous one failed
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: |
+            set -o pipefail
+            staticcheck ./... | sed -e 's@\(.*\)\.go@./\1.go@g'
+      - name: go generate
+        uses: protocol/multiple-go-modules@v1.4
+        if: (success() || failure()) && fromJSON(steps.config.outputs.json).gogenerate == true
+        env:
+          IGNORE_PROTOC_VERSION_COMMENTS: ${{ inputs.go-generate-ignore-protoc-version-comments }}
+        with:
+          run: |
+            git clean -fd # make sure there aren't untracked files / directories
+            if [[ "$IGNORE_PROTOC_VERSION_COMMENTS" == "true" ]]; then
+              find . -name '*.pb.go' -print0 | xargs -0 -r sed -i '/^\/\/.*protoc.*v/d'
+              git add .
+              git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git config --global user.name "github-actions[bot]"
+              git diff --cached --quiet || git commit -m "chore: remove protoc version comments"
+            fi
+            go generate -x ./...
+            if [[ "$IGNORE_PROTOC_VERSION_COMMENTS" == "true" ]]; then
+              find . -name '*.pb.go' -print0 | xargs -0 -r sed -i '/^\/\/.*protoc.*v/d'
+            fi
+            git add .
+            # check if go generate modified or added any files
+            if ! $(git diff-index HEAD --exit-code --quiet); then
+              echo "go generated caused changes to the repository:"
+              git status --short
+              git diff HEAD
+              exit 1
+            fi

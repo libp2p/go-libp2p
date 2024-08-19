@@ -14,6 +14,6 @@ func main() {
 		return
 	}
 	if err := cmdlib.RunServer(os.Args[1], nil); err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 }

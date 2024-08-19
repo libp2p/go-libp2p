@@ -960,7 +960,7 @@ func waitForAddrInStream(t *testing.T, s <-chan ma.Multiaddr, expected ma.Multia
 			}
 			continue
 		case <-time.After(timeout):
-			t.Fatalf(failMsg)
+			t.Fatal(failMsg)
 		}
 	}
 }
