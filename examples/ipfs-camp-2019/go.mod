@@ -1,6 +1,6 @@
 module github.com/libp2p/go-libp2p/examples/ipfs-camp-2019
 
-go 1.21
+go 1.22
 
 require (
 	github.com/gogo/protobuf v1.3.2
