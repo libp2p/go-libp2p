@@ -106,8 +106,13 @@ func (s *Service) watchForPublicAddr() {
 	t := time.NewTimer(duration)
 	defer t.Stop()
 	for {
+		interfaceListenAddrs, err := s.host.Network().InterfaceListenAddresses()
+
+		if err != nil {
+			log.Debugf("failed to get to get InterfaceListenAddresses: %s", err)
+		}
 		// Use both host and observed to enable hole punching for undialable public ips that might not be observed
-		if containsPublicAddr(s.ids.OwnObservedAddrs()) || containsPublicAddr(s.host.Addrs()) {
+		if containsPublicAddr(s.ids.OwnObservedAddrs()) || containsPublicAddr(interfaceListenAddrs) {
 			log.Debug("Host now has a public address. Starting holepunch protocol.")
 			s.host.SetStreamHandler(Protocol, s.handleNewStream)
 			break
@@ -173,7 +178,13 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 		return 0, nil, nil, fmt.Errorf("received hole punch stream: %s", str.Conn().RemoteMultiaddr())
 	}
 	ownAddrs = removeRelayAddrs(s.ids.OwnObservedAddrs())
-	ownAddrs = append(ownAddrs, s.host.Addrs()...)
+	interfaceListenAddrs, err := s.host.Network().InterfaceListenAddresses()
+
+	if err != nil {
+		log.Debugf("failed to get to get InterfaceListenAddresses: %s", err)
+	}
+	ownAddrs = ma.Unique(append(ownAddrs, interfaceListenAddrs...))
+
 	if s.filter != nil {
 		ownAddrs = s.filter.FilterLocal(str.Conn().RemotePeer(), ownAddrs)
 	}
