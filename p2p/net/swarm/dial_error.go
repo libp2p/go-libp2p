@@ -53,7 +53,7 @@ func (e *DialError) Unwrap() []error {
 		return nil
 	}
 
-	errs := make([]error, len(e.DialErrors)+1)
+	errs := make([]error, 0, len(e.DialErrors)+1)
 	if e.Cause != nil {
 		errs = append(errs, e.Cause)
 	}
