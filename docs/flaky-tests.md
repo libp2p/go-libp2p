@@ -5,7 +5,7 @@ test probably depends on some Go routine making progress in the background and
 polling to see if the expected outcome is achieved.
 
 This will pretty much always work locally because your local machine is likely
-pretty capable and there isn't too many concurrent processes running. In CI, we
+pretty capable and there aren't too many concurrent processes running. In CI, we
 are susceptible to both slower hardware and noisier neighbors. However we can
 mimic this environment locally with
 [cgroups](https://man7.org/linux/man-pages/man7/cgroups.7.html).
@@ -28,7 +28,7 @@ processes are vying for CPU time.
   sudo cgset -r cpu.cfs_quota_us=10000 cpulimit
   sudo cgset -r cpu.cfs_period_us=1000000 cpulimit
 
-  # Run a shell with in our limited environment
+  # Run a shell within our limited environment
   sudo cgexec -g cpu:cpulimit bash
 
   # In the shell, run the test
