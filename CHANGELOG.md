@@ -35,7 +35,7 @@ We also added new metrics to the swarm Grafana dashboard, showing:
 
 This feature should be safe to enable for nodes running in data centers and for most nodes in home networks.
 However, there are some (mostly home and corporate networks) that block all UDP traffic. If enabled, the current implementation
-of the smart dialing logic will lead to a regression, since it preferes QUIC addresses over TCP addresses. Nodes would still be
+of the smart dialing logic will lead to a regression, since it prefers QUIC addresses over TCP addresses. Nodes would still be
 able to connect, but connection establishment of the TCP connection would be delayed by 250ms.
 
 In a future release (see #1605 for details), we will introduce a feature called blackhole detection. By observing the outcome of
