@@ -107,8 +107,6 @@ func (s *Service) watchForPublicAddr() {
 	t := time.NewTimer(duration)
 	defer t.Stop()
 	for {
-
-		// Use both host and observed to enable hole punching for undialable public ips that might not be observed
 		if len(s.getPublicAddrs()) > 0 {
 			log.Debug("Host now has a public address. Starting holepunch protocol.")
 			s.host.SetStreamHandler(Protocol, s.handleNewStream)
@@ -174,9 +172,7 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 	if !isRelayAddress(str.Conn().RemoteMultiaddr()) {
 		return 0, nil, nil, fmt.Errorf("received hole punch stream: %s", str.Conn().RemoteMultiaddr())
 	}
-
 	ownAddrs = s.getPublicAddrs()
-
 	if s.filter != nil {
 		ownAddrs = s.filter.FilterLocal(str.Conn().RemotePeer(), ownAddrs)
 	}
