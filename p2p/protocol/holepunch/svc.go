@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-msgio/pbio"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // Protocol is the libp2p protocol for Hole Punching.
@@ -106,13 +107,9 @@ func (s *Service) watchForPublicAddr() {
 	t := time.NewTimer(duration)
 	defer t.Stop()
 	for {
-		interfaceListenAddrs, err := s.host.Network().InterfaceListenAddresses()
 
-		if err != nil {
-			log.Debugf("failed to get to get InterfaceListenAddresses: %s", err)
-		}
 		// Use both host and observed to enable hole punching for undialable public ips that might not be observed
-		if containsPublicAddr(s.ids.OwnObservedAddrs()) || containsPublicAddr(interfaceListenAddrs) {
+		if len(s.getPublicAddrs()) > 0 {
 			log.Debug("Host now has a public address. Starting holepunch protocol.")
 			s.host.SetStreamHandler(Protocol, s.handleNewStream)
 			break
@@ -177,13 +174,8 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 	if !isRelayAddress(str.Conn().RemoteMultiaddr()) {
 		return 0, nil, nil, fmt.Errorf("received hole punch stream: %s", str.Conn().RemoteMultiaddr())
 	}
-	ownAddrs = removeRelayAddrs(s.ids.OwnObservedAddrs())
-	interfaceListenAddrs, err := s.host.Network().InterfaceListenAddresses()
 
-	if err != nil {
-		log.Debugf("failed to get to get InterfaceListenAddresses: %s", err)
-	}
-	ownAddrs = ma.Unique(append(ownAddrs, interfaceListenAddrs...))
+	ownAddrs = s.getPublicAddrs()
 
 	if s.filter != nil {
 		ownAddrs = s.filter.FilterLocal(str.Conn().RemotePeer(), ownAddrs)
@@ -285,6 +277,29 @@ func (s *Service) handleNewStream(str network.Stream) {
 	dt := time.Since(start)
 	s.tracer.EndHolePunch(rp, dt, err)
 	s.tracer.HolePunchFinished("receiver", 1, addrs, ownAddrs, getDirectConnection(s.host, rp))
+}
+
+// getPublicAddrs returns public observed and interface addresses
+func (s *Service) getPublicAddrs() []ma.Multiaddr {
+	addrs := removeRelayAddrs(s.ids.OwnObservedAddrs())
+
+	interfaceListenAddrs, err := s.host.Network().InterfaceListenAddresses()
+	if err != nil {
+		log.Debugf("failed to get to get InterfaceListenAddresses: %s", err)
+	} else {
+		addrs = append(addrs, interfaceListenAddrs...)
+	}
+
+	addrs = ma.Unique(addrs)
+
+	publicAddrs := make([]ma.Multiaddr, 0, len(addrs))
+
+	for _, addr := range addrs {
+		if manet.IsPublicAddr(addr) {
+			publicAddrs = append(publicAddrs, addr)
+		}
+	}
+	return publicAddrs
 }
 
 // DirectConnect is only exposed for testing purposes.
