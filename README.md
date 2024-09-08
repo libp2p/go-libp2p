@@ -101,6 +101,7 @@ Some notable users of go-libp2p are:
 - [Swarm Bee](https://github.com/ethersphere/bee) - A client for connecting to the [Swarm network](https://www.ethswarm.org/)
 - [MultiversX Node](https://github.com/multiversx/mx-chain-go) - The Go implementation of the MultiversX network protocol
 - [Sonr](https://github.com/sonr-io/sonr) - A platform to integrate DID Documents, WebAuthn, and IPFS and manage digital identity and assets.
+- [Hyprspace](https://github.com/hyprspace/hyprspace) - A Lightweight VPN Built on top of IPFS + Libp2p for Truly Distributed Networks.
 - [EdgeVPN](https://github.com/mudler/edgevpn) - A decentralized, immutable, portable VPN and reverse proxy over p2p.
 - [Kairos](https://github.com/kairos-io/kairos) - A Kubernetes-focused, Cloud Native Linux meta-distribution.
 - [Oasis Core](https://github.com/oasisprotocol/oasis-core) - The consensus and runtime layers of the [Oasis protocol](https://oasisprotocol.org/).
