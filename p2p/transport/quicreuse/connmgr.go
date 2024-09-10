@@ -232,7 +232,7 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 
 	if v == quic.Version1 {
 		// The endpoint has explicit support for QUIC v1, so we'll only use that version.
-		quicConf.Versions = []quic.VersionNumber{quic.Version1}
+		quicConf.Versions = []quic.Version{quic.Version1}
 	} else {
 		return nil, errors.New("unknown QUIC version")
 	}
