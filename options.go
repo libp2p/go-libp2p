@@ -635,3 +635,12 @@ func IPv6BlackHoleSuccessCounter(f *swarm.BlackHoleSuccessCounter) Option {
 		return nil
 	}
 }
+
+// WithFxOption adds a user provided fx.Option to the libp2p constructor.
+// Experimental: This option is subject to change or removal.
+func WithFxOption(opts ...fx.Option) Option {
+	return func(cfg *Config) error {
+		cfg.UserFxOptions = append(cfg.UserFxOptions, opts...)
+		return nil
+	}
+}

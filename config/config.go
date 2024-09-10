@@ -142,6 +142,8 @@ type Config struct {
 	CustomUDPBlackHoleSuccessCounter  bool
 	IPv6BlackHoleSuccessCounter       *swarm.BlackHoleSuccessCounter
 	CustomIPv6BlackHoleSuccessCounter bool
+
+	UserFxOptions []fx.Option
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -555,6 +557,8 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if cfg.Routing != nil {
 		fxopts = append(fxopts, fx.Invoke(func(bho *routed.RoutedHost) { rh = bho }))
 	}
+
+	fxopts = append(fxopts, cfg.UserFxOptions...)
 
 	app := fx.New(fxopts...)
 	if err := app.Start(context.Background()); err != nil {
