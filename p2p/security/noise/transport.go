@@ -63,11 +63,19 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 	return SessionWithConnState(c, responderEDH.MatchMuxers(false)), err
 }
 
+// Detect if the error is due to TCP Simultaneous Open. In that case, both sides will believe they are the client.
+func errIsSimOpen(err error) bool {
+	return err.Error() == "error reading handshake message: noise: message is too short"
+}
+
 // SecureOutbound runs the Noise handshake as the initiator.
 func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	initiatorEDH := newTransportEDH(t)
 	c, err := newSecureSession(t, ctx, insecure, p, nil, initiatorEDH, nil, true, true)
 	if err != nil {
+		if errIsSimOpen(err) {
+			return nil, sec.ErrSimOpen
+		}
 		return c, err
 	}
 	return SessionWithConnState(c, initiatorEDH.MatchMuxers(true)), err

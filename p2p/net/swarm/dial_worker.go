@@ -2,17 +2,24 @@ package swarm
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	"golang.org/x/exp/rand"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
+
+const maxTCPSimOpenRetries = 3
 
 // dialRequest is structure used to request dials to the peer associated with a
 // worker loop
@@ -66,11 +73,13 @@ type addrDial struct {
 	dialRankingDelay time.Duration
 	// expectedTCPUpgradeTime is the expected time by which security upgrade will complete
 	expectedTCPUpgradeTime time.Time
+	retryCount             uint8
 }
 
 // dialWorker synchronises concurrent dials to a peer. It ensures that we make at most one dial to a
 // peer's address
 type dialWorker struct {
+	ctx  context.Context
 	s    *Swarm
 	peer peer.ID
 	// reqch is used to send dial requests to the worker. close reqch to end the worker loop
@@ -78,7 +87,7 @@ type dialWorker struct {
 	// pendingRequests is the set of pendingRequests
 	pendingRequests map[*pendRequest]struct{}
 	// trackedDials tracks dials to the peer's addresses. An entry here is used to ensure that
-	// we dial an address at most once
+	// we dial an address at most once. Maybe twice in the case of an error from TCP simultaneous open
 	trackedDials map[string]*addrDial
 	// resch is used to receive response for dials to the peers addresses.
 	resch chan tpt.DialUpdate
@@ -90,11 +99,12 @@ type dialWorker struct {
 	cl Clock
 }
 
-func newDialWorker(s *Swarm, p peer.ID, reqch <-chan dialRequest, cl Clock) *dialWorker {
+func newDialWorker(ctx context.Context, s *Swarm, p peer.ID, reqch <-chan dialRequest, cl Clock) *dialWorker {
 	if cl == nil {
 		cl = RealClock{}
 	}
 	return &dialWorker{
+		ctx:             ctx,
 		s:               s,
 		peer:            p,
 		reqch:           reqch,
@@ -130,7 +140,8 @@ func (w *dialWorker) loop() {
 		}
 		timerRunning = false
 		if dq.Len() > 0 {
-			if dialsInFlight == 0 && !w.connected {
+			top := dq.top()
+			if !top.ForceDelay && dialsInFlight == 0 && !w.connected {
 				// if there are no dials in flight, trigger the next dials immediately
 				dialTimer.Reset(startTime)
 			} else {
@@ -159,6 +170,8 @@ loop:
 		//     interested in dials on this address.
 
 		select {
+		case <-w.ctx.Done():
+			return
 		case req, ok := <-w.reqch:
 			if !ok {
 				if w.s.metricsTracer != nil {
@@ -368,13 +381,37 @@ loop:
 
 			// it must be an error -- add backoff if applicable and dispatch
 			// ErrDialRefusedBlackHole shouldn't end up here, just a safety check
-			if res.Err != ErrDialRefusedBlackHole && res.Err != context.Canceled && !w.connected {
-				// we only add backoff if there has not been a successful connection
-				// for consistency with the old dialer behavior.
-				w.s.backf.AddBackoff(w.peer, res.Addr)
-			} else if res.Err == ErrDialRefusedBlackHole {
+			switch {
+			case res.Err == ErrDialRefusedBlackHole:
 				log.Errorf("SWARM BUG: unexpected ErrDialRefusedBlackHole while dialing peer %s to addr %s",
 					w.peer, res.Addr)
+			case res.Err == context.Canceled:
+			case ad.retryCount < maxTCPSimOpenRetries && errors.Is(res.Err, sec.ErrSimOpen):
+				now := time.Now()
+				// these are new addresses, track them and add them to dq
+				w.trackedDials[string(ad.addr.Bytes())] = &addrDial{
+					addr:       ad.addr,
+					ctx:        ad.ctx,
+					createdAt:  now,
+					retryCount: ad.retryCount + 1,
+				}
+				// This is an error due to simultaneous open. Let the "smaller"
+				// peer try again first, otherwise we'll try again after a delay
+				var delay time.Duration
+				if strings.Compare(string(w.peer), string(w.s.LocalPeer())) == -1 {
+					// Random delay to avoid the other side being able to predict when we'll try again
+					delay = time.Duration((50+rand.Intn(100))<<int(ad.retryCount)) * time.Millisecond
+				}
+				dq.UpdateOrAdd(network.AddrDelay{Addr: ad.addr, Delay: delay, ForceDelay: true})
+				scheduleNextDial()
+				continue loop
+			default:
+				if !w.connected {
+					// we only add backoff if there has not been a successful connection
+					// for consistency with the old dialer behavior.
+					w.s.backf.AddBackoff(w.peer, res.Addr)
+				}
+
 			}
 
 			w.dispatchError(ad, res.Err)

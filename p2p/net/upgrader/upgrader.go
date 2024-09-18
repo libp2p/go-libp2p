@@ -328,6 +328,20 @@ func (u *upgrader) negotiateSecurity(ctx context.Context, insecure net.Conn, ser
 	select {
 	case r := <-done:
 		if r.err != nil {
+			var errUnrecognized mss.ErrUnrecognizedResponse[protocol.ID]
+			if errors.As(r.err, &errUnrecognized) && len(u.securityIDs) > 0 {
+				// We tried to open a connection with our first security ID, and
+				// the other side gave us something we didn't expect that looks
+				// like a security ID.
+				//
+				// This hints that the error is due to TCP Simultaneous Open.
+				// Both sides think they are the client and suggest a protocol
+				// at the beginning. We fail because they suggested a protocol
+				// that we didn't suggest.
+				if errUnrecognized.Expected == u.securityIDs[0] && len(errUnrecognized.Actual) > 0 && errUnrecognized.Actual[0] == '/' {
+					return nil, sec.ErrSimOpen
+				}
+			}
 			return nil, r.err
 		}
 		if s := u.getSecurityByID(r.proto); s != nil {

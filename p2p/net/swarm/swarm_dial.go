@@ -290,8 +290,8 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 }
 
 // dialWorkerLoop synchronizes and executes concurrent dials to a single peer
-func (s *Swarm) dialWorkerLoop(p peer.ID, reqch <-chan dialRequest) {
-	w := newDialWorker(s, p, reqch, nil)
+func (s *Swarm) dialWorkerLoop(ctx context.Context, p peer.ID, reqch <-chan dialRequest) {
+	w := newDialWorker(ctx, s, p, reqch, nil)
 	w.loop()
 }
 

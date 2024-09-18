@@ -100,6 +100,11 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 	return cs, err
 }
 
+// Detect if the error is due to TCP Simultaneous Open. In that case, both sides will believe they are the client.
+func errIsSimOpen(err error) bool {
+	return err.Error() == "tls: received unexpected handshake message of type *tls.clientHelloMsg when waiting for *tls.serverHelloMsg"
+}
+
 // SecureOutbound runs the TLS handshake as a client.
 // Note that SecureOutbound will not return an error if the server doesn't
 // accept the certificate. This is due to the fact that in TLS 1.3, the client
@@ -118,6 +123,9 @@ func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p pee
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {
 		insecure.Close()
+		if errIsSimOpen(err) {
+			return nil, sec.ErrSimOpen
+		}
 	}
 	return cs, err
 }

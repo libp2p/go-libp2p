@@ -41,3 +41,5 @@ func (e ErrPeerIDMismatch) Error() string {
 }
 
 var _ error = (*ErrPeerIDMismatch)(nil)
+
+var ErrSimOpen = fmt.Errorf("TCP simultaneous open caused security handshake to fail")

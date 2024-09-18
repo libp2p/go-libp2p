@@ -204,6 +204,9 @@ type Dialer interface {
 type AddrDelay struct {
 	Addr  ma.Multiaddr
 	Delay time.Duration
+	// ForceDelay forces the dialer to wait for the full delay before dialing,
+	// even if there are no other dials in flight.
+	ForceDelay bool
 }
 
 // DialRanker provides a schedule of dialing the provided addresses

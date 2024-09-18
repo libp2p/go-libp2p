@@ -357,6 +357,14 @@ func (s *Swarm) close() {
 	wg.Wait()
 }
 
+type errHaveInboundConn struct {
+	c *Conn
+}
+
+func (e errHaveInboundConn) Error() string {
+	return "have inbound connection"
+}
+
 func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn, error) {
 	var (
 		p    = tc.RemotePeer()
@@ -400,6 +408,11 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 
 	// Clear any backoffs
 	s.backf.Clear(p)
+
+	// Cancel the pending dial if it exists.
+	if dir == network.DirInbound {
+		s.dsync.CancelActiveDial(p, errHaveInboundConn{c})
+	}
 
 	// Finally, add the peer.
 	s.conns.Lock()

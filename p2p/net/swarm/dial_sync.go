@@ -10,7 +10,7 @@ import (
 )
 
 // dialWorkerFunc is used by dialSync to spawn a new dial worker
-type dialWorkerFunc func(peer.ID, <-chan dialRequest)
+type dialWorkerFunc func(context.Context, peer.ID, <-chan dialRequest)
 
 // errConcurrentDialSuccessful is used to signal that a concurrent dial succeeded
 var errConcurrentDialSuccessful = errors.New("concurrent dial successful")
@@ -55,6 +55,8 @@ func (ad *activeDial) dial(ctx context.Context) (*Conn, error) {
 	case ad.reqch <- dialRequest{ctx: dialCtx, resch: resch}:
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-dialCtx.Done():
+		return nil, dialCtx.Err()
 	}
 
 	select {
@@ -62,6 +64,8 @@ func (ad *activeDial) dial(ctx context.Context) (*Conn, error) {
 		return res.conn, res.err
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-dialCtx.Done():
+		return nil, dialCtx.Err()
 	}
 }
 
@@ -79,7 +83,7 @@ func (ds *dialSync) getActiveDial(p peer.ID) (*activeDial, error) {
 			cancelCause: cancel,
 			reqch:       make(chan dialRequest),
 		}
-		go ds.dialWorker(p, actd.reqch)
+		go ds.dialWorker(ctx, p, actd.reqch)
 		ds.dials[p] = actd
 	}
 	// increase ref count before dropping mutex
@@ -96,6 +100,12 @@ func (ds *dialSync) Dial(ctx context.Context, p peer.ID) (*Conn, error) {
 	}
 
 	conn, err := ad.dial(ctx)
+	if cause := context.Cause(ad.ctx); cause != nil {
+		var haveInboundConn errHaveInboundConn
+		if errors.As(cause, &haveInboundConn) {
+			conn, err = haveInboundConn.c, nil
+		}
+	}
 
 	ds.mutex.Lock()
 	defer ds.mutex.Unlock()
@@ -112,4 +122,14 @@ func (ds *dialSync) Dial(ctx context.Context, p peer.ID) (*Conn, error) {
 	}
 
 	return conn, err
+}
+
+func (ds *dialSync) CancelActiveDial(p peer.ID, cause error) {
+	ds.mutex.Lock()
+	ad, ok := ds.dials[p]
+	ds.mutex.Unlock()
+	if !ok {
+		return
+	}
+	ad.cancelCause(cause)
 }
