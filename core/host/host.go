@@ -41,7 +41,7 @@ type Host interface {
 	// given peer.ID. Connect will absorb the addresses in pi into its internal
 	// peerstore. If there is not an active connection, Connect will issue a
 	// h.Network.Dial, and block until a connection is open, or an error is
-	// returned. // TODO: Relay + NAT.
+	// returned.
 	Connect(ctx context.Context, pi peer.AddrInfo) error
 
 	// SetStreamHandler sets the protocol handler on the Host's Mux.
