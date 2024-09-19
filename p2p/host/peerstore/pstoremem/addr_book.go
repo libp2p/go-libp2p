@@ -3,12 +3,14 @@ package pstoremem
 import (
 	"container/heap"
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/record"
 
@@ -23,7 +25,7 @@ type expiringAddr struct {
 	TTL    time.Duration
 	Expiry time.Time
 	Peer   peer.ID
-	// to sort by expiry time
+	// to sort by expiry time, -1 means it's not in the heap
 	heapIndex int
 }
 
@@ -61,10 +63,6 @@ func (pa *peerAddrs) Swap(i, j int) {
 }
 func (pa *peerAddrs) Push(x any) {
 	a := x.(*expiringAddr)
-	if _, ok := pa.Addrs[a.Peer]; !ok {
-		pa.Addrs[a.Peer] = make(map[string]*expiringAddr)
-	}
-	pa.Addrs[a.Peer][string(a.Addr.Bytes())] = a
 	a.heapIndex = len(pa.expiringHeap)
 	pa.expiringHeap = append(pa.expiringHeap, a)
 }
@@ -72,34 +70,24 @@ func (pa *peerAddrs) Pop() any {
 	a := pa.expiringHeap[len(pa.expiringHeap)-1]
 	a.heapIndex = -1
 	pa.expiringHeap = pa.expiringHeap[0 : len(pa.expiringHeap)-1]
-
-	if m, ok := pa.Addrs[a.Peer]; ok {
-		delete(m, string(a.Addr.Bytes()))
-		if len(m) == 0 {
-			delete(pa.Addrs, a.Peer)
-		}
-	}
 	return a
 }
 
-func (pa *peerAddrs) Fix(a *expiringAddr) {
-	heap.Fix(pa, a.heapIndex)
-}
-
 func (pa *peerAddrs) Delete(a *expiringAddr) {
-	heap.Remove(pa, a.heapIndex)
-	a.heapIndex = -1
-	if m, ok := pa.Addrs[a.Peer]; ok {
-		delete(m, string(a.Addr.Bytes()))
-		if len(m) == 0 {
+	if ea, ok := pa.Addrs[a.Peer][string(a.Addr.Bytes())]; ok {
+		if ea.heapIndex != -1 {
+			heap.Remove(pa, a.heapIndex)
+		}
+		delete(pa.Addrs[a.Peer], string(a.Addr.Bytes()))
+		if len(pa.Addrs[a.Peer]) == 0 {
 			delete(pa.Addrs, a.Peer)
 		}
 	}
 }
 
-func (pa *peerAddrs) FindAddr(p peer.ID, addrBytes ma.Multiaddr) (*expiringAddr, bool) {
+func (pa *peerAddrs) FindAddr(p peer.ID, addr ma.Multiaddr) (*expiringAddr, bool) {
 	if m, ok := pa.Addrs[p]; ok {
-		v, ok := m[string(addrBytes.Bytes())]
+		v, ok := m[string(addr.Bytes())]
 		return v, ok
 	}
 	return nil, false
@@ -116,9 +104,42 @@ func (pa *peerAddrs) PopIfExpired(now time.Time) (*expiringAddr, bool) {
 	// Use `!Before` instead of `After` to ensure that we expire *at* now, and not *just after now*.
 	if len(pa.expiringHeap) > 0 && !now.Before(pa.NextExpiry()) {
 		a := heap.Pop(pa)
+		ea := a.(*expiringAddr)
+		delete(pa.Addrs[ea.Peer], string(ea.Addr.Bytes()))
+		if len(pa.Addrs[ea.Peer]) == 0 {
+			delete(pa.Addrs, ea.Peer)
+		}
 		return a.(*expiringAddr), true
 	}
 	return nil, false
+}
+
+func (pa *peerAddrs) Update(a *expiringAddr) {
+	if a.heapIndex == -1 {
+		return
+	}
+	if a.TTL >= peerstore.ConnectedAddrTTL {
+		heap.Remove(pa, a.heapIndex)
+	} else {
+		heap.Fix(pa, a.heapIndex)
+	}
+}
+
+func (pa *peerAddrs) Insert(a *expiringAddr) {
+	a.heapIndex = -1
+	if _, ok := pa.Addrs[a.Peer]; !ok {
+		pa.Addrs[a.Peer] = make(map[string]*expiringAddr)
+	}
+	pa.Addrs[a.Peer][string(a.Addr.Bytes())] = a
+	// don't add permanent addr to heap.
+	if a.TTL >= peerstore.ConnectedAddrTTL {
+		return
+	}
+	heap.Push(pa, a)
+}
+
+func (pa *peerAddrs) NumNonConnectedAddrs() int {
+	return len(pa.expiringHeap)
 }
 
 type clock interface {
@@ -131,12 +152,18 @@ func (rc realclock) Now() time.Time {
 	return time.Now()
 }
 
+const (
+	defaultMaxSignedPeerRecords = 100_000
+	defaultMaxUnconnectedAddrs  = 1_000_000
+)
+
 // memoryAddrBook manages addresses.
 type memoryAddrBook struct {
-	mu sync.RWMutex
-	// TODO bound the number of not connected addresses we store.
-	addrs             peerAddrs
-	signedPeerRecords map[peer.ID]*peerRecordState
+	mu                   sync.RWMutex
+	addrs                peerAddrs
+	signedPeerRecords    map[peer.ID]*peerRecordState
+	maxUnconnectedAddrs  int
+	maxSignedPeerRecords int
 
 	refCount sync.WaitGroup
 	cancel   func()
@@ -152,11 +179,13 @@ func NewAddrBook() *memoryAddrBook {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ab := &memoryAddrBook{
-		addrs:             newPeerAddrs(),
-		signedPeerRecords: make(map[peer.ID]*peerRecordState),
-		subManager:        NewAddrSubManager(),
-		cancel:            cancel,
-		clock:             realclock{},
+		addrs:                newPeerAddrs(),
+		signedPeerRecords:    make(map[peer.ID]*peerRecordState),
+		subManager:           NewAddrSubManager(),
+		cancel:               cancel,
+		clock:                realclock{},
+		maxUnconnectedAddrs:  defaultMaxUnconnectedAddrs,
+		maxSignedPeerRecords: defaultMaxUnconnectedAddrs,
 	}
 	ab.refCount.Add(1)
 	go ab.background(ctx)
@@ -168,6 +197,20 @@ type AddrBookOption func(book *memoryAddrBook) error
 func WithClock(clock clock) AddrBookOption {
 	return func(book *memoryAddrBook) error {
 		book.clock = clock
+		return nil
+	}
+}
+
+func WithMaxAddresses(n int) AddrBookOption {
+	return func(b *memoryAddrBook) error {
+		b.maxUnconnectedAddrs = n
+		return nil
+	}
+}
+
+func WithMaxSignedPeerRecords(n int) AddrBookOption {
+	return func(b *memoryAddrBook) error {
+		b.maxSignedPeerRecords = n
 		return nil
 	}
 }
@@ -252,6 +295,10 @@ func (mab *memoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, tt
 	if found && lastState.Seq > rec.Seq {
 		return false, nil
 	}
+	// check if we are over the max signed peer record limit
+	if !found && len(mab.signedPeerRecords) >= mab.maxSignedPeerRecords {
+		return false, errors.New("too many signed peer records")
+	}
 	mab.signedPeerRecords[rec.PeerID] = &peerRecordState{
 		Envelope: recordEnvelope,
 		Seq:      rec.Seq,
@@ -281,6 +328,11 @@ func (mab *memoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl
 		return
 	}
 
+	// we are over limit, drop these addrs.
+	if ttl < peerstore.ConnectedAddrTTL && mab.addrs.NumNonConnectedAddrs() >= mab.maxUnconnectedAddrs {
+		return
+	}
+
 	exp := mab.clock.Now().Add(ttl)
 	for _, addr := range addrs {
 		// Remove suffix of /p2p/peer-id from address
@@ -297,7 +349,7 @@ func (mab *memoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl
 		if !found {
 			// not found, announce it.
 			entry := &expiringAddr{Addr: addr, Expiry: exp, TTL: ttl, Peer: p}
-			heap.Push(&mab.addrs, entry)
+			mab.addrs.Insert(entry)
 			mab.subManager.BroadcastAddr(p, addr)
 		} else {
 			// update ttl & exp to whichever is greater between new and existing entry
@@ -311,7 +363,7 @@ func (mab *memoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl
 				a.Expiry = exp
 			}
 			if changed {
-				mab.addrs.Fix(a)
+				mab.addrs.Update(a)
 			}
 		}
 	}
@@ -344,17 +396,24 @@ func (mab *memoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Du
 
 		if a, found := mab.addrs.FindAddr(p, addr); found {
 			if ttl > 0 {
-				a.Addr = addr
-				a.Expiry = exp
-				a.TTL = ttl
-				mab.addrs.Fix(a)
-				mab.subManager.BroadcastAddr(p, addr)
+				if a.TTL >= peerstore.ConnectedAddrTTL && ttl < peerstore.ConnectedAddrTTL && mab.addrs.NumNonConnectedAddrs() >= mab.maxUnconnectedAddrs {
+					mab.addrs.Delete(a)
+				} else {
+					a.Addr = addr
+					a.Expiry = exp
+					a.TTL = ttl
+					mab.addrs.Update(a)
+					mab.subManager.BroadcastAddr(p, addr)
+				}
 			} else {
 				mab.addrs.Delete(a)
 			}
 		} else {
 			if ttl > 0 {
-				heap.Push(&mab.addrs, &expiringAddr{Addr: addr, Expiry: exp, TTL: ttl, Peer: p})
+				if ttl < peerstore.ConnectedAddrTTL && mab.addrs.NumNonConnectedAddrs() >= mab.maxUnconnectedAddrs {
+					continue
+				}
+				mab.addrs.Insert(&expiringAddr{Addr: addr, Expiry: exp, TTL: ttl, Peer: p})
 				mab.subManager.BroadcastAddr(p, addr)
 			}
 		}
@@ -375,9 +434,14 @@ func (mab *memoryAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL t
 			if newTTL == 0 {
 				mab.addrs.Delete(a)
 			} else {
-				a.TTL = newTTL
-				a.Expiry = exp
-				mab.addrs.Fix(a)
+				// We are over limit, drop these addresses.
+				if oldTTL >= peerstore.ConnectedAddrTTL && newTTL < peerstore.ConnectedAddrTTL && mab.addrs.NumNonConnectedAddrs() >= mab.maxUnconnectedAddrs {
+					mab.addrs.Delete(a)
+				} else {
+					a.TTL = newTTL
+					a.Expiry = exp
+					mab.addrs.Update(a)
+				}
 			}
 		}
 	}
