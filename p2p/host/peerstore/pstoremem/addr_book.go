@@ -11,7 +11,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/record"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -117,13 +116,12 @@ func (pa *peerAddrs) NextExpiry() time.Time {
 func (pa *peerAddrs) PopIfExpired(now time.Time) (*expiringAddr, bool) {
 	// Use `!Before` instead of `After` to ensure that we expire *at* now, and not *just after now*.
 	if len(pa.expiringHeap) > 0 && !now.Before(pa.NextExpiry()) {
-		a := heap.Pop(pa)
-		ea := a.(*expiringAddr)
+		ea := heap.Pop(pa).(*expiringAddr)
 		delete(pa.Addrs[ea.Peer], string(ea.Addr.Bytes()))
 		if len(pa.Addrs[ea.Peer]) == 0 {
 			delete(pa.Addrs, ea.Peer)
 		}
-		return a.(*expiringAddr), true
+		return ea, true
 	}
 	return nil, false
 }
@@ -186,8 +184,8 @@ type memoryAddrBook struct {
 	clock      clock
 }
 
-var _ pstore.AddrBook = (*memoryAddrBook)(nil)
-var _ pstore.CertifiedAddrBook = (*memoryAddrBook)(nil)
+var _ peerstore.AddrBook = (*memoryAddrBook)(nil)
+var _ peerstore.CertifiedAddrBook = (*memoryAddrBook)(nil)
 
 func NewAddrBook() *memoryAddrBook {
 	ctx, cancel := context.WithCancel(context.Background())
