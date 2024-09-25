@@ -1,4 +1,4 @@
-package tcp
+package tcpreuse
 
 import (
 	"os"
@@ -11,13 +11,13 @@ import (
 // It default to true.
 const envReuseport = "LIBP2P_TCP_REUSEPORT"
 
-// envReuseportVal stores the value of envReuseport. defaults to true.
-var envReuseportVal = true
+// EnvReuseportVal stores the value of envReuseport. defaults to true.
+var EnvReuseportVal = true
 
 func init() {
 	v := strings.ToLower(os.Getenv(envReuseport))
 	if v == "false" || v == "f" || v == "0" {
-		envReuseportVal = false
+		EnvReuseportVal = false
 		log.Infof("REUSEPORT disabled (LIBP2P_TCP_REUSEPORT=%s)", v)
 	}
 }
@@ -31,5 +31,5 @@ func init() {
 // If this becomes a sought after feature, we could add this to the config.
 // In the end, reuseport is a stop-gap.
 func ReuseportIsAvailable() bool {
-	return envReuseportVal && reuseport.Available()
+	return EnvReuseportVal && reuseport.Available()
 }

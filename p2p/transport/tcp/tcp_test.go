@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -41,9 +42,9 @@ func TestTcpTransport(t *testing.T) {
 		zero := "/ip4/127.0.0.1/tcp/0"
 		ttransport.SubtestTransport(t, ta, tb, zero, peerA)
 
-		envReuseportVal = false
+		tcpreuse.EnvReuseportVal = false
 	}
-	envReuseportVal = true
+	tcpreuse.EnvReuseportVal = true
 }
 
 func TestTcpTransportWithMetrics(t *testing.T) {
@@ -126,9 +127,9 @@ func TestTcpTransportCantDialDNS(t *testing.T) {
 			t.Fatal("shouldn't be able to dial dns")
 		}
 
-		envReuseportVal = false
+		tcpreuse.EnvReuseportVal = false
 	}
-	envReuseportVal = true
+	tcpreuse.EnvReuseportVal = true
 }
 
 func TestTcpTransportCantListenUtp(t *testing.T) {
@@ -143,9 +144,9 @@ func TestTcpTransportCantListenUtp(t *testing.T) {
 		_, err = tpt.Listen(utpa)
 		require.Error(t, err, "shouldn't be able to listen on utp addr with tcp transport")
 
-		envReuseportVal = false
+		tcpreuse.EnvReuseportVal = false
 	}
-	envReuseportVal = true
+	tcpreuse.EnvReuseportVal = true
 }
 
 func TestDialWithUpdates(t *testing.T) {
