@@ -117,7 +117,9 @@ func WithMetrics() Option {
 type TcpTransport struct {
 	// Connection upgrader for upgrading insecure stream connections to
 	// secure multiplex connections.
-	upgrader transport.Upgrader
+	upgrader  transport.Upgrader
+	matcher   mafmt.Pattern
+	protocols []int
 
 	disableReuseport bool // Explicitly disable reuseport.
 	enableMetrics    bool
@@ -141,8 +143,14 @@ func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager,
 	}
 	tr := &TcpTransport{
 		upgrader:       upgrader,
+		matcher:        dialMatcher,
+		protocols:      []int{ma.P_TCP},
 		connectTimeout: defaultConnectTimeout, // can be set by using the WithConnectionTimeout option
 		rcmgr:          rcmgr,
+	}
+	if upgrader != nil {
+		tr.matcher = mafmt.And(tr.matcher, upgrader.SuffixMatcher())
+		tr.protocols = append(tr.protocols, upgrader.SuffixesProtocols()...)
 	}
 	for _, o := range opts {
 		if err := o(tr); err != nil {
@@ -157,7 +165,7 @@ var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_TCP))
 // CanDial returns true if this transport believes it can dial the given
 // multiaddr.
 func (t *TcpTransport) CanDial(addr ma.Multiaddr) bool {
-	return dialMatcher.Matches(addr)
+	return t.matcher.Matches(addr)
 }
 
 func (t *TcpTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Conn, error) {
@@ -224,11 +232,14 @@ func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p 
 			// It is better to skip the update than to delay upgrading the connection
 		}
 	}
-	direction := network.DirOutbound
 	if ok, isClient, _ := network.GetSimultaneousConnect(ctx); ok && !isClient {
-		direction = network.DirInbound
+		return t.upgrader.UpgradeInbound(ctx, t, c, p, connScope)
 	}
-	return t.upgrader.Upgrade(ctx, t, c, direction, p, connScope)
+
+	_, suffix := ma.SplitFirst(raddr) // ip
+	_, suffix = ma.SplitFirst(suffix) // tcp
+
+	return t.upgrader.UpgradeOutbound(ctx, t, c, suffix, p, connScope)
 }
 
 // UseReuseport returns true if reuseport is enabled and available.
@@ -257,7 +268,7 @@ func (t *TcpTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
 
 // Protocols returns the list of terminal protocols this transport can dial.
 func (t *TcpTransport) Protocols() []int {
-	return []int{ma.P_TCP}
+	return t.protocols
 }
 
 // Proxy always returns false for the TCP transport.

@@ -174,7 +174,9 @@ func (t *WebsocketTransport) dialWithScope(ctx context.Context, raddr ma.Multiad
 	if err != nil {
 		return nil, err
 	}
-	conn, err := t.upgrader.Upgrade(ctx, t, macon, network.DirOutbound, p, connScope)
+
+	// FIXME: remove our leading maddr and compute suffix
+	conn, err := t.upgrader.UpgradeOutbound(ctx, t, macon, nil, p, connScope)
 	if err != nil {
 		return nil, err
 	}
