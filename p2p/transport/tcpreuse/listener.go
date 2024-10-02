@@ -14,8 +14,11 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
+const acceptQueueSize = 64 // It is fine to read 3 bytes from 64 connections in parallel.
+
 var log = logging.Logger("tcp-demultiplex")
 
+// ConnMgr enables you to share the same listen address between TCP and WebSocket transports.
 type ConnMgr struct {
 	disableReuseport bool
 	reuse            reuseport.Transport
@@ -31,11 +34,11 @@ func NewConnMgr(disableReuseport bool) *ConnMgr {
 	}
 }
 
-func (t *ConnMgr) maListen(laddr ma.Multiaddr) (manet.Listener, error) {
+func (t *ConnMgr) maListen(listenAddr ma.Multiaddr) (manet.Listener, error) {
 	if t.useReuseport() {
-		return t.reuse.Listen(laddr)
+		return t.reuse.Listen(listenAddr)
 	} else {
-		return manet.Listen(laddr)
+		return manet.Listen(listenAddr)
 	}
 }
 
@@ -43,9 +46,33 @@ func (t *ConnMgr) useReuseport() bool {
 	return !t.disableReuseport && ReuseportIsAvailable()
 }
 
+func getTCPAddr(listenAddr ma.Multiaddr) (ma.Multiaddr, error) {
+	haveTCP := false
+	addr, _ := ma.SplitFunc(listenAddr, func(c ma.Component) bool {
+		if haveTCP {
+			return true
+		}
+		if c.Protocol().Code == ma.P_TCP {
+			haveTCP = true
+		}
+		return false
+	})
+	if !haveTCP {
+		return nil, fmt.Errorf("invalid listen addr %s, need tcp address", listenAddr)
+	}
+	return addr, nil
+}
+
+// DemultiplexedListen returns a listener for laddr listening for `connType` connections. The connections
+// accepted from returned listeners need to be upgraded with a `transport.Upgrader`.
+// NOTE: All listeners for port 0 share the same underlying socket, so they have the same specific port.
 func (t *ConnMgr) DemultiplexedListen(laddr ma.Multiaddr, connType DemultiplexedConnType) (manet.Listener, error) {
 	if !connType.IsKnown() {
 		return nil, fmt.Errorf("unknown connection type: %s", connType)
+	}
+	laddr, err := getTCPAddr(laddr)
+	if err != nil {
+		return nil, err
 	}
 
 	t.mx.Lock()
@@ -75,7 +102,6 @@ func (t *ConnMgr) DemultiplexedListen(laddr ma.Multiaddr, connType Demultiplexed
 	ml = &multiplexedListener{
 		Listener:  l,
 		listeners: make(map[DemultiplexedConnType]*demultiplexedListener),
-		buffer:    make(chan manet.Conn, 16), // TODO: how big should this buffer be?
 		ctx:       ctx,
 		closeFn:   cancelFunc,
 	}
@@ -86,14 +112,10 @@ func (t *ConnMgr) DemultiplexedListen(laddr ma.Multiaddr, connType Demultiplexed
 		return nil, errors.Join(err, cerr)
 	}
 
-	go func() {
-		err = ml.Run()
-		if err != nil {
-			log.Debugf("Error running multiplexed listener: %s", err.Error())
-		}
-	}()
-
 	t.listeners[laddr.String()] = ml
+
+	ml.wg.Add(1)
+	go ml.run()
 
 	return dl, nil
 }
@@ -102,13 +124,12 @@ var _ manet.Listener = &demultiplexedListener{}
 
 type multiplexedListener struct {
 	manet.Listener
-	listeners       map[DemultiplexedConnType]*demultiplexedListener
-	mx              sync.Mutex
-	listenerCounter int
-	buffer          chan manet.Conn
+	listeners map[DemultiplexedConnType]*demultiplexedListener
+	mx        sync.RWMutex
 
 	ctx     context.Context
 	closeFn func() error
+	wg      sync.WaitGroup
 }
 
 func (m *multiplexedListener) DemultiplexedListen(connType DemultiplexedConnType) (manet.Listener, error) {
@@ -124,67 +145,51 @@ func (m *multiplexedListener) DemultiplexedListen(connType DemultiplexedConnType
 	}
 
 	ctx, cancel := context.WithCancel(m.ctx)
-	closeFn := func() error {
-		cancel()
-		m.mx.Lock()
-		defer m.mx.Unlock()
-		m.listenerCounter--
-		if m.listenerCounter == 0 {
-			return m.Close()
-		}
-		return nil
-	}
-
 	l = &demultiplexedListener{
-		buffer:  make(chan manet.Conn, 16), // TODO: how big should this buffer be?
-		inner:   m.Listener,
-		ctx:     ctx,
-		closeFn: closeFn,
+		buffer:     make(chan manet.Conn),
+		inner:      m.Listener,
+		ctx:        ctx,
+		cancelFunc: cancel,
+		closeFn:    func() error { m.removeDemultiplexedListener(connType); return nil },
 	}
 
 	m.listeners[connType] = l
-	m.listenerCounter++
 
 	return l, nil
 }
 
-func (m *multiplexedListener) Run() error {
-	const numWorkers = 16
-	for i := 0; i < numWorkers; i++ {
-		go func() {
-			m.background()
-		}()
-	}
-
+func (m *multiplexedListener) run() error {
+	defer m.Close()
+	defer m.wg.Done()
+	acceptQueue := make(chan struct{}, acceptQueueSize)
 	for {
 		c, err := m.Listener.Accept()
 		if err != nil {
 			return err
 		}
-
 		select {
-		case m.buffer <- c:
+		case acceptQueue <- struct{}{}:
 		case <-m.ctx.Done():
-			return transport.ErrListenerClosed
+			c.Close()
+			log.Debugf("accept queue full, dropping connection: %s", c.RemoteMultiaddr())
 		}
-	}
-}
 
-func (m *multiplexedListener) background() {
-	// TODO: if/how do we want to handle stalled connections and stop them from clogging up the pipeline?
-	// Drop connection because the buffer is full
-	for {
-		select {
-		case c := <-m.buffer:
-			t, sampleC, err := ConnTypeFromConn(c)
+		m.wg.Add(1)
+		go func() {
+			defer func() { <-acceptQueue }()
+			defer m.wg.Done()
+			// TODO: if/how do we want to handle stalled connections and stop them from clogging up the pipeline?
+			// Drop connection because the buffer is full
+			t, sampleC, err := getDemultiplexedConn(c)
 			if err != nil {
 				closeErr := c.Close()
 				err = errors.Join(err, closeErr)
 				log.Debugf("error demultiplexing connection: %s", err.Error())
-				continue
+				return
 			}
-
+			m.mx.RLock()
 			demux, ok := m.listeners[t]
+			m.mx.RUnlock()
 			if !ok {
 				closeErr := c.Close()
 				if closeErr != nil {
@@ -192,39 +197,55 @@ func (m *multiplexedListener) background() {
 				} else {
 					log.Debugf("no registered listener for demultiplex connection %s", t)
 				}
-				continue
+				return
 			}
 
 			select {
 			case demux.buffer <- sampleC:
 			case <-m.ctx.Done():
+				sampleC.Close()
 				return
-			default:
-				closeErr := c.Close()
-				if closeErr != nil {
-					log.Debugf("dropped connection due to full buffer of awaiting connections of type %s. Error closing the connection %s", t, closeErr.Error())
-				} else {
-					log.Debugf("dropped connection due to full buffer of awaiting connections of type %s", t)
-				}
-				continue
 			}
-		case <-m.ctx.Done():
-			return
-		}
+		}()
 	}
 }
 
 func (m *multiplexedListener) Close() error {
-	cerr := m.closeFn()
+	m.mx.Lock()
+	for _, l := range m.listeners {
+		l.cancelFunc()
+	}
+	err := m.closeListener()
+	m.mx.Unlock()
+	m.wg.Wait()
+	return err
+}
+
+func (m *multiplexedListener) closeListener() error {
 	lerr := m.Listener.Close()
+	cerr := m.closeFn()
 	return errors.Join(lerr, cerr)
 }
 
+func (m *multiplexedListener) removeDemultiplexedListener(c DemultiplexedConnType) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
+	delete(m.listeners, c)
+	if len(m.listeners) == 0 {
+		m.closeListener()
+		m.mx.Unlock()
+		m.wg.Wait()
+		m.mx.Lock()
+	}
+}
+
 type demultiplexedListener struct {
-	buffer  chan manet.Conn
-	inner   manet.Listener
-	ctx     context.Context
-	closeFn func() error
+	buffer     chan manet.Conn
+	inner      manet.Listener
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	closeFn    func() error
 }
 
 func (m *demultiplexedListener) Accept() (manet.Conn, error) {
@@ -237,11 +258,11 @@ func (m *demultiplexedListener) Accept() (manet.Conn, error) {
 }
 
 func (m *demultiplexedListener) Close() error {
+	m.cancelFunc()
 	return m.closeFn()
 }
 
 func (m *demultiplexedListener) Multiaddr() ma.Multiaddr {
-	// TODO: do we need to add a suffix for the rest of the transport?
 	return m.inner.Multiaddr()
 }
 

@@ -75,9 +75,9 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 	} else {
 		var connType tcpreuse.DemultiplexedConnType
 		if parsed.isWSS {
-			connType = tcpreuse.TLS
+			connType = tcpreuse.DemultiplexedConnType_TLS
 		} else {
-			connType = tcpreuse.HTTP
+			connType = tcpreuse.DemultiplexedConnType_HTTP
 		}
 		mal, err := sharedTcp.DemultiplexedListen(parsed.restMultiaddr, connType)
 		if err != nil {

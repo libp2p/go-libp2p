@@ -148,7 +148,7 @@ var _ transport.Transport = &TcpTransport{}
 var _ transport.DialUpdater = &TcpTransport{}
 
 // NewTCPTransport creates a tcp transport object that tracks dialers and listeners
-// created. It represents an entire TCP stack (though it might not necessarily be).
+// created.
 func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*TcpTransport, error) {
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
@@ -269,7 +269,7 @@ func (t *TcpTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
 	if t.sharedTcp == nil {
 		list, err = t.unsharedMAListen(laddr)
 	} else {
-		list, err = t.sharedTcp.DemultiplexedListen(laddr, tcpreuse.MultistreamSelect)
+		list, err = t.sharedTcp.DemultiplexedListen(laddr, tcpreuse.DemultiplexedConnType_MultistreamSelect)
 	}
 	if err != nil {
 		return nil, err
