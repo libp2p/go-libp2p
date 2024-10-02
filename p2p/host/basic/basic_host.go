@@ -284,20 +284,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if opts.AddrsFactory != nil {
 		h.AddrsFactory = opts.AddrsFactory
 	}
-	// This is a terrible hack.
-	// We want to use this AddrsFactory for autonat. Wrapping AddrsFactory here ensures
-	// that autonat receives addresses with the correct certhashes.
-	//
-	// This logic cannot be in Addrs method as autonat cannot use the Addrs method directly.
-	// The autorelay package updates AddrsFactory to only provide p2p-circuit addresses when
-	// reachability is Private.
-	//
-	// Wrapping it here allows us to provide the wrapped AddrsFactory to autonat before
-	// autorelay updates it.
-	addrFactory := h.AddrsFactory
-	h.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		return h.addCertHashes(addrFactory(addrs))
-	}
 
 	if opts.NATManager != nil {
 		h.natmgr = opts.NATManager(n)
@@ -822,16 +808,13 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 	return h.cmgr
 }
 
-// Addrs returns listening addresses that are safe to announce to the network.
-// The output is the same as AllAddrs, but processed by AddrsFactory.
+// Addrs returns listening addresses. The output is the same as AllAddrs, but
+// processed by AddrsFactory.
+// When used with AutoRelay, and if the host is not publicly reachable,
+// this will only have host's private, relay, and no public addresses.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
-	// We don't need to append certhashes here, the user provided addrsFactory was
-	// wrapped with addCertHashes in the constructor.
-	addrs := h.AddrsFactory(h.AllAddrs())
-	// Make a copy. Consumers can modify the slice elements
-	res := make([]ma.Multiaddr, len(addrs))
-	copy(res, addrs)
-	return res
+	// Add certhashes for the addresses provided by the user via address factory.
+	return h.addCertHashes(h.AddrsFactory(h.AllAddrs()))
 }
 
 // NormalizeMultiaddr returns a multiaddr suitable for equality checks.
@@ -851,9 +834,9 @@ func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	return addr
 }
 
+var p2pCircuitAddr = ma.StringCast("/p2p-circuit")
+
 // AllAddrs returns all the addresses the host is listening on except circuit addresses.
-// The output has webtransport addresses inferred from quic addresses.
-// All the addresses have the correct
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	listenAddrs := h.Network().ListenAddresses()
 	if len(listenAddrs) == 0 {
@@ -867,7 +850,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 	// Iterate over all _unresolved_ listen addresses, resolving our primary
 	// interface only to avoid advertising too many addresses.
-	var finalAddrs []ma.Multiaddr
+	finalAddrs := make([]ma.Multiaddr, 0, 8)
 	if resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, filteredIfaceAddrs); err != nil {
 		// This can happen if we're listening on no addrs, or listening
 		// on IPv6 addrs, but only have IPv4 interface addrs.
@@ -946,6 +929,16 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
 	finalAddrs = ma.Unique(finalAddrs)
+	// Remove /p2p-circuit addresses from the list.
+	// The p2p-circuit tranport listener reports its address as just /p2p-circuit
+	// This is useless for dialing. Users need to manage their circuit addresses themselves,
+	// or use AutoRelay.
+	finalAddrs = slices.DeleteFunc(finalAddrs, func(a ma.Multiaddr) bool {
+		return a.Equal(p2pCircuitAddr)
+	})
+	// Add certhashes for /webrtc-direct, /webtransport, etc addresses discovered
+	// using identify.
+	finalAddrs = h.addCertHashes(finalAddrs)
 	return finalAddrs
 }
 

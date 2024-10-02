@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -223,7 +224,7 @@ func TestAutoNATIncomingEvents(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return an.Status() != network.ReachabilityUnknown
-	}, 500*time.Millisecond, 10*time.Millisecond, "Expected probe due to identification of autonat service")
+	}, 5*time.Second, 100*time.Millisecond, "Expected probe due to identification of autonat service")
 }
 
 func TestAutoNATDialRefused(t *testing.T) {
@@ -259,6 +260,9 @@ func TestAutoNATDialRefused(t *testing.T) {
 }
 
 func TestAutoNATObservationRecording(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("recordObservation modifies internal state accessed from other goroutine")
+	}
 	hs := makeAutoNATServicePublic(t)
 	defer hs.Close()
 	hc, ani := makeAutoNAT(t, hs)

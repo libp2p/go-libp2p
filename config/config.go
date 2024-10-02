@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -432,16 +433,6 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Relay {
-		// If we've enabled the relay, we should filter out relay
-		// addresses by default.
-		//
-		// TODO: We shouldn't be doing this here.
-		originalAddrFactory := h.AddrsFactory
-		h.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			return originalAddrFactory(autorelay.Filter(addrs))
-		}
-	}
 	return h, nil
 }
 
@@ -514,17 +505,8 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		)
 	}
 
-	// originalAddrFactory is the AddrFactory before it's modified by autorelay
-	// we need this for checking reachability via autonat
-	originalAddrFactory := func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		return addrs
-	}
-
 	// enable autorelay
 	fxopts = append(fxopts,
-		fx.Invoke(func(h *bhost.BasicHost) {
-			originalAddrFactory = h.AddrsFactory
-		}),
 		fx.Invoke(func(h *bhost.BasicHost, lifecycle fx.Lifecycle) error {
 			if cfg.EnableAutoRelay {
 				if !cfg.DisableMetrics {
@@ -561,7 +543,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		return nil, err
 	}
 
-	if err := cfg.addAutoNAT(bh, originalAddrFactory); err != nil {
+	if err := cfg.addAutoNAT(bh); err != nil {
 		app.Stop(context.Background())
 		if cfg.Routing != nil {
 			rh.Close()
@@ -577,11 +559,20 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	return &closableBasicHost{App: app, BasicHost: bh}, nil
 }
 
-func (cfg *Config) addAutoNAT(h *bhost.BasicHost, addrF AddrsFactory) error {
+func (cfg *Config) addAutoNAT(h *bhost.BasicHost) error {
+	// Only use public addresses for autonat
+	addrFunc := func() []ma.Multiaddr {
+		return slices.DeleteFunc(h.AllAddrs(), func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
+	}
+	if cfg.AddrsFactory != nil {
+		addrFunc = func() []ma.Multiaddr {
+			return slices.DeleteFunc(
+				cfg.AddrsFactory(h.AllAddrs()),
+				func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
+		}
+	}
 	autonatOpts := []autonat.Option{
-		autonat.UsingAddresses(func() []ma.Multiaddr {
-			return addrF(h.AllAddrs())
-		}),
+		autonat.UsingAddresses(addrFunc),
 	}
 	if !cfg.DisableMetrics {
 		autonatOpts = append(autonatOpts, autonat.WithMetricsTracer(
@@ -664,7 +655,7 @@ func (cfg *Config) addAutoNAT(h *bhost.BasicHost, addrF AddrsFactory) error {
 
 	autonat, err := autonat.New(h, autonatOpts...)
 	if err != nil {
-		return fmt.Errorf("cannot enable autorelay; autonat failed to start: %v", err)
+		return fmt.Errorf("autonat init failed: %w", err)
 	}
 	h.SetAutoNat(autonat)
 	return nil
