@@ -4,10 +4,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"net"
 	"net/http"
 	"sync"
+
+	"go.uber.org/zap"
 
 	logging "github.com/ipfs/go-log/v2"
 
@@ -129,7 +130,12 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The upgrader writes a response for us.
 		return
 	}
-
+	nc := NewConn(c, l.isWss)
+	if nc == nil {
+		c.Close()
+		w.WriteHeader(500)
+		return
+	}
 	select {
 	case l.incoming <- NewConn(c, l.isWss):
 	case <-l.closed:
@@ -144,13 +150,7 @@ func (l *listener) Accept() (manet.Conn, error) {
 		if !ok {
 			return nil, transport.ErrListenerClosed
 		}
-
-		mnc, err := manet.WrapNetConn(c)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-		return mnc, nil
+		return c, nil
 	case <-l.closed:
 		return nil, transport.ErrListenerClosed
 	}

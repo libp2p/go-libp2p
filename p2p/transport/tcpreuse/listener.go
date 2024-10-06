@@ -191,7 +191,6 @@ func (m *multiplexedListener) run() error {
 			}
 			continue
 		}
-
 		connScope, err := m.rcmgr.OpenConnection(network.DirInbound, true, c.RemoteMultiaddr())
 		if err != nil {
 			log.Debugw("resource manager blocked accept of new connection", "error", err)

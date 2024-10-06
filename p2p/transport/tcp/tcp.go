@@ -149,7 +149,7 @@ var _ transport.DialUpdater = &TcpTransport{}
 
 // NewTCPTransport creates a tcp transport object that tracks dialers and listeners
 // created.
-func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*TcpTransport, error) {
+func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, sharedTCP *tcpreuse.ConnMgr, opts ...Option) (*TcpTransport, error) {
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
@@ -157,6 +157,7 @@ func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager,
 		upgrader:       upgrader,
 		connectTimeout: defaultConnectTimeout, // can be set by using the WithConnectionTimeout option
 		rcmgr:          rcmgr,
+		sharedTcp:      sharedTCP,
 	}
 	for _, o := range opts {
 		if err := o(tr); err != nil {

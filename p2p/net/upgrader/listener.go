@@ -91,7 +91,7 @@ func (l *listener) handleIncoming() {
 			connScope = sc.Scope()
 		}
 
-		if connScope != nil {
+		if connScope == nil {
 			// gate the connection if applicable
 			if l.upgrader.connGater != nil && !l.upgrader.connGater.InterceptAccept(maconn) {
 				log.Debugf("gater blocked incoming connection on local addr %s from %s",

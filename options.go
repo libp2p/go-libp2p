@@ -635,3 +635,10 @@ func IPv6BlackHoleSuccessCounter(f *swarm.BlackHoleSuccessCounter) Option {
 		return nil
 	}
 }
+
+func ShareTCPListener() Option {
+	return func(cfg *Config) error {
+		cfg.ShareTCPListener = true
+		return nil
+	}
+}

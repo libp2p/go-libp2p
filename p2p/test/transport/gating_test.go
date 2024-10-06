@@ -2,6 +2,8 @@ package transport_integration
 
 import (
 	"context"
+	"encoding/binary"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +30,23 @@ func stripCertHash(addr ma.Multiaddr) ma.Multiaddr {
 		addr, _ = ma.SplitLast(addr)
 	}
 	return addr
+}
+
+func addrPort(addr ma.Multiaddr) netip.AddrPort {
+	a := netip.Addr{}
+	p := uint16(0)
+	ma.ForEach(addr, func(c ma.Component) bool {
+		if c.Protocol().Code == ma.P_IP4 || c.Protocol().Code == ma.P_IP6 {
+			a, _ = netip.AddrFromSlice(c.RawValue())
+			return false
+		}
+		if c.Protocol().Code == ma.P_UDP || c.Protocol().Code == ma.P_TCP {
+			p = binary.BigEndian.Uint16(c.RawValue())
+			return true
+		}
+		return false
+	})
+	return netip.AddrPortFrom(a, p)
 }
 
 func TestInterceptPeerDial(t *testing.T) {
@@ -173,10 +192,14 @@ func TestInterceptAccept(t *testing.T) {
 					// remove the certhash component from WebTransport addresses
 					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
 				}).AnyTimes()
+			} else if strings.Contains(tc.Name, "WebSocket-Shared") {
+				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
+					require.Equal(t, addrPort(h2.Addrs()[0]), addrPort(addrs.LocalMultiaddr()))
+				})
 			} else {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
 					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr(), "%s\n%s", h2.Addrs()[0], addrs.LocalMultiaddr())
 				})
 			}
 

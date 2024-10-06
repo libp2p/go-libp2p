@@ -101,7 +101,7 @@ type WebsocketTransport struct {
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
 
-func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*WebsocketTransport, error) {
+func New(u transport.Upgrader, rcmgr network.ResourceManager, sharedTCP *tcpreuse.ConnMgr, opts ...Option) (*WebsocketTransport, error) {
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
@@ -109,6 +109,7 @@ func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*
 		upgrader:      u,
 		rcmgr:         rcmgr,
 		tlsClientConf: &tls.Config{},
+		sharedTcp:     sharedTCP,
 	}
 	for _, opt := range opts {
 		if err := opt(t); err != nil {

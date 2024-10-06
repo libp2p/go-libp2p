@@ -32,11 +32,11 @@ func TestTcpTransport(t *testing.T) {
 
 		ua, err := tptu.New(ia, muxers, nil, nil, nil)
 		require.NoError(t, err)
-		ta, err := NewTCPTransport(ua, nil)
+		ta, err := NewTCPTransport(ua, nil, nil)
 		require.NoError(t, err)
 		ub, err := tptu.New(ib, muxers, nil, nil, nil)
 		require.NoError(t, err)
-		tb, err := NewTCPTransport(ub, nil)
+		tb, err := NewTCPTransport(ub, nil, nil)
 		require.NoError(t, err)
 
 		zero := "/ip4/127.0.0.1/tcp/0"
@@ -53,11 +53,11 @@ func TestTcpTransportWithMetrics(t *testing.T) {
 
 	ua, err := tptu.New(ia, muxers, nil, nil, nil)
 	require.NoError(t, err)
-	ta, err := NewTCPTransport(ua, nil, WithMetrics())
+	ta, err := NewTCPTransport(ua, nil, nil, WithMetrics())
 	require.NoError(t, err)
 	ub, err := tptu.New(ib, muxers, nil, nil, nil)
 	require.NoError(t, err)
-	tb, err := NewTCPTransport(ub, nil, WithMetrics())
+	tb, err := NewTCPTransport(ub, nil, nil, WithMetrics())
 	require.NoError(t, err)
 
 	zero := "/ip4/127.0.0.1/tcp/0"
@@ -73,7 +73,7 @@ func TestResourceManager(t *testing.T) {
 
 	ua, err := tptu.New(ia, muxers, nil, nil, nil)
 	require.NoError(t, err)
-	ta, err := NewTCPTransport(ua, nil)
+	ta, err := NewTCPTransport(ua, nil, nil)
 	require.NoError(t, err)
 	ln, err := ta.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestResourceManager(t *testing.T) {
 	ub, err := tptu.New(ib, muxers, nil, nil, nil)
 	require.NoError(t, err)
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
-	tb, err := NewTCPTransport(ub, rcmgr)
+	tb, err := NewTCPTransport(ub, rcmgr, nil)
 	require.NoError(t, err)
 
 	t.Run("success", func(t *testing.T) {
@@ -120,7 +120,7 @@ func TestTcpTransportCantDialDNS(t *testing.T) {
 		require.NoError(t, err)
 
 		var u transport.Upgrader
-		tpt, err := NewTCPTransport(u, nil)
+		tpt, err := NewTCPTransport(u, nil, nil)
 		require.NoError(t, err)
 
 		if tpt.CanDial(dnsa) {
@@ -138,7 +138,7 @@ func TestTcpTransportCantListenUtp(t *testing.T) {
 		require.NoError(t, err)
 
 		var u transport.Upgrader
-		tpt, err := NewTCPTransport(u, nil)
+		tpt, err := NewTCPTransport(u, nil, nil)
 		require.NoError(t, err)
 
 		_, err = tpt.Listen(utpa)
@@ -155,7 +155,7 @@ func TestDialWithUpdates(t *testing.T) {
 
 	ua, err := tptu.New(ia, muxers, nil, nil, nil)
 	require.NoError(t, err)
-	ta, err := NewTCPTransport(ua, nil)
+	ta, err := NewTCPTransport(ua, nil, nil)
 	require.NoError(t, err)
 	ln, err := ta.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestDialWithUpdates(t *testing.T) {
 
 	ub, err := tptu.New(ib, muxers, nil, nil, nil)
 	require.NoError(t, err)
-	tb, err := NewTCPTransport(ub, nil)
+	tb, err := NewTCPTransport(ub, nil, nil)
 	require.NoError(t, err)
 
 	updCh := make(chan transport.DialUpdate, 1)
