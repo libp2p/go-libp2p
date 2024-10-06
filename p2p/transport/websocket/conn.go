@@ -99,9 +99,20 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	return len(b), nil
 }
 
+func (c *Conn) Scope() network.ConnManagementScope {
+	nc := c.NetConn()
+	if sc, ok := nc.(interface {
+		Scope() network.ConnManagementScope
+	}); ok {
+		return sc.Scope()
+	}
+	return nil
+}
+
 // Close closes the connection. Only the first call to Close will receive the
 // close error, subsequent and concurrent calls will return nil.
 // This method is thread-safe.
+// TODO: Fix this ^
 func (c *Conn) Close() error {
 	var err error
 	c.closeOnce.Do(func() {

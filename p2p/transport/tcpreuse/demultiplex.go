@@ -9,6 +9,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -51,13 +52,13 @@ func (t DemultiplexedConnType) IsKnown() bool {
 	return t >= 1 || t <= 3
 }
 
-func getDemultiplexedConn(c net.Conn) (DemultiplexedConnType, manet.Conn, error) {
+func getDemultiplexedConn(c net.Conn, scope network.ConnManagementScope) (DemultiplexedConnType, manet.Conn, error) {
 	if err := c.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {
 		closeErr := c.Close()
 		return 0, nil, errors.Join(err, closeErr)
 	}
 
-	s, sc, err := ReadSampleFromConn(c)
+	s, sc, err := readSampleFromConn(c, scope)
 	if err != nil {
 		closeErr := c.Close()
 		return 0, nil, errors.Join(err, closeErr)
@@ -80,9 +81,9 @@ func getDemultiplexedConn(c net.Conn) (DemultiplexedConnType, manet.Conn, error)
 	return DemultiplexedConnType_Unknown, sc, nil
 }
 
-// ReadSampleFromConn reads a sample and returns a reader which still includes the sample, so it can be kept undamaged.
+// readSampleFromConn reads a sample and returns a reader which still includes the sample, so it can be kept undamaged.
 // If an error occurs it only returns the error.
-func ReadSampleFromConn(c net.Conn) (Sample, manet.Conn, error) {
+func readSampleFromConn(c net.Conn, scope network.ConnManagementScope) (Sample, manet.Conn, error) {
 	// TODO: Should we remove this? This is only implemented by bufio.Reader.
 	// This made sense for magiselect: https://github.com/libp2p/go-libp2p/pull/2737 as it deals with a wrapped
 	// ReadWriteCloser from multistream which does use a buffered reader underneath.
@@ -120,7 +121,11 @@ func ReadSampleFromConn(c net.Conn) (Sample, manet.Conn, error) {
 		return Sample{}, nil, fmt.Errorf("failed to convert nconn.RemoteAddr: %s", err)
 	}
 
-	sc := &sampledConn{tcpConnInterface: tcpConnLike, maEndpoints: maEndpoints{laddr: laddr, raddr: raddr}}
+	sc := &sampledConn{
+		tcpConnInterface: tcpConnLike,
+		maEndpoints:      maEndpoints{laddr: laddr, raddr: raddr},
+		scope:            scope,
+	}
 	_, err = io.ReadFull(c, sc.s[:])
 	if err != nil {
 		return Sample{}, nil, err
@@ -167,7 +172,7 @@ func (c *maEndpoints) RemoteMultiaddr() ma.Multiaddr {
 type sampledConn struct {
 	tcpConnInterface
 	maEndpoints
-
+	scope          network.ConnManagementScope
 	s              Sample
 	readFromSample uint8
 }
@@ -214,8 +219,13 @@ func (sc *sampledConn) WriteTo(w io.Writer) (total int64, err error) {
 	return total, err
 }
 
-type Matcher interface {
-	Match(s Sample) bool
+func (sc *sampledConn) Scope() network.ConnManagementScope {
+	return sc.scope
+}
+
+func (sc *sampledConn) Close() error {
+	sc.scope.Done()
+	return sc.tcpConnInterface.Close()
 }
 
 // Sample is the byte sequence we use to demultiplex.

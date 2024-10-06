@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/reuseport"
 	ma "github.com/multiformats/go-multiaddr"
@@ -22,14 +24,22 @@ var log = logging.Logger("tcp-demultiplex")
 type ConnMgr struct {
 	disableReuseport bool
 	reuse            reuseport.Transport
-	listeners        map[string]*multiplexedListener
-	mx               sync.Mutex
+	connGater        connmgr.ConnectionGater
+	rcmgr            network.ResourceManager
+
+	mx        sync.Mutex
+	listeners map[string]*multiplexedListener
 }
 
-func NewConnMgr(disableReuseport bool) *ConnMgr {
+func NewConnMgr(disableReuseport bool, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) *ConnMgr {
+	if rcmgr == nil {
+		rcmgr = &network.NullResourceManager{}
+	}
 	return &ConnMgr{
 		disableReuseport: disableReuseport,
 		reuse:            reuseport.Transport{},
+		connGater:        gater,
+		rcmgr:            rcmgr,
 		listeners:        make(map[string]*multiplexedListener),
 	}
 }
@@ -104,6 +114,8 @@ func (t *ConnMgr) DemultiplexedListen(laddr ma.Multiaddr, connType Demultiplexed
 		listeners: make(map[DemultiplexedConnType]*demultiplexedListener),
 		ctx:       ctx,
 		closeFn:   cancelFunc,
+		connGater: t.connGater,
+		rcmgr:     t.rcmgr,
 	}
 
 	dl, err := ml.DemultiplexedListen(connType)
@@ -127,9 +139,11 @@ type multiplexedListener struct {
 	listeners map[DemultiplexedConnType]*demultiplexedListener
 	mx        sync.RWMutex
 
-	ctx     context.Context
-	closeFn func() error
-	wg      sync.WaitGroup
+	connGater connmgr.ConnectionGater
+	rcmgr     network.ResourceManager
+	ctx       context.Context
+	closeFn   func() error
+	wg        sync.WaitGroup
 }
 
 func (m *multiplexedListener) DemultiplexedListen(connType DemultiplexedConnType) (manet.Listener, error) {
@@ -167,6 +181,26 @@ func (m *multiplexedListener) run() error {
 		if err != nil {
 			return err
 		}
+
+		// gate the connection if applicable
+		if m.connGater != nil && !m.connGater.InterceptAccept(c) {
+			log.Debugf("gater blocked incoming connection on local addr %s from %s",
+				c.LocalMultiaddr(), c.RemoteMultiaddr())
+			if err := c.Close(); err != nil {
+				log.Warnf("failed to close incoming connection rejected by gater: %s", err)
+			}
+			continue
+		}
+
+		connScope, err := m.rcmgr.OpenConnection(network.DirInbound, true, c.RemoteMultiaddr())
+		if err != nil {
+			log.Debugw("resource manager blocked accept of new connection", "error", err)
+			if err := c.Close(); err != nil {
+				log.Warnf("failed to incoming connection rejected by resource manager: %s", err)
+			}
+			continue
+		}
+
 		select {
 		case acceptQueue <- struct{}{}:
 		case <-m.ctx.Done():
@@ -180,18 +214,20 @@ func (m *multiplexedListener) run() error {
 			defer m.wg.Done()
 			// TODO: if/how do we want to handle stalled connections and stop them from clogging up the pipeline?
 			// Drop connection because the buffer is full
-			t, sampleC, err := getDemultiplexedConn(c)
+			t, sampleC, err := getDemultiplexedConn(c, connScope)
 			if err != nil {
+				connScope.Done()
 				closeErr := c.Close()
 				err = errors.Join(err, closeErr)
 				log.Debugf("error demultiplexing connection: %s", err.Error())
 				return
 			}
+
 			m.mx.RLock()
 			demux, ok := m.listeners[t]
 			m.mx.RUnlock()
 			if !ok {
-				closeErr := c.Close()
+				closeErr := sampleC.Close()
 				if closeErr != nil {
 					log.Debugf("no registered listener for demultiplex connection %s. Error closing the connection %s", t, closeErr.Error())
 				} else {

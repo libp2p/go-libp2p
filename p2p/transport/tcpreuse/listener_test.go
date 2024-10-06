@@ -65,7 +65,7 @@ func TestListenerSingle(t *testing.T) {
 	const N = 128
 	for _, disableReuseport := range []bool{true, false} {
 		t.Run(fmt.Sprintf("multistream-reuseport:%v", disableReuseport), func(t *testing.T) {
-			cm := NewConnMgr(disableReuseport)
+			cm := NewConnMgr(disableReuseport, nil, nil)
 			l, err := cm.DemultiplexedListen(listenAddr, DemultiplexedConnType_MultistreamSelect)
 			require.NoError(t, err)
 			go func() {
@@ -112,7 +112,7 @@ func TestListenerSingle(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("WebSocket-reuseport:%v", disableReuseport), func(t *testing.T) {
-			cm := NewConnMgr(disableReuseport)
+			cm := NewConnMgr(disableReuseport, nil, nil)
 			l, err := cm.DemultiplexedListen(listenAddr, DemultiplexedConnType_HTTP)
 			require.NoError(t, err)
 			wh := wsHandler{conns: make(chan *websocket.Conn, acceptQueueSize)}
@@ -158,7 +158,7 @@ func TestListenerSingle(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("WebSocketTLS-reuseport:%v", disableReuseport), func(t *testing.T) {
-			cm := NewConnMgr(disableReuseport)
+			cm := NewConnMgr(disableReuseport, nil, nil)
 			l, err := cm.DemultiplexedListen(listenAddr, DemultiplexedConnType_TLS)
 			require.NoError(t, err)
 			defer l.Close()
@@ -211,7 +211,7 @@ func TestListenerMultiplexed(t *testing.T) {
 	listenAddr := ma.StringCast("/ip4/0.0.0.0/tcp/0")
 	const N = 128
 	for _, disableReuseport := range []bool{true, false} {
-		cm := NewConnMgr(disableReuseport)
+		cm := NewConnMgr(disableReuseport, nil, nil)
 		msl, err := cm.DemultiplexedListen(listenAddr, DemultiplexedConnType_MultistreamSelect)
 		require.NoError(t, err)
 		defer msl.Close()
@@ -370,7 +370,7 @@ func TestListenerClose(t *testing.T) {
 
 	testClose := func(listenAddr ma.Multiaddr) {
 		// listen on port 0
-		cm := NewConnMgr(true)
+		cm := NewConnMgr(true, nil, nil)
 		ml, err := cm.DemultiplexedListen(listenAddr, DemultiplexedConnType_MultistreamSelect)
 		require.NoError(t, err)
 		wl, err := cm.DemultiplexedListen(listenAddr, DemultiplexedConnType_HTTP)
