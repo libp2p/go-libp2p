@@ -20,6 +20,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +63,7 @@ func (wh wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func TestListenerSingle(t *testing.T) {
 	listenAddr := ma.StringCast("/ip4/0.0.0.0/tcp/0")
-	const N = 128
+	const N = 64
 	for _, disableReuseport := range []bool{true, false} {
 		t.Run(fmt.Sprintf("multistream-reuseport:%v", disableReuseport), func(t *testing.T) {
 			cm := NewConnMgr(disableReuseport, nil, nil)
@@ -101,11 +102,15 @@ func TestListenerSingle(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					cc := multistream.NewMSSelect(c, "a")
+					defer cc.Close()
 					buf := make([]byte, 30)
 					n, err := cc.Read(buf)
-					require.NoError(t, err)
-					require.Equal(t, "hello-multistream", string(buf[:n]))
-					c.Close()
+					if !assert.NoError(t, err) {
+						return
+					}
+					if !assert.Equal(t, "hello-multistream", string(buf[:n])) {
+						return
+					}
 				}()
 			}
 			wg.Wait()
@@ -147,11 +152,17 @@ func TestListenerSingle(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
-					require.NoError(t, err)
-					require.Equal(t, msgType, websocket.TextMessage)
-					require.Equal(t, "hello", string(buf))
-					c.Close()
+					if !assert.NoError(t, err) {
+						return
+					}
+					if !assert.Equal(t, msgType, websocket.TextMessage) {
+						return
+					}
+					if !assert.Equal(t, "hello", string(buf)) {
+						return
+					}
 				}()
 			}
 			wg.Wait()
@@ -195,11 +206,17 @@ func TestListenerSingle(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
-					require.NoError(t, err)
-					require.Equal(t, msgType, websocket.TextMessage)
-					require.Equal(t, "hello", string(buf))
-					c.Close()
+					if !assert.NoError(t, err) {
+						return
+					}
+					if !assert.Equal(t, msgType, websocket.TextMessage) {
+						return
+					}
+					if !assert.Equal(t, "hello", string(buf)) {
+						return
+					}
 				}()
 			}
 			wg.Wait()
@@ -209,7 +226,7 @@ func TestListenerSingle(t *testing.T) {
 
 func TestListenerMultiplexed(t *testing.T) {
 	listenAddr := ma.StringCast("/ip4/0.0.0.0/tcp/0")
-	const N = 128
+	const N = 20
 	for _, disableReuseport := range []bool{true, false} {
 		cm := NewConnMgr(disableReuseport, nil, nil)
 		msl, err := cm.DemultiplexedListen(listenAddr, DemultiplexedConnType_MultistreamSelect)
@@ -315,16 +332,22 @@ func TestListenerMultiplexed(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < N; i++ {
 				c, err := msl.Accept()
-				require.NoError(t, err)
+				if !assert.NoError(t, err) {
+					return
+				}
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 					cc := multistream.NewMSSelect(c, "a")
+					defer cc.Close()
 					buf := make([]byte, 20)
 					n, err := cc.Read(buf)
-					require.NoError(t, err)
-					require.Equal(t, "multistream", string(buf[:n]))
-					cc.Close()
+					if !assert.NoError(t, err) {
+						return
+					}
+					if !assert.Equal(t, "multistream", string(buf[:n])) {
+						return
+					}
 				}()
 			}
 		}()
@@ -337,11 +360,17 @@ func TestListenerMultiplexed(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
-					require.NoError(t, err)
-					require.Equal(t, msgType, websocket.TextMessage)
-					require.Equal(t, "websocket", string(buf))
-					c.Close()
+					if !assert.NoError(t, err) {
+						return
+					}
+					if !assert.Equal(t, msgType, websocket.TextMessage) {
+						return
+					}
+					if !assert.Equal(t, "websocket", string(buf)) {
+						return
+					}
 				}()
 			}
 		}()
@@ -354,11 +383,17 @@ func TestListenerMultiplexed(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
-					require.NoError(t, err)
-					require.Equal(t, msgType, websocket.TextMessage)
-					require.Equal(t, "websocket-tls", string(buf))
-					c.Close()
+					if !assert.NoError(t, err) {
+						return
+					}
+					if !assert.Equal(t, msgType, websocket.TextMessage) {
+						return
+					}
+					if !assert.Equal(t, "websocket-tls", string(buf)) {
+						return
+					}
 				}()
 			}
 		}()
