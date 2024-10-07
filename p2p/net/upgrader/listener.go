@@ -84,13 +84,13 @@ func (l *listener) handleIncoming() {
 		}
 		catcher.Reset()
 
+		// Check if we already have a connection scope. See the comment in tcpreuse/listener.go for an explanation.
 		var connScope network.ConnManagementScope
 		if sc, ok := maconn.(interface {
 			Scope() network.ConnManagementScope
 		}); ok {
 			connScope = sc.Scope()
 		}
-
 		if connScope == nil {
 			// gate the connection if applicable
 			if l.upgrader.connGater != nil && !l.upgrader.connGater.InterceptAccept(maconn) {

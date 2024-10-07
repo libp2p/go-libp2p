@@ -636,6 +636,7 @@ func IPv6BlackHoleSuccessCounter(f *swarm.BlackHoleSuccessCounter) Option {
 	}
 }
 
+// ShareTCPListener shares the same listen address between TCP and Websocket transports.
 func ShareTCPListener() Option {
 	return func(cfg *Config) error {
 		cfg.ShareTCPListener = true

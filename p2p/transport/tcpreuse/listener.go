@@ -182,7 +182,15 @@ func (m *multiplexedListener) run() error {
 			return err
 		}
 
-		// gate the connection if applicable
+		// Gate and resource limit the connection here.
+		// If done after sampling the connection, we'll be vulnerable to DOS attacks by a single peer
+		// which clogs up our entire connection queue.
+		// This duplicates the responsibility of gating and resource limiting between here and the upgrader. The
+		// alternative without duplication requires moving the process of upgrading the connection here, which forces
+		// us to establish the websocket connection here. That is more duplication, or a significant breaking change.
+		//
+		// Bugs around multiple calls to OpenConnection or InterceptAccept are prevented by the transport
+		// integration tests.
 		if m.connGater != nil && !m.connGater.InterceptAccept(c) {
 			log.Debugf("gater blocked incoming connection on local addr %s from %s",
 				c.LocalMultiaddr(), c.RemoteMultiaddr())
@@ -202,6 +210,7 @@ func (m *multiplexedListener) run() error {
 
 		select {
 		case acceptQueue <- struct{}{}:
+		// TODO: We can drop the connection, but this is similar to the behaviour in the upgrader.
 		case <-m.ctx.Done():
 			c.Close()
 			log.Debugf("accept queue full, dropping connection: %s", c.RemoteMultiaddr())
@@ -211,8 +220,6 @@ func (m *multiplexedListener) run() error {
 		go func() {
 			defer func() { <-acceptQueue }()
 			defer m.wg.Done()
-			// TODO: if/how do we want to handle stalled connections and stop them from clogging up the pipeline?
-			// Drop connection because the buffer is full
 			t, sampleC, err := getDemultiplexedConn(c, connScope)
 			if err != nil {
 				connScope.Done()
