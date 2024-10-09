@@ -21,6 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 	quicproxy "github.com/quic-go/quic-go/integrationtests/tools/proxy"
 	"github.com/stretchr/testify/require"
@@ -119,6 +120,34 @@ func testHandshake(t *testing.T, tc *connTestCase) {
 
 	t.Run("on IPv6", func(t *testing.T) {
 		ln := runServer(t, serverTransport, "/ip6/::1/udp/0/quic-v1")
+		defer ln.Close()
+		handshake(t, ln)
+	})
+
+	ifaces, _ := net.Interfaces()
+	var linkLocalAddr ma.Multiaddr
+findInterface:
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err == nil {
+			for _, a := range addrs {
+				addr, err := manet.FromNetAddr(a)
+				if err == nil {
+					if manet.IsIP6LinkLocal(addr) {
+						linkLocalAddr = ma.StringCast("/ip6zone/" + iface.Name + addr.String())
+						break findInterface
+					}
+				}
+			}
+		}
+	}
+
+	if linkLocalAddr == nil {
+		t.Fail()
+		return
+	}
+	t.Run("on IPv6 link-local address", func(t *testing.T) {
+		ln := runServer(t, serverTransport, linkLocalAddr.String() + "/udp/0/quic-v1")
 		defer ln.Close()
 		handshake(t, ln)
 	})
