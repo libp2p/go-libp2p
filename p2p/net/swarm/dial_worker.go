@@ -162,7 +162,7 @@ loop:
 		case req, ok := <-w.reqch:
 			if !ok {
 				if w.s.metricsTracer != nil {
-					w.s.metricsTracer.DialCompleted(w.connected, totalDials)
+					w.s.metricsTracer.DialCompleted(w.connected, totalDials, time.Since(startTime))
 				}
 				return
 			}
