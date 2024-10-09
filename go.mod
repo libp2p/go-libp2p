@@ -45,12 +45,12 @@ require (
 	github.com/multiformats/go-multistream v0.5.0
 	github.com/multiformats/go-varint v0.0.7
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
-	github.com/pion/datachannel v1.5.8
-	github.com/pion/ice/v2 v2.3.34
+	github.com/pion/datachannel v1.5.9
+	github.com/pion/ice/v2 v2.3.36
 	github.com/pion/logging v0.2.2
-	github.com/pion/sctp v1.8.20
+	github.com/pion/sctp v1.8.33
 	github.com/pion/stun v0.6.1
-	github.com/pion/webrtc/v3 v3.3.0
+	github.com/pion/webrtc/v3 v3.3.4
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/client_model v0.6.1
 	github.com/quic-go/quic-go v0.45.2
@@ -61,10 +61,10 @@ require (
 	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.4.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.25.0
+	golang.org/x/crypto v0.28.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/sync v0.7.0
-	golang.org/x/sys v0.22.0
+	golang.org/x/sync v0.8.0
+	golang.org/x/sys v0.26.0
 	golang.org/x/tools v0.23.0
 	google.golang.org/protobuf v1.34.2
 )
@@ -105,11 +105,11 @@ require (
 	github.com/onsi/ginkgo/v2 v2.19.1 // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
-	github.com/pion/interceptor v0.1.29 // indirect
+	github.com/pion/interceptor v0.1.37 // indirect
 	github.com/pion/mdns v0.0.12 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.14 // indirect
-	github.com/pion/rtp v1.8.8 // indirect
+	github.com/pion/rtp v1.8.9 // indirect
 	github.com/pion/sdp/v3 v3.0.9 // indirect
 	github.com/pion/srtp/v2 v2.0.20 // indirect
 	github.com/pion/transport/v2 v2.2.10 // indirect
@@ -121,12 +121,12 @@ require (
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
-	github.com/wlynxg/anet v0.0.3 // indirect
+	github.com/wlynxg/anet v0.0.5 // indirect
 	go.uber.org/dig v1.17.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/mod v0.19.0 // indirect
-	golang.org/x/net v0.27.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/net v0.30.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
