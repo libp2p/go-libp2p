@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/connmgr"
-	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/core/routing"
 
 	logging "github.com/ipfs/go-log/v2"
 
@@ -28,10 +27,12 @@ const AddressTTL = time.Second * 10
 // This allows the Host to find the addresses for peers when
 // it does not have them.
 type RoutedHost struct {
-	host  host.Host // embedded other host.
-	route Routing
+	host.Host // Embedding the underlying host.
+	route     routing.PeerRouting
 }
 
+// Routing is an interface for peer routing.
+// Deprecated: use [routing.PeerRouting] instead.
 type Routing interface {
 	FindPeer(context.Context, peer.ID) (peer.AddrInfo, error)
 }
@@ -109,7 +110,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// if we're here, we got some addrs. let's use our wrapped host to connect.
 	pi.Addrs = addrs
-	if cerr := rh.host.Connect(ctx, pi); cerr != nil {
+	if cerr := rh.Host.Connect(ctx, pi); cerr != nil {
 		// We couldn't connect. Let's check if we have the most
 		// up-to-date addresses for the given peer. If there
 		// are addresses we didn't know about previously, we
@@ -135,7 +136,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			}
 
 			pi.Addrs = newAddrs
-			return rh.host.Connect(ctx, pi)
+			return rh.Host.Connect(ctx, pi)
 		}
 		// No appropriate new address found.
 		// Return the original dial error.
@@ -163,42 +164,6 @@ func (rh *RoutedHost) findPeerAddrs(ctx context.Context, id peer.ID) ([]ma.Multi
 	return pi.Addrs, nil
 }
 
-func (rh *RoutedHost) ID() peer.ID {
-	return rh.host.ID()
-}
-
-func (rh *RoutedHost) Peerstore() peerstore.Peerstore {
-	return rh.host.Peerstore()
-}
-
-func (rh *RoutedHost) Addrs() []ma.Multiaddr {
-	return rh.host.Addrs()
-}
-
-func (rh *RoutedHost) Network() network.Network {
-	return rh.host.Network()
-}
-
-func (rh *RoutedHost) Mux() protocol.Switch {
-	return rh.host.Mux()
-}
-
-func (rh *RoutedHost) EventBus() event.Bus {
-	return rh.host.EventBus()
-}
-
-func (rh *RoutedHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
-	rh.host.SetStreamHandler(pid, handler)
-}
-
-func (rh *RoutedHost) SetStreamHandlerMatch(pid protocol.ID, m func(protocol.ID) bool, handler network.StreamHandler) {
-	rh.host.SetStreamHandlerMatch(pid, m, handler)
-}
-
-func (rh *RoutedHost) RemoveStreamHandler(pid protocol.ID) {
-	rh.host.RemoveStreamHandler(pid)
-}
-
 func (rh *RoutedHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error) {
 	// Ensure we have a connection, with peer addresses resolved by the routing system (#207)
 	// It is not sufficient to let the underlying host connect, it will most likely not have
@@ -211,14 +176,17 @@ func (rh *RoutedHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol
 		}
 	}
 
-	return rh.host.NewStream(ctx, p, pids...)
+	return rh.Host.NewStream(ctx, p, pids...)
 }
+
+// Routing exposes the underlying routing system.
+func (rh *RoutedHost) Routing() routing.PeerRouting {
+	return rh.route
+}
+
 func (rh *RoutedHost) Close() error {
 	// no need to close IpfsRouting. we dont own it.
-	return rh.host.Close()
-}
-func (rh *RoutedHost) ConnManager() connmgr.ConnManager {
-	return rh.host.ConnManager()
+	return rh.Host.Close()
 }
 
 var _ (host.Host) = (*RoutedHost)(nil)
