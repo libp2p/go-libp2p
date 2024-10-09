@@ -31,6 +31,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"go.uber.org/goleak"
 
@@ -52,7 +53,7 @@ func TestTransportConstructor(t *testing.T) {
 		_ connmgr.ConnectionGater,
 		upgrader transport.Upgrader,
 	) transport.Transport {
-		tpt, err := tcp.NewTCPTransport(upgrader, nil)
+		tpt, err := tcp.NewTCPTransport(upgrader, nil, nil)
 		require.NoError(t, err)
 		return tpt
 	}
@@ -654,4 +655,17 @@ func TestUseCorrectTransportForDialOut(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestSharedTCPAddr(t *testing.T) {
+	h, err := New(
+		ShareTCPListener(),
+		Transport(tcp.NewTCPTransport),
+		Transport(websocket.New),
+		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888"),
+		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888/ws"),
+	)
+	require.NoError(t, err)
+	fmt.Println(h.Addrs())
+	h.Close()
 }

@@ -4,14 +4,16 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"net"
 	"net/http"
 	"sync"
 
+	"go.uber.org/zap"
+
 	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -50,7 +52,7 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -60,19 +62,36 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 		return nil, fmt.Errorf("cannot listen on wss address %s without a tls.Config", a)
 	}
 
-	lnet, lnaddr, err := manet.DialArgs(parsed.restMultiaddr)
-	if err != nil {
-		return nil, err
-	}
-	nl, err := net.Listen(lnet, lnaddr)
-	if err != nil {
-		return nil, err
+	var nl net.Listener
+
+	if sharedTcp == nil {
+		lnet, lnaddr, err := manet.DialArgs(parsed.restMultiaddr)
+		if err != nil {
+			return nil, err
+		}
+		nl, err = net.Listen(lnet, lnaddr)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var connType tcpreuse.DemultiplexedConnType
+		if parsed.isWSS {
+			connType = tcpreuse.DemultiplexedConnType_TLS
+		} else {
+			connType = tcpreuse.DemultiplexedConnType_HTTP
+		}
+		mal, err := sharedTcp.DemultiplexedListen(parsed.restMultiaddr, connType)
+		if err != nil {
+			return nil, err
+		}
+		nl = manet.NetListener(mal)
 	}
 
 	laddr, err := manet.FromNetAddr(nl.Addr())
 	if err != nil {
 		return nil, err
 	}
+
 	first, _ := ma.SplitFirst(a)
 	// Don't resolve dns addresses.
 	// We want to be able to announce domain names, so the peer can validate the TLS certificate.
@@ -111,7 +130,12 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The upgrader writes a response for us.
 		return
 	}
-
+	nc := NewConn(c, l.isWss)
+	if nc == nil {
+		c.Close()
+		w.WriteHeader(500)
+		return
+	}
 	select {
 	case l.incoming <- NewConn(c, l.isWss):
 	case <-l.closed:
@@ -126,13 +150,7 @@ func (l *listener) Accept() (manet.Conn, error) {
 		if !ok {
 			return nil, transport.ErrListenerClosed
 		}
-
-		mnc, err := manet.WrapNetConn(c)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-		return mnc, nil
+		return c, nil
 	case <-l.closed:
 		return nil, transport.ErrListenerClosed
 	}

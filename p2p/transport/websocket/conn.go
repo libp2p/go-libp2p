@@ -8,6 +8,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 
 	ws "github.com/gorilla/websocket"
 )
@@ -23,19 +25,50 @@ type Conn struct {
 	DefaultMessageType int
 	reader             io.Reader
 	closeOnce          sync.Once
+	laddr              ma.Multiaddr
+	raddr              ma.Multiaddr
 
 	readLock, writeLock sync.Mutex
 }
 
 var _ net.Conn = (*Conn)(nil)
+var _ manet.Conn = (*Conn)(nil)
 
 // NewConn creates a Conn given a regular gorilla/websocket Conn.
+//
+// Deprecated: There's no reason to use this method externally. It'll be unexported in a future release.
 func NewConn(raw *ws.Conn, secure bool) *Conn {
+	lna := NewAddrWithScheme(raw.LocalAddr().String(), secure)
+	laddr, err := manet.FromNetAddr(lna)
+	if err != nil {
+		log.Errorf("BUG: invalid localaddr on websocket conn", raw.LocalAddr())
+		return nil
+	}
+
+	rna := NewAddrWithScheme(raw.RemoteAddr().String(), secure)
+	raddr, err := manet.FromNetAddr(rna)
+	if err != nil {
+		log.Errorf("BUG: invalid remoteaddr on websocket conn", raw.RemoteAddr())
+		return nil
+	}
+
 	return &Conn{
 		Conn:               raw,
 		secure:             secure,
 		DefaultMessageType: ws.BinaryMessage,
+		laddr:              laddr,
+		raddr:              raddr,
 	}
+}
+
+// LocalMultiaddr implements manet.Conn.
+func (c *Conn) LocalMultiaddr() ma.Multiaddr {
+	return c.laddr
+}
+
+// RemoteMultiaddr implements manet.Conn.
+func (c *Conn) RemoteMultiaddr() ma.Multiaddr {
+	return c.raddr
 }
 
 func (c *Conn) Read(b []byte) (int, error) {
@@ -99,9 +132,20 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	return len(b), nil
 }
 
+func (c *Conn) Scope() network.ConnManagementScope {
+	nc := c.NetConn()
+	if sc, ok := nc.(interface {
+		Scope() network.ConnManagementScope
+	}); ok {
+		return sc.Scope()
+	}
+	return nil
+}
+
 // Close closes the connection. Only the first call to Close will receive the
 // close error, subsequent and concurrent calls will return nil.
 // This method is thread-safe.
+// TODO: Fix this ^
 func (c *Conn) Close() error {
 	var err error
 	c.closeOnce.Do(func() {
