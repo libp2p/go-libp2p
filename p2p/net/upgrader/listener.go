@@ -131,7 +131,10 @@ func (l *listener) handleIncoming() {
 				return
 			}
 
-			log.Debugf("listener %s accepted connection: %s", l, conn)
+			log.Debugf("listener %s accepted connection: %s <---> %s",
+				l,
+				conn.LocalMultiaddr(),
+				conn.RemoteMultiaddr())
 
 			// This records the fact that the connection has been
 			// setup and is waiting to be accepted. This call
