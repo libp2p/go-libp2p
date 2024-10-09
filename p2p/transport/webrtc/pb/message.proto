@@ -21,4 +21,6 @@ message Message {
   optional Flag flag=1;
 
   optional bytes message = 2;
+
+  optional uint32 errorCode = 3;
 }
