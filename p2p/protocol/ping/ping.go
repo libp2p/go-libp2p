@@ -39,6 +39,14 @@ func NewPingService(h host.Host) *PingService {
 	return ps
 }
 
+func (p *PingService) Start() {
+	p.Host.SetStreamHandler(ID, p.PingHandler)
+}
+
+func (p *PingService) Stop() {
+	p.Host.RemoveStreamHandler(ID)
+}
+
 func (p *PingService) PingHandler(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Debugf("error attaching stream to ping service: %s", err)
