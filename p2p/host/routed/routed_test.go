@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ Routing = (*mockRouting)(nil)
+var _ routing.PeerRouting = (*mockRouting)(nil)
 
 type mockRouting struct {
 	callCount  int
