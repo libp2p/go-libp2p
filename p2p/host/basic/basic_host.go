@@ -202,7 +202,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
 	}
 
-	h.updateLocalIpAddr()
+	h.updateLocalIpAddr(false, false)
 
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}, eventbus.Stateful); err != nil {
 		return nil, err
@@ -355,7 +355,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	return h, nil
 }
 
-func (h *BasicHost) updateLocalIpAddr() {
+func (h *BasicHost) updateLocalIpAddr(v4, v6 bool) (bool, bool) {
 	h.addrMu.Lock()
 	defer h.addrMu.Unlock()
 
@@ -368,21 +368,31 @@ func (h *BasicHost) updateLocalIpAddr() {
 		log.Debugw("failed to build Router for kernel's routing table", "error", err)
 	} else {
 		if _, _, localIPv4, err := r.Route(net.IPv4zero); err != nil {
-			log.Debugw("failed to fetch local IPv4 address", "error", err)
+			if !v4 {
+				log.Debugw("failed to fetch local IPv4 address", "error", err)
+				v4 = true
+			}
 		} else if localIPv4.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv4)
 			if err == nil {
 				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
 			}
+
+			v4 = false
 		}
 
 		if _, _, localIPv6, err := r.Route(net.IPv6unspecified); err != nil {
-			log.Debugw("failed to fetch local IPv6 address", "error", err)
+			if !v6 {
+				log.Debugw("failed to fetch local IPv6 address", "error", err)
+				v6 = true
+			}
 		} else if localIPv6.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv6)
 			if err == nil {
 				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
 			}
+
+			v6 = false
 		}
 	}
 
@@ -397,7 +407,7 @@ func (h *BasicHost) updateLocalIpAddr() {
 		// Then bail. There's nothing else we can do here.
 		h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, manet.IP4Loopback, manet.IP6Loopback)
 		h.allInterfaceAddrs = h.filteredInterfaceAddrs
-		return
+		return v4, v6
 	}
 
 	for _, addr := range ifaceAddrs {
@@ -421,6 +431,8 @@ func (h *BasicHost) updateLocalIpAddr() {
 			}
 		}
 	}
+
+	return v4, v6
 }
 
 // Start starts background tasks in the host
@@ -598,10 +610,13 @@ func (h *BasicHost) background() {
 	ticker := time.NewTicker(addrChangeTickrInterval)
 	defer ticker.Stop()
 
+	// Check that the address was failed to retrieve at the previous time.
+	v4, v6 := false , false
+
 	for {
 		// Update our local IP addresses before checking our current addresses.
 		if len(h.network.ListenAddresses()) > 0 {
-			h.updateLocalIpAddr()
+			v4, v6 = h.updateLocalIpAddr(v4, v6)
 		}
 		curr := h.Addrs()
 		emitAddrChange(curr, lastAddrs)
