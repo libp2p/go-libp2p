@@ -172,7 +172,7 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	if err != nil {
 		return nil, err
 	}
-	sconn, err := t.upgrade(ctx, sess, p, certHashes)
+	sconn, err := t.upgrade(ctx, sess, p, certHashes, raddr)
 	if err != nil {
 		sess.CloseWithError(1, "")
 		return nil, err
@@ -230,14 +230,10 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 	return sess, conn, err
 }
 
-func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p peer.ID, certHashes []multihash.DecodedMultihash) (*connSecurityMultiaddrs, error) {
+func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p peer.ID, certHashes []multihash.DecodedMultihash, remote ma.Multiaddr) (*connSecurityMultiaddrs, error) {
 	local, err := toWebtransportMultiaddr(sess.LocalAddr())
 	if err != nil {
 		return nil, fmt.Errorf("error determining local addr: %w", err)
-	}
-	remote, err := toWebtransportMultiaddr(sess.RemoteAddr())
-	if err != nil {
-		return nil, fmt.Errorf("error determining remote addr: %w", err)
 	}
 
 	str, err := sess.OpenStreamSync(ctx)
