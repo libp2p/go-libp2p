@@ -3,6 +3,7 @@ package pnet
 import (
 	"crypto/cipher"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"net"
 
@@ -33,7 +34,7 @@ func (c *pskConn) Read(out []byte) (int, error) {
 		nonce := make([]byte, 24)
 		_, err := io.ReadFull(c.Conn, nonce)
 		if err != nil {
-			return 0, errShortNonce
+			return 0, fmt.Errorf("%w: %w", errShortNonce, err)
 		}
 		c.readS20 = salsa20.New(c.psk, nonce)
 	}
