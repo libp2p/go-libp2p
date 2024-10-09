@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -42,6 +44,7 @@ type candidate struct {
 	added           time.Time
 	supportsRelayV2 bool
 	ai              peer.AddrInfo
+	rtt             time.Duration
 }
 
 // relayFinder is a Host that uses relays for connectivity when a NAT is detected.
@@ -60,6 +63,7 @@ type relayFinder struct {
 
 	candidateFound             chan struct{} // receives every time we find a new relay candidate
 	candidateMx                sync.Mutex
+	sortByRTT                  bool
 	candidates                 map[peer.ID]*candidate
 	backoff                    map[peer.ID]time.Time
 	maybeConnectToRelayTrigger chan struct{} // cap: 1
@@ -104,6 +108,7 @@ func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) 
 		relays:                     make(map[peer.ID]*circuitv2.Reservation),
 		relayUpdated:               make(chan struct{}, 1),
 		metricsTracer:              &wrappedMetricsTracer{conf.metricsTracer},
+		sortByRTT:                  conf.sortByRTT,
 	}
 }
 
@@ -447,10 +452,24 @@ func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) (add
 		return false
 	}
 	log.Debugw("node supports relay protocol", "peer", pi.ID, "supports circuit v2", supportsV2)
+
+	// default set maxDuration
+	rtt := time.Duration(1<<63 - 1)
+	if rf.sortByRTT {
+		res := <-ping.Ping(ctx, rf.host, pi.ID)
+		if res.Error != nil {
+			log.Debugf("node %s don't supports ping protocol: %v", pi.ID, res.Error)
+		} else {
+			rtt = res.RTT
+			log.Debugf("node %s ping took: %s", pi.ID, res.RTT)
+		}
+	}
+
 	rf.addCandidate(&candidate{
 		added:           rf.conf.clock.Now(),
 		ai:              pi,
 		supportsRelayV2: supportsV2,
+		rtt:             rtt,
 	})
 	rf.candidateMx.Unlock()
 	return true
@@ -562,7 +581,7 @@ func (rf *relayFinder) maybeConnectToRelay(ctx context.Context) {
 			rf.metricsTracer.ReservationRequestFinished(false, err)
 			continue
 		}
-		log.Debugw("adding new relay", "id", id)
+		log.Debugw("adding new relay", "id", id, "rtt", cand.rtt)
 		rf.relayMx.Lock()
 		rf.relays[id] = rsvp
 		numRelays := len(rf.relays)
@@ -699,11 +718,17 @@ func (rf *relayFinder) selectCandidates() []*candidate {
 		}
 	}
 
-	// TODO: better relay selection strategy; this just selects random relays,
-	// but we should probably use ping latency as the selection metric
-	rand.Shuffle(len(candidates), func(i, j int) {
-		candidates[i], candidates[j] = candidates[j], candidates[i]
-	})
+	// If the node speed test is enabled, the rtt will be sorted,
+	// otherwise the order will be randomly shuffled.
+	if rf.sortByRTT {
+		sort.Slice(candidates, func(i, j int) bool {
+			return candidates[i].rtt < candidates[j].rtt
+		})
+	} else {
+		rand.Shuffle(len(candidates), func(i, j int) {
+			candidates[i], candidates[j] = candidates[j], candidates[i]
+		})
+	}
 	return candidates
 }
 
