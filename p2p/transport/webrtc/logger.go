@@ -12,8 +12,6 @@ var pionLog = logging.Logger("webrtc-transport-pion")
 
 // pionLogger wraps the StandardLogger interface to provide a LeveledLogger interface
 // as expected by pion
-// Pion logs are too noisy and have invalid log levels. pionLogger downgrades all the
-// logs to debug
 type pionLogger struct {
 	logging.StandardLogger
 }
@@ -27,32 +25,20 @@ func (l pionLogger) Debug(s string) {
 }
 
 func (l pionLogger) Error(s string) {
-	l.StandardLogger.Debug(s)
-}
-
-func (l pionLogger) Errorf(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args...)
+	l.StandardLogger.Error(s)
 }
 
 func (l pionLogger) Info(s string) {
-	l.StandardLogger.Debug(s)
+	l.StandardLogger.Info(s)
 }
-
-func (l pionLogger) Infof(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args...)
-}
-
 func (l pionLogger) Warn(s string) {
-	l.StandardLogger.Debug(s)
-}
-
-func (l pionLogger) Warnf(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args...)
+	l.StandardLogger.Warn(s)
 }
 
 func (l pionLogger) Trace(s string) {
 	l.StandardLogger.Debug(s)
 }
+
 func (l pionLogger) Tracef(s string, args ...interface{}) {
 	l.StandardLogger.Debugf(s, args...)
 }
