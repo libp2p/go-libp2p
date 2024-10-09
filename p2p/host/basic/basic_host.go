@@ -21,6 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
+	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
@@ -98,6 +99,8 @@ type BasicHost struct {
 	addrChangeChan chan struct{}
 
 	addrMu                 sync.RWMutex
+	updateLocalIPv4Backoff backoff.ExpBackoff
+	updateLocalIPv6Backoff backoff.ExpBackoff
 	filteredInterfaceAddrs []ma.Multiaddr
 	allInterfaceAddrs      []ma.Multiaddr
 
@@ -367,18 +370,32 @@ func (h *BasicHost) updateLocalIpAddr() {
 	if r, err := netroute.New(); err != nil {
 		log.Debugw("failed to build Router for kernel's routing table", "error", err)
 	} else {
-		if _, _, localIPv4, err := r.Route(net.IPv4zero); err != nil {
+
+		var localIPv4 net.IP
+		var ran bool
+		err, ran = h.updateLocalIPv4Backoff.Run(func() error {
+			_, _, localIPv4, err = r.Route(net.IPv4zero)
+			return err
+		})
+
+		if ran && err != nil {
 			log.Debugw("failed to fetch local IPv4 address", "error", err)
-		} else if localIPv4.IsGlobalUnicast() {
+		} else if ran && localIPv4.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv4)
 			if err == nil {
 				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
 			}
 		}
 
-		if _, _, localIPv6, err := r.Route(net.IPv6unspecified); err != nil {
+		var localIPv6 net.IP
+		err, ran = h.updateLocalIPv6Backoff.Run(func() error {
+			_, _, localIPv6, err = r.Route(net.IPv6unspecified)
+			return err
+		})
+
+		if ran && err != nil {
 			log.Debugw("failed to fetch local IPv6 address", "error", err)
-		} else if localIPv6.IsGlobalUnicast() {
+		} else if ran && localIPv6.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv6)
 			if err == nil {
 				h.filteredInterfaceAddrs = append(h.filteredInterfaceAddrs, maddr)
