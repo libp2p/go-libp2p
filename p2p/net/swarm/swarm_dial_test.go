@@ -55,7 +55,7 @@ func TestAddrsForDial(t *testing.T) {
 
 	tpt, err := websocket.New(nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(resolver))
+	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(ResolverFromMaDNS{resolver}))
 	require.NoError(t, err)
 	defer s.Close()
 	err = s.AddTransport(tpt)
@@ -96,7 +96,7 @@ func TestDedupAddrsForDial(t *testing.T) {
 	ps.AddPrivKey(id, priv)
 	t.Cleanup(func() { ps.Close() })
 
-	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(resolver))
+	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(ResolverFromMaDNS{resolver}))
 	require.NoError(t, err)
 	defer s.Close()
 
@@ -127,7 +127,7 @@ func newTestSwarmWithResolver(t *testing.T, resolver *madns.Resolver) *Swarm {
 	ps.AddPubKey(id, priv.GetPublic())
 	ps.AddPrivKey(id, priv)
 	t.Cleanup(func() { ps.Close() })
-	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(resolver))
+	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(ResolverFromMaDNS{resolver}))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		s.Close()
@@ -397,4 +397,19 @@ func TestBlackHoledAddrBlocked(t *testing.T) {
 		t.Fatalf("expected to receive an error of type *DialError, got %s of type %T", err, err)
 	}
 	require.ErrorIs(t, err, ErrDialRefusedBlackHole)
+}
+
+func TestSkipDialingManyDNS(t *testing.T) {
+	resolver, err := madns.NewResolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestSwarmWithResolver(t, resolver)
+	defer s.Close()
+	id := test.RandPeerIDFatal(t)
+	addr := ma.StringCast("/dns/example.com/udp/1234/p2p-circuit/dns/example.com/p2p-circuit/dns/example.com")
+
+	resolved := s.resolveAddrs(context.Background(), peer.AddrInfo{ID: id, Addrs: []ma.Multiaddr{addr}})
+	require.NoError(t, err)
+	require.Less(t, len(resolved), 3)
 }

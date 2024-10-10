@@ -133,7 +133,7 @@ func (t *WebsocketTransport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]m
 
 	if parsed.sni == nil {
 		var err error
-		// We don't have an sni component, we'll use dns/dnsaddr
+		// We don't have an sni component, we'll use dns
 		ma.ForEach(parsed.restMultiaddr, func(c ma.Component) bool {
 			switch c.Protocol().Code {
 			case ma.P_DNS, ma.P_DNS4, ma.P_DNS6:

@@ -52,7 +52,7 @@ func TestBasicDialPeerWithResolver(t *testing.T) {
 	resolver, err := madns.NewResolver(madns.WithDomainResolver("example.com", &mockResolver))
 	require.NoError(t, err)
 
-	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithMultiaddrResolver(resolver)))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithMultiaddrResolver(swarm.ResolverFromMaDNS{resolver})))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
 	s2 := swarms[1]

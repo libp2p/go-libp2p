@@ -37,7 +37,6 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
-	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
 	msmux "github.com/multiformats/go-multistream"
 )
@@ -81,7 +80,6 @@ type BasicHost struct {
 	hps          *holepunch.Service
 	pings        *ping.PingService
 	natmgr       NATManager
-	maResolver   *madns.Resolver
 	cmgr         connmgr.ConnManager
 	eventbus     event.Bus
 	relayManager *relaysvc.RelayManager
@@ -129,10 +127,6 @@ type HostOpts struct {
 	// AddrsFactory holds a function which can be used to override or filter the result of Addrs.
 	// If omitted, there's no override or filtering, and the results of Addrs and AllAddrs are the same.
 	AddrsFactory AddrsFactory
-
-	// MultiaddrResolves holds the go-multiaddr-dns.Resolver used for resolving
-	// /dns4, /dns6, and /dnsaddr addresses before trying to connect to a peer.
-	MultiaddrResolver *madns.Resolver
 
 	// NATManager takes care of setting NAT port mappings, and discovering external addresses.
 	// If omitted, this will simply be disabled.
@@ -194,7 +188,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		mux:                     msmux.NewMultistreamMuxer[protocol.ID](),
 		negtimeout:              DefaultNegotiationTimeout,
 		AddrsFactory:            DefaultAddrsFactory,
-		maResolver:              madns.DefaultResolver,
 		eventbus:                opts.EventBus,
 		addrChangeChan:          make(chan struct{}, 1),
 		ctx:                     hostCtx,
@@ -301,10 +294,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	if opts.NATManager != nil {
 		h.natmgr = opts.NATManager(n)
-	}
-
-	if opts.MultiaddrResolver != nil {
-		h.maResolver = opts.MultiaddrResolver
 	}
 
 	if opts.ConnManager == nil {

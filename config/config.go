@@ -40,7 +40,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	ma "github.com/multiformats/go-multiaddr"
-	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 	"go.uber.org/fx"
@@ -114,7 +113,7 @@ type Config struct {
 	Peerstore  peerstore.Peerstore
 	Reporter   metrics.Reporter
 
-	MultiaddrResolver *madns.Resolver
+	MultiaddrResolver network.MultiaddrDNSResolver
 
 	DisablePing bool
 
@@ -286,7 +285,6 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),
-		fx.Provide(func() *madns.Resolver { return cfg.MultiaddrResolver }),
 		fx.Provide(func(cm *quicreuse.ConnManager, sw *swarm.Swarm) libp2pwebrtc.ListenUDPFn {
 			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {
 				quicAddrPorts := map[string]struct{}{}

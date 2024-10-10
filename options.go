@@ -31,7 +31,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	ma "github.com/multiformats/go-multiaddr"
-	madns "github.com/multiformats/go-multiaddr-dns"
 	"go.uber.org/fx"
 )
 
@@ -495,7 +494,7 @@ func UserAgent(userAgent string) Option {
 }
 
 // MultiaddrResolver sets the libp2p dns resolver
-func MultiaddrResolver(rslv *madns.Resolver) Option {
+func MultiaddrResolver(rslv network.MultiaddrDNSResolver) Option {
 	return func(cfg *Config) error {
 		cfg.MultiaddrResolver = rslv
 		return nil
