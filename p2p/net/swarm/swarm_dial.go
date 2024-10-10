@@ -393,6 +393,32 @@ func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) []ma.Multiad
 			return s.multiaddrResolver.ResolveDNSAddr(ctx, pi.ID, maddr, maximumDNSADDRRecursion, outputLimit)
 		},
 	}
+
+	var skipped []ma.Multiaddr
+	skipResolver := resolver{
+		canResolve: func(addr ma.Multiaddr) bool {
+			tpt := s.TransportForDialing(addr)
+			if tpt == nil {
+				return false
+			}
+			_, ok := tpt.(transport.SkipResolver)
+			return ok
+
+		},
+		resolve: func(ctx context.Context, addr ma.Multiaddr, outputLimit int) ([]ma.Multiaddr, error) {
+			tpt := s.TransportForDialing(addr)
+			resolver, ok := tpt.(transport.SkipResolver)
+			if !ok {
+				return []ma.Multiaddr{addr}, nil
+			}
+			if resolver.SkipResolve(ctx, addr) {
+				skipped = append(skipped, addr)
+				return nil, nil
+			}
+			return []ma.Multiaddr{addr}, nil
+		},
+	}
+
 	tptResolver := resolver{
 		canResolve: func(addr ma.Multiaddr) bool {
 			tpt := s.TransportForDialing(addr)
@@ -418,14 +444,17 @@ func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) []ma.Multiad
 			return addrs, nil
 		},
 	}
+
 	dnsResolver := resolver{
 		canResolve: startsWithDNSComponent,
 		resolve:    s.multiaddrResolver.ResolveDNSComponent,
 	}
-	addrs, errs := chainResolvers(ctx, pi.Addrs, maximumResolvedAddresses, []resolver{dnsAddrResolver, tptResolver, dnsResolver})
+	addrs, errs := chainResolvers(ctx, pi.Addrs, maximumResolvedAddresses, []resolver{dnsAddrResolver, skipResolver, tptResolver, dnsResolver})
 	for _, err := range errs {
 		log.Warnf("Failed to resolve addr %s: %v", err.addr, err.err)
 	}
+	// Add skipped addresses back to the resolved addresses
+	addrs = append(addrs, skipped...)
 	return stripP2PComponent(addrs)
 }
 

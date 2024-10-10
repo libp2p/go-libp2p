@@ -2,10 +2,16 @@ package libp2p
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/netip"
 	"regexp"
@@ -26,11 +32,12 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	sectls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"go.uber.org/goleak"
 
@@ -256,7 +263,7 @@ func TestSecurityConstructor(t *testing.T) {
 	h, err := New(
 		Transport(tcp.NewTCPTransport),
 		Security("/noisy", noise.New),
-		Security("/tls", tls.New),
+		Security("/tls", sectls.New),
 		DefaultListenAddrs,
 		DisableRelay(),
 	)
@@ -653,5 +660,94 @@ func TestUseCorrectTransportForDialOut(t *testing.T) {
 				require.Equal(t, myExpectedPort, string(port))
 			})
 		}
+	}
+}
+
+func TestCircuitBehindWSS(t *testing.T) {
+	relayTLSConf := getTLSConf(t, net.IPv4(127, 0, 0, 1), time.Now(), time.Now().Add(time.Hour))
+	serverNameChan := make(chan string, 2) // Channel that returns what server names the client hello specified
+	relayTLSConf.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+		serverNameChan <- chi.ServerName
+		return relayTLSConf, nil
+	}
+
+	relay, err := New(
+		EnableRelayService(),
+		ForceReachabilityPublic(),
+		Transport(websocket.New, websocket.WithTLSConfig(relayTLSConf)),
+		ListenAddrStrings("/ip4/127.0.0.1/tcp/0/wss"),
+	)
+	require.NoError(t, err)
+	defer relay.Close()
+
+	relayAddrPort, _ := relay.Addrs()[0].ValueForProtocol(ma.P_TCP)
+	relayAddrWithSNIString := fmt.Sprintf(
+		"/dns4/localhost/tcp/%s/wss", relayAddrPort,
+	)
+	relayAddrWithSNI := []ma.Multiaddr{ma.StringCast(relayAddrWithSNIString)}
+
+	h, err := New(
+		NoListenAddrs,
+		EnableRelay(),
+		Transport(websocket.New, websocket.WithTLSClientConfig(&tls.Config{InsecureSkipVerify: true})),
+		ForceReachabilityPrivate())
+	require.NoError(t, err)
+	defer h.Close()
+
+	peerBehindRelay, err := New(
+		NoListenAddrs,
+		Transport(websocket.New, websocket.WithTLSClientConfig(&tls.Config{InsecureSkipVerify: true})),
+		EnableRelay(),
+		EnableAutoRelayWithStaticRelays([]peer.AddrInfo{{ID: relay.ID(), Addrs: relayAddrWithSNI}}),
+		ForceReachabilityPrivate())
+	require.NoError(t, err)
+	defer peerBehindRelay.Close()
+
+	require.Equal(t,
+		"localhost",
+		<-serverNameChan, // The server connects to the relay
+	)
+
+	// Connect to the peer behind the relay
+	h.Connect(context.Background(), peer.AddrInfo{
+		ID: peerBehindRelay.ID(),
+		Addrs: []ma.Multiaddr{ma.StringCast(
+			fmt.Sprintf("%s/p2p/%s/p2p-circuit", relayAddrWithSNIString, relay.ID()),
+		)},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t,
+		"localhost",
+		<-serverNameChan, // The client connects to the relay and sends the SNI
+	)
+}
+
+// getTLSConf is a helper to generate a self-signed TLS config
+func getTLSConf(t *testing.T, ip net.IP, start, end time.Time) *tls.Config {
+	t.Helper()
+	certTempl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1234),
+		Subject:               pkix.Name{Organization: []string{"websocket"}},
+		NotBefore:             start,
+		NotAfter:              end,
+		IsCA:                  true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IPAddresses:           []net.IP{ip},
+	}
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	caBytes, err := x509.CreateCertificate(rand.Reader, certTempl, certTempl, &priv.PublicKey, priv)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(caBytes)
+	require.NoError(t, err)
+	return &tls.Config{
+		Certificates: []tls.Certificate{{
+			Certificate: [][]byte{cert.Raw},
+			PrivateKey:  priv,
+			Leaf:        cert,
+		}},
 	}
 }
