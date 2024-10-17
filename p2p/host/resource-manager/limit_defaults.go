@@ -348,6 +348,12 @@ func (l *ResourceLimits) Build(defaults Limit) BaseLimit {
 }
 
 type PartialLimitConfig struct {
+	Service      map[string]ResourceLimits `json:",omitempty"`
+	ServicePeer  map[string]ResourceLimits `json:",omitempty"`
+	Protocol     map[protocol.ID]ResourceLimits `json:",omitempty"`
+	ProtocolPeer map[protocol.ID]ResourceLimits `json:",omitempty"`
+	Peer         map[peer.ID]ResourceLimits `json:",omitempty"`
+
 	System    ResourceLimits `json:",omitempty"`
 	Transient ResourceLimits `json:",omitempty"`
 
@@ -358,19 +364,14 @@ type PartialLimitConfig struct {
 	AllowlistedTransient ResourceLimits `json:",omitempty"`
 
 	ServiceDefault ResourceLimits            `json:",omitempty"`
-	Service        map[string]ResourceLimits `json:",omitempty"`
 
 	ServicePeerDefault ResourceLimits            `json:",omitempty"`
-	ServicePeer        map[string]ResourceLimits `json:",omitempty"`
 
 	ProtocolDefault ResourceLimits                 `json:",omitempty"`
-	Protocol        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
 	ProtocolPeerDefault ResourceLimits                 `json:",omitempty"`
-	ProtocolPeer        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
 	PeerDefault ResourceLimits             `json:",omitempty"`
-	Peer        map[peer.ID]ResourceLimits `json:",omitempty"`
 
 	Conn   ResourceLimits `json:",omitempty"`
 	Stream ResourceLimits `json:",omitempty"`
@@ -513,6 +514,12 @@ func buildMapWithDefault[K comparable](definedLimits map[K]ResourceLimits, defau
 // There is no unset "default" value. Commonly constructed by calling
 // PartialLimitConfig.Build(rcmgr.DefaultLimits.AutoScale())
 type ConcreteLimitConfig struct {
+	service      map[string]BaseLimit
+	servicePeer  map[string]BaseLimit
+	protocol     map[protocol.ID]BaseLimit
+	protocolPeer map[protocol.ID]BaseLimit
+	peer         map[peer.ID]BaseLimit
+
 	system    BaseLimit
 	transient BaseLimit
 
@@ -523,19 +530,14 @@ type ConcreteLimitConfig struct {
 	allowlistedTransient BaseLimit
 
 	serviceDefault BaseLimit
-	service        map[string]BaseLimit
 
 	servicePeerDefault BaseLimit
-	servicePeer        map[string]BaseLimit
 
 	protocolDefault BaseLimit
-	protocol        map[protocol.ID]BaseLimit
 
 	protocolPeerDefault BaseLimit
-	protocolPeer        map[protocol.ID]BaseLimit
 
 	peerDefault BaseLimit
-	peer        map[peer.ID]BaseLimit
 
 	conn   BaseLimit
 	stream BaseLimit
