@@ -112,10 +112,20 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var sni string
+	if r.TLS != nil {
+		sni = r.TLS.ServerName
+	}
+	mnc, err := NewInboundConn(c, l.isWss, sni)
+	if err != nil {
+		_ = c.Close()
+		return
+	}
+
 	select {
-	case l.incoming <- NewConn(c, l.isWss):
+	case l.incoming <- mnc:
 	case <-l.closed:
-		c.Close()
+		mnc.Close()
 	}
 	// The connection has been hijacked, it's safe to return.
 }
@@ -126,13 +136,7 @@ func (l *listener) Accept() (manet.Conn, error) {
 		if !ok {
 			return nil, transport.ErrListenerClosed
 		}
-
-		mnc, err := manet.WrapNetConn(c)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-		return mnc, nil
+		return c, nil
 	case <-l.closed:
 		return nil, transport.ErrListenerClosed
 	}

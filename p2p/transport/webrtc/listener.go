@@ -264,14 +264,13 @@ func (l *listener) setupConnection(
 		return nil, err
 	}
 
-	localMultiaddrWithoutCerthash, _ := ma.SplitFunc(l.localMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
 	conn, err := newConnection(
 		network.DirInbound,
 		w.PeerConnection,
 		l.transport,
 		scope,
 		l.transport.localPeerId,
-		localMultiaddrWithoutCerthash,
+		l.localMultiaddr,
 		remotePeer,
 		remotePubKey,
 		remoteMultiaddr,

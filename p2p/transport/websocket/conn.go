@@ -1,6 +1,9 @@
 package websocket
 
 import (
+	"fmt"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"io"
 	"net"
 	"sync"
@@ -25,17 +28,72 @@ type Conn struct {
 	closeOnce          sync.Once
 
 	readLock, writeLock sync.Mutex
+
+	laddr, raddr     *Addr
+	laddrma, raddrma ma.Multiaddr
 }
 
 var _ net.Conn = (*Conn)(nil)
 
-// NewConn creates a Conn given a regular gorilla/websocket Conn.
-func NewConn(raw *ws.Conn, secure bool) *Conn {
+// NewOutboundConn creates an outbound Conn given a regular gorilla/websocket Conn.
+func NewOutboundConn(raw *ws.Conn, secure bool, sni string) (*Conn, error) {
+	return newConn(raw, secure, sni, false)
+}
+
+// NewInboundConn creates an inbound Conn given a regular gorilla/websocket Conn.
+func NewInboundConn(raw *ws.Conn, secure bool, sni string) (*Conn, error) {
+	return newConn(raw, secure, sni, true)
+}
+
+// newConn creates a Conn given a regular gorilla/websocket Conn.
+func newConn(raw *ws.Conn, secure bool, sni string, inbound bool) (*Conn, error) {
+	laddr := NewAddrWithScheme(raw.LocalAddr().String(), secure)
+	raddr := NewAddrWithScheme(raw.RemoteAddr().String(), secure)
+
+	laddrma, err := manet.FromNetAddr(laddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert connection address to multiaddr: %s", err)
+	}
+
+	raddrma, err := manet.FromNetAddr(raddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert connection address to multiaddr: %s", err)
+	}
+
+	if secure && sni != "" {
+		var wssMA ma.Multiaddr
+		if inbound {
+			wssMA = laddrma
+		} else {
+			wssMA = raddrma
+		}
+
+		if withoutWSS := wssMA.Decapsulate(ma.StringCast("/wss")); withoutWSS.Equal(wssMA) {
+			return nil, fmt.Errorf("missing wss component from converted multiaddr")
+		} else {
+			tlsSniWsMa, err := ma.NewMultiaddr(fmt.Sprintf("/tls/sni/%s/ws", sni))
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert connection address to multiaddr: %s", err)
+			}
+			wssMA = withoutWSS.Encapsulate(tlsSniWsMa)
+		}
+
+		if inbound {
+			laddrma = wssMA
+		} else {
+			raddrma = wssMA
+		}
+	}
+
 	return &Conn{
 		Conn:               raw,
 		secure:             secure,
 		DefaultMessageType: ws.BinaryMessage,
-	}
+		laddr:              laddr,
+		raddr:              raddr,
+		laddrma:            laddrma,
+		raddrma:            raddrma,
+	}, nil
 }
 
 func (c *Conn) Read(b []byte) (int, error) {
@@ -122,11 +180,19 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) LocalAddr() net.Addr {
-	return NewAddrWithScheme(c.Conn.LocalAddr().String(), c.secure)
+	return c.laddr
 }
 
 func (c *Conn) RemoteAddr() net.Addr {
-	return NewAddrWithScheme(c.Conn.RemoteAddr().String(), c.secure)
+	return c.raddr
+}
+
+func (c *Conn) LocalMultiaddr() ma.Multiaddr {
+	return c.laddrma
+}
+
+func (c *Conn) RemoteMultiaddr() ma.Multiaddr {
+	return c.raddrma
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {
