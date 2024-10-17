@@ -22,6 +22,12 @@ type baseLimitConfig struct {
 // {}BaseLimit is the limits that Apply for a minimal node (128 MB of memory for libp2p) and 256 file descriptors.
 // {}LimitIncrease is the additional limit granted for every additional 1 GB of RAM.
 type ScalingLimitConfig struct {
+	ServiceLimits       map[string]baseLimitConfig // use AddServiceLimit to modify
+	ServicePeerLimits   map[string]baseLimitConfig // use AddServicePeerLimit to modify
+	ProtocolLimits      map[protocol.ID]baseLimitConfig // use AddProtocolLimit to modify
+	ProtocolPeerLimits  map[protocol.ID]baseLimitConfig // use AddProtocolPeerLimit to modify
+	PeerLimits          map[peer.ID]baseLimitConfig // use AddPeerLimit to modify
+
 	SystemBaseLimit     BaseLimit
 	SystemLimitIncrease BaseLimitIncrease
 
@@ -36,23 +42,18 @@ type ScalingLimitConfig struct {
 
 	ServiceBaseLimit     BaseLimit
 	ServiceLimitIncrease BaseLimitIncrease
-	ServiceLimits        map[string]baseLimitConfig // use AddServiceLimit to modify
 
 	ServicePeerBaseLimit     BaseLimit
 	ServicePeerLimitIncrease BaseLimitIncrease
-	ServicePeerLimits        map[string]baseLimitConfig // use AddServicePeerLimit to modify
 
 	ProtocolBaseLimit     BaseLimit
 	ProtocolLimitIncrease BaseLimitIncrease
-	ProtocolLimits        map[protocol.ID]baseLimitConfig // use AddProtocolLimit to modify
 
 	ProtocolPeerBaseLimit     BaseLimit
 	ProtocolPeerLimitIncrease BaseLimitIncrease
-	ProtocolPeerLimits        map[protocol.ID]baseLimitConfig // use AddProtocolPeerLimit to modify
 
 	PeerBaseLimit     BaseLimit
 	PeerLimitIncrease BaseLimitIncrease
-	PeerLimits        map[peer.ID]baseLimitConfig // use AddPeerLimit to modify
 
 	ConnBaseLimit     BaseLimit
 	ConnLimitIncrease BaseLimitIncrease
