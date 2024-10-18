@@ -84,20 +84,19 @@ func (o *opaqueState) Unmarshal(hmacImpl hash.Hash, d []byte) error {
 }
 
 type PeerIDAuthHandshakeServer struct {
-	Hostname string
+	opaque opaqueState
 	PrivKey  crypto.PrivKey
-	TokenTTL time.Duration
 	// used to authenticate opaque blobs and tokens
 	Hmac hash.Hash
-
-	ran bool
-	buf [1024]byte
-
-	state peerIDAuthServerState
+	Hostname string
 	p     params
 	hb    headerBuilder
 
-	opaque opaqueState
+	TokenTTL time.Duration
+
+	state peerIDAuthServerState
+	buf [1024]byte
+	ran bool
 }
 
 var errInvalidHeader = errors.New("invalid header")
