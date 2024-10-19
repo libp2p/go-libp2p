@@ -545,7 +545,7 @@ func TestStreamChunking(t *testing.T) {
 	clientStr := newStream(client.dc, client.rwc, func() {})
 	serverStr := newStream(server.dc, server.rwc, func() {})
 
-	const N = (16 << 10) + 1000
+	const N = (64 << 10) + 1000
 	go func() {
 		data := make([]byte, N)
 		_, err := clientStr.Write(data)
@@ -555,7 +555,7 @@ func TestStreamChunking(t *testing.T) {
 	data := make([]byte, N)
 	n, err := serverStr.Read(data)
 	require.NoError(t, err)
-	require.LessOrEqual(t, n, 16<<10)
+	require.LessOrEqual(t, n, 64<<10)
 
 	nn, err := serverStr.Read(data)
 	require.NoError(t, err)
