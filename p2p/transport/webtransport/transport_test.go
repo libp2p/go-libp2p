@@ -133,7 +133,8 @@ func TestTransport(t *testing.T) {
 		require.NoError(t, err)
 		_, port, err := net.SplitHostPort(addr)
 		require.NoError(t, err)
-		require.Equal(t, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic-v1/webtransport", port)), conn.RemoteMultiaddr())
+		require.Equal(t, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic-v1/webtransport", port)), stripCertHashes(conn.RemoteMultiaddr()))
+		require.Equal(t, 2, len(extractCertHashes(conn.RemoteMultiaddr())))
 		addrChan <- conn.RemoteMultiaddr()
 	}()
 
@@ -377,7 +378,7 @@ func TestConnectionGaterDialing(t *testing.T) {
 	defer ln.Close()
 
 	connGater.EXPECT().InterceptSecured(network.DirOutbound, serverID, gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, ln.Multiaddr(), addrs.RemoteMultiaddr())
 	})
 	_, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), connGater, &network.NullResourceManager{})
@@ -433,8 +434,8 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 
 	connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true)
 	connGater.EXPECT().InterceptSecured(network.DirInbound, clientID, gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.LocalMultiaddr())
-		require.NotEqual(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, ln.Multiaddr(), addrs.LocalMultiaddr())
+		require.NotEqual(t, ln.Multiaddr(), addrs.RemoteMultiaddr())
 	})
 	// The handshake will complete, but the server will immediately close the connection.
 	conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
