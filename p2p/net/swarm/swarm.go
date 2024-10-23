@@ -23,6 +23,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (
@@ -599,11 +600,11 @@ func isBetterConn(a, b *Conn) bool {
 		return !aLimited
 	}
 
-	// If one is direct and not the other, prefer the direct connection.
-	aDirect := isDirectConn(a)
-	bDirect := isDirectConn(b)
-	if aDirect != bDirect {
-		return aDirect
+	// Compare connection priorities and choose the better connection
+	aPriority := connPriority(a)
+	bPriority := connPriority(b)
+	if aPriority >= bPriority {
+		return true
 	}
 
 	// Otherwise, prefer the connection with more open streams.
@@ -621,6 +622,39 @@ func isBetterConn(a, b *Conn) bool {
 
 	// finally, pick the last connection.
 	return true
+}
+
+func connPriority(c *Conn) int {
+	if c == nil {
+		return 0
+	}
+
+	var priority int
+	// LAN > WAN > PROXY
+	switch {
+	case c.conn.Transport().Proxy():
+		priority += 20
+	case manet.IsPrivateAddr(c.RemoteMultiaddr()):
+		priority += 100
+	case manet.IsPublicAddr(c.RemoteMultiaddr()):
+		priority += 50
+	}
+
+	// We prefer udp protocols
+	switch c.ConnState().Transport {
+	case "quic", "quic-v1":
+		priority += 10
+	case "webtransport":
+		priority += 9
+	case "webrtc":
+		priority += 8
+	case "tcp":
+		priority += 5
+	case "websocket":
+		priority += 4
+	}
+
+	return priority
 }
 
 // bestConnToPeer returns the best connection to peer.
