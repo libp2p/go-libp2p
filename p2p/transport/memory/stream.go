@@ -2,38 +2,36 @@ package memory
 
 import (
 	"errors"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 )
 
 type stream struct {
-	inC  <-chan []byte
-	outC chan<- []byte
+	id int32
+
+	inC  chan []byte
+	outC chan []byte
 
 	readCloseC  chan struct{}
 	writeCloseC chan struct{}
 
-	mu     sync.Mutex
-	closed bool
-
-	deadline      time.Time
-	readDeadline  time.Time
-	writeDeadline time.Time
+	closed atomic.Bool
 }
 
-func newStream() *stream {
+func newStream(id int32, in, out chan []byte) *stream {
 	return &stream{
-		inC:         make(<-chan []byte),
-		outC:        make(chan<- []byte),
+		id:          id,
+		inC:         in,
+		outC:        out,
 		readCloseC:  make(chan struct{}),
 		writeCloseC: make(chan struct{}),
 	}
 }
 
 func (s *stream) Read(b []byte) (n int, err error) {
-	if s.closed {
+	if s.closed.Load() {
 		return 0, network.ErrReset
 	}
 
@@ -52,6 +50,10 @@ func (s *stream) Read(b []byte) (n int, err error) {
 }
 
 func (s *stream) Write(b []byte) (n int, err error) {
+	if s.closed.Load() {
+		return 0, network.ErrReset
+	}
+
 	select {
 	case <-s.writeCloseC:
 		err = network.ErrReset
@@ -65,18 +67,21 @@ func (s *stream) Write(b []byte) (n int, err error) {
 }
 
 func (s *stream) Reset() error {
-	s.CloseWrite()
-	s.CloseRead()
+	if err := s.CloseWrite(); err != nil {
+		return err
+	}
+	if err := s.CloseRead(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *stream) Close() error {
-	s.CloseRead()
+	if err := s.CloseRead(); err != nil {
+		return err
+	}
 
-	s.mu.Lock()
-	s.closed = true
-	s.mu.Unlock()
-
+	s.closed.Store(true)
 	return nil
 }
 
@@ -100,25 +105,13 @@ func (s *stream) CloseWrite() error {
 	return nil
 }
 
-func (s *stream) SetDeadline(deadline time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.deadline = deadline
+func (s *stream) SetDeadline(_ time.Time) error {
 	return nil
 }
 
-func (s *stream) SetReadDeadline(readDeadline time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.readDeadline = readDeadline
+func (s *stream) SetReadDeadline(_ time.Time) error {
 	return nil
 }
-func (s *stream) SetWriteDeadline(writeDeadline time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.writeDeadline = writeDeadline
+func (s *stream) SetWriteDeadline(_ time.Time) error {
 	return nil
 }

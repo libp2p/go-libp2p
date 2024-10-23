@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -12,6 +13,8 @@ import (
 )
 
 type conn struct {
+	id int32
+
 	transport *transport
 	scope     network.ConnManagementScope
 
@@ -22,15 +25,35 @@ type conn struct {
 	remotePubKey    ic.PubKey
 	remoteMultiaddr ma.Multiaddr
 
-	closed    bool
+	isClosed  atomic.Bool
 	closeOnce sync.Once
+
+	mu sync.Mutex
+
+	streamC chan *stream
+
+	nextStreamID atomic.Int32
+	streams      map[int32]network.MuxedStream
 }
 
 var _ tpt.CapableConn = &conn{}
 
+func newConnection(id int32, s *stream) *conn {
+	c := &conn{
+		id:      id,
+		streamC: make(chan *stream, 1),
+		streams: make(map[int32]network.MuxedStream),
+	}
+
+	streamID := c.nextStreamID.Add(1)
+	c.addStream(streamID, s)
+
+	return c
+}
+
 func (c *conn) Close() error {
 	c.closeOnce.Do(func() {
-		c.closed = true
+		c.isClosed.Store(true)
 		c.transport.removeConn(c)
 	})
 
@@ -38,15 +61,26 @@ func (c *conn) Close() error {
 }
 
 func (c *conn) IsClosed() bool {
-	return c.closed
+	return c.isClosed.Load()
 }
 
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
-	return newStream(), nil
+	id := c.nextStreamID.Add(1)
+	ra := make(chan []byte)
+	wa := make(chan []byte)
+
+	return newStream(id, ra, wa), nil
 }
 
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
-	return nil, nil
+	select {
+	case in := <-c.streamC:
+		id := c.nextStreamID.Add(1)
+		s := newStream(id, in.outC, in.inC)
+		c.addStream(id, s)
+
+		return s, nil
+	}
 }
 
 func (c *conn) LocalPeer() peer.ID { return c.localPeer }
@@ -64,13 +98,28 @@ func (c *conn) LocalMultiaddr() ma.Multiaddr { return c.localMultiaddr }
 func (c *conn) RemoteMultiaddr() ma.Multiaddr { return c.remoteMultiaddr }
 
 func (c *conn) Transport() tpt.Transport {
-	// TODO: return c.transport
-	return nil
+	return c.transport
 }
 
-func (c *conn) Scope() network.ConnScope { return c.scope }
+func (c *conn) Scope() network.ConnScope {
+	return c.scope
+}
 
 // ConnState is the state of security connection.
 func (c *conn) ConnState() network.ConnectionState {
 	return network.ConnectionState{Transport: "memory"}
+}
+
+func (c *conn) addStream(id int32, stream network.MuxedStream) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.streams[id] = stream
+}
+
+func (c *conn) removeStream(id int32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.streams, id)
 }
