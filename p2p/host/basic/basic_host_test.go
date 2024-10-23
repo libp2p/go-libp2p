@@ -2,6 +2,7 @@ package basichost
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"reflect"
@@ -940,4 +941,57 @@ func TestTrimHostAddrList(t *testing.T) {
 			require.ElementsMatch(t, got, tc.out)
 		})
 	}
+}
+
+func TestHostTimeoutNewStream(t *testing.T) {
+	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	require.NoError(t, err)
+	h1.Start()
+	defer h1.Close()
+
+	const proto = "/testing"
+	h2 := swarmt.GenSwarm(t)
+
+	h2.SetStreamHandler(func(s network.Stream) {
+		// First message is multistream header. Just echo it
+		msHeader := []byte("\x19/multistream/1.0.0\n")
+		_, err := s.Read(msHeader)
+		assert.NoError(t, err)
+		_, err = s.Write(msHeader)
+		assert.NoError(t, err)
+
+		buf := make([]byte, 1024)
+		n, err := s.Read(buf)
+		assert.NoError(t, err)
+
+		msgLen, varintN := binary.Uvarint(buf[:n])
+		buf = buf[varintN:]
+		proto := buf[:int(msgLen)]
+		if string(proto) == "/ipfs/id/1.0.0\n" {
+			// Signal we don't support identify
+			na := []byte("na\n")
+			n := binary.PutUvarint(buf, uint64(len(na)))
+			copy(buf[n:], na)
+
+			_, err = s.Write(buf[:int(n)+len(na)])
+			assert.NoError(t, err)
+		} else {
+			// Stall
+			time.Sleep(5 * time.Second)
+		}
+		t.Log("Resetting")
+		s.Reset()
+	})
+
+	err = h1.Connect(context.Background(), peer.AddrInfo{
+		ID:    h2.LocalPeer(),
+		Addrs: h2.ListenAddresses(),
+	})
+	require.NoError(t, err)
+
+	// No context passed in, fallback to negtimeout
+	h1.negtimeout = time.Second
+	_, err = h1.NewStream(context.Background(), h2.LocalPeer(), proto)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "context deadline exceeded")
 }
