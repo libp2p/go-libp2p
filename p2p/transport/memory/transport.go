@@ -2,28 +2,52 @@ package memory
 
 import (
 	"context"
+	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/pnet"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
+	"io"
 	"sync"
 	"sync/atomic"
 )
 
+const (
+	listenerQueueSize = 16
+)
+
 type transport struct {
+	pkey  ic.PrivKey
+	pid   peer.ID
+	psk   pnet.PSK
 	rcmgr network.ResourceManager
 
 	mu sync.RWMutex
 
 	connID      atomic.Int32
-	listeners   map[ma.Multiaddr]*listener
+	listeners   map[string]*listener
 	connections map[int32]*conn
 }
 
-func NewTransport() *transport {
-	return &transport{
-		connections: make(map[int32]*conn),
+func NewTransport(key ic.PrivKey, psk pnet.PSK, rcmgr network.ResourceManager) (tpt.Transport, error) {
+	if rcmgr == nil {
+		rcmgr = &network.NullResourceManager{}
 	}
+
+	id, err := peer.IDFromPrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &transport{
+		rcmgr:       rcmgr,
+		pid:         id,
+		pkey:        key,
+		psk:         psk,
+		listeners:   make(map[string]*listener),
+		connections: make(map[int32]*conn),
+	}, nil
 }
 
 func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
@@ -48,14 +72,16 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	// TODO: Check if there is an existing listener for this address
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	l := t.listeners[raddr]
+	l := t.listeners[raddr.String()]
 
-	in := make(chan []byte)
-	out := make(chan []byte)
-	s := newStream(0, in, out)
-	l.streamCh <- s
+	ra, wb := io.Pipe()
+	rb, wa := io.Pipe()
+	in, out := newStream(0, ra, wb), newStream(0, rb, wa)
+	inId, outId := t.connID.Add(1), t.connID.Add(1)
 
-	return newConnection(0, s), nil
+	l.connCh <- newConnection(inId, in)
+
+	return newConnection(outId, out), nil
 }
 
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
@@ -63,8 +89,15 @@ func (t *transport) CanDial(addr ma.Multiaddr) bool {
 }
 
 func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
-	// TODO: Figure out correct channel type
-	return newListener(laddr, nil), nil
+	// TODO: Check if we need to add scope via conn mngr
+	l := newListener(t, laddr)
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.listeners[laddr.String()] = l
+
+	return l, nil
 }
 
 func (t *transport) Proxy() bool {
@@ -82,6 +115,10 @@ func (t *transport) String() string {
 
 func (t *transport) Close() error {
 	// TODO: Go trough all listeners and close them
+	for _, l := range t.listeners {
+		l.Close()
+	}
+
 	return nil
 }
 

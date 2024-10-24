@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"io"
 	"sync/atomic"
 	"time"
 
@@ -11,8 +12,8 @@ import (
 type stream struct {
 	id int32
 
-	inC  chan []byte
-	outC chan []byte
+	r *io.PipeReader
+	w *io.PipeWriter
 
 	readCloseC  chan struct{}
 	writeCloseC chan struct{}
@@ -20,50 +21,40 @@ type stream struct {
 	closed atomic.Bool
 }
 
-func newStream(id int32, in, out chan []byte) *stream {
+func newStream(id int32, r *io.PipeReader, w *io.PipeWriter) *stream {
 	return &stream{
 		id:          id,
-		inC:         in,
-		outC:        out,
-		readCloseC:  make(chan struct{}),
-		writeCloseC: make(chan struct{}),
+		r:           r,
+		w:           w,
+		readCloseC:  make(chan struct{}, 1),
+		writeCloseC: make(chan struct{}, 1),
 	}
 }
 
-func (s *stream) Read(b []byte) (n int, err error) {
+func (s *stream) Read(b []byte) (int, error) {
 	if s.closed.Load() {
 		return 0, network.ErrReset
 	}
 
 	select {
 	case <-s.readCloseC:
-		err = network.ErrReset
-	case r, ok := <-s.inC:
-		if !ok {
-			err = network.ErrReset
-		} else {
-			n = copy(b, r)
-		}
+		return 0, network.ErrReset
+	default:
+		return s.r.Read(b)
 	}
-
-	return n, err
 }
 
-func (s *stream) Write(b []byte) (n int, err error) {
+func (s *stream) Write(b []byte) (int, error) {
 	if s.closed.Load() {
 		return 0, network.ErrReset
 	}
 
 	select {
 	case <-s.writeCloseC:
-		err = network.ErrReset
-	case s.outC <- b:
-		n = len(b)
+		return 0, network.ErrReset
 	default:
-		err = network.ErrReset
+		return s.w.Write(b)
 	}
-
-	return n, err
 }
 
 func (s *stream) Reset() error {

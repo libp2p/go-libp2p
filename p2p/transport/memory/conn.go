@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"io"
 	"sync"
 	"sync/atomic"
 
@@ -66,8 +67,8 @@ func (c *conn) IsClosed() bool {
 
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 	id := c.nextStreamID.Add(1)
-	ra := make(chan []byte)
-	wa := make(chan []byte)
+	// TODO: Figure out how to exchange the pipes between the two streams
+	ra, wa := io.Pipe()
 
 	return newStream(id, ra, wa), nil
 }
@@ -76,10 +77,9 @@ func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	select {
 	case in := <-c.streamC:
 		id := c.nextStreamID.Add(1)
-		s := newStream(id, in.outC, in.inC)
-		c.addStream(id, s)
+		c.addStream(id, in)
 
-		return s, nil
+		return in, nil
 	}
 }
 
@@ -88,7 +88,7 @@ func (c *conn) LocalPeer() peer.ID { return c.localPeer }
 // RemotePeer returns the peer ID of the remote peer.
 func (c *conn) RemotePeer() peer.ID { return c.remotePeerID }
 
-// RemotePublicKey returns the public key of the remote peer.
+// RemotePublicKey returns the public pkey of the remote peer.
 func (c *conn) RemotePublicKey() ic.PubKey { return c.remotePubKey }
 
 // LocalMultiaddr returns the local Multiaddr associated
