@@ -150,7 +150,7 @@ func run() {
 	// relayed connection. In general, we should only do this if we have low bandwidth requirements,
 	// and we're happy for the connection to be killed when the relayed connection is replaced with a
 	// direct (holepunched) connection.
-	s, err := unreachable1.NewStream(network.WithUseTransient(context.Background(), "customprotocol"), unreachable2.ID(), "/customprotocol")
+	s, err := unreachable1.NewStream(network.WithAllowLimitedConn(context.Background(), "customprotocol"), unreachable2.ID(), "/customprotocol")
 	if err != nil {
 		log.Println("Whoops, this should have worked...: ", err)
 		return
