@@ -188,8 +188,8 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 	}
 	isWss := wsurl.Scheme == "wss"
 	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
+	var sni string
 	if isWss {
-		sni := ""
 		sni, err = raddr.ValueForProtocol(ma.P_SNI)
 		if err != nil {
 			sni = ""
@@ -220,7 +220,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 		return nil, err
 	}
 
-	mnc, err := manet.WrapNetConn(NewConn(wscon, isWss))
+	mnc, err := NewOutboundConn(wscon, isWss, sni)
 	if err != nil {
 		wscon.Close()
 		return nil, err

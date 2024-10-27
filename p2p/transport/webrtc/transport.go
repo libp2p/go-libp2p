@@ -387,7 +387,6 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	if err != nil {
 		return nil, err
 	}
-	remoteMultiaddrWithoutCerthash, _ := ma.SplitFunc(remoteMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
 
 	conn, err := newConnection(
 		network.DirOutbound,
@@ -398,7 +397,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		localAddr,
 		p,
 		remotePubKey,
-		remoteMultiaddrWithoutCerthash,
+		remoteMultiaddr,
 		w.IncomingDataChannels,
 		w.PeerConnectionClosedCh,
 	)

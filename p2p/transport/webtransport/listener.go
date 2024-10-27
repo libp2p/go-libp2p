@@ -234,10 +234,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 }
 
 func (l *listener) handshake(ctx context.Context, sess *webtransport.Session) (*connSecurityMultiaddrs, error) {
-	local, err := toWebtransportMultiaddr(sess.LocalAddr())
-	if err != nil {
-		return nil, fmt.Errorf("error determiniting local addr: %w", err)
-	}
+	local := l.Multiaddr()
 	remote, err := toWebtransportMultiaddr(sess.RemoteAddr())
 	if err != nil {
 		return nil, fmt.Errorf("error determiniting remote addr: %w", err)
