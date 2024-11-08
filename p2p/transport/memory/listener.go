@@ -2,10 +2,15 @@ package memory
 
 import (
 	"context"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
-	ma "github.com/multiformats/go-multiaddr"
 	"net"
 	"sync"
+
+	tpt "github.com/libp2p/go-libp2p/core/transport"
+	ma "github.com/multiformats/go-multiaddr"
+)
+
+const (
+	listenerQueueSize = 16
 )
 
 type listener struct {
@@ -26,25 +31,30 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 func newListener(t *transport, laddr ma.Multiaddr) *listener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &listener{
-		t:      t,
-		ctx:    ctx,
-		cancel: cancel,
-		laddr:  laddr,
-		connCh: make(chan *conn, listenerQueueSize),
+		t:           t,
+		ctx:         ctx,
+		cancel:      cancel,
+		laddr:       laddr,
+		connCh:      make(chan *conn, listenerQueueSize),
+		connections: make(map[int32]*conn),
 	}
 }
 
 // Accept accepts new connections.
 func (l *listener) Accept() (tpt.CapableConn, error) {
 	select {
-	case c := <-l.connCh:
+	case <-l.ctx.Done():
+		return nil, tpt.ErrListenerClosed
+	case c, ok := <-l.connCh:
+		if !ok {
+			return nil, tpt.ErrListenerClosed
+		}
+
 		l.mu.Lock()
 		defer l.mu.Unlock()
 
 		l.connections[c.id] = c
 		return c, nil
-	case <-l.ctx.Done():
-		return nil, l.ctx.Err()
 	}
 }
 

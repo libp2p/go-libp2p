@@ -2,51 +2,110 @@ package memory
 
 import (
 	"context"
+	"errors"
+	"io"
+	"sync"
+	"sync/atomic"
+
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/pnet"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
-	"io"
-	"sync"
-	"sync/atomic"
 )
 
-const (
-	listenerQueueSize = 16
-)
+type hub struct {
+	mu        sync.RWMutex
+	closeOnce sync.Once
+	pubKeys   map[peer.ID]ic.PubKey
+	listeners map[string]*listener
+}
+
+func (h *hub) addListener(addr string, l *listener) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.listeners[addr] = l
+}
+
+func (h *hub) removeListener(addr string, l *listener) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	delete(h.listeners, addr)
+}
+
+func (h *hub) getListener(addr string) (*listener, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	l, ok := h.listeners[addr]
+	return l, ok
+}
+
+func (h *hub) addPubKey(p peer.ID, pk ic.PubKey) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.pubKeys[p] = pk
+}
+
+func (h *hub) getPubKey(p peer.ID) (ic.PubKey, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	pk, ok := h.pubKeys[p]
+	return pk, ok
+}
+
+func (h *hub) close() {
+	h.closeOnce.Do(func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+
+		for _, l := range h.listeners {
+			l.Close()
+		}
+	})
+}
+
+var memhub = &hub{
+	listeners: make(map[string]*listener),
+	pubKeys:   make(map[peer.ID]ic.PubKey),
+}
 
 type transport struct {
-	pkey  ic.PrivKey
-	pid   peer.ID
-	psk   pnet.PSK
-	rcmgr network.ResourceManager
+	psk          pnet.PSK
+	rcmgr        network.ResourceManager
+	localPeerID  peer.ID
+	localPrivKey ic.PrivKey
+	localPubKey  ic.PubKey
 
 	mu sync.RWMutex
 
 	connID      atomic.Int32
-	listeners   map[string]*listener
 	connections map[int32]*conn
 }
 
-func NewTransport(key ic.PrivKey, psk pnet.PSK, rcmgr network.ResourceManager) (tpt.Transport, error) {
+func NewTransport(privKey ic.PrivKey, psk pnet.PSK, rcmgr network.ResourceManager) (tpt.Transport, error) {
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
 
-	id, err := peer.IDFromPrivateKey(key)
+	id, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
 		return nil, err
 	}
 
+	memhub.addPubKey(id, privKey.GetPublic())
 	return &transport{
-		rcmgr:       rcmgr,
-		pid:         id,
-		pkey:        key,
-		psk:         psk,
-		listeners:   make(map[string]*listener),
-		connections: make(map[int32]*conn),
+		psk:          psk,
+		rcmgr:        rcmgr,
+		localPeerID:  id,
+		localPrivKey: privKey,
+		localPubKey:  privKey.GetPublic(),
+		connections:  make(map[int32]*conn),
 	}, nil
 }
 
@@ -64,28 +123,37 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 	return c, nil
 }
 
-func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
-	if err := scope.SetPeer(p); err != nil {
+func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, rpid peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
+	if err := scope.SetPeer(rpid); err != nil {
 		return nil, err
 	}
 
 	// TODO: Check if there is an existing listener for this address
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	l := t.listeners[raddr.String()]
+	l, ok := memhub.getListener(raddr.String())
+	if !ok {
+		return nil, errors.New("failed to get listener")
+	}
+
+	remotePubKey, ok := memhub.getPubKey(rpid)
+	if !ok {
+		return nil, errors.New("failed to get remote public key")
+	}
 
 	ra, wb := io.Pipe()
 	rb, wa := io.Pipe()
-	in, out := newStream(0, ra, wb), newStream(0, rb, wa)
-	inId, outId := t.connID.Add(1), t.connID.Add(1)
+	inConnId, outConnId := t.connID.Add(1), t.connID.Add(1)
+	inStream, outStream := newStream(0, ra, wb), newStream(0, rb, wa)
 
-	l.connCh <- newConnection(inId, in)
+	l.connCh <- newConnection(inConnId, inStream, rpid, raddr, t.localPubKey, t.localPeerID, nil)
 
-	return newConnection(outId, out), nil
+	return newConnection(outConnId, outStream, t.localPeerID, nil, remotePubKey, rpid, raddr), nil
 }
 
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
-	return true
+	_, exists := memhub.getListener(addr.String())
+	return exists
 }
 
 func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
@@ -95,7 +163,7 @@ func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.listeners[laddr.String()] = l
+	memhub.addListener(laddr.String(), l)
 
 	return l, nil
 }
@@ -106,7 +174,7 @@ func (t *transport) Proxy() bool {
 
 // Protocols returns the set of protocols handled by this transport.
 func (t *transport) Protocols() []int {
-	return []int{777}
+	return []int{ma.P_MEMORY}
 }
 
 func (t *transport) String() string {
@@ -115,10 +183,7 @@ func (t *transport) String() string {
 
 func (t *transport) Close() error {
 	// TODO: Go trough all listeners and close them
-	for _, l := range t.listeners {
-		l.Close()
-	}
-
+	memhub.close()
 	return nil
 }
 

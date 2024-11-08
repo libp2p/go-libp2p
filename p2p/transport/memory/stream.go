@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"errors"
 	"io"
 	"sync/atomic"
 	"time"
@@ -12,8 +11,9 @@ import (
 type stream struct {
 	id int32
 
-	r *io.PipeReader
-	w *io.PipeWriter
+	r      *io.PipeReader
+	w      *io.PipeWriter
+	writeC chan []byte
 
 	readCloseC  chan struct{}
 	writeCloseC chan struct{}
@@ -22,26 +22,33 @@ type stream struct {
 }
 
 func newStream(id int32, r *io.PipeReader, w *io.PipeWriter) *stream {
-	return &stream{
+	s := &stream{
 		id:          id,
 		r:           r,
 		w:           w,
+		writeC:      make(chan []byte, 1),
 		readCloseC:  make(chan struct{}, 1),
 		writeCloseC: make(chan struct{}, 1),
 	}
+
+	go func() {
+		for {
+			select {
+			case b := <-s.writeC:
+				if _, err := w.Write(b); err != nil {
+					return
+				}
+			case <-s.writeCloseC:
+				return
+			}
+		}
+	}()
+
+	return s
 }
 
 func (s *stream) Read(b []byte) (int, error) {
-	if s.closed.Load() {
-		return 0, network.ErrReset
-	}
-
-	select {
-	case <-s.readCloseC:
-		return 0, network.ErrReset
-	default:
-		return s.r.Read(b)
-	}
+	return s.r.Read(b)
 }
 
 func (s *stream) Write(b []byte) (int, error) {
@@ -52,8 +59,8 @@ func (s *stream) Write(b []byte) (int, error) {
 	select {
 	case <-s.writeCloseC:
 		return 0, network.ErrReset
-	default:
-		return s.w.Write(b)
+	case s.writeC <- b:
+		return len(b), nil
 	}
 }
 
@@ -68,31 +75,22 @@ func (s *stream) Reset() error {
 }
 
 func (s *stream) Close() error {
-	if err := s.CloseRead(); err != nil {
-		return err
-	}
-
-	s.closed.Store(true)
+	s.CloseRead()
+	s.CloseWrite()
 	return nil
 }
 
 func (s *stream) CloseRead() error {
-	select {
-	case s.readCloseC <- struct{}{}:
-	default:
-		return errors.New("failed to close stream read")
-	}
-
-	return nil
+	return s.r.CloseWithError(network.ErrReset)
 }
 
 func (s *stream) CloseWrite() error {
 	select {
 	case s.writeCloseC <- struct{}{}:
 	default:
-		return errors.New("failed to close stream write")
 	}
 
+	s.closed.Store(true)
 	return nil
 }
 

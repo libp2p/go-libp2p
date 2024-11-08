@@ -1,9 +1,10 @@
 package memory
 
 import (
-	"github.com/stretchr/testify/require"
 	"io"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestStreamSimpleReadWriteClose(t *testing.T) {
@@ -12,7 +13,7 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	rb, wa := io.Pipe()
 
 	clientStr := newStream(0, ra, wa)
-	serverStr := newStream(0, rb, wb)
+	serverStr := newStream(1, rb, wb)
 
 	// send a foobar from the client
 	n, err := clientStr.Write([]byte("foobar"))

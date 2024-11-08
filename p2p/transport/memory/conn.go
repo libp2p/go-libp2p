@@ -39,11 +39,24 @@ type conn struct {
 
 var _ tpt.CapableConn = &conn{}
 
-func newConnection(id int32, s *stream) *conn {
+func newConnection(
+	id int32,
+	s *stream,
+	localPeer peer.ID,
+	localMultiaddr ma.Multiaddr,
+	remotePubKey ic.PubKey,
+	remotePeer peer.ID,
+	remoteMultiaddr ma.Multiaddr,
+) *conn {
 	c := &conn{
-		id:      id,
-		streamC: make(chan *stream, 1),
-		streams: make(map[int32]network.MuxedStream),
+		id:              id,
+		localPeer:       localPeer,
+		localMultiaddr:  localMultiaddr,
+		remotePubKey:    remotePubKey,
+		remotePeerID:    remotePeer,
+		remoteMultiaddr: remoteMultiaddr,
+		streamC:         make(chan *stream, 1),
+		streams:         make(map[int32]network.MuxedStream),
 	}
 
 	streamID := c.nextStreamID.Add(1)
@@ -66,21 +79,20 @@ func (c *conn) IsClosed() bool {
 }
 
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
-	id := c.nextStreamID.Add(1)
-	// TODO: Figure out how to exchange the pipes between the two streams
-	ra, wa := io.Pipe()
+	ra, wb := io.Pipe()
+	rb, wa := io.Pipe()
+	inConnId, outConnId := c.nextStreamID.Add(1), c.nextStreamID.Add(1)
+	inStream, outStream := newStream(inConnId, ra, wb), newStream(outConnId, rb, wa)
 
-	return newStream(id, ra, wa), nil
+	c.streamC <- inStream
+	return outStream, nil
 }
 
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
-	select {
-	case in := <-c.streamC:
-		id := c.nextStreamID.Add(1)
-		c.addStream(id, in)
-
-		return in, nil
-	}
+	in := <-c.streamC
+	id := c.nextStreamID.Add(1)
+	c.addStream(id, in)
+	return in, nil
 }
 
 func (c *conn) LocalPeer() peer.ID { return c.localPeer }
