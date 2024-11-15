@@ -130,6 +130,8 @@ func TestDirectDialWorks(t *testing.T) {
 }
 
 func TestEndToEndSimConnect(t *testing.T) {
+	t.Skip("This test is broken. It is hard to do an end-to-end test without mocking the separate networks that holepunching is supposed to connect. It only worked previously because one of the hosts was able to learn about a non-holepunched direct connection via identify.")
+
 	h1tr := &mockEventTracer{}
 	h2tr := &mockEventTracer{}
 	h1, h2, relay, _ := makeRelayedHosts(t, []holepunch.Option{holepunch.WithTracer(h1tr)}, []holepunch.Option{holepunch.WithTracer(h2tr)}, true)
