@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -13,6 +12,14 @@ import (
 	"github.com/libp2p/go-libp2p/core/pnet"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
+)
+
+var (
+	connCounter     atomic.Int64
+	streamCounter   atomic.Int64
+	listenerCounter atomic.Int64
+	dialMatcher     = mafmt.Base(ma.P_MEMORY)
 )
 
 type hub struct {
@@ -84,8 +91,7 @@ type transport struct {
 
 	mu sync.RWMutex
 
-	connID      atomic.Int32
-	connections map[int32]*conn
+	connections map[int64]*conn
 }
 
 func NewTransport(privKey ic.PrivKey, psk pnet.PSK, rcmgr network.ResourceManager) (tpt.Transport, error) {
@@ -105,7 +111,7 @@ func NewTransport(privKey ic.PrivKey, psk pnet.PSK, rcmgr network.ResourceManage
 		localPeerID:  id,
 		localPrivKey: privKey,
 		localPubKey:  privKey.GetPublic(),
-		connections:  make(map[int32]*conn),
+		connections:  make(map[int64]*conn),
 	}, nil
 }
 
@@ -141,19 +147,16 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, rpid 
 		return nil, errors.New("failed to get remote public key")
 	}
 
-	ra, wb := io.Pipe()
-	rb, wa := io.Pipe()
-	inConnId, outConnId := t.connID.Add(1), t.connID.Add(1)
-	inStream, outStream := newStream(0, ra, wb), newStream(0, rb, wa)
+	inStream, outStream := newStreamPair()
+	inConn := newConnection(t, outStream, t.localPeerID, nil, remotePubKey, rpid, raddr)
+	outConn := newConnection(nil, inStream, rpid, raddr, t.localPubKey, t.localPeerID, nil)
+	l.connCh <- outConn
 
-	l.connCh <- newConnection(inConnId, inStream, rpid, raddr, t.localPubKey, t.localPeerID, nil)
-
-	return newConnection(outConnId, outStream, t.localPeerID, nil, remotePubKey, rpid, raddr), nil
+	return inConn, nil
 }
 
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
-	_, exists := memhub.getListener(addr.String())
-	return exists
+	return dialMatcher.Matches(addr)
 }
 
 func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
@@ -184,6 +187,12 @@ func (t *transport) String() string {
 func (t *transport) Close() error {
 	// TODO: Go trough all listeners and close them
 	memhub.close()
+
+	for _, c := range t.connections {
+		c.Close()
+		delete(t.connections, c.id)
+	}
+
 	return nil
 }
 

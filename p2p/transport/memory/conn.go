@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -14,7 +13,7 @@ import (
 )
 
 type conn struct {
-	id int32
+	id int64
 
 	transport *transport
 	scope     network.ConnManagementScope
@@ -26,21 +25,19 @@ type conn struct {
 	remotePubKey    ic.PubKey
 	remoteMultiaddr ma.Multiaddr
 
-	isClosed  atomic.Bool
-	closeOnce sync.Once
-
 	mu sync.Mutex
 
-	streamC chan *stream
+	closed    atomic.Bool
+	closeOnce sync.Once
 
-	nextStreamID atomic.Int32
-	streams      map[int32]network.MuxedStream
+	streamC chan *stream
+	streams map[int64]network.MuxedStream
 }
 
 var _ tpt.CapableConn = &conn{}
 
 func newConnection(
-	id int32,
+	t *transport,
 	s *stream,
 	localPeer peer.ID,
 	localMultiaddr ma.Multiaddr,
@@ -49,40 +46,36 @@ func newConnection(
 	remoteMultiaddr ma.Multiaddr,
 ) *conn {
 	c := &conn{
-		id:              id,
+		id:              connCounter.Add(1),
+		transport:       t,
 		localPeer:       localPeer,
 		localMultiaddr:  localMultiaddr,
 		remotePubKey:    remotePubKey,
 		remotePeerID:    remotePeer,
 		remoteMultiaddr: remoteMultiaddr,
 		streamC:         make(chan *stream, 1),
-		streams:         make(map[int32]network.MuxedStream),
+		streams:         make(map[int64]network.MuxedStream),
 	}
 
-	streamID := c.nextStreamID.Add(1)
-	c.addStream(streamID, s)
-
+	c.addStream(s.id, s)
 	return c
 }
 
 func (c *conn) Close() error {
-	c.closeOnce.Do(func() {
-		c.isClosed.Store(true)
-		c.transport.removeConn(c)
-	})
+	c.closed.Store(true)
+	for _, s := range c.streams {
+		s.Close()
+	}
 
 	return nil
 }
 
 func (c *conn) IsClosed() bool {
-	return c.isClosed.Load()
+	return c.closed.Load()
 }
 
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
-	ra, wb := io.Pipe()
-	rb, wa := io.Pipe()
-	inConnId, outConnId := c.nextStreamID.Add(1), c.nextStreamID.Add(1)
-	inStream, outStream := newStream(inConnId, ra, wb), newStream(outConnId, rb, wa)
+	inStream, outStream := newStreamPair()
 
 	c.streamC <- inStream
 	return outStream, nil
@@ -90,7 +83,7 @@ func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	in := <-c.streamC
-	id := c.nextStreamID.Add(1)
+	id := streamCounter.Add(1)
 	c.addStream(id, in)
 	return in, nil
 }
@@ -122,14 +115,14 @@ func (c *conn) ConnState() network.ConnectionState {
 	return network.ConnectionState{Transport: "memory"}
 }
 
-func (c *conn) addStream(id int32, stream network.MuxedStream) {
+func (c *conn) addStream(id int64, stream network.MuxedStream) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.streams[id] = stream
 }
 
-func (c *conn) removeStream(id int32) {
+func (c *conn) removeStream(id int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

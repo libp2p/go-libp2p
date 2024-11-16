@@ -1,106 +1,132 @@
 package memory
 
 import (
+	"errors"
 	"io"
+	"net"
 	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 )
 
+// stream implements network.Stream
 type stream struct {
-	id int32
+	id int64
 
-	r      *io.PipeReader
-	w      *io.PipeWriter
-	writeC chan []byte
+	write chan byte
+	read  chan byte
 
-	readCloseC  chan struct{}
-	writeCloseC chan struct{}
-
-	closed atomic.Bool
+	reset      chan struct{}
+	closeRead  chan struct{}
+	closeWrite chan struct{}
+	closed     atomic.Bool
 }
 
-func newStream(id int32, r *io.PipeReader, w *io.PipeWriter) *stream {
-	s := &stream{
-		id:          id,
-		r:           r,
-		w:           w,
-		writeC:      make(chan []byte, 1),
-		readCloseC:  make(chan struct{}, 1),
-		writeCloseC: make(chan struct{}, 1),
-	}
+var ErrClosed = errors.New("stream closed")
 
-	go func() {
-		for {
-			select {
-			case b := <-s.writeC:
-				if _, err := w.Write(b); err != nil {
-					return
-				}
-			case <-s.writeCloseC:
-				return
-			}
-		}
-	}()
+func newStreamPair() (*stream, *stream) {
+	ra, rb := make(chan byte, 4096), make(chan byte, 4096)
+	wa, wb := rb, ra
+
+	in := newStream(rb, wb, network.DirInbound)
+	out := newStream(ra, wa, network.DirOutbound)
+	return in, out
+}
+
+func newStream(r, w chan byte, _ network.Direction) *stream {
+	s := &stream{
+		id:         streamCounter.Add(1),
+		read:       r,
+		write:      w,
+		reset:      make(chan struct{}, 1),
+		closeRead:  make(chan struct{}, 1),
+		closeWrite: make(chan struct{}, 1),
+	}
 
 	return s
 }
 
-func (s *stream) Read(b []byte) (int, error) {
-	return s.r.Read(b)
-}
-
-func (s *stream) Write(b []byte) (int, error) {
+// How to handle errors with writes?
+func (s *stream) Write(p []byte) (n int, err error) {
 	if s.closed.Load() {
-		return 0, network.ErrReset
+		return 0, ErrClosed
 	}
 
-	select {
-	case <-s.writeCloseC:
-		return 0, network.ErrReset
-	case s.writeC <- b:
-		return len(b), nil
+	for i := 0; i < len(p); i++ {
+		select {
+		case <-s.reset:
+			err = network.ErrReset
+			return
+		case <-s.closeWrite:
+			err = ErrClosed
+			return
+		case s.write <- p[i]:
+			n = i
+		default:
+			err = io.ErrClosedPipe
+		}
 	}
+
+	return n + 1, err
 }
 
-func (s *stream) Reset() error {
-	if err := s.CloseWrite(); err != nil {
-		return err
+func (s *stream) Read(p []byte) (n int, err error) {
+	if s.closed.Load() {
+		return 0, ErrClosed
 	}
-	if err := s.CloseRead(); err != nil {
-		return err
+
+	for n = 0; n < len(p); n++ {
+		select {
+		case <-s.reset:
+			err = network.ErrReset
+			return
+		case <-s.closeRead:
+			err = ErrClosed
+			return
+		case b, ok := <-s.read:
+			if !ok {
+				err = io.EOF
+				return
+			}
+			p[n] = b
+		default:
+			err = io.EOF
+			return
+		}
 	}
-	return nil
+
+	return
 }
 
-func (s *stream) Close() error {
-	s.CloseRead()
-	s.CloseWrite()
+func (s *stream) CloseWrite() error {
+	s.closeWrite <- struct{}{}
 	return nil
 }
 
 func (s *stream) CloseRead() error {
-	return s.r.CloseWithError(network.ErrReset)
+	s.closeRead <- struct{}{}
+	return nil
 }
 
-func (s *stream) CloseWrite() error {
-	select {
-	case s.writeCloseC <- struct{}{}:
-	default:
-	}
-
+func (s *stream) Close() error {
 	s.closed.Store(true)
 	return nil
 }
 
-func (s *stream) SetDeadline(_ time.Time) error {
+func (s *stream) Reset() error {
+	s.reset <- struct{}{}
 	return nil
 }
 
-func (s *stream) SetReadDeadline(_ time.Time) error {
-	return nil
+func (s *stream) SetDeadline(t time.Time) error {
+	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
-func (s *stream) SetWriteDeadline(_ time.Time) error {
-	return nil
+
+func (s *stream) SetReadDeadline(t time.Time) error {
+	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (s *stream) SetWriteDeadline(t time.Time) error {
+	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }

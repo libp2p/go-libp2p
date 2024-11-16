@@ -21,7 +21,7 @@ type listener struct {
 
 	mu          sync.Mutex
 	connCh      chan *conn
-	connections map[int32]*conn
+	connections map[int64]*conn
 }
 
 func (l *listener) Multiaddr() ma.Multiaddr {
@@ -36,7 +36,7 @@ func newListener(t *transport, laddr ma.Multiaddr) *listener {
 		cancel:      cancel,
 		laddr:       laddr,
 		connCh:      make(chan *conn, listenerQueueSize),
-		connections: make(map[int32]*conn),
+		connections: make(map[int64]*conn),
 	}
 }
 
@@ -53,6 +53,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 
+		c.transport = l.t
 		l.connections[c.id] = c
 		return c, nil
 	}
