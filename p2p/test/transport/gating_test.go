@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/control"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -16,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p-testing/race"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multistream"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -269,17 +271,18 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 			gomock.InOrder(
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptSecured(network.DirInbound, h1.ID(), gomock.Any()).Return(true),
-				connGater.EXPECT().InterceptUpgraded(gomock.Any()).Do(func(c network.Conn) {
+				connGater.EXPECT().InterceptUpgraded(gomock.Any()).DoAndReturn(func(c network.Conn) (bool, control.DisconnectReason) {
 					// remove the certhash component from WebTransport addresses
 					require.Equal(t, stripCertHash(h2.Addrs()[0]), c.LocalMultiaddr())
 					require.Equal(t, h1.ID(), c.RemotePeer())
 					require.Equal(t, h2.ID(), c.LocalPeer())
+
+					return true, 0
 				}),
 			)
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
 			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
-			require.Error(t, err)
-			require.NotErrorIs(t, err, context.DeadlineExceeded)
+			require.ErrorAs(t, err, &multistream.ErrNotSupported[protocol.ID]{})
 		})
 	}
 }

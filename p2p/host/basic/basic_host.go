@@ -22,6 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
+	"github.com/libp2p/go-libp2p/p2p/host/conntracker"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
@@ -74,6 +75,7 @@ type BasicHost struct {
 	// keep track of resources we need to wait on before shutting down
 	refCount sync.WaitGroup
 
+	connTracker  *conntracker.ConnTracker
 	network      network.Network
 	psManager    *pstoremanager.PeerstoreManager
 	mux          *msmux.MultistreamMuxer[protocol.ID]
@@ -92,6 +94,7 @@ type BasicHost struct {
 	emitters struct {
 		evtLocalProtocolsUpdated event.Emitter
 		evtLocalAddrsUpdated     event.Emitter
+		evtProtoNegotiation      event.Emitter
 	}
 
 	addrChangeChan chan struct{}
@@ -170,6 +173,8 @@ type HostOpts struct {
 	DisableIdentifyAddressDiscovery bool
 	EnableAutoNATv2                 bool
 	AutoNATv2Dialer                 host.Host
+
+	ConnTracker *conntracker.ConnTracker
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -185,7 +190,21 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	hostCtx, cancel := context.WithCancel(context.Background())
+
+	// FIXME:
+	// Remove this. Hack to try the tests quickly
+	if opts.ConnTracker == nil {
+		opts.ConnTracker = &conntracker.ConnTracker{}
+		opts.ConnTracker.Start(opts.EventBus, n)
+		go func() {
+			<-hostCtx.Done()
+			opts.ConnTracker.Stop()
+
+		}()
+	}
+
 	h := &BasicHost{
 		network:                 n,
 		psManager:               psManager,
@@ -197,6 +216,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
+		connTracker:             opts.ConnTracker,
 	}
 
 	h.updateLocalIpAddr()
@@ -205,6 +225,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		return nil, err
 	}
 	if h.emitters.evtLocalAddrsUpdated, err = h.eventbus.Emitter(&event.EvtLocalAddressesUpdated{}, eventbus.Stateful); err != nil {
+		return nil, err
+	}
+	if h.emitters.evtProtoNegotiation, err = h.eventbus.Emitter(&event.EvtProtocolNegotiationSuccess{}); err != nil {
 		return nil, err
 	}
 
@@ -685,6 +708,80 @@ func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
 	})
 }
 
+func (h *BasicHost) newConnFromConnTracker(ctx context.Context, p peer.ID) (conntracker.ConnWithMeta, error) {
+	connFilter := conntracker.NoLimitedConnFilter
+	if canUseLimitedConn, _ := network.GetAllowLimitedConn(ctx); canUseLimitedConn {
+		connFilter = nil
+	}
+
+	// requiredProtos is nil because we will fallback to MSS to negotiate the
+	// protocol if none of our prefrred protocols were broadcasted by identify.
+	var requiredProtos []protocol.ID
+
+	// Do we have a conn?
+	// TODO: for both usages of conntracker, use a sort fn that sorts by more streams.
+	conn, err := h.connTracker.GetBestConn(ctx, p, conntracker.GetBestConnOpts{
+		OneOf:           requiredProtos,
+		FilterFn:        connFilter,
+		WaitForIdentify: true,
+		AllowNoConn:     true,
+	})
+	if err == nil {
+		return conn, nil
+	}
+
+	var errCh chan error
+	if nodial, _ := network.GetNoDial(ctx); !nodial {
+		errCh = make(chan error, 1)
+		go func() {
+			err := h.Connect(ctx, peer.AddrInfo{ID: p})
+			if err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+			}
+		}()
+	}
+
+	// Wait for a connection that works for us
+	connChan, err := h.connTracker.GetBestConnChan(ctx, p, conntracker.GetBestConnOpts{
+		OneOf:           requiredProtos,
+		FilterFn:        connFilter,
+		WaitForIdentify: true, // Old behavior
+	})
+	if err != nil {
+		return conntracker.ConnWithMeta{}, err
+	}
+
+	select {
+	case <-ctx.Done():
+		return conntracker.ConnWithMeta{}, ctx.Err()
+	case <-h.ctx.Done():
+		return conntracker.ConnWithMeta{}, h.ctx.Err()
+	case err = <-errCh:
+		return conntracker.ConnWithMeta{}, err
+	case connWithMeta := <-connChan:
+		return connWithMeta, nil
+	}
+}
+
+func (h *BasicHost) newStreamWithConnTracker(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, protocol.ID, error) {
+	var preferredProto protocol.ID
+	connWithMeta, err := h.newConnFromConnTracker(ctx, p)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, proto := range pids {
+		if connWithMeta.SupportsProtocol(proto) {
+			preferredProto = proto
+			break
+		}
+	}
+	s, err := connWithMeta.NewStream(ctx)
+	return s, preferredProto, err
+}
+
 // NewStream opens a new stream to given peer p, and writes a p2p/protocol
 // header with given protocol.ID. If there is no connection to p, attempts
 // to create one. If ProtocolID is "", writes no header.
@@ -698,55 +795,70 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		}
 	}
 
-	// If the caller wants to prevent the host from dialing, it should use the NoDial option.
-	if nodial, _ := network.GetNoDial(ctx); !nodial {
-		err := h.Connect(ctx, peer.AddrInfo{ID: p})
+	var (
+		err            error
+		s              network.Stream
+		preferredProto protocol.ID
+	)
+
+	if h.connTracker != nil {
+		s, preferredProto, err = h.newStreamWithConnTracker(ctx, p, pids...)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// If the caller wants to prevent the host from dialing, it should use the NoDial option.
+		if nodial, _ := network.GetNoDial(ctx); !nodial {
+			err := h.Connect(ctx, peer.AddrInfo{ID: p})
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		s, err = h.Network().NewStream(network.WithNoDial(ctx, "already dialed"), p)
+		if err != nil {
+			// TODO: It would be nicer to get the actual error from the swarm,
+			// but this will require some more work.
+			if errors.Is(err, network.ErrNoConn) {
+				return nil, errors.New("connection failed")
+			}
+			return nil, fmt.Errorf("failed to open stream: %w", err)
+		}
+		defer func() {
+			if strErr != nil && s != nil {
+				s.Reset()
+			}
+		}()
+
+		// Wait for any in-progress identifies on the connection to finish. This
+		// is faster than negotiating.
+		//
+		// If the other side doesn't support identify, that's fine. This will
+		// just be a no-op.
+		select {
+		case <-h.ids.IdentifyWait(s.Conn()):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("identify failed to complete: %w", ctx.Err())
+		}
+
+		preferredProto, err = h.preferredProtocol(p, pids)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	s, err := h.Network().NewStream(network.WithNoDial(ctx, "already dialed"), p)
-	if err != nil {
-		// TODO: It would be nicer to get the actual error from the swarm,
-		// but this will require some more work.
-		if errors.Is(err, network.ErrNoConn) {
-			return nil, errors.New("connection failed")
-		}
-		return nil, fmt.Errorf("failed to open stream: %w", err)
-	}
-	defer func() {
-		if strErr != nil && s != nil {
-			s.Reset()
-		}
-	}()
-
-	// Wait for any in-progress identifies on the connection to finish. This
-	// is faster than negotiating.
-	//
-	// If the other side doesn't support identify, that's fine. This will
-	// just be a no-op.
-	select {
-	case <-h.ids.IdentifyWait(s.Conn()):
-	case <-ctx.Done():
-		return nil, fmt.Errorf("identify failed to complete: %w", ctx.Err())
-	}
-
-	pref, err := h.preferredProtocol(p, pids)
-	if err != nil {
-		return nil, err
-	}
-
-	if pref != "" {
-		if err := s.SetProtocol(pref); err != nil {
+	if preferredProto != "" {
+		if err := s.SetProtocol(preferredProto); err != nil {
 			return nil, err
 		}
-		lzcon := msmux.NewMSSelect(s, pref)
+		lzcon := msmux.NewMSSelect(s, preferredProto)
 		return &streamWrapper{
 			Stream: s,
 			rw:     lzcon,
 		}, nil
 	}
+
+	// Fallback to MultiStreamSelect.
 
 	// Negotiate the protocol in the background, obeying the context.
 	var selected protocol.ID
@@ -771,6 +883,8 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		return nil, err
 	}
 	_ = h.Peerstore().AddProtocols(p, selected) // adding the protocol to the peerstore isn't critical
+	h.emitters.evtProtoNegotiation.Emit(event.EvtProtocolNegotiationSuccess{Peer: p, Conn: s.Conn(), Protocol: selected})
+
 	return s, nil
 }
 

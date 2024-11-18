@@ -43,4 +43,7 @@ type EvtPeerIdentificationFailed struct {
 	Peer peer.ID
 	// Reason is the reason why identification failed.
 	Reason error
+
+	// Conn is the connection we failed to identify.
+	Conn network.Conn
 }

@@ -2,6 +2,7 @@ package reconnect
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math/rand"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,7 +36,8 @@ func TestReconnect5(t *testing.T) {
 		hosts := make([]host.Host, 0, num)
 
 		for i := 0; i < num; i++ {
-			h, err := bhost.NewHost(swarmt.GenSwarm(t, swarmOpt), nil)
+			eb := eventbus.NewBus()
+			h, err := bhost.NewHost(swarmt.GenSwarm(t, swarmOpt, swarmt.EventBus(eb)), &bhost.HostOpts{EventBus: eb})
 			require.NoError(t, err)
 			defer h.Close()
 			h.Start()
@@ -42,8 +45,11 @@ func TestReconnect5(t *testing.T) {
 			h.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 		}
 
-		for i := 0; i < 4; i++ {
-			runRound(t, hosts)
+		const numTimes = 5
+		for i := 0; i < numTimes; i++ {
+			t.Run(fmt.Sprintf("round %d", i), func(t *testing.T) {
+				runRound(t, hosts)
+			})
 		}
 	}
 

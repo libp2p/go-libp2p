@@ -312,10 +312,13 @@ func TestAllAddrsUnique(t *testing.T) {
 func getHostPair(t *testing.T) (host.Host, host.Host) {
 	t.Helper()
 
-	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	eb1 := eventbus.NewBus()
+	h1, err := NewHost(swarmt.GenSwarm(t, swarmt.EventBus(eb1)), &HostOpts{EventBus: eb1})
 	require.NoError(t, err)
 	h1.Start()
-	h2, err := NewHost(swarmt.GenSwarm(t), nil)
+
+	eb2 := eventbus.NewBus()
+	h2, err := NewHost(swarmt.GenSwarm(t, swarmt.EventBus(eb2)), &HostOpts{EventBus: eb2})
 	require.NoError(t, err)
 	h2.Start()
 
@@ -587,7 +590,8 @@ func TestProtoDowngrade(t *testing.T) {
 	assertWait(t, connectedOn, "/testing/1.0.0")
 	require.NoError(t, s.Close())
 
-	h1.Network().ClosePeer(h2.ID())
+	protosSub, err := h2.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{})
+	require.NoError(t, err)
 	h2.RemoveStreamHandler("/testing/1.0.0")
 	h2.SetStreamHandler("/testing", func(s network.Stream) {
 		defer s.Close()
@@ -597,9 +601,23 @@ func TestProtoDowngrade(t *testing.T) {
 		connectedOn <- s.Protocol()
 	})
 
+	// Wait for protos updated
+	for {
+		protoUpdate := <-protosSub.Out()
+		if len(protoUpdate.(event.EvtLocalProtocolsUpdated).Removed) > 0 {
+			break
+		}
+	}
+
 	// Give us a second to update our protocol list. This happens async through the event bus.
 	// This is _almost_ instantaneous, but this test fails once every ~1k runs without this.
 	time.Sleep(time.Millisecond)
+
+	// Wait for disconnect
+	disconnectSub, err := h1.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
+	require.NoError(t, err)
+	h1.Network().ClosePeer(h2.ID())
+	<-disconnectSub.Out()
 
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
 	require.NoError(t, h1.Connect(ctx, h2pi))

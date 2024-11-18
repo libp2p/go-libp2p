@@ -347,6 +347,10 @@ func (ids *idService) sendPushes(ctx context.Context) {
 			defer func() { <-sem }()
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
+
+			// We only want to send an identify push if we already have an open
+			// connection.
+			ctx = network.WithNoDial(ctx, "id push")
 			str, err := ids.Host.NewStream(ctx, c.RemotePeer(), IDPush)
 			if err != nil { // connection might have been closed recently
 				return
@@ -429,7 +433,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 		defer close(e.IdentifyWaitChan)
 		if err := ids.identifyConn(c); err != nil {
 			log.Warnf("failed to identify %s: %s", c.RemotePeer(), err)
-			ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
+			ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err, Conn: c})
 			return
 		}
 	}()

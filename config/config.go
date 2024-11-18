@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/host/conntracker"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
@@ -413,7 +414,15 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 	return fxopts, nil
 }
 
-func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.BasicHost, error) {
+type basicHostParams struct {
+	fx.In
+	Swarm    *swarm.Swarm
+	EventBus event.Bus
+
+	ConnTracker *conntracker.ConnTracker `optional:"true"`
+}
+
+func (cfg *Config) newBasicHost(params basicHostParams) (*bhost.BasicHost, error) {
 	var autonatv2Dialer host.Host
 	if cfg.EnableAutoNATv2 {
 		ah, err := cfg.makeAutoNATV2Host()
@@ -422,8 +431,8 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 		}
 		autonatv2Dialer = ah
 	}
-	h, err := bhost.NewHost(swrm, &bhost.HostOpts{
-		EventBus:                        eventBus,
+	h, err := bhost.NewHost(params.Swarm, &bhost.HostOpts{
+		EventBus:                        params.EventBus,
 		ConnManager:                     cfg.ConnManager,
 		AddrsFactory:                    cfg.AddrsFactory,
 		NATManager:                      cfg.NATManager,
@@ -439,6 +448,7 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 		DisableIdentifyAddressDiscovery: cfg.DisableIdentifyAddressDiscovery,
 		EnableAutoNATv2:                 cfg.EnableAutoNATv2,
 		AutoNATv2Dialer:                 autonatv2Dialer,
+		ConnTracker:                     params.ConnTracker,
 	})
 	if err != nil {
 		return nil, err
@@ -492,6 +502,15 @@ func (cfg *Config) NewNode() (host.Host, error) {
 				},
 			})
 			return sw, nil
+		}),
+		fx.Provide(func(l fx.Lifecycle, eb event.Bus, s *swarm.Swarm) *conntracker.ConnTracker {
+			ct := &conntracker.ConnTracker{}
+			l.Append(fx.StartStopHook(
+				func() error {
+					return ct.Start(eb, s)
+				}, ct.Stop,
+			))
+			return ct
 		}),
 		fx.Provide(cfg.newBasicHost),
 		fx.Provide(func(bh *bhost.BasicHost) identify.IDService {

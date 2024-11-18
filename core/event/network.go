@@ -3,6 +3,7 @@ package event
 import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
 // EvtPeerConnectednessChanged should be emitted every time the "connectedness" to a
@@ -52,4 +53,20 @@ type EvtPeerConnectednessChanged struct {
 	Peer peer.ID
 	// Connectedness is the new connectedness state.
 	Connectedness network.Connectedness
+}
+
+// EvtProtocolNegotiationSuccess is emitted when we learn about a protocol a
+// peer supports via protocol negotiation (i.e. MultiStream).
+//
+// This is only emitted if we learned about a protocol during negotiation. It
+// is not emitted if we already expected a peer to support the protocol.
+type EvtProtocolNegotiationSuccess struct {
+	// Peer is the remote peer who we negotiated the protocol with.
+	Peer peer.ID
+
+	// Conn is the connection we opened the stream on.
+	Conn network.Conn
+
+	// Protocol is protocol we've successfully negotiated.
+	Protocol protocol.ID
 }

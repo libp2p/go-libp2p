@@ -775,3 +775,30 @@ func TestSharedTCPAddr(t *testing.T) {
 	require.True(t, sawWS)
 	h.Close()
 }
+
+func TestMinimalEcho(t *testing.T) {
+	h1, err := New()
+	require.NoError(t, err)
+	defer h1.Close()
+
+	h2, err := New()
+	require.NoError(t, err)
+	defer h2.Close()
+
+	h2.SetStreamHandler("/testing/echo", func(s network.Stream) {
+		defer s.Close()
+		io.Copy(s, s)
+	})
+
+	h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
+
+	s, err := h1.NewStream(context.Background(), h2.ID(), "/testing/echo")
+	require.NoError(t, err)
+	body := []byte("hello")
+	s.Write(body)
+	s.CloseWrite()
+	resp, err := io.ReadAll(s)
+	require.NoError(t, err)
+	require.Equal(t, body, resp)
+	s.Close()
+}
