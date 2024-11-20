@@ -995,3 +995,35 @@ func TestHostTimeoutNewStream(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "context deadline exceeded")
 }
+
+func TestMultistreamFailure(t *testing.T) {
+	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	require.NoError(t, err)
+	h1.Start()
+	defer h1.Close()
+
+	h2, err := NewHost(swarmt.GenSwarm(t), nil)
+	require.NoError(t, err)
+	h2.Start()
+	defer h2.Close()
+
+	h2.Peerstore().AddProtocols(h1.ID(), "/test")
+
+	err = h2.Connect(context.Background(), h1.Peerstore().PeerInfo(h1.ID()))
+	require.NoError(t, err)
+	h2.Peerstore().AddProtocols(h1.ID(), "/test")
+	s, err := h2.NewStream(context.Background(), h1.ID(), "/test")
+	require.NoError(t, err)
+	// Special string to make the other side fail multistream and reset
+	buf := make([]byte, 1024)
+	for i := 0; i < len(buf); i++ {
+		buf[i] = 0xff
+	}
+	_, err = s.Write(buf)
+	require.NoError(t, err)
+	_, err = s.Read(buf)
+	var se *network.StreamError
+	require.ErrorAs(t, err, &se)
+	require.True(t, se.Remote)
+	require.Equal(t, network.StreamProtocolNegotiationFailed, se.ErrorCode)
+}

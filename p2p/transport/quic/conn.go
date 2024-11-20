@@ -2,7 +2,6 @@ package libp2pquic
 
 import (
 	"context"
-	"fmt"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -71,7 +70,6 @@ func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	qstr, err := c.quicConn.AcceptStream(context.Background())
 	if err != nil {
-		fmt.Println("got error", err)
 		return nil, parseStreamError(err)
 	}
 	return &stream{Stream: qstr}, nil

@@ -39,6 +39,18 @@ func (s *StreamError) Unwrap() error {
 	return s.TransportError
 }
 
+const (
+	StreamNoError                   StreamErrorCode = 0
+	StreamProtocolNegotiationFailed StreamErrorCode = 1001
+	StreamResourceLimitExceeded     StreamErrorCode = 1002
+	StreamRateLimited               StreamErrorCode = 1003
+	StreamProtocolViolation         StreamErrorCode = 1004
+	StreamSupplanted                StreamErrorCode = 1005
+	StreamGarbageCollected          StreamErrorCode = 1006
+	StreamShutdown                  StreamErrorCode = 1007
+	StreamGated                     StreamErrorCode = 1008
+)
+
 // MuxedStream is a bidirectional io pipe within a connection.
 type MuxedStream interface {
 	io.Reader

@@ -464,7 +464,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 		} else {
 			log.Debugf("protocol mux failed: %s (took %s, id:%s, remote peer:%s, remote addr:%v)", err, took, s.ID(), s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
 		}
-		s.Reset()
+		s.ResetWithError(network.StreamProtocolNegotiationFailed)
 		return
 	}
 
@@ -478,7 +478,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 
 	if err := s.SetProtocol(protoID); err != nil {
 		log.Debugf("error setting stream protocol: %s", err)
-		s.Reset()
+		s.ResetWithError(network.StreamResourceLimitExceeded)
 		return
 	}
 
@@ -761,7 +761,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 			return nil, fmt.Errorf("failed to negotiate protocol: %w", err)
 		}
 	case <-ctx.Done():
-		s.Reset()
+		s.ResetWithError(network.StreamProtocolNegotiationFailed)
 		// wait for `SelectOneOf` to error out because of resetting the stream.
 		<-errCh
 		return nil, fmt.Errorf("failed to negotiate protocol: %w", ctx.Err())
