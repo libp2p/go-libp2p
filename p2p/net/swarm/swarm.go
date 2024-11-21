@@ -385,8 +385,12 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	// If we do this in the Upgrader, we will not be able to do this.
 	if s.gater != nil {
 		if allow, _ := s.gater.InterceptUpgraded(c); !allow {
-			// TODO Send disconnect with reason here
-			err := tc.Close()
+			var err error
+			if tcc, ok := tc.(network.CloseWithErrorer); ok {
+				err = tcc.CloseWithError(network.ConnGated)
+			} else {
+				err = tc.Close()
+			}
 			if err != nil {
 				log.Warnf("failed to close connection with peer %s and addr %s; err: %s", p, addr, err)
 			}
