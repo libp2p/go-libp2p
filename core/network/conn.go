@@ -35,6 +35,18 @@ func (c *ConnError) Unwrap() error {
 	return c.TransportError
 }
 
+const (
+	ConnNoError                   ConnErrorCode = 0
+	ConnProtocolNegotiationFailed ConnErrorCode = 1001
+	ConnResourceLimitExceeded     ConnErrorCode = 1002
+	ConnRateLimited               ConnErrorCode = 1003
+	ConnProtocolViolation         ConnErrorCode = 1004
+	ConnSupplanted                ConnErrorCode = 1005
+	ConnGarbageCollected          ConnErrorCode = 1006
+	ConnShutdown                  ConnErrorCode = 1007
+	ConnGated                     ConnErrorCode = 1008
+)
+
 // Conn is a connection to a remote peer. It multiplexes streams.
 // Usually there is no need to use a Conn directly, but it may
 // be useful to get information about the peer on the other side:
