@@ -139,6 +139,7 @@ func TestMutualAuth(t *testing.T) {
 				req.Host = "example.com"
 				serverID, resp, err = clientAuth.AuthenticatedDo(client, req)
 				require.NotEmpty(t, req.Header.Get("Authorization"))
+				require.True(t, HasAuthHeader(req))
 				require.NoError(t, err)
 				require.Equal(t, expectedServerID, serverID)
 				require.NotZero(t, clientAuth.tm.tokenMap["example.com"])

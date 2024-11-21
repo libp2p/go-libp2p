@@ -7,6 +7,7 @@ import (
 	"errors"
 	"hash"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,10 @@ type ServerPeerIDAuth struct {
 // scheme. If a Next handler is set, it will be called on authenticated
 // requests.
 func (a *ServerPeerIDAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.ServeHTTPWithNextHandler(w, r, a.Next)
+}
+
+func (a *ServerPeerIDAuth) ServeHTTPWithNextHandler(w http.ResponseWriter, r *http.Request, next func(peer.ID, http.ResponseWriter, *http.Request)) {
 	a.initHmac.Do(func() {
 		if a.Hmac == nil {
 			key := make([]byte, 32)
@@ -101,7 +106,7 @@ func (a *ServerPeerIDAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				TokenTTL: a.TokenTTL,
 				Hmac:     a.Hmac,
 			}
-			hs.Run()
+			_ = hs.Run() // First run will never err
 			hs.SetHeader(w.Header())
 			w.WriteHeader(http.StatusUnauthorized)
 
@@ -120,9 +125,16 @@ func (a *ServerPeerIDAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if a.Next == nil {
+	if next == nil {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	a.Next(peer, w, r)
+	next(peer, w, r)
+}
+
+// HasAuthHeader checks if the HTTP request contains an Authorization header
+// that starts with the PeerIDAuthScheme prefix.
+func HasAuthHeader(r *http.Request) bool {
+	h := r.Header.Get("Authorization")
+	return h != "" && strings.HasPrefix(h, handshake.PeerIDAuthScheme)
 }
