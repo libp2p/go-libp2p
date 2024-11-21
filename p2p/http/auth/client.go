@@ -20,6 +20,14 @@ type ClientPeerIDAuth struct {
 	tm tokenMap
 }
 
+type clientAsRoundTripper struct {
+	*http.Client
+}
+
+func (c clientAsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return c.Client.Do(req)
+}
+
 // AuthenticatedDo is like http.Client.Do, but it does the libp2p peer ID auth
 // handshake if needed.
 //
@@ -27,6 +35,10 @@ type ClientPeerIDAuth struct {
 // method can retry sending the request in case a previously used token has
 // expired.
 func (a *ClientPeerIDAuth) AuthenticatedDo(client *http.Client, req *http.Request) (peer.ID, *http.Response, error) {
+	return a.AuthenticateWithRoundTripper(clientAsRoundTripper{client}, req)
+}
+
+func (a *ClientPeerIDAuth) AuthenticateWithRoundTripper(rt http.RoundTripper, req *http.Request) (peer.ID, *http.Response, error) {
 	hostname := req.Host
 	ti, hasToken := a.tm.get(hostname, a.TokenTTL)
 	handshake := handshake.PeerIDAuthHandshakeClient{
@@ -36,7 +48,7 @@ func (a *ClientPeerIDAuth) AuthenticatedDo(client *http.Client, req *http.Reques
 
 	if hasToken {
 		// We have a token. Attempt to use that, but fallback to server initiated challenge if it fails.
-		peer, resp, err := a.doWithToken(client, req, ti)
+		peer, resp, err := a.doWithToken(rt, req, ti)
 		switch {
 		case err == nil:
 			return peer, resp, nil
@@ -62,7 +74,7 @@ func (a *ClientPeerIDAuth) AuthenticatedDo(client *http.Client, req *http.Reques
 		handshake.SetInitiateChallenge()
 	}
 
-	serverPeerID, resp, err := a.runHandshake(client, req, clearBody(req), &handshake)
+	serverPeerID, resp, err := a.runHandshake(rt, req, clearBody(req), &handshake)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to run handshake: %w", err)
 	}
@@ -74,7 +86,12 @@ func (a *ClientPeerIDAuth) AuthenticatedDo(client *http.Client, req *http.Reques
 	return serverPeerID, resp, nil
 }
 
-func (a *ClientPeerIDAuth) runHandshake(client *http.Client, req *http.Request, b bodyMeta, hs *handshake.PeerIDAuthHandshakeClient) (peer.ID, *http.Response, error) {
+func (a *ClientPeerIDAuth) HasToken(hostname string) bool {
+	_, hasToken := a.tm.get(hostname, a.TokenTTL)
+	return hasToken
+}
+
+func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request, b bodyMeta, hs *handshake.PeerIDAuthHandshakeClient) (peer.ID, *http.Response, error) {
 	maxSteps := 5 // Avoid infinite loops in case of buggy handshake. Shouldn't happen.
 	var resp *http.Response
 
@@ -92,7 +109,7 @@ func (a *ClientPeerIDAuth) runHandshake(client *http.Client, req *http.Request, 
 			b.setBody(req)
 		}
 
-		resp, err = client.Do(req)
+		resp, err = rt.RoundTrip(req)
 		if err != nil {
 			return "", nil, err
 		}
@@ -119,10 +136,10 @@ func (a *ClientPeerIDAuth) runHandshake(client *http.Client, req *http.Request, 
 
 var errTokenRejected = errors.New("token rejected")
 
-func (a *ClientPeerIDAuth) doWithToken(client *http.Client, req *http.Request, ti tokenInfo) (peer.ID, *http.Response, error) {
+func (a *ClientPeerIDAuth) doWithToken(rt http.RoundTripper, req *http.Request, ti tokenInfo) (peer.ID, *http.Response, error) {
 	// Try to make the request with the token
 	req.Header.Set("Authorization", ti.token)
-	resp, err := client.Do(req)
+	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		return "", nil, err
 	}
