@@ -24,12 +24,44 @@ For local development and debugging, it can be useful to spin up a local Prometh
 To expose metrics, we first need to expose a metrics collection endpoint. Add this to your code:
 
 ```go
-import "github.com/prometheus/client_golang/prometheus/promhttp"
+import (
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+    "github.com/grafana/pyroscope-go"
+)
 
 go func() {
-    http.Handle("/debug/metrics/prometheus", promhttp.Handler())
-    log.Fatal(http.ListenAndServe(":5001", nil))
+http.Handle("/debug/metrics/prometheus", promhttp.Handler())
+log.Fatal(http.ListenAndServe(":5001", nil))
 }()
+
+pyroscope.Start(pyroscope.Config{
+    ApplicationName: "simple.golang.app",
+    
+    // replace this with the address of pyroscope server
+    ServerAddress:   "http://127.0.0.1:4040",
+    
+    // you can disable logging by setting this to nil
+    Logger:          pyroscope.StandardLogger,
+    
+    // you can provide static tags via a map:
+    Tags:            map[string]string{"hostname": os.Getenv("HOSTNAME")},
+    
+    ProfileTypes: []pyroscope.ProfileType{
+        // these profile types are enabled by default:
+        pyroscope.ProfileCPU,
+        pyroscope.ProfileAllocObjects,
+        pyroscope.ProfileAllocSpace,
+        pyroscope.ProfileInuseObjects,
+        pyroscope.ProfileInuseSpace,
+        
+        // these profile types are optional:
+        pyroscope.ProfileGoroutines,
+        pyroscope.ProfileMutexCount,
+        pyroscope.ProfileMutexDuration,
+        pyroscope.ProfileBlockCount,
+        pyroscope.ProfileBlockDuration,
+    },
+})
 ```
 
 This exposes a metrics collection endpoint at http://localhost:5001/debug/metrics/prometheus. Note that this is the same endpoint that [Kubo](https://github.com/ipfs/kubo) uses, so if you want to gather metrics from Kubo, you can skip this step.

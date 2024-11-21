@@ -11,3 +11,9 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     editable: false
+  - name: Pyroscope
+    orgId: 1
+    type: grafana-pyroscope-datasource
+    url: http://pyroscope:4040
+    access: proxy
+    editable: true
