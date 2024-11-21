@@ -25,6 +25,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	gostream "github.com/libp2p/go-libp2p/p2p/net/gostream"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -43,6 +44,23 @@ const LegacyWellKnownProtocols = "/.well-known/libp2p"
 
 const peerMetadataLimit = 8 << 10 // 8KB
 const peerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
+
+type clientPeerIDContextKey struct{}
+type serverPeerIDContextKey struct{}
+
+func ClientPeerID(r *http.Request) peer.ID {
+	if id, ok := r.Context().Value(clientPeerIDContextKey{}).(peer.ID); ok {
+		return id
+	}
+	return ""
+}
+
+func ServerPeerID(r *http.Response) peer.ID {
+	if id, ok := r.Request.Context().Value(serverPeerIDContextKey{}).(peer.ID); ok {
+		return id
+	}
+	return ""
+}
 
 // ProtocolMeta is metadata about a protocol.
 type ProtocolMeta struct {
@@ -134,6 +152,14 @@ type Host struct {
 	// InsecureAllowHTTP indicates if the server is allowed to serve unencrypted
 	// HTTP requests over TCP.
 	InsecureAllowHTTP bool
+
+	// ServerPeerIDAuth sets the Server's signing key and TTL for server
+	// provided tokens.
+	ServerPeerIDAuth *httpauth.ServerPeerIDAuth
+	// ClientPeerIDAuth sets the Client's signing key and TTL for our stored
+	// tokens.
+	ClientPeerIDAuth *httpauth.ClientPeerIDAuth
+
 	// ServeMux is the http.ServeMux used by the server to serve requests. If
 	// nil, a new serve mux will be created. Users may manually add handlers to
 	// this mux instead of using `SetHTTPHandler`, but if they do, they should
@@ -264,7 +290,7 @@ func (h *Host) setupListeners(listenerErrCh chan error) error {
 		if parsedAddr.useHTTPS {
 			go func() {
 				srv := http.Server{
-					Handler:   h.ServeMux,
+					Handler:   maybeDecorateContextWithAuthMiddleware(h.ServerPeerIDAuth, h.ServeMux),
 					TLSConfig: h.TLSConfig,
 				}
 				listenerErrCh <- srv.ServeTLS(l, "", "")
@@ -272,7 +298,10 @@ func (h *Host) setupListeners(listenerErrCh chan error) error {
 			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 		} else if h.InsecureAllowHTTP {
 			go func() {
-				listenerErrCh <- http.Serve(l, h.ServeMux)
+				srv := http.Server{
+					Handler: maybeDecorateContextWithAuthMiddleware(h.ServerPeerIDAuth, h.ServeMux),
+				}
+				listenerErrCh <- srv.Serve(l)
 			}()
 			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 		} else {
@@ -332,7 +361,20 @@ func (h *Host) Serve() error {
 		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, h.StreamHost.Addrs()...)
 
 		go func() {
-			errCh <- http.Serve(listener, connectionCloseHeaderMiddleware(h.ServeMux))
+			srv := &http.Server{
+				Handler: connectionCloseHeaderMiddleware(h.ServeMux),
+				ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+					remote := c.RemoteAddr()
+					if remote.Network() == gostream.Network {
+						remoteID, err := peer.Decode(remote.String())
+						if err == nil {
+							return context.WithValue(ctx, clientPeerIDContextKey{}, remoteID)
+						}
+					}
+					return ctx
+				},
+			}
+			errCh <- srv.Serve(listener)
 		}()
 	}
 
@@ -497,6 +539,8 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		}
 	}
 
+	ctxWithServerID := context.WithValue(r.Context(), serverPeerIDContextKey{}, rt.server)
+	resp.Request = resp.Request.WithContext(ctxWithServerID)
 	return resp, nil
 }
 
@@ -529,10 +573,14 @@ func relativeMultiaddrURIToAbs(original *url.URL, relative *url.URL) (*url.URL, 
 		return nil, errors.New("relative path is not a valid http-path")
 	}
 
-	withoutPath, _ := ma.SplitFunc(originalMa, func(c ma.Component) bool {
+	withoutPath, afterAndIncludingPath := ma.SplitFunc(originalMa, func(c ma.Component) bool {
 		return c.Protocol().Code == ma.P_HTTP_PATH
 	})
 	withNewPath := withoutPath.AppendComponent(relativePathComponent)
+	if len(afterAndIncludingPath) > 1 {
+		// Include after path since it may include other parts
+		withNewPath = append(withNewPath, afterAndIncludingPath[1:]...)
+	}
 	return url.Parse("multiaddr:" + withNewPath.String())
 }
 
@@ -701,6 +749,18 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch r.URL.Scheme {
 	case "http", "https":
 		h.initDefaultRT()
+		if r.Host == "" {
+			r.Host = r.URL.Host
+		}
+		if h.ClientPeerIDAuth != nil && h.ClientPeerIDAuth.HasToken(r.Host) {
+			serverID, resp, err := h.ClientPeerIDAuth.AuthenticateWithRoundTripper(h.DefaultClientRoundTripper, r)
+			if err != nil {
+				return nil, err
+			}
+			ctxWithServerID := context.WithValue(r.Context(), serverPeerIDContextKey{}, serverID)
+			resp.Request = resp.Request.WithContext(ctxWithServerID)
+			return resp, nil
+		}
 		return h.DefaultClientRoundTripper.RoundTrip(r)
 	case "multiaddr":
 		break
@@ -732,7 +792,12 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		h.initDefaultRT()
 		rt := h.DefaultClientRoundTripper
-		if parsed.sni != parsed.host {
+		sni := parsed.sni
+		if sni == "" {
+			sni = parsed.host
+		}
+
+		if sni != parsed.host {
 			// We have a different host and SNI (e.g. using an IP address but specifying a SNI)
 			// We need to make our own transport to support this.
 			//
@@ -741,6 +806,35 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 			// completeness, but I don't expect us to hit it often.
 			rt = rt.Clone()
 			rt.TLSClientConfig.ServerName = parsed.sni
+		}
+
+		if parsed.peer != "" {
+			// The peer ID is present. We are making an authenticated request
+			if h.ClientPeerIDAuth == nil {
+				return nil, fmt.Errorf("can not authenticate server. Host.ClientPeerIDAuth field is not set")
+			}
+
+			if r.Host == "" {
+				// Missing a host header. Default to what we parsed earlier
+				r.Host = u.Host
+			}
+
+			serverID, resp, err := h.ClientPeerIDAuth.AuthenticateWithRoundTripper(rt, r)
+			// c := http.Client{Transport: rt}
+			// serverID, resp, err := h.ClientPeerIDAuth.AuthenticatedDo(&c, r)
+			if err != nil {
+				return nil, err
+			}
+
+			if serverID != parsed.peer {
+				resp.Body.Close()
+				return nil, fmt.Errorf("authenticated server ID does not match expected server ID")
+			}
+
+			ctxWithServerID := context.WithValue(r.Context(), serverPeerIDContextKey{}, serverID)
+			resp.Request = resp.Request.WithContext(ctxWithServerID)
+
+			return resp, nil
 		}
 
 		return rt.RoundTrip(r)
@@ -1086,5 +1180,24 @@ func connectionCloseHeaderMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
 		next.ServeHTTP(w, r)
+	})
+}
+
+// maybeDecorateContextWithAuth decorates the request context with
+// authentication information if serverAuth is provided.
+func maybeDecorateContextWithAuthMiddleware(serverAuth *httpauth.ServerPeerIDAuth, next http.Handler) http.Handler {
+	if next == nil {
+		return nil
+	}
+	if serverAuth == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if httpauth.HasAuthHeader(r) {
+			serverAuth.ServeHTTPWithNextHandler(w, r, func(p peer.ID, w http.ResponseWriter, r *http.Request) {
+				r = r.WithContext(context.WithValue(r.Context(), clientPeerIDContextKey{}, p))
+				next.ServeHTTP(w, r)
+			})
+		}
 	})
 }
