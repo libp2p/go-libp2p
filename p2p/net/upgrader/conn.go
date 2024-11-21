@@ -65,6 +65,7 @@ func (t *transportConn) ConnState() network.ConnectionState {
 }
 
 func (t *transportConn) CloseWithError(errCode network.ConnErrorCode) error {
+	defer t.scope.Done()
 	if ce, ok := t.MuxedConn.(network.CloseWithErrorer); ok {
 		return ce.CloseWithError(errCode)
 	}
