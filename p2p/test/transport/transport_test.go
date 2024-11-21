@@ -30,9 +30,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	libp2pmemory "github.com/libp2p/go-libp2p/p2p/transport/memory"
-	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	"go.uber.org/mock/gomock"
 
 	ma "github.com/multiformats/go-multiaddr"

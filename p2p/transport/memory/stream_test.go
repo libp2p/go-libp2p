@@ -8,6 +8,7 @@ import (
 )
 
 func TestStreamSimpleReadWriteClose(t *testing.T) {
+	// t.Parallel()
 	clientStr, serverStr := newStreamPair()
 
 	// send a foobar from the client
@@ -24,6 +25,7 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	b, err := io.ReadAll(serverStr)
 	require.NoError(t, err)
 	require.Equal(t, []byte("foobar"), b)
+
 	// reading again should give another io.EOF
 	n, err = serverStr.Read(make([]byte, 10))
 	require.Zero(t, n)
@@ -35,7 +37,6 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	require.NoError(t, serverStr.CloseWrite())
 
 	// and read it at the client
-	//require.False(t, clientDone.Load())
 	b, err = io.ReadAll(clientStr)
 	require.NoError(t, err)
 	require.Equal(t, []byte("lorem ipsum"), b)
@@ -45,4 +46,25 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	serverStr.Close()
 	// Need to call Close for cleanup. Otherwise the FIN_ACK is never read
 	require.NoError(t, serverStr.Close())
+}
+
+func TestStreamPartialReads(t *testing.T) {
+	// t.Parallel()
+	clientStr, serverStr := newStreamPair()
+
+	_, err := serverStr.Write([]byte("foobar"))
+	require.NoError(t, err)
+	require.NoError(t, serverStr.CloseWrite())
+
+	n, err := clientStr.Read([]byte{}) // empty read
+	require.NoError(t, err)
+	require.Zero(t, n)
+	b := make([]byte, 3)
+	n, err = clientStr.Read(b)
+	require.Equal(t, 3, n)
+	require.NoError(t, err)
+	require.Equal(t, []byte("foo"), b)
+	b, err = io.ReadAll(clientStr)
+	require.NoError(t, err)
+	require.Equal(t, []byte("bar"), b)
 }

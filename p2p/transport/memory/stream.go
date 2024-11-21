@@ -27,10 +27,9 @@ var ErrClosed = errors.New("stream closed")
 
 func newStreamPair() (*stream, *stream) {
 	ra, rb := make(chan byte, 4096), make(chan byte, 4096)
-	wa, wb := rb, ra
 
-	in := newStream(rb, wb, network.DirInbound)
-	out := newStream(ra, wa, network.DirOutbound)
+	in := newStream(rb, ra, network.DirInbound)
+	out := newStream(ra, rb, network.DirOutbound)
 	return in, out
 }
 
@@ -47,28 +46,34 @@ func newStream(r, w chan byte, _ network.Direction) *stream {
 	return s
 }
 
-// How to handle errors with writes?
 func (s *stream) Write(p []byte) (n int, err error) {
 	if s.closed.Load() {
 		return 0, ErrClosed
 	}
 
-	for i := 0; i < len(p); i++ {
+	select {
+	case <-s.reset:
+		return 0, network.ErrReset
+	case <-s.closeWrite:
+		return 0, ErrClosed
+	default:
+	}
+
+	for n < len(p) {
 		select {
-		case <-s.reset:
-			err = network.ErrReset
-			return
 		case <-s.closeWrite:
-			err = ErrClosed
-			return
-		case s.write <- p[i]:
-			n = i
+			return n, ErrClosed
+		case <-s.reset:
+			return n, network.ErrReset
+		case s.write <- p[n]:
+			n++
 		default:
 			err = io.ErrClosedPipe
+			return
 		}
 	}
 
-	return n + 1, err
+	return
 }
 
 func (s *stream) Read(p []byte) (n int, err error) {
@@ -76,27 +81,32 @@ func (s *stream) Read(p []byte) (n int, err error) {
 		return 0, ErrClosed
 	}
 
-	for n = 0; n < len(p); n++ {
+	select {
+	case <-s.reset:
+		return 0, network.ErrReset
+	case <-s.closeRead:
+		return 0, ErrClosed
+	default:
+	}
+
+	for n < len(p) {
 		select {
-		case <-s.reset:
-			err = network.ErrReset
-			return
 		case <-s.closeRead:
-			err = ErrClosed
-			return
+			return n, ErrClosed
+		case <-s.reset:
+			return n, network.ErrReset
 		case b, ok := <-s.read:
 			if !ok {
-				err = io.EOF
-				return
+				return n, ErrClosed
 			}
 			p[n] = b
+			n++
 		default:
-			err = io.EOF
-			return
+			return n, io.EOF
 		}
 	}
 
-	return
+	return n, nil
 }
 
 func (s *stream) CloseWrite() error {

@@ -63,7 +63,8 @@ func newConnection(
 
 func (c *conn) Close() error {
 	c.closed.Store(true)
-	for _, s := range c.streams {
+	for id, s := range c.streams {
+		c.removeStream(id)
 		s.Close()
 	}
 
@@ -83,8 +84,7 @@ func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	in := <-c.streamC
-	id := streamCounter.Add(1)
-	c.addStream(id, in)
+	c.addStream(in.id, in)
 	return in, nil
 }
 
