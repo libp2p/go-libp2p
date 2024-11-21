@@ -33,6 +33,14 @@ func (c *tconn) Close() error {
 	return nil
 }
 
+func (c *tconn) CloseWithError(code network.ConnErrorCode) error {
+	atomic.StoreUint32(&c.closed, 1)
+	if c.disconnectNotify != nil {
+		c.disconnectNotify(nil, c)
+	}
+	return nil
+}
+
 func (c *tconn) isClosed() bool {
 	return atomic.LoadUint32(&c.closed) == 1
 }
