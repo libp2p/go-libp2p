@@ -56,10 +56,6 @@ func (s *stream) Reset() error {
 	return nil
 }
 
-func (s *stream) ResetWithError(errCode network.StreamErrorCode) error {
-	panic("not implemented")
-}
-
 func (s *stream) Close() error {
 	s.Stream.CancelRead(reset)
 	return s.Stream.Close()
