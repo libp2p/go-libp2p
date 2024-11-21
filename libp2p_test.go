@@ -59,7 +59,7 @@ func TestTransportConstructor(t *testing.T) {
 		_ connmgr.ConnectionGater,
 		upgrader transport.Upgrader,
 	) transport.Transport {
-		tpt, err := tcp.NewTCPTransport(upgrader, nil)
+		tpt, err := tcp.NewTCPTransport(upgrader, nil, nil)
 		require.NoError(t, err)
 		return tpt
 	}
@@ -750,4 +750,28 @@ func getTLSConf(t *testing.T, ip net.IP, start, end time.Time) *tls.Config {
 			Leaf:        cert,
 		}},
 	}
+}
+
+func TestSharedTCPAddr(t *testing.T) {
+	h, err := New(
+		ShareTCPListener(),
+		Transport(tcp.NewTCPTransport),
+		Transport(websocket.New),
+		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888"),
+		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888/ws"),
+	)
+	require.NoError(t, err)
+	sawTCP := false
+	sawWS := false
+	for _, addr := range h.Addrs() {
+		if strings.HasSuffix(addr.String(), "/tcp/8888") {
+			sawTCP = true
+		}
+		if strings.HasSuffix(addr.String(), "/tcp/8888/ws") {
+			sawWS = true
+		}
+	}
+	require.True(t, sawTCP)
+	require.True(t, sawWS)
+	h.Close()
 }

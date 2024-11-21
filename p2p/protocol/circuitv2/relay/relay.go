@@ -118,7 +118,7 @@ func (r *Relay) Close() error {
 
 		r.host.RemoveStreamHandler(proto.ProtoIDv2Hop)
 		r.host.Network().StopNotify(r.notifiee)
-		r.scope.Done()
+		defer r.scope.Done()
 		r.cancel()
 		r.gc()
 		if r.metricsTracer != nil {
@@ -315,7 +315,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) pbv2.Statu
 	connStTime := time.Now()
 
 	cleanup := func() {
-		span.Done()
+		defer span.Done()
 		r.mx.Lock()
 		r.rmConn(src)
 		r.rmConn(dest.ID)

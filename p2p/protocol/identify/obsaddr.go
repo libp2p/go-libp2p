@@ -335,6 +335,11 @@ func (o *ObservedAddrManager) worker() {
 	}
 }
 
+func isRelayedAddress(a ma.Multiaddr) bool {
+	_, err := a.ValueForProtocol(ma.P_CIRCUIT)
+	return err == nil
+}
+
 func (o *ObservedAddrManager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) (shouldRecord bool, localTW thinWaist, observedTW thinWaist) {
 	if conn == nil || observed == nil {
 		return false, thinWaist{}, thinWaist{}
@@ -347,6 +352,12 @@ func (o *ObservedAddrManager) shouldRecordObservation(conn connMultiaddrs, obser
 
 	// Provided by NAT64 peers, these addresses are specific to the peer and not publicly routable
 	if manet.IsNAT64IPv4ConvertedIPv6Addr(observed) {
+		return false, thinWaist{}, thinWaist{}
+	}
+
+	// Ignore p2p-circuit addresses. These are the observed address of the relay.
+	// Not useful for us.
+	if isRelayedAddress(observed) {
 		return false, thinWaist{}, thinWaist{}
 	}
 
@@ -410,7 +421,7 @@ func (o *ObservedAddrManager) maybeRecordObservation(conn connMultiaddrs, observ
 	if !shouldRecord {
 		return
 	}
-	log.Debugw("added own observed listen addr", "observed", observed)
+	log.Debugw("added own observed listen addr", "conn", conn, "observed", observed)
 
 	o.mu.Lock()
 	defer o.mu.Unlock()

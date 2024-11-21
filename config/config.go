@@ -36,7 +36,9 @@ import (
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -142,6 +144,10 @@ type Config struct {
 	CustomUDPBlackHoleSuccessCounter  bool
 	IPv6BlackHoleSuccessCounter       *swarm.BlackHoleSuccessCounter
 	CustomIPv6BlackHoleSuccessCounter bool
+
+	UserFxOptions []fx.Option
+
+	ShareTCPListener bool
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -286,6 +292,12 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),
+		fx.Provide(func(gater connmgr.ConnectionGater, rcmgr network.ResourceManager) *tcpreuse.ConnMgr {
+			if !cfg.ShareTCPListener {
+				return nil
+			}
+			return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, gater, rcmgr)
+		}),
 		fx.Provide(func(cm *quicreuse.ConnManager, sw *swarm.Swarm) libp2pwebrtc.ListenUDPFn {
 			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {
 				quicAddrPorts := map[string]struct{}{}
@@ -482,6 +494,9 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			return sw, nil
 		}),
 		fx.Provide(cfg.newBasicHost),
+		fx.Provide(func(bh *bhost.BasicHost) identify.IDService {
+			return bh.IDService()
+		}),
 		fx.Provide(func(bh *bhost.BasicHost) host.Host {
 			return bh
 		}),
@@ -535,6 +550,8 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if cfg.Routing != nil {
 		fxopts = append(fxopts, fx.Invoke(func(bho *routed.RoutedHost) { rh = bho }))
 	}
+
+	fxopts = append(fxopts, cfg.UserFxOptions...)
 
 	app := fx.New(fxopts...)
 	if err := app.Start(context.Background()); err != nil {

@@ -16,4 +16,4 @@ concurrency:
 
 jobs:
   release-check:
-    uses: ipdxco/unified-github-workflows/.github/workflows/release-check.yml@v1.0
+    uses: marcopolo/unified-github-workflows/.github/workflows/release-check.yml@e66cb9667a2e1148efda4591e29c56258eaf385b

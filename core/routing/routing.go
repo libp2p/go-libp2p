@@ -18,22 +18,33 @@ var ErrNotFound = errors.New("routing: not found")
 // type/operation.
 var ErrNotSupported = errors.New("routing: operation or key not supported")
 
+// ContentProviding is able to announce where to find content on the Routing
+// system.
+type ContentProviding interface {
+	// Provide adds the given cid to the content routing system. If 'true' is
+	// passed, it also announces it, otherwise it is just kept in the local
+	// accounting of which objects are being provided.
+	Provide(context.Context, cid.Cid, bool) error
+}
+
+// ContentDiscovery is able to retrieve providers for a given CID using
+// the Routing system.
+type ContentDiscovery interface {
+	// Search for peers who are able to provide a given key
+	//
+	// When count is 0, this method will return an unbounded number of
+	// results.
+	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
+}
+
 // ContentRouting is a value provider layer of indirection. It is used to find
 // information about who has what content.
 //
 // Content is identified by CID (content identifier), which encodes a hash
 // of the identified content in a future-proof manner.
 type ContentRouting interface {
-	// Provide adds the given cid to the content routing system. If 'true' is
-	// passed, it also announces it, otherwise it is just kept in the local
-	// accounting of which objects are being provided.
-	Provide(context.Context, cid.Cid, bool) error
-
-	// Search for peers who are able to provide a given key
-	//
-	// When count is 0, this method will return an unbounded number of
-	// results.
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
+	ContentProviding
+	ContentDiscovery
 }
 
 // PeerRouting is a way to find address information about certain peers.

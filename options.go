@@ -634,3 +634,24 @@ func IPv6BlackHoleSuccessCounter(f *swarm.BlackHoleSuccessCounter) Option {
 		return nil
 	}
 }
+
+// WithFxOption adds a user provided fx.Option to the libp2p constructor.
+// Experimental: This option is subject to change or removal.
+func WithFxOption(opts ...fx.Option) Option {
+	return func(cfg *Config) error {
+		cfg.UserFxOptions = append(cfg.UserFxOptions, opts...)
+		return nil
+	}
+}
+
+// ShareTCPListener shares the same listen address between TCP and Websocket
+// transports. This lets both transports use the same TCP port.
+//
+// Currently this behavior is Opt-in. In a future release this will be the
+// default, and this option will be removed.
+func ShareTCPListener() Option {
+	return func(cfg *Config) error {
+		cfg.ShareTCPListener = true
+		return nil
+	}
+}

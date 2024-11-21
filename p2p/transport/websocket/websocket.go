@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
@@ -87,11 +88,13 @@ type WebsocketTransport struct {
 
 	tlsClientConf *tls.Config
 	tlsConf       *tls.Config
+
+	sharedTcp *tcpreuse.ConnMgr
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
 
-func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*WebsocketTransport, error) {
+func New(u transport.Upgrader, rcmgr network.ResourceManager, sharedTCP *tcpreuse.ConnMgr, opts ...Option) (*WebsocketTransport, error) {
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
@@ -99,6 +102,7 @@ func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*
 		upgrader:      u,
 		rcmgr:         rcmgr,
 		tlsClientConf: &tls.Config{},
+		sharedTcp:     sharedTCP,
 	}
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
@@ -233,7 +237,7 @@ func (t *WebsocketTransport) maListen(a ma.Multiaddr) (manet.Listener, error) {
 	if t.tlsConf != nil {
 		tlsConf = t.tlsConf.Clone()
 	}
-	l, err := newListener(a, tlsConf)
+	l, err := newListener(a, tlsConf, t.sharedTcp)
 	if err != nil {
 		return nil, err
 	}
