@@ -26,6 +26,7 @@ func getTransport(t *testing.T) tpt.Transport {
 }
 
 func TestMemoryProtocol(t *testing.T) {
+	t.Parallel()
 	tr := getTransport(t)
 	defer tr.(io.Closer).Close()
 
@@ -40,6 +41,7 @@ func TestMemoryProtocol(t *testing.T) {
 }
 
 func TestCanDial(t *testing.T) {
+	t.Parallel()
 	tr := getTransport(t)
 	defer tr.(io.Closer).Close()
 

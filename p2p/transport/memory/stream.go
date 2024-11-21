@@ -3,8 +3,8 @@ package memory
 import (
 	"errors"
 	"io"
+	"log"
 	"net"
-	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -14,118 +14,96 @@ import (
 type stream struct {
 	id int64
 
-	write chan byte
-	read  chan byte
+	read   *io.PipeReader
+	write  *io.PipeWriter
+	writeC chan []byte
 
-	reset      chan struct{}
-	closeRead  chan struct{}
-	closeWrite chan struct{}
-	closed     atomic.Bool
+	reset  chan struct{}
+	close  chan struct{}
+	closed chan struct{}
+
+	writeErr error
 }
 
 var ErrClosed = errors.New("stream closed")
 
 func newStreamPair() (*stream, *stream) {
-	ra, rb := make(chan byte, 4096), make(chan byte, 4096)
+	ra, wb := io.Pipe()
+	rb, wa := io.Pipe()
 
-	in := newStream(rb, ra, network.DirInbound)
-	out := newStream(ra, rb, network.DirOutbound)
-	return in, out
+	sa := newStream(rb, wa, network.DirOutbound)
+	sb := newStream(ra, wb, network.DirInbound)
+
+	return sa, sb
 }
 
-func newStream(r, w chan byte, _ network.Direction) *stream {
+func newStream(r *io.PipeReader, w *io.PipeWriter, _ network.Direction) *stream {
 	s := &stream{
-		id:         streamCounter.Add(1),
-		read:       r,
-		write:      w,
-		reset:      make(chan struct{}, 1),
-		closeRead:  make(chan struct{}, 1),
-		closeWrite: make(chan struct{}, 1),
+		id:     streamCounter.Add(1),
+		read:   r,
+		write:  w,
+		writeC: make(chan []byte),
+		reset:  make(chan struct{}, 1),
+		close:  make(chan struct{}, 1),
+		closed: make(chan struct{}),
 	}
+	log.Println("newStream", "id", s.id)
 
+	go s.writeLoop()
 	return s
 }
 
-func (s *stream) Write(p []byte) (n int, err error) {
-	if s.closed.Load() {
-		return 0, ErrClosed
-	}
+func (s *stream) Write(p []byte) (int, error) {
+	cpy := make([]byte, len(p))
+	copy(cpy, p)
 
 	select {
-	case <-s.reset:
-		return 0, network.ErrReset
-	case <-s.closeWrite:
-		return 0, ErrClosed
-	default:
+	case <-s.closed:
+		return 0, s.writeErr
+	case s.writeC <- cpy:
 	}
 
-	for n < len(p) {
-		select {
-		case <-s.closeWrite:
-			return n, ErrClosed
-		case <-s.reset:
-			return n, network.ErrReset
-		case s.write <- p[n]:
-			n++
-		default:
-			err = io.ErrClosedPipe
-			return
-		}
-	}
-
-	return
+	return len(p), nil
 }
 
 func (s *stream) Read(p []byte) (n int, err error) {
-	if s.closed.Load() {
-		return 0, ErrClosed
-	}
-
-	select {
-	case <-s.reset:
-		return 0, network.ErrReset
-	case <-s.closeRead:
-		return 0, ErrClosed
-	default:
-	}
-
-	for n < len(p) {
-		select {
-		case <-s.closeRead:
-			return n, ErrClosed
-		case <-s.reset:
-			return n, network.ErrReset
-		case b, ok := <-s.read:
-			if !ok {
-				return n, ErrClosed
-			}
-			p[n] = b
-			n++
-		default:
-			return n, io.EOF
-		}
-	}
-
-	return n, nil
+	return s.read.Read(p)
 }
 
 func (s *stream) CloseWrite() error {
-	s.closeWrite <- struct{}{}
+	select {
+	case s.close <- struct{}{}:
+	default:
+	}
+	log.Println("waiting close", "id", s.id)
+	<-s.closed
+	log.Println("closed write", "id", s.id)
+	if !errors.Is(s.writeErr, ErrClosed) {
+		return s.writeErr
+	}
 	return nil
+
 }
 
 func (s *stream) CloseRead() error {
-	s.closeRead <- struct{}{}
-	return nil
+	return s.read.CloseWithError(ErrClosed)
 }
 
 func (s *stream) Close() error {
-	s.closed.Store(true)
-	return nil
+	_ = s.CloseRead()
+	return s.CloseWrite()
 }
 
 func (s *stream) Reset() error {
-	s.reset <- struct{}{}
+	s.write.CloseWithError(network.ErrReset)
+	s.read.CloseWithError(network.ErrReset)
+
+	select {
+	case s.reset <- struct{}{}:
+	default:
+	}
+	<-s.closed
+
 	return nil
 }
 
@@ -139,4 +117,36 @@ func (s *stream) SetReadDeadline(t time.Time) error {
 
 func (s *stream) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (s *stream) writeLoop() {
+	defer close(s.closed)
+	defer log.Println("closing write", "id", s.id)
+
+	for {
+		// Reset takes precedent.
+		select {
+		case <-s.reset:
+			s.writeErr = network.ErrReset
+			return
+		default:
+		}
+
+		select {
+		case <-s.reset:
+			s.writeErr = network.ErrReset
+			return
+		case <-s.close:
+			s.writeErr = s.write.Close()
+			if s.writeErr == nil {
+				s.writeErr = ErrClosed
+			}
+			return
+		case p := <-s.writeC:
+			if _, err := s.write.Write(p); err != nil {
+				s.writeErr = err
+				return
+			}
+		}
+	}
 }

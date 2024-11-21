@@ -147,12 +147,14 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, rpid 
 		return nil, errors.New("failed to get remote public key")
 	}
 
-	inStream, outStream := newStreamPair()
-	inConn := newConnection(t, outStream, t.localPeerID, nil, remotePubKey, rpid, raddr)
-	outConn := newConnection(nil, inStream, rpid, raddr, t.localPubKey, t.localPeerID, nil)
-	l.connCh <- outConn
+	sl, sr := newStreamPair()
 
-	return inConn, nil
+	lconn := newConnection(t, sl, t.localPeerID, nil, remotePubKey, rpid, raddr)
+	rconn := newConnection(nil, sr, rpid, raddr, t.localPubKey, t.localPeerID, nil)
+
+	l.connCh <- rconn
+
+	return lconn, nil
 }
 
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
@@ -186,11 +188,11 @@ func (t *transport) String() string {
 
 func (t *transport) Close() error {
 	// TODO: Go trough all listeners and close them
-	memhub.close()
+	//memhub.close()
 
 	for _, c := range t.connections {
 		c.Close()
-		delete(t.connections, c.id)
+		//delete(t.connections, c.id)
 	}
 
 	return nil

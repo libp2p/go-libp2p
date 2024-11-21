@@ -8,7 +8,7 @@ import (
 )
 
 func TestStreamSimpleReadWriteClose(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	clientStr, serverStr := newStreamPair()
 
 	// send a foobar from the client
@@ -49,7 +49,7 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 }
 
 func TestStreamPartialReads(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	clientStr, serverStr := newStreamPair()
 
 	_, err := serverStr.Write([]byte("foobar"))
