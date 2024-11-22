@@ -14,6 +14,8 @@ const (
 )
 
 type listener struct {
+	id int64
+
 	t      *transport
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -31,6 +33,7 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 func newListener(t *transport, laddr ma.Multiaddr) *listener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &listener{
+		id:          listenerCounter.Add(1),
 		t:           t,
 		ctx:         ctx,
 		cancel:      cancel,
@@ -53,6 +56,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 
+		c.listener = l
 		c.transport = l.t
 		l.connections[c.id] = c
 		return c, nil

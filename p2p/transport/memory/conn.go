@@ -13,10 +13,12 @@ import (
 )
 
 type conn struct {
-	id int64
+	id    int64
+	rconn *conn
 
-	transport *transport
 	scope     network.ConnManagementScope
+	listener  *listener
+	transport *transport
 
 	localPeer      peer.ID
 	localMultiaddr ma.Multiaddr
@@ -62,11 +64,11 @@ func newConnection(
 }
 
 func (c *conn) Close() error {
-	c.closed.Store(true)
-	for _, s := range c.streams {
-		//c.removeStream(id)
-		s.Close()
-	}
+	c.closeOnce.Do(func() {
+		c.closed.Store(true)
+		go c.rconn.Close()
+		c.teardown()
+	})
 
 	return nil
 }
@@ -79,11 +81,14 @@ func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 	sl, sr := newStreamPair()
 
 	c.streamC <- sr
+	sl.conn = c
+	c.addStream(sl.id, sl)
 	return sl, nil
 }
 
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	in := <-c.streamC
+	in.conn = c
 	c.addStream(in.id, in)
 	return in, nil
 }
@@ -127,4 +132,12 @@ func (c *conn) removeStream(id int64) {
 	defer c.mu.Unlock()
 
 	delete(c.streams, id)
+}
+
+func (c *conn) teardown() {
+	for _, s := range c.streams {
+		s.Reset()
+	}
+
+	// TODO: remove self from listener
 }

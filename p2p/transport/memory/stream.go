@@ -3,7 +3,6 @@ package memory
 import (
 	"errors"
 	"io"
-	"log"
 	"net"
 	"time"
 
@@ -12,7 +11,8 @@ import (
 
 // stream implements network.Stream
 type stream struct {
-	id int64
+	id   int64
+	conn *conn
 
 	read   *io.PipeReader
 	write  *io.PipeWriter
@@ -31,13 +31,13 @@ func newStreamPair() (*stream, *stream) {
 	ra, wb := io.Pipe()
 	rb, wa := io.Pipe()
 
-	sa := newStream(rb, wa, network.DirOutbound)
-	sb := newStream(ra, wb, network.DirInbound)
+	sa := newStream(wa, ra, network.DirOutbound)
+	sb := newStream(wb, rb, network.DirInbound)
 
 	return sa, sb
 }
 
-func newStream(r *io.PipeReader, w *io.PipeWriter, _ network.Direction) *stream {
+func newStream(w *io.PipeWriter, r *io.PipeReader, _ network.Direction) *stream {
 	s := &stream{
 		id:     streamCounter.Add(1),
 		read:   r,
@@ -47,7 +47,6 @@ func newStream(r *io.PipeReader, w *io.PipeWriter, _ network.Direction) *stream 
 		close:  make(chan struct{}, 1),
 		closed: make(chan struct{}),
 	}
-	log.Println("newStream", "id", s.id)
 
 	go s.writeLoop()
 	return s
@@ -66,7 +65,7 @@ func (s *stream) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (s *stream) Read(p []byte) (n int, err error) {
+func (s *stream) Read(p []byte) (int, error) {
 	return s.read.Read(p)
 }
 
@@ -75,9 +74,7 @@ func (s *stream) CloseWrite() error {
 	case s.close <- struct{}{}:
 	default:
 	}
-	log.Println("waiting close", "id", s.id)
 	<-s.closed
-	log.Println("closed write", "id", s.id)
 	if !errors.Is(s.writeErr, ErrClosed) {
 		return s.writeErr
 	}
@@ -95,6 +92,7 @@ func (s *stream) Close() error {
 }
 
 func (s *stream) Reset() error {
+	// Cancel any pending reads/writes with an error.
 	s.write.CloseWithError(network.ErrReset)
 	s.read.CloseWithError(network.ErrReset)
 
@@ -103,7 +101,7 @@ func (s *stream) Reset() error {
 	default:
 	}
 	<-s.closed
-
+	// No meaningful error case here.
 	return nil
 }
 
@@ -120,8 +118,7 @@ func (s *stream) SetWriteDeadline(t time.Time) error {
 }
 
 func (s *stream) writeLoop() {
-	defer close(s.closed)
-	defer log.Println("closing write", "id", s.id)
+	defer s.teardown()
 
 	for {
 		// Reset takes precedent.
@@ -144,9 +141,24 @@ func (s *stream) writeLoop() {
 			return
 		case p := <-s.writeC:
 			if _, err := s.write.Write(p); err != nil {
-				s.writeErr = err
+				s.cancelWrite(err)
 				return
 			}
 		}
 	}
+}
+
+func (s *stream) cancelWrite(err error) {
+	s.write.CloseWithError(err)
+	s.writeErr = err
+}
+
+func (s *stream) teardown() {
+	// at this point, no streams are writing.
+	if s.conn != nil {
+		s.conn.removeStream(s.id)
+	}
+
+	// Mark as closed.
+	close(s.closed)
 }

@@ -1,10 +1,9 @@
 package memory
 
 import (
+	"github.com/stretchr/testify/require"
 	"io"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestStreamSimpleReadWriteClose(t *testing.T) {
