@@ -211,7 +211,7 @@ func NewAddrBook() *MemoryAddrBook {
 		cancel:               cancel,
 		clock:                realclock{},
 		maxUnconnectedAddrs:  defaultMaxUnconnectedAddrs,
-		maxSignedPeerRecords: defaultMaxUnconnectedAddrs,
+		maxSignedPeerRecords: defaultMaxSignedPeerRecords,
 	}
 	ab.refCount.Add(1)
 	go ab.background(ctx)
