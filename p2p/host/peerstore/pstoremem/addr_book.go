@@ -201,7 +201,7 @@ type MemoryAddrBook struct {
 var _ peerstore.AddrBook = (*MemoryAddrBook)(nil)
 var _ peerstore.CertifiedAddrBook = (*MemoryAddrBook)(nil)
 
-func NewAddrBook() *MemoryAddrBook {
+func NewAddrBook(opts ...AddrBookOption) *MemoryAddrBook {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ab := &MemoryAddrBook{
@@ -213,6 +213,10 @@ func NewAddrBook() *MemoryAddrBook {
 		maxUnconnectedAddrs:  defaultMaxUnconnectedAddrs,
 		maxSignedPeerRecords: defaultMaxSignedPeerRecords,
 	}
+	for _, opt := range opts {
+		opt(ab)
+	}
+
 	ab.refCount.Add(1)
 	go ab.background(ctx)
 	return ab
