@@ -12,8 +12,8 @@ import (
 type pstoremem struct {
 	peerstore.Metrics
 
+	*MemoryAddrBook
 	*memoryKeyBook
-	*memoryAddrBook
 	*memoryProtoBook
 	*memoryPeerMetadata
 }
@@ -51,7 +51,7 @@ func NewPeerstore(opts ...Option) (ps *pstoremem, err error) {
 	return &pstoremem{
 		Metrics:            pstore.NewMetrics(),
 		memoryKeyBook:      NewKeyBook(),
-		memoryAddrBook:     ab,
+		MemoryAddrBook:     ab,
 		memoryProtoBook:    pb,
 		memoryPeerMetadata: NewPeerMetadata(),
 	}, nil
@@ -67,7 +67,7 @@ func (ps *pstoremem) Close() (err error) {
 		}
 	}
 	weakClose("keybook", ps.memoryKeyBook)
-	weakClose("addressbook", ps.memoryAddrBook)
+	weakClose("addressbook", ps.MemoryAddrBook)
 	weakClose("protobook", ps.memoryProtoBook)
 	weakClose("peermetadata", ps.memoryPeerMetadata)
 
@@ -96,7 +96,7 @@ func (ps *pstoremem) Peers() peer.IDSlice {
 func (ps *pstoremem) PeerInfo(p peer.ID) peer.AddrInfo {
 	return peer.AddrInfo{
 		ID:    p,
-		Addrs: ps.memoryAddrBook.Addrs(p),
+		Addrs: ps.MemoryAddrBook.Addrs(p),
 	}
 }
 
