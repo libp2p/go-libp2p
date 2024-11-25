@@ -183,8 +183,8 @@ const (
 	defaultMaxUnconnectedAddrs  = 1_000_000
 )
 
-// MemoryAddrBook manages addresses.
-type MemoryAddrBook struct {
+// memoryAddrBook manages addresses.
+type memoryAddrBook struct {
 	mu                   sync.RWMutex
 	addrs                peerAddrs
 	signedPeerRecords    map[peer.ID]*peerRecordState
@@ -198,13 +198,13 @@ type MemoryAddrBook struct {
 	clock      clock
 }
 
-var _ peerstore.AddrBook = (*MemoryAddrBook)(nil)
-var _ peerstore.CertifiedAddrBook = (*MemoryAddrBook)(nil)
+var _ peerstore.AddrBook = (*memoryAddrBook)(nil)
+var _ peerstore.CertifiedAddrBook = (*memoryAddrBook)(nil)
 
-func NewAddrBook(opts ...AddrBookOption) *MemoryAddrBook {
+func NewAddrBook(opts ...AddrBookOption) *memoryAddrBook {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ab := &MemoryAddrBook{
+	ab := &memoryAddrBook{
 		addrs:                newPeerAddrs(),
 		signedPeerRecords:    make(map[peer.ID]*peerRecordState),
 		subManager:           NewAddrSubManager(),
@@ -222,10 +222,10 @@ func NewAddrBook(opts ...AddrBookOption) *MemoryAddrBook {
 	return ab
 }
 
-type AddrBookOption func(book *MemoryAddrBook) error
+type AddrBookOption func(book *memoryAddrBook) error
 
 func WithClock(clock clock) AddrBookOption {
-	return func(book *MemoryAddrBook) error {
+	return func(book *memoryAddrBook) error {
 		book.clock = clock
 		return nil
 	}
@@ -235,21 +235,21 @@ func WithClock(clock clock) AddrBookOption {
 // The maximum number of connected addresses is bounded by the connection
 // limits in the Connection Manager and Resource Manager.
 func WithMaxAddresses(n int) AddrBookOption {
-	return func(b *MemoryAddrBook) error {
+	return func(b *memoryAddrBook) error {
 		b.maxUnconnectedAddrs = n
 		return nil
 	}
 }
 
 func WithMaxSignedPeerRecords(n int) AddrBookOption {
-	return func(b *MemoryAddrBook) error {
+	return func(b *memoryAddrBook) error {
 		b.maxSignedPeerRecords = n
 		return nil
 	}
 }
 
 // background periodically schedules a gc
-func (mab *MemoryAddrBook) background(ctx context.Context) {
+func (mab *memoryAddrBook) background(ctx context.Context) {
 	defer mab.refCount.Done()
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
@@ -264,14 +264,14 @@ func (mab *MemoryAddrBook) background(ctx context.Context) {
 	}
 }
 
-func (mab *MemoryAddrBook) Close() error {
+func (mab *memoryAddrBook) Close() error {
 	mab.cancel()
 	mab.refCount.Wait()
 	return nil
 }
 
 // gc garbage collects the in-memory address book.
-func (mab *MemoryAddrBook) gc() {
+func (mab *memoryAddrBook) gc() {
 	now := mab.clock.Now()
 	mab.mu.Lock()
 	defer mab.mu.Unlock()
@@ -285,7 +285,7 @@ func (mab *MemoryAddrBook) gc() {
 	}
 }
 
-func (mab *MemoryAddrBook) PeersWithAddrs() peer.IDSlice {
+func (mab *memoryAddrBook) PeersWithAddrs() peer.IDSlice {
 	mab.mu.RLock()
 	defer mab.mu.RUnlock()
 	peers := make(peer.IDSlice, 0, len(mab.addrs.Addrs))
@@ -296,19 +296,19 @@ func (mab *MemoryAddrBook) PeersWithAddrs() peer.IDSlice {
 }
 
 // AddAddr calls AddAddrs(p, []ma.Multiaddr{addr}, ttl)
-func (mab *MemoryAddrBook) AddAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) AddAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
 	mab.AddAddrs(p, []ma.Multiaddr{addr}, ttl)
 }
 
 // AddAddrs adds `addrs` for peer `p`, which will expire after the given `ttl`.
 // This function never reduces the TTL or expiration of an address.
-func (mab *MemoryAddrBook) AddAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) AddAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	mab.addAddrs(p, addrs, ttl)
 }
 
 // ConsumePeerRecord adds addresses from a signed peer.PeerRecord, which will expire after the given TTL.
 // See https://godoc.org/github.com/libp2p/go-libp2p/core/peerstore#CertifiedAddrBook for more details.
-func (mab *MemoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl time.Duration) (bool, error) {
+func (mab *memoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl time.Duration) (bool, error) {
 	r, err := recordEnvelope.Record()
 	if err != nil {
 		return false, err
@@ -341,20 +341,20 @@ func (mab *MemoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, tt
 	return true, nil
 }
 
-func (mab *MemoryAddrBook) maybeDeleteSignedPeerRecordUnlocked(p peer.ID) {
+func (mab *memoryAddrBook) maybeDeleteSignedPeerRecordUnlocked(p peer.ID) {
 	if len(mab.addrs.Addrs[p]) == 0 {
 		delete(mab.signedPeerRecords, p)
 	}
 }
 
-func (mab *MemoryAddrBook) addAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) addAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	mab.mu.Lock()
 	defer mab.mu.Unlock()
 
 	mab.addAddrsUnlocked(p, addrs, ttl)
 }
 
-func (mab *MemoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	defer mab.maybeDeleteSignedPeerRecordUnlocked(p)
 
 	// if ttl is zero, exit. nothing to do.
@@ -405,13 +405,13 @@ func (mab *MemoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl
 }
 
 // SetAddr calls mgr.SetAddrs(p, addr, ttl)
-func (mab *MemoryAddrBook) SetAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) SetAddr(p peer.ID, addr ma.Multiaddr, ttl time.Duration) {
 	mab.SetAddrs(p, []ma.Multiaddr{addr}, ttl)
 }
 
 // SetAddrs sets the ttl on addresses. This clears any TTL there previously.
 // This is used when we receive the best estimate of the validity of an address.
-func (mab *MemoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
+func (mab *memoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration) {
 	mab.mu.Lock()
 	defer mab.mu.Unlock()
 
@@ -461,7 +461,7 @@ func (mab *MemoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Du
 
 // UpdateAddrs updates the addresses associated with the given peer that have
 // the given oldTTL to have the given newTTL.
-func (mab *MemoryAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL time.Duration) {
+func (mab *memoryAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL time.Duration) {
 	mab.mu.Lock()
 	defer mab.mu.Unlock()
 
@@ -489,7 +489,7 @@ func (mab *MemoryAddrBook) UpdateAddrs(p peer.ID, oldTTL time.Duration, newTTL t
 }
 
 // Addrs returns all known (and valid) addresses for a given peer
-func (mab *MemoryAddrBook) Addrs(p peer.ID) []ma.Multiaddr {
+func (mab *memoryAddrBook) Addrs(p peer.ID) []ma.Multiaddr {
 	mab.mu.RLock()
 	defer mab.mu.RUnlock()
 	if _, ok := mab.addrs.Addrs[p]; !ok {
@@ -514,7 +514,7 @@ func validAddrs(now time.Time, amap map[string]*expiringAddr) []ma.Multiaddr {
 // GetPeerRecord returns a Envelope containing a PeerRecord for the
 // given peer id, if one exists.
 // Returns nil if no signed PeerRecord exists for the peer.
-func (mab *MemoryAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
+func (mab *memoryAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
 	mab.mu.RLock()
 	defer mab.mu.RUnlock()
 
@@ -534,7 +534,7 @@ func (mab *MemoryAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
 }
 
 // ClearAddrs removes all previously stored addresses
-func (mab *MemoryAddrBook) ClearAddrs(p peer.ID) {
+func (mab *memoryAddrBook) ClearAddrs(p peer.ID) {
 	mab.mu.Lock()
 	defer mab.mu.Unlock()
 
@@ -547,7 +547,7 @@ func (mab *MemoryAddrBook) ClearAddrs(p peer.ID) {
 
 // AddrStream returns a channel on which all new addresses discovered for a
 // given peer ID will be published.
-func (mab *MemoryAddrBook) AddrStream(ctx context.Context, p peer.ID) <-chan ma.Multiaddr {
+func (mab *memoryAddrBook) AddrStream(ctx context.Context, p peer.ID) <-chan ma.Multiaddr {
 	var initial []ma.Multiaddr
 
 	mab.mu.RLock()
