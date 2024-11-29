@@ -9,6 +9,9 @@ import (
 
 // This function cleans up a relay's address set to remove private addresses and curtail
 // addrsplosion.
+// TODO: Remove this, we don't need this. The current method tries to select the
+// best address for the relay. Instead we should rely on the addresses provided by the
+// relay in response to the reservation request.
 func cleanupAddressSet(addrs []ma.Multiaddr) []ma.Multiaddr {
 	var public, private []ma.Multiaddr
 
@@ -17,7 +20,7 @@ func cleanupAddressSet(addrs []ma.Multiaddr) []ma.Multiaddr {
 			continue
 		}
 
-		if manet.IsPublicAddr(a) || isDNSAddr(a) {
+		if manet.IsPublicAddr(a) {
 			public = append(public, a)
 			continue
 		}
@@ -49,16 +52,6 @@ func isRelayAddr(a ma.Multiaddr) bool {
 	})
 
 	return isRelay
-}
-
-func isDNSAddr(a ma.Multiaddr) bool {
-	if first, _ := ma.SplitFirst(a); first != nil {
-		switch first.Protocol().Code {
-		case ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
-			return true
-		}
-	}
-	return false
 }
 
 // we have addrsplosion if for some protocol we advertise multiple ports on
