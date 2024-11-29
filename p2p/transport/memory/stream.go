@@ -6,11 +6,30 @@ import (
 	"io"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 )
+
+// onceError is an object that will only store an error once.
+type onceError struct {
+	sync.Mutex // guards following
+	err        error
+}
+
+func (a *onceError) Store(err error) {
+	a.Lock()
+	defer a.Unlock()
+	if a.err != nil {
+		return
+	}
+	a.err = err
+}
+func (a *onceError) Load() error {
+	a.Lock()
+	defer a.Unlock()
+	return a.err
+}
 
 // stream implements network.Stream
 type stream struct {
@@ -26,14 +45,16 @@ type stream struct {
 	// Used by local Write to interact with remote Read.
 	wrTx chan<- []byte
 
-	once       sync.Once // Protects closing localDone
+	closeOnce  sync.Once // Protects closing localDone
 	localDone  chan struct{}
 	remoteDone <-chan struct{}
 
-	reset       chan struct{}
-	close       chan struct{}
-	readClosed  atomic.Bool
-	writeClosed atomic.Bool
+	resetOnce   sync.Once // Protects closing localReset
+	localReset  chan struct{}
+	remoteReset <-chan struct{}
+
+	rerr onceError
+	werr onceError
 }
 
 var ErrClosed = errors.New("stream closed")
@@ -45,42 +66,47 @@ func newStreamPair() (*stream, *stream) {
 	done1 := make(chan struct{})
 	done2 := make(chan struct{})
 
-	sa := newStream(cb1, cb2, done1, done2)
-	sb := newStream(cb2, cb1, done2, done1)
+	reset1 := make(chan struct{})
+	reset2 := make(chan struct{})
+
+	sa := newStream(cb1, cb2, done1, done2, reset1, reset2)
+	sb := newStream(cb2, cb1, done2, done1, reset2, reset1)
 
 	return sa, sb
 }
 
-func newStream(rdRx <-chan []byte, wrTx chan<- []byte, localDone chan struct{}, remoteDone <-chan struct{}) *stream {
+func newStream(rdRx <-chan []byte, wrTx chan<- []byte, localDone chan struct{}, remoteDone <-chan struct{}, localReset chan struct{}, remoteReset <-chan struct{}) *stream {
 	s := &stream{
-		rdRx:       rdRx,
-		wrTx:       wrTx,
-		buf:        new(bytes.Buffer),
-		localDone:  localDone,
-		remoteDone: remoteDone,
-		reset:      make(chan struct{}, 1),
-		close:      make(chan struct{}, 1),
+		id:          streamCounter.Add(1),
+		rdRx:        rdRx,
+		wrTx:        wrTx,
+		buf:         new(bytes.Buffer),
+		localDone:   localDone,
+		remoteDone:  remoteDone,
+		localReset:  localReset,
+		remoteReset: remoteReset,
 	}
 
 	return s
 }
 
 func (p *stream) Write(b []byte) (int, error) {
-	if p.writeClosed.Load() {
-		return 0, ErrClosed
+	if err := p.werr.Load(); err != nil {
+		return 0, err
 	}
 
-	n, err := p.write(b)
-	if err != nil && err != io.ErrClosedPipe {
-		err = &net.OpError{Op: "write", Net: "pipe", Err: err}
-	}
-	return n, err
+	return p.write(b)
+	//if err != nil && err != io.ErrClosedPipe && err != network.ErrReset {
+	//	err = &net.OpError{Op: "write", Net: "pipe", Err: err}
+	//}
+	//
+	//return n, err
 }
 
 func (p *stream) write(b []byte) (n int, err error) {
 	switch {
-	case isClosedChan(p.localDone):
-		return 0, io.ErrClosedPipe
+	case isClosedChan(p.remoteReset):
+		return 0, network.ErrReset
 	case isClosedChan(p.remoteDone):
 		return 0, io.ErrClosedPipe
 	}
@@ -89,91 +115,81 @@ func (p *stream) write(b []byte) (n int, err error) {
 	defer p.wrMu.Unlock()
 
 	select {
-	case <-p.close:
-		return n, ErrClosed
-	case <-p.reset:
-		return n, network.ErrReset
 	case p.wrTx <- b:
 		n += len(b)
-	case <-p.localDone:
-		return n, io.ErrClosedPipe
-	case <-p.remoteDone:
-		return n, io.ErrClosedPipe
 	}
 
 	return n, nil
 }
 
 func (p *stream) Read(b []byte) (int, error) {
-	if p.readClosed.Load() {
-		return 0, ErrClosed
+	if err := p.rerr.Load(); err != nil {
+		return 0, err
 	}
 
-	n, err := p.read(b)
-	if err != nil && err != io.EOF && err != io.ErrClosedPipe {
-		err = &net.OpError{Op: "read", Net: "pipe", Err: err}
-	}
-
-	return n, err
+	return p.read(b)
+	//if err != nil && err != io.EOF && err != io.ErrClosedPipe && err != network.ErrReset {
+	//	err = &net.OpError{Op: "read", Net: "pipe", Err: err}
+	//}
+	//
+	//return n, err
 }
 
 func (p *stream) read(b []byte) (n int, err error) {
+	var readErr error
+
 	switch {
-	case isClosedChan(p.localDone):
-		return 0, io.ErrClosedPipe
+	case isClosedChan(p.remoteReset):
+		err = network.ErrReset
 	case isClosedChan(p.remoteDone):
-		return 0, io.EOF
+		err = io.EOF
 	}
 
 	select {
-	case <-p.reset:
-		return n, network.ErrReset
 	case bw, ok := <-p.rdRx:
 		if !ok {
-			p.readClosed.Store(true)
-			return 0, io.EOF
+			err = io.EOF
+			p.rerr.Store(err)
+			return
 		}
 
 		p.buf.Write(bw)
-	case <-p.localDone:
-		return 0, io.ErrClosedPipe
-	case <-p.remoteDone:
-		return 0, io.EOF
 	default:
-		n, err = p.buf.Read(b)
+	}
+
+	n, readErr = p.buf.Read(b)
+	if err == nil {
+		err = readErr
 	}
 
 	return n, err
 }
 
 func (s *stream) CloseWrite() error {
-	select {
-	case s.close <- struct{}{}:
-	default:
-	}
-
-	s.writeClosed.Store(true)
+	s.werr.Store(ErrClosed)
 	return nil
 }
 
 func (s *stream) CloseRead() error {
-	s.readClosed.Store(true)
+	s.rerr.Store(ErrClosed)
 	return nil
 }
 
 func (s *stream) Close() error {
+	s.closeOnce.Do(func() {
+		close(s.localDone)
+	})
+
 	_ = s.CloseRead()
 	return s.CloseWrite()
 }
 
 func (s *stream) Reset() error {
-	select {
-	case s.reset <- struct{}{}:
-	default:
-	}
+	s.rerr.Store(network.ErrReset)
+	s.werr.Store(network.ErrReset)
 
-	s.once.Do(func() {
-		close(s.localDone)
+	s.resetOnce.Do(func() {
+		close(s.localReset)
 	})
 
 	// No meaningful error case here.

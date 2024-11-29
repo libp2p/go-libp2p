@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -79,10 +80,11 @@ func (c *conn) IsClosed() bool {
 
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 	sl, sr := newStreamPair()
-
-	c.streamC <- sr
 	sl.conn = c
 	c.addStream(sl.id, sl)
+	log.Println("opening stream", sl.id, sr.id)
+
+	c.rconn.streamC <- sr
 	return sl, nil
 }
 
@@ -135,7 +137,8 @@ func (c *conn) removeStream(id int64) {
 }
 
 func (c *conn) teardown() {
-	for _, s := range c.streams {
+	for id, s := range c.streams {
+		log.Println("tearing down stream", id)
 		s.Reset()
 	}
 
