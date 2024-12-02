@@ -57,28 +57,17 @@ func SubtestBasic(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, 
 	}
 	defer list.Close()
 
-	var (
-		connA, connB transport.CapableConn
-		done         = make(chan struct{})
-	)
-	defer func() {
-		<-done
-		if connA != nil {
-			connA.Close()
-		}
-		if connB != nil {
-			connB.Close()
-		}
-	}()
+	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
-		var err error
-		connB, err = list.Accept()
+		connB, err := list.Accept()
 		if err != nil {
 			t.Error(err)
 			return
 		}
+		defer connB.Close()
+
 		s, err := connB.AcceptStream()
 		if err != nil {
 			t.Error(err)
@@ -115,10 +104,11 @@ func SubtestBasic(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, 
 		t.Error("CanDial should have returned true")
 	}
 
-	connA, err = tb.Dial(ctx, list.Multiaddr(), peerA)
+	connA, err := tb.Dial(ctx, list.Multiaddr(), peerA)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer connA.Close()
 
 	s, err := connA.OpenStream(context.Background())
 	if err != nil {
@@ -154,6 +144,8 @@ func SubtestBasic(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, 
 		t.Fatal(err)
 		return
 	}
+
+	<-done
 }
 
 func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
