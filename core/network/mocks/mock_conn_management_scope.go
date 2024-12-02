@@ -21,6 +21,7 @@ import (
 type MockConnManagementScope struct {
 	ctrl     *gomock.Controller
 	recorder *MockConnManagementScopeMockRecorder
+	isgomock struct{}
 }
 
 // MockConnManagementScopeMockRecorder is the mock recorder for MockConnManagementScope.
@@ -82,29 +83,29 @@ func (mr *MockConnManagementScopeMockRecorder) PeerScope() *gomock.Call {
 }
 
 // ReleaseMemory mocks base method.
-func (m *MockConnManagementScope) ReleaseMemory(arg0 int) {
+func (m *MockConnManagementScope) ReleaseMemory(size int) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ReleaseMemory", arg0)
+	m.ctrl.Call(m, "ReleaseMemory", size)
 }
 
 // ReleaseMemory indicates an expected call of ReleaseMemory.
-func (mr *MockConnManagementScopeMockRecorder) ReleaseMemory(arg0 any) *gomock.Call {
+func (mr *MockConnManagementScopeMockRecorder) ReleaseMemory(size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockConnManagementScope)(nil).ReleaseMemory), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockConnManagementScope)(nil).ReleaseMemory), size)
 }
 
 // ReserveMemory mocks base method.
-func (m *MockConnManagementScope) ReserveMemory(arg0 int, arg1 byte) error {
+func (m *MockConnManagementScope) ReserveMemory(size int, prio uint8) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReserveMemory", arg0, arg1)
+	ret := m.ctrl.Call(m, "ReserveMemory", size, prio)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ReserveMemory indicates an expected call of ReserveMemory.
-func (mr *MockConnManagementScopeMockRecorder) ReserveMemory(arg0, arg1 any) *gomock.Call {
+func (mr *MockConnManagementScopeMockRecorder) ReserveMemory(size, prio any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockConnManagementScope)(nil).ReserveMemory), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockConnManagementScope)(nil).ReserveMemory), size, prio)
 }
 
 // SetPeer mocks base method.

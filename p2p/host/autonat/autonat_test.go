@@ -15,6 +15,7 @@ import (
 
 	"github.com/libp2p/go-msgio/pbio"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -223,7 +224,7 @@ func TestAutoNATIncomingEvents(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return an.Status() != network.ReachabilityUnknown
-	}, 500*time.Millisecond, 10*time.Millisecond, "Expected probe due to identification of autonat service")
+	}, 5*time.Second, 100*time.Millisecond, "Expected probe due to identification of autonat service")
 }
 
 func TestAutoNATDialRefused(t *testing.T) {
@@ -258,6 +259,10 @@ func TestAutoNATDialRefused(t *testing.T) {
 	close(done)
 }
 
+func recordObservation(an *AmbientAutoNAT, status network.Reachability) {
+	an.observations <- status
+}
+
 func TestAutoNATObservationRecording(t *testing.T) {
 	hs := makeAutoNATServicePublic(t)
 	defer hs.Close()
@@ -271,39 +276,34 @@ func TestAutoNATObservationRecording(t *testing.T) {
 		t.Fatalf("failed to subscribe to event EvtLocalRoutabilityPublic, err=%s", err)
 	}
 
-	an.recordObservation(network.ReachabilityPublic)
-	if an.Status() != network.ReachabilityPublic {
-		t.Fatalf("failed to transition to public.")
+	expectStatus := func(expected network.Reachability, msg string, args ...any) {
+		require.EventuallyWithTf(t, func(collect *assert.CollectT) {
+			assert.Equal(collect, expected, an.Status())
+		}, 2*time.Second, 100*time.Millisecond, msg, args...)
 	}
 
+	recordObservation(an, network.ReachabilityPublic)
+	expectStatus(network.ReachabilityPublic, "failed to transition to public.")
 	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
 	// a single recording should have confidence still at 0, and transition to private quickly.
-	an.recordObservation(network.ReachabilityPrivate)
-	if an.Status() != network.ReachabilityPrivate {
-		t.Fatalf("failed to transition to private.")
-	}
+	recordObservation(an, network.ReachabilityPrivate)
+	expectStatus(network.ReachabilityPrivate, "failed to transition to private.")
 
 	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 
 	// stronger public confidence should be harder to undo.
-	an.recordObservation(network.ReachabilityPublic)
-	an.recordObservation(network.ReachabilityPublic)
-	if an.Status() != network.ReachabilityPublic {
-		t.Fatalf("failed to transition to public.")
-	}
+	recordObservation(an, network.ReachabilityPublic)
+	recordObservation(an, network.ReachabilityPublic)
+	expectStatus(network.ReachabilityPublic, "failed to transition to public.")
 	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
-	an.recordObservation(network.ReachabilityPrivate)
-	if an.Status() != network.ReachabilityPublic {
-		t.Fatalf("too-extreme private transition.")
-	}
+	recordObservation(an, network.ReachabilityPrivate)
+	expectStatus(network.ReachabilityPublic, "too-extreme private transition.")
 
 	// Don't emit events if reachability hasn't changed
-	an.recordObservation(network.ReachabilityPublic)
-	if an.Status() != network.ReachabilityPublic {
-		t.Fatalf("reachability should stay public")
-	}
+	recordObservation(an, network.ReachabilityPublic)
+	expectStatus(network.ReachabilityPublic, "reachability should stay public")
 	select {
 	case <-s.Out():
 		t.Fatal("received event without state transition")

@@ -31,6 +31,7 @@ var (
 	RecentlyConnectedAddrTTL = time.Minute * 15
 
 	// OwnObservedAddrTTL is used for our own external addresses observed by peers.
+	//
 	// Deprecated: observed addresses are maintained till we disconnect from the peer which provided it
 	OwnObservedAddrTTL = time.Minute * 30
 )
@@ -65,6 +66,10 @@ type Peerstore interface {
 
 	// Peers returns all the peer IDs stored across all inner stores.
 	Peers() peer.IDSlice
+
+	// RemovePeer removes all the peer related information except its addresses. To remove the
+	// addresses use `AddrBook.ClearAddrs` or set the address ttls to 0.
+	RemovePeer(peer.ID)
 }
 
 // PeerMetadata can handle values of any type. Serializing values is
@@ -121,20 +126,10 @@ type AddrBook interface {
 	PeersWithAddrs() peer.IDSlice
 }
 
-// CertifiedAddrBook manages "self-certified" addresses for remote peers.
-// Self-certified addresses are contained in peer.PeerRecords
-// which are wrapped in a record.Envelope and signed by the peer
-// to whom they belong.
+// CertifiedAddrBook manages signed peer records and "self-certified" addresses
+// contained within them.
+// Use this interface with an `AddrBook`.
 //
-// Certified addresses (CA) are generally more secure than uncertified
-// addresses (UA). Consequently, CAs beat and displace UAs. When the
-// peerstore learns CAs for a peer, it will reject UAs for the same peer
-// (as long as the former haven't expired).
-// Furthermore, peer records act like sequenced snapshots of CAs. Therefore,
-// processing a peer record that's newer than the last one seen overwrites
-// all addresses with the incoming ones.
-//
-// This interface is most useful when combined with AddrBook.
 // To test whether a given AddrBook / Peerstore implementation supports
 // certified addresses, callers should use the GetCertifiedAddrBook helper or
 // type-assert on the CertifiedAddrBook interface:
@@ -143,41 +138,29 @@ type AddrBook interface {
 //	    cab.ConsumePeerRecord(signedPeerRecord, aTTL)
 //	}
 type CertifiedAddrBook interface {
-	// ConsumePeerRecord adds addresses from a signed peer.PeerRecord (contained in
-	// a record.Envelope), which will expire after the given TTL.
+	// ConsumePeerRecord stores a signed peer record and the contained addresses for
+	// ttl duration.
+	// The addresses contained in the signed peer record will expire after ttl. If any
+	// address is already present in the peer store, it'll expire at max of existing ttl and
+	// provided ttl.
+	// The signed peer record itself will be expired when all the addresses associated with the peer,
+	// self-certified or not, are removed from the AddrBook.
 	//
-	// The 'accepted' return value indicates that the record was successfully processed
-	// and integrated into the CertifiedAddrBook state. If 'accepted' is false but no
-	// error is returned, it means that the record was ignored, most likely because
-	// a newer record exists for the same peer.
+	// To delete the signed peer record, use `AddrBook.UpdateAddrs`,`AddrBook.SetAddrs`, or
+	// `AddrBook.ClearAddrs` with ttl 0.
+	// Note: Future calls to ConsumePeerRecord will not expire self-certified addresses from the
+	// previous calls.
 	//
-	// Signed records added via this method will be stored without
-	// alteration as long as the address TTLs remain valid. The Envelopes
-	// containing the PeerRecords can be retrieved by calling GetPeerRecord(peerID).
+	// The `accepted` return value indicates that the record was successfully processed. If
+	// `accepted` is false but no error is returned, it means that the record was ignored, most
+	// likely because a newer record exists for the same peer with a greater seq value.
 	//
-	// If the signed PeerRecord belongs to a peer that already has certified
-	// addresses in the CertifiedAddrBook, the new addresses will replace the
-	// older ones, if the new record has a higher sequence number than the
-	// existing record. Attempting to add a peer record with a
-	// sequence number that's <= an existing record for the same peer will not
-	// result in an error, but the record will be ignored, and the 'accepted'
-	// bool return value will be false.
-	//
-	// If the CertifiedAddrBook is also an AddrBook (which is most likely the case),
-	// adding certified addresses for a peer will *replace* any
-	// existing non-certified addresses for that peer, and only the certified
-	// addresses will be returned from AddrBook.Addrs thereafter.
-	//
-	// Likewise, once certified addresses have been added for a given peer,
-	// any non-certified addresses added via AddrBook.AddAddrs or
-	// AddrBook.SetAddrs will be ignored. AddrBook.SetAddrs may still be used
-	// to update the TTL of certified addresses that have previously been
-	// added via ConsumePeerRecord.
+	// The Envelopes containing the signed peer records can be retrieved by calling
+	// GetPeerRecord(peerID).
 	ConsumePeerRecord(s *record.Envelope, ttl time.Duration) (accepted bool, err error)
 
-	// GetPeerRecord returns an Envelope containing a PeerRecord for the
-	// given peer id, if one exists.
-	// Returns nil if no signed PeerRecord exists for the peer.
+	// GetPeerRecord returns an Envelope containing a peer record for the
+	// peer, or nil if no record exists.
 	GetPeerRecord(p peer.ID) *record.Envelope
 }
 
@@ -196,7 +179,7 @@ func GetCertifiedAddrBook(ab AddrBook) (cab CertifiedAddrBook, ok bool) {
 
 // KeyBook tracks the keys of Peers.
 type KeyBook interface {
-	// PubKey stores the public key of a peer.
+	// PubKey returns the public key of a peer.
 	PubKey(peer.ID) ic.PubKey
 
 	// AddPubKey stores the public key of a peer.

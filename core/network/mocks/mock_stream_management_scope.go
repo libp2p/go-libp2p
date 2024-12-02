@@ -21,6 +21,7 @@ import (
 type MockStreamManagementScope struct {
 	ctrl     *gomock.Controller
 	recorder *MockStreamManagementScopeMockRecorder
+	isgomock struct{}
 }
 
 // MockStreamManagementScopeMockRecorder is the mock recorder for MockStreamManagementScope.
@@ -96,29 +97,29 @@ func (mr *MockStreamManagementScopeMockRecorder) ProtocolScope() *gomock.Call {
 }
 
 // ReleaseMemory mocks base method.
-func (m *MockStreamManagementScope) ReleaseMemory(arg0 int) {
+func (m *MockStreamManagementScope) ReleaseMemory(size int) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ReleaseMemory", arg0)
+	m.ctrl.Call(m, "ReleaseMemory", size)
 }
 
 // ReleaseMemory indicates an expected call of ReleaseMemory.
-func (mr *MockStreamManagementScopeMockRecorder) ReleaseMemory(arg0 any) *gomock.Call {
+func (mr *MockStreamManagementScopeMockRecorder) ReleaseMemory(size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockStreamManagementScope)(nil).ReleaseMemory), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockStreamManagementScope)(nil).ReleaseMemory), size)
 }
 
 // ReserveMemory mocks base method.
-func (m *MockStreamManagementScope) ReserveMemory(arg0 int, arg1 byte) error {
+func (m *MockStreamManagementScope) ReserveMemory(size int, prio uint8) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReserveMemory", arg0, arg1)
+	ret := m.ctrl.Call(m, "ReserveMemory", size, prio)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ReserveMemory indicates an expected call of ReserveMemory.
-func (mr *MockStreamManagementScopeMockRecorder) ReserveMemory(arg0, arg1 any) *gomock.Call {
+func (mr *MockStreamManagementScopeMockRecorder) ReserveMemory(size, prio any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockStreamManagementScope)(nil).ReserveMemory), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockStreamManagementScope)(nil).ReserveMemory), size, prio)
 }
 
 // ServiceScope mocks base method.
@@ -136,31 +137,31 @@ func (mr *MockStreamManagementScopeMockRecorder) ServiceScope() *gomock.Call {
 }
 
 // SetProtocol mocks base method.
-func (m *MockStreamManagementScope) SetProtocol(arg0 protocol.ID) error {
+func (m *MockStreamManagementScope) SetProtocol(proto protocol.ID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetProtocol", arg0)
+	ret := m.ctrl.Call(m, "SetProtocol", proto)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetProtocol indicates an expected call of SetProtocol.
-func (mr *MockStreamManagementScopeMockRecorder) SetProtocol(arg0 any) *gomock.Call {
+func (mr *MockStreamManagementScopeMockRecorder) SetProtocol(proto any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProtocol", reflect.TypeOf((*MockStreamManagementScope)(nil).SetProtocol), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProtocol", reflect.TypeOf((*MockStreamManagementScope)(nil).SetProtocol), proto)
 }
 
 // SetService mocks base method.
-func (m *MockStreamManagementScope) SetService(arg0 string) error {
+func (m *MockStreamManagementScope) SetService(srv string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetService", arg0)
+	ret := m.ctrl.Call(m, "SetService", srv)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetService indicates an expected call of SetService.
-func (mr *MockStreamManagementScopeMockRecorder) SetService(arg0 any) *gomock.Call {
+func (mr *MockStreamManagementScopeMockRecorder) SetService(srv any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetService", reflect.TypeOf((*MockStreamManagementScope)(nil).SetService), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetService", reflect.TypeOf((*MockStreamManagementScope)(nil).SetService), srv)
 }
 
 // Stat mocks base method.

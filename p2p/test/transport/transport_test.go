@@ -100,6 +100,38 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "TCP-Shared / TLS / Yamux",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
+			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebSocket-Shared",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/ws"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "WebSocket",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)

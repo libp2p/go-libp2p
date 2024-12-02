@@ -29,8 +29,7 @@ type AutoRelay struct {
 
 	relayFinder *relayFinder
 
-	host   host.Host
-	addrsF basic.AddrsFactory
+	host host.Host
 
 	metricsTracer MetricsTracer
 }
@@ -38,7 +37,6 @@ type AutoRelay struct {
 func NewAutoRelay(bhost *basic.BasicHost, opts ...Option) (*AutoRelay, error) {
 	r := &AutoRelay{
 		host:   bhost,
-		addrsF: bhost.AddrsFactory,
 		status: network.ReachabilityUnknown,
 	}
 	conf := defaultConfig
@@ -51,7 +49,22 @@ func NewAutoRelay(bhost *basic.BasicHost, opts ...Option) (*AutoRelay, error) {
 	r.conf = &conf
 	r.relayFinder = newRelayFinder(bhost, conf.peerSource, &conf)
 	r.metricsTracer = &wrappedMetricsTracer{conf.metricsTracer}
-	bhost.AddrsFactory = r.hostAddrs
+
+	// Update the host address factory to use autorelay addresses if we're private
+	//
+	// TODO: Don't update host address factory. Instead send our relay addresses on the eventbus.
+	// The host can decide how to handle those.
+	addrF := bhost.AddrsFactory
+	bhost.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		addrs = addrF(addrs)
+		r.mx.Lock()
+		defer r.mx.Unlock()
+
+		if r.status != network.ReachabilityPrivate {
+			return addrs
+		}
+		return r.relayFinder.relayAddrs(addrs)
+	}
 
 	return r, nil
 }
@@ -101,20 +114,6 @@ func (r *AutoRelay) background() {
 			r.mx.Unlock()
 		}
 	}
-}
-
-func (r *AutoRelay) hostAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	return r.relayAddrs(r.addrsF(addrs))
-}
-
-func (r *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	r.mx.Lock()
-	defer r.mx.Unlock()
-
-	if r.status != network.ReachabilityPrivate {
-		return addrs
-	}
-	return r.relayFinder.relayAddrs(addrs)
 }
 
 func (r *AutoRelay) Close() error {

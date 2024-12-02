@@ -23,6 +23,7 @@ import (
 type MockConnectionGater struct {
 	ctrl     *gomock.Controller
 	recorder *MockConnectionGaterMockRecorder
+	isgomock struct{}
 }
 
 // MockConnectionGaterMockRecorder is the mock recorder for MockConnectionGater.
@@ -71,17 +72,17 @@ func (mr *MockConnectionGaterMockRecorder) InterceptAddrDial(arg0, arg1 any) *go
 }
 
 // InterceptPeerDial mocks base method.
-func (m *MockConnectionGater) InterceptPeerDial(arg0 peer.ID) bool {
+func (m *MockConnectionGater) InterceptPeerDial(p peer.ID) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InterceptPeerDial", arg0)
+	ret := m.ctrl.Call(m, "InterceptPeerDial", p)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // InterceptPeerDial indicates an expected call of InterceptPeerDial.
-func (mr *MockConnectionGaterMockRecorder) InterceptPeerDial(arg0 any) *gomock.Call {
+func (mr *MockConnectionGaterMockRecorder) InterceptPeerDial(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InterceptPeerDial", reflect.TypeOf((*MockConnectionGater)(nil).InterceptPeerDial), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InterceptPeerDial", reflect.TypeOf((*MockConnectionGater)(nil).InterceptPeerDial), p)
 }
 
 // InterceptSecured mocks base method.

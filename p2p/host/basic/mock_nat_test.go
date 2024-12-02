@@ -21,6 +21,7 @@ import (
 type MockNAT struct {
 	ctrl     *gomock.Controller
 	recorder *MockNATMockRecorder
+	isgomock struct{}
 }
 
 // MockNATMockRecorder is the mock recorder for MockNAT.
@@ -41,17 +42,17 @@ func (m *MockNAT) EXPECT() *MockNATMockRecorder {
 }
 
 // AddMapping mocks base method.
-func (m *MockNAT) AddMapping(arg0 context.Context, arg1 string, arg2 int) error {
+func (m *MockNAT) AddMapping(ctx context.Context, protocol string, port int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddMapping", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "AddMapping", ctx, protocol, port)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AddMapping indicates an expected call of AddMapping.
-func (mr *MockNATMockRecorder) AddMapping(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockNATMockRecorder) AddMapping(ctx, protocol, port any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMapping", reflect.TypeOf((*MockNAT)(nil).AddMapping), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMapping", reflect.TypeOf((*MockNAT)(nil).AddMapping), ctx, protocol, port)
 }
 
 // Close mocks base method.
@@ -69,30 +70,30 @@ func (mr *MockNATMockRecorder) Close() *gomock.Call {
 }
 
 // GetMapping mocks base method.
-func (m *MockNAT) GetMapping(arg0 string, arg1 int) (netip.AddrPort, bool) {
+func (m *MockNAT) GetMapping(protocol string, port int) (netip.AddrPort, bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMapping", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetMapping", protocol, port)
 	ret0, _ := ret[0].(netip.AddrPort)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
 
 // GetMapping indicates an expected call of GetMapping.
-func (mr *MockNATMockRecorder) GetMapping(arg0, arg1 any) *gomock.Call {
+func (mr *MockNATMockRecorder) GetMapping(protocol, port any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMapping", reflect.TypeOf((*MockNAT)(nil).GetMapping), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMapping", reflect.TypeOf((*MockNAT)(nil).GetMapping), protocol, port)
 }
 
 // RemoveMapping mocks base method.
-func (m *MockNAT) RemoveMapping(arg0 context.Context, arg1 string, arg2 int) error {
+func (m *MockNAT) RemoveMapping(ctx context.Context, protocol string, port int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveMapping", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "RemoveMapping", ctx, protocol, port)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveMapping indicates an expected call of RemoveMapping.
-func (mr *MockNATMockRecorder) RemoveMapping(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockNATMockRecorder) RemoveMapping(ctx, protocol, port any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveMapping", reflect.TypeOf((*MockNAT)(nil).RemoveMapping), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveMapping", reflect.TypeOf((*MockNAT)(nil).RemoveMapping), ctx, protocol, port)
 }

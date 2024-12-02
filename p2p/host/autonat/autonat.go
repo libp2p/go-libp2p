@@ -3,6 +3,7 @@ package autonat
 import (
 	"context"
 	"math/rand"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -33,6 +34,8 @@ type AmbientAutoNAT struct {
 
 	inboundConn   chan network.Conn
 	dialResponses chan error
+	// Used when testing the autonat service
+	observations chan network.Reachability
 	// status is an autoNATResult reflecting current status.
 	status atomic.Pointer[network.Reachability]
 	// Reflects the confidence on of the NATStatus being private, as a single
@@ -40,11 +43,12 @@ type AmbientAutoNAT struct {
 	// If it is <3, then multiple autoNAT peers may be contacted for dialback
 	// If only a single autoNAT peer is known, then the confidence increases
 	// for each failure until it reaches 3.
-	confidence   int
-	lastInbound  time.Time
-	lastProbeTry time.Time
-	lastProbe    time.Time
-	recentProbes map[peer.ID]time.Time
+	confidence    int
+	lastInbound   time.Time
+	lastProbe     time.Time
+	recentProbes  map[peer.ID]time.Time
+	pendingProbes int
+	ourAddrs      map[string]struct{}
 
 	service *autoNATService
 
@@ -70,7 +74,11 @@ func New(h host.Host, options ...Option) (AutoNAT, error) {
 		return nil, err
 	}
 	if conf.addressFunc == nil {
-		conf.addressFunc = h.Addrs
+		if aa, ok := h.(interface{ AllAddrs() []ma.Multiaddr }); ok {
+			conf.addressFunc = aa.AllAddrs
+		} else {
+			conf.addressFunc = h.Addrs
+		}
 	}
 
 	for _, o := range options {
@@ -108,10 +116,12 @@ func New(h host.Host, options ...Option) (AutoNAT, error) {
 		config:            conf,
 		inboundConn:       make(chan network.Conn, 5),
 		dialResponses:     make(chan error, 1),
+		observations:      make(chan network.Reachability, 1),
 
 		emitReachabilityChanged: emitReachabilityChanged,
 		service:                 service,
 		recentProbes:            make(map[peer.ID]time.Time),
+		ourAddrs:                make(map[string]struct{}),
 	}
 	reachability := network.ReachabilityUnknown
 	as.status.Store(&reachability)
@@ -125,7 +135,6 @@ func New(h host.Host, options ...Option) (AutoNAT, error) {
 	}
 	as.subscriber = subscriber
 
-	h.Network().Notify(as)
 	go as.background()
 
 	return as, nil
@@ -165,117 +174,126 @@ func (as *AmbientAutoNAT) background() {
 	defer as.subscriber.Close()
 	defer as.emitReachabilityChanged.Close()
 
+	// Fallback timer to update address in case EvtLocalAddressesUpdated is not emitted.
+	// TODO: The event not emitting properly is a bug. This is a workaround.
+	addrChangeTicker := time.NewTicker(30 * time.Minute)
+	defer addrChangeTicker.Stop()
+
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	timerRunning := true
-	retryProbe := false
+	forceProbe := false
 	for {
 		select {
-		// new inbound connection.
 		case conn := <-as.inboundConn:
 			localAddrs := as.host.Addrs()
 			if manet.IsPublicAddr(conn.RemoteMultiaddr()) &&
 				!ipInList(conn.RemoteMultiaddr(), localAddrs) {
 				as.lastInbound = time.Now()
 			}
-
+		case <-addrChangeTicker.C:
+			// schedule a new probe if addresses have changed
 		case e := <-subChan:
 			switch e := e.(type) {
-			case event.EvtLocalAddressesUpdated:
-				// On local address update, reduce confidence from maximum so that we schedule
-				// the next probe sooner
-				if as.confidence == maxConfidence {
-					as.confidence--
-				}
 			case event.EvtPeerIdentificationCompleted:
-				if s, err := as.host.Peerstore().SupportsProtocols(e.Peer, AutoNATProto); err == nil && len(s) > 0 {
-					currentStatus := *as.status.Load()
-					if currentStatus == network.ReachabilityUnknown {
-						as.tryProbe(e.Peer)
-					}
+				if proto, err := as.host.Peerstore().SupportsProtocols(e.Peer, AutoNATProto); err == nil && len(proto) > 0 {
+					forceProbe = true
 				}
+			case event.EvtLocalAddressesUpdated:
+				// schedule a new probe if addresses have changed
 			default:
 				log.Errorf("unknown event type: %T", e)
 			}
-
-		// probe finished.
+		case obs := <-as.observations:
+			as.recordObservation(obs)
+			continue
 		case err, ok := <-as.dialResponses:
 			if !ok {
 				return
 			}
+			as.pendingProbes--
 			if IsDialRefused(err) {
-				retryProbe = true
+				forceProbe = true
 			} else {
 				as.handleDialResponse(err)
 			}
 		case <-timer.C:
+			timerRunning = false
+			forceProbe = false
+			// Update the last probe time. We use it to ensure
+			// that we don't spam the peerstore.
+			as.lastProbe = time.Now()
 			peer := as.getPeerToProbe()
 			as.tryProbe(peer)
-			timerRunning = false
-			retryProbe = false
 		case <-as.ctx.Done():
 			return
 		}
+		// On address update, reduce confidence from maximum so that we schedule
+		// the next probe sooner
+		hasNewAddr := as.checkAddrs()
+		if hasNewAddr && as.confidence == maxConfidence {
+			as.confidence--
+		}
 
-		// Drain the timer channel if it hasn't fired in preparation for Resetting it.
 		if timerRunning && !timer.Stop() {
 			<-timer.C
 		}
-		timer.Reset(as.scheduleProbe(retryProbe))
+		timer.Reset(as.scheduleProbe(forceProbe))
 		timerRunning = true
 	}
 }
 
-func (as *AmbientAutoNAT) cleanupRecentProbes() {
-	fixedNow := time.Now()
-	for k, v := range as.recentProbes {
-		if fixedNow.Sub(v) > as.throttlePeerPeriod {
-			delete(as.recentProbes, k)
+func (as *AmbientAutoNAT) checkAddrs() (hasNewAddr bool) {
+	currentAddrs := as.addressFunc()
+	hasNewAddr = slices.ContainsFunc(currentAddrs, func(a ma.Multiaddr) bool {
+		_, ok := as.ourAddrs[string(a.Bytes())]
+		return !ok
+	})
+	clear(as.ourAddrs)
+	for _, a := range currentAddrs {
+		if !manet.IsPublicAddr(a) {
+			continue
 		}
+		as.ourAddrs[string(a.Bytes())] = struct{}{}
 	}
+	return hasNewAddr
 }
 
 // scheduleProbe calculates when the next probe should be scheduled for.
-func (as *AmbientAutoNAT) scheduleProbe(retryProbe bool) time.Duration {
-	// Our baseline is a probe every 'AutoNATRefreshInterval'
-	// This is modulated by:
-	// * if we are in an unknown state, have low confidence, or we want to retry because a probe was refused that
-	//   should drop to 'AutoNATRetryInterval'
-	// * recent inbound connections (implying continued connectivity) should decrease the retry when public
-	// * recent inbound connections when not public mean we should try more actively to see if we're public.
-	fixedNow := time.Now()
+func (as *AmbientAutoNAT) scheduleProbe(forceProbe bool) time.Duration {
+	now := time.Now()
 	currentStatus := *as.status.Load()
-
-	nextProbe := fixedNow
-	// Don't look for peers in the peer store more than once per second.
-	if !as.lastProbeTry.IsZero() {
-		backoff := as.lastProbeTry.Add(time.Second)
-		if backoff.After(nextProbe) {
-			nextProbe = backoff
-		}
+	nextProbeAfter := as.config.refreshInterval
+	receivedInbound := as.lastInbound.After(as.lastProbe)
+	switch {
+	case forceProbe && currentStatus == network.ReachabilityUnknown:
+		// retry very quicky if forceProbe is true *and* we don't know our reachability
+		// limit all peers fetch from peerstore to 1 per second.
+		nextProbeAfter = 2 * time.Second
+		nextProbeAfter = 2 * time.Second
+	case currentStatus == network.ReachabilityUnknown,
+		as.confidence < maxConfidence,
+		currentStatus != network.ReachabilityPublic && receivedInbound:
+		// Retry quickly in case:
+		// 1. Our reachability is Unknown
+		// 2. We don't have enough confidence in our reachability.
+		// 3. We're private but we received an inbound connection.
+		nextProbeAfter = as.config.retryInterval
+	case currentStatus == network.ReachabilityPublic && receivedInbound:
+		// We are public and we received an inbound connection recently,
+		// wait a little longer
+		nextProbeAfter *= 2
+		nextProbeAfter = min(nextProbeAfter, maxRefreshInterval)
 	}
-	if !as.lastProbe.IsZero() {
-		untilNext := as.config.refreshInterval
-		if retryProbe {
-			untilNext = as.config.retryInterval
-		} else if currentStatus == network.ReachabilityUnknown {
-			untilNext = as.config.retryInterval
-		} else if as.confidence < maxConfidence {
-			untilNext = as.config.retryInterval
-		} else if currentStatus == network.ReachabilityPublic && as.lastInbound.After(as.lastProbe) {
-			untilNext *= 2
-		} else if currentStatus != network.ReachabilityPublic && as.lastInbound.After(as.lastProbe) {
-			untilNext /= 5
-		}
-
-		if as.lastProbe.Add(untilNext).After(nextProbe) {
-			nextProbe = as.lastProbe.Add(untilNext)
-		}
+	nextProbeTime := as.lastProbe.Add(nextProbeAfter)
+	if nextProbeTime.Before(now) {
+		nextProbeTime = now
 	}
 	if as.metricsTracer != nil {
-		as.metricsTracer.NextProbeTime(nextProbe)
+		as.metricsTracer.NextProbeTime(nextProbeTime)
 	}
-	return nextProbe.Sub(fixedNow)
+
+	return nextProbeTime.Sub(now)
 }
 
 // handleDialResponse updates the current status based on dial response.
@@ -354,28 +372,14 @@ func (as *AmbientAutoNAT) recordObservation(observation network.Reachability) {
 	}
 }
 
-func (as *AmbientAutoNAT) tryProbe(p peer.ID) bool {
-	as.lastProbeTry = time.Now()
-	if p.Validate() != nil {
-		return false
+func (as *AmbientAutoNAT) tryProbe(p peer.ID) {
+	if p == "" || as.pendingProbes > 5 {
+		return
 	}
-
-	if lastTime, ok := as.recentProbes[p]; ok {
-		if time.Since(lastTime) < as.throttlePeerPeriod {
-			return false
-		}
-	}
-	as.cleanupRecentProbes()
-
 	info := as.host.Peerstore().PeerInfo(p)
-
-	if !as.config.dialPolicy.skipPeer(info.Addrs) {
-		as.recentProbes[p] = time.Now()
-		as.lastProbe = time.Now()
-		go as.probe(&info)
-		return true
-	}
-	return false
+	as.recentProbes[p] = time.Now()
+	as.pendingProbes++
+	go as.probe(&info)
 }
 
 func (as *AmbientAutoNAT) probe(pi *peer.AddrInfo) {
@@ -399,7 +403,19 @@ func (as *AmbientAutoNAT) getPeerToProbe() peer.ID {
 		return ""
 	}
 
-	candidates := make([]peer.ID, 0, len(peers))
+	// clean old probes
+	fixedNow := time.Now()
+	for k, v := range as.recentProbes {
+		if fixedNow.Sub(v) > as.throttlePeerPeriod {
+			delete(as.recentProbes, k)
+		}
+	}
+
+	// Shuffle peers
+	for n := len(peers); n > 0; n-- {
+		randIndex := rand.Intn(n)
+		peers[n-1], peers[randIndex] = peers[randIndex], peers[n-1]
+	}
 
 	for _, p := range peers {
 		info := as.host.Peerstore().PeerInfo(p)
@@ -408,24 +424,13 @@ func (as *AmbientAutoNAT) getPeerToProbe() peer.ID {
 			continue
 		}
 
-		// Exclude peers in backoff.
-		if lastTime, ok := as.recentProbes[p]; ok {
-			if time.Since(lastTime) < as.throttlePeerPeriod {
-				continue
-			}
-		}
-
 		if as.config.dialPolicy.skipPeer(info.Addrs) {
 			continue
 		}
-		candidates = append(candidates, p)
+		return p
 	}
 
-	if len(candidates) == 0 {
-		return ""
-	}
-
-	return candidates[rand.Intn(len(candidates))]
+	return ""
 }
 
 func (as *AmbientAutoNAT) Close() error {

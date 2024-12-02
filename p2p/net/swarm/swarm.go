@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"slices"
+
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/metrics"
@@ -17,7 +19,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
-	"golang.org/x/exp/slices"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -60,9 +61,9 @@ func WithConnectionGater(gater connmgr.ConnectionGater) Option {
 }
 
 // WithMultiaddrResolver sets a custom multiaddress resolver
-func WithMultiaddrResolver(maResolver *madns.Resolver) Option {
+func WithMultiaddrResolver(resolver network.MultiaddrDNSResolver) Option {
 	return func(s *Swarm) error {
-		s.maResolver = maResolver
+		s.multiaddrResolver = resolver
 		return nil
 	}
 }
@@ -196,7 +197,7 @@ type Swarm struct {
 		m map[int]transport.Transport
 	}
 
-	maResolver *madns.Resolver
+	multiaddrResolver network.MultiaddrDNSResolver
 
 	// stream handlers
 	streamh atomic.Pointer[network.StreamHandler]
@@ -231,15 +232,15 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Swarm{
-		local:            local,
-		peers:            peers,
-		emitter:          emitter,
-		ctx:              ctx,
-		ctxCancel:        cancel,
-		dialTimeout:      defaultDialTimeout,
-		dialTimeoutLocal: defaultDialTimeoutLocal,
-		maResolver:       madns.DefaultResolver,
-		dialRanker:       DefaultDialRanker,
+		local:             local,
+		peers:             peers,
+		emitter:           emitter,
+		ctx:               ctx,
+		ctxCancel:         cancel,
+		dialTimeout:       defaultDialTimeout,
+		dialTimeoutLocal:  defaultDialTimeoutLocal,
+		multiaddrResolver: ResolverFromMaDNS{madns.DefaultResolver},
+		dialRanker:        DefaultDialRanker,
 
 		// A black hole is a binary property. On a network if UDP dials are blocked or there is
 		// no IPv6 connectivity, all dials will fail. So a low success rate of 5 out 100 dials
@@ -624,7 +625,6 @@ func isBetterConn(a, b *Conn) bool {
 
 // bestConnToPeer returns the best connection to peer.
 func (s *Swarm) bestConnToPeer(p peer.ID) *Conn {
-
 	// TODO: Prefer some transports over others.
 	// For now, prefers direct connections over Relayed connections.
 	// For tie-breaking, select the newest non-closed connection with the most streams.
@@ -813,8 +813,10 @@ func (s *Swarm) ResourceManager() network.ResourceManager {
 }
 
 // Swarm is a Network.
-var _ network.Network = (*Swarm)(nil)
-var _ transport.TransportNetwork = (*Swarm)(nil)
+var (
+	_ network.Network            = (*Swarm)(nil)
+	_ transport.TransportNetwork = (*Swarm)(nil)
+)
 
 type connWithMetrics struct {
 	transport.CapableConn
@@ -846,3 +848,103 @@ func (c connWithMetrics) Stat() network.ConnStats {
 }
 
 var _ network.ConnStat = connWithMetrics{}
+
+type ResolverFromMaDNS struct {
+	*madns.Resolver
+}
+
+var _ network.MultiaddrDNSResolver = ResolverFromMaDNS{}
+
+func startsWithDNSADDR(m ma.Multiaddr) bool {
+	if m == nil {
+		return false
+	}
+
+	startsWithDNSADDR := false
+	// Using ForEach to avoid allocating
+	ma.ForEach(m, func(c ma.Component) bool {
+		startsWithDNSADDR = c.Protocol().Code == ma.P_DNSADDR
+		return false
+	})
+	return startsWithDNSADDR
+}
+
+// ResolveDNSAddr implements MultiaddrDNSResolver
+func (r ResolverFromMaDNS) ResolveDNSAddr(ctx context.Context, expectedPeerID peer.ID, maddr ma.Multiaddr, recursionLimit int, outputLimit int) ([]ma.Multiaddr, error) {
+	if outputLimit <= 0 {
+		return nil, nil
+	}
+	if recursionLimit <= 0 {
+		return []ma.Multiaddr{maddr}, nil
+	}
+	var resolved, toResolve []ma.Multiaddr
+	addrs, err := r.Resolve(ctx, maddr)
+	if err != nil {
+		return nil, err
+	}
+	if len(addrs) > outputLimit {
+		addrs = addrs[:outputLimit]
+	}
+
+	for _, addr := range addrs {
+		if startsWithDNSADDR(addr) {
+			toResolve = append(toResolve, addr)
+		} else {
+			resolved = append(resolved, addr)
+		}
+	}
+
+	for i, addr := range toResolve {
+		// Set the nextOutputLimit to:
+		//   outputLimit
+		//   - len(resolved)          // What we already have resolved
+		//   - (len(toResolve) - i)   // How many addresses we have left to resolve
+		//   + 1                      // The current address we are resolving
+		// This assumes that each DNSADDR address will resolve to at least one multiaddr.
+		// This assumption lets us bound the space we reserve for resolving.
+		nextOutputLimit := outputLimit - len(resolved) - (len(toResolve) - i) + 1
+		resolvedAddrs, err := r.ResolveDNSAddr(ctx, expectedPeerID, addr, recursionLimit-1, nextOutputLimit)
+		if err != nil {
+			log.Warnf("failed to resolve dnsaddr %v %s: ", addr, err)
+			// Dropping this address
+			continue
+		}
+		resolved = append(resolved, resolvedAddrs...)
+	}
+
+	if len(resolved) > outputLimit {
+		resolved = resolved[:outputLimit]
+	}
+
+	// If the address contains a peer id, make sure it matches our expectedPeerID
+	if expectedPeerID != "" {
+		removeMismatchPeerID := func(a ma.Multiaddr) bool {
+			id, err := peer.IDFromP2PAddr(a)
+			if err == peer.ErrInvalidAddr {
+				// This multiaddr didn't contain a peer id, assume it's for this peer.
+				// Handshake will fail later if it's not.
+				return false
+			} else if err != nil {
+				// This multiaddr is invalid, drop it.
+				return true
+			}
+
+			return id != expectedPeerID
+		}
+		resolved = slices.DeleteFunc(resolved, removeMismatchPeerID)
+	}
+
+	return resolved, nil
+}
+
+// ResolveDNSComponent implements MultiaddrDNSResolver
+func (r ResolverFromMaDNS) ResolveDNSComponent(ctx context.Context, maddr ma.Multiaddr, outputLimit int) ([]ma.Multiaddr, error) {
+	addrs, err := r.Resolve(ctx, maddr)
+	if err != nil {
+		return nil, err
+	}
+	if len(addrs) > outputLimit {
+		addrs = addrs[:outputLimit]
+	}
+	return addrs, nil
+}

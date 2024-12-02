@@ -13,7 +13,7 @@ var (
 	quicV1MA = ma.StringCast("/quic-v1")
 )
 
-func ToQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, error) {
+func ToQuicMultiaddr(na net.Addr, version quic.Version) (ma.Multiaddr, error) {
 	udpMA, err := manet.FromNetAddr(na)
 	if err != nil {
 		return nil, err
@@ -26,8 +26,8 @@ func ToQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, err
 	}
 }
 
-func FromQuicMultiaddr(addr ma.Multiaddr) (*net.UDPAddr, quic.VersionNumber, error) {
-	var version quic.VersionNumber
+func FromQuicMultiaddr(addr ma.Multiaddr) (*net.UDPAddr, quic.Version, error) {
+	var version quic.Version
 	var partsBeforeQUIC []ma.Multiaddr
 	ma.ForEach(addr, func(c ma.Component) bool {
 		switch c.Protocol().Code {

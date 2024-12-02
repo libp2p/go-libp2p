@@ -23,11 +23,11 @@ type listener struct {
 	rcmgr           network.ResourceManager
 	privKey         ic.PrivKey
 	localPeer       peer.ID
-	localMultiaddrs map[quic.VersionNumber]ma.Multiaddr
+	localMultiaddrs map[quic.Version]ma.Multiaddr
 }
 
 func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (listener, error) {
-	localMultiaddrs := make(map[quic.VersionNumber]ma.Multiaddr)
+	localMultiaddrs := make(map[quic.Version]ma.Multiaddr)
 	for _, addr := range ln.Multiaddrs() {
 		if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 			localMultiaddrs[quic.Version1] = addr

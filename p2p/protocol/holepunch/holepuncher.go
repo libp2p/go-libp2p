@@ -37,7 +37,8 @@ type holePuncher struct {
 	host     host.Host
 	refCount sync.WaitGroup
 
-	ids identify.IDService
+	ids         identify.IDService
+	listenAddrs func() []ma.Multiaddr
 
 	// active hole punches for deduplicating
 	activeMx sync.Mutex
@@ -50,13 +51,14 @@ type holePuncher struct {
 	filter AddrFilter
 }
 
-func newHolePuncher(h host.Host, ids identify.IDService, tracer *tracer, filter AddrFilter) *holePuncher {
+func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma.Multiaddr, tracer *tracer, filter AddrFilter) *holePuncher {
 	hp := &holePuncher{
-		host:   h,
-		ids:    ids,
-		active: make(map[peer.ID]struct{}),
-		tracer: tracer,
-		filter: filter,
+		host:        h,
+		ids:         ids,
+		active:      make(map[peer.ID]struct{}),
+		tracer:      tracer,
+		filter:      filter,
+		listenAddrs: listenAddrs,
 	}
 	hp.ctx, hp.ctxCancel = context.WithCancel(context.Background())
 	h.Network().Notify((*netNotifiee)(hp))
@@ -102,16 +104,15 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	if getDirectConnection(hp.host, rp) != nil {
 		return nil
 	}
-
 	// short-circuit hole punching if a direct dial works.
 	// attempt a direct connection ONLY if we have a public address for the remote peer
 	for _, a := range hp.host.Peerstore().Addrs(rp) {
-		if manet.IsPublicAddr(a) && !isRelayAddress(a) {
+		if !isRelayAddress(a) && manet.IsPublicAddr(a) {
 			forceDirectConnCtx := network.WithForceDirectDial(hp.ctx, "hole-punching")
 			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 
 			tstart := time.Now()
-			// This dials *all* public addresses from the peerstore.
+			// This dials *all* addresses, public and private, from the peerstore.
 			err := hp.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
 			dt := time.Since(tstart)
 			cancel()
@@ -206,7 +207,7 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	str.SetDeadline(time.Now().Add(StreamTimeout))
 
 	// send a CONNECT and start RTT measurement.
-	obsAddrs := removeRelayAddrs(hp.ids.OwnObservedAddrs())
+	obsAddrs := removeRelayAddrs(hp.listenAddrs())
 	if hp.filter != nil {
 		obsAddrs = hp.filter.FilterLocal(str.Conn().RemotePeer(), obsAddrs)
 	}

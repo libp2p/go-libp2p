@@ -33,8 +33,12 @@ func (c *connMultiaddrs) LocalMultiaddr() ma.Multiaddr  { return c.local }
 func (c *connMultiaddrs) RemoteMultiaddr() ma.Multiaddr { return c.remote }
 
 const (
-	candidateSetupTimeout         = 20 * time.Second
-	DefaultMaxInFlightConnections = 10
+	candidateSetupTimeout = 10 * time.Second
+	// This is higher than other transports(64) as there's no way to detect a peer that has gone away after
+	// sending the initial connection request message(STUN Binding request). Such peers take up a goroutine
+	// till connection timeout. As the number of handshakes in parallel is still guarded by the resource
+	// manager, this higher number is okay.
+	DefaultMaxInFlightConnections = 128
 )
 
 type listener struct {
@@ -325,8 +329,7 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 // addOnConnectionStateChangeCallback adds the OnConnectionStateChange to the PeerConnection.
 // The channel returned here:
 // * is closed when the state changes to Connection
-// * receives an error when the state changes to Failed
-// * doesn't receive anything (nor is closed) when the state changes to Disconnected
+// * receives an error when the state changes to Failed or Closed or Disconnected
 func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection) <-chan error {
 	errC := make(chan error, 1)
 	var once sync.Once
@@ -334,17 +337,15 @@ func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection) <-chan error 
 		switch pc.ConnectionState() {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(errC) })
-		case webrtc.PeerConnectionStateFailed:
+		// PeerConnectionStateFailed happens when we fail to negotiate the connection.
+		// PeerConnectionStateDisconnected happens when we disconnect immediately after connecting.
+		// PeerConnectionStateClosed happens when we close the peer connection locally, not when remote closes. We don't need
+		// to error in this case, but it's a no-op, so it doesn't hurt.
+		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed, webrtc.PeerConnectionStateDisconnected:
 			once.Do(func() {
 				errC <- errors.New("peerconnection failed")
 				close(errC)
 			})
-		case webrtc.PeerConnectionStateDisconnected:
-			// the connection can move to a disconnected state and back to a connected state without ICE renegotiation.
-			// This could happen when underlying UDP packets are lost, and therefore the connection moves to the disconnected state.
-			// If the connection then receives packets on the connection, it can move back to the connected state.
-			// If no packets are received until the failed timeout is triggered, the connection moves to the failed state.
-			log.Warn("peerconnection disconnected")
 		}
 	})
 	return errC

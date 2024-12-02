@@ -592,7 +592,7 @@ func (cm *BasicConnMgr) UntagPeer(p peer.ID, tag string) {
 
 	pi, ok := s.peers[p]
 	if !ok {
-		log.Info("tried to remove tag from untracked peer: ", p)
+		log.Debug("tried to remove tag from untracked peer: ", p, tag)
 		return
 	}
 

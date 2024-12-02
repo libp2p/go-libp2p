@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"golang.org/x/exp/rand"
-	"golang.org/x/exp/slices"
 )
 
 const (
@@ -25,9 +25,9 @@ const (
 	DialProtocol     = "/libp2p/autonat/2/dial-request"
 
 	maxMsgSize            = 8192
-	streamTimeout         = time.Minute
+	streamTimeout         = 15 * time.Second
 	dialBackStreamTimeout = 5 * time.Second
-	dialBackDialTimeout   = 30 * time.Second
+	dialBackDialTimeout   = 10 * time.Second
 	dialBackMaxMsgSize    = 1024
 	minHandshakeSizeBytes = 30_000 // for amplification attack prevention
 	maxHandshakeSizeBytes = 100_000

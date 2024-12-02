@@ -845,10 +845,8 @@ func TestH3ConnClosed(t *testing.T) {
 		NextProtos:         []string{http3.NextProtoH3},
 	}, nil)
 	require.NoError(t, err)
-	rt := &http3.SingleDestinationRoundTripper{
-		Connection: conn,
-	}
-	rt.Start()
+	rt := &http3.Transport{}
+	rt.NewClientConn(conn)
 	require.Eventually(t, func() bool {
 		c := http.Client{
 			Transport: rt,

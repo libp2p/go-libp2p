@@ -16,7 +16,7 @@ const acceptBufferPerVersion = 4
 type virtualListener struct {
 	*listener
 	udpAddr       string
-	version       quic.VersionNumber
+	version       quic.Version
 	t             *transport
 	acceptRunnner *acceptLoopRunner
 	acceptChan    chan acceptVal
@@ -46,11 +46,11 @@ type acceptLoopRunner struct {
 	acceptSem chan struct{}
 
 	muxerMu     sync.Mutex
-	muxer       map[quic.VersionNumber]chan acceptVal
+	muxer       map[quic.Version]chan acceptVal
 	muxerClosed bool
 }
 
-func (r *acceptLoopRunner) AcceptForVersion(v quic.VersionNumber) chan acceptVal {
+func (r *acceptLoopRunner) AcceptForVersion(v quic.Version) chan acceptVal {
 	r.muxerMu.Lock()
 	defer r.muxerMu.Unlock()
 
@@ -64,7 +64,7 @@ func (r *acceptLoopRunner) AcceptForVersion(v quic.VersionNumber) chan acceptVal
 	return ch
 }
 
-func (r *acceptLoopRunner) RmAcceptForVersion(v quic.VersionNumber, err error) {
+func (r *acceptLoopRunner) RmAcceptForVersion(v quic.Version, err error) {
 	r.muxerMu.Lock()
 	defer r.muxerMu.Unlock()
 
@@ -98,7 +98,7 @@ func (r *acceptLoopRunner) sendErrAndClose(err error) {
 // innerAccept is the inner logic of the Accept loop. Assume caller holds the
 // acceptSemaphore. May return both a nil conn and nil error if it didn't find a
 // conn with the expected version
-func (r *acceptLoopRunner) innerAccept(l *listener, expectedVersion quic.VersionNumber, bufferedConnChan chan acceptVal) (tpt.CapableConn, error) {
+func (r *acceptLoopRunner) innerAccept(l *listener, expectedVersion quic.Version, bufferedConnChan chan acceptVal) (tpt.CapableConn, error) {
 	select {
 	// Check if we have a buffered connection first from an earlier Accept call
 	case v, ok := <-bufferedConnChan:
@@ -150,7 +150,7 @@ func (r *acceptLoopRunner) innerAccept(l *listener, expectedVersion quic.Version
 	return nil, nil
 }
 
-func (r *acceptLoopRunner) Accept(l *listener, expectedVersion quic.VersionNumber, bufferedConnChan chan acceptVal) (tpt.CapableConn, error) {
+func (r *acceptLoopRunner) Accept(l *listener, expectedVersion quic.Version, bufferedConnChan chan acceptVal) (tpt.CapableConn, error) {
 	for {
 		var conn tpt.CapableConn
 		var err error

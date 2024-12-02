@@ -1,10 +1,14 @@
 package pstoremem
 
 import (
+	"strconv"
 	"testing"
+	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 	pt "github.com/libp2p/go-libp2p/p2p/host/peerstore/test"
+	"github.com/multiformats/go-multiaddr"
 
 	mockClock "github.com/benbjohnson/clock"
 	"github.com/stretchr/testify/require"
@@ -81,4 +85,30 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreTopFunction("github.com/ipfs/go-log/v2/writer.(*MirrorWriter).logRoutine"),
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
 	)
+}
+
+func BenchmarkGC(b *testing.B) {
+	clock := mockClock.NewMock()
+	ps, err := NewPeerstore(WithClock(clock))
+	require.NoError(b, err)
+	defer ps.Close()
+
+	peerCount := 100_000
+	addrsPerPeer := 32
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		for i := 0; i < peerCount; i++ {
+			id := peer.ID(strconv.Itoa(i))
+			addrs := make([]multiaddr.Multiaddr, addrsPerPeer)
+			for j := 0; j < addrsPerPeer; j++ {
+				addrs[j] = multiaddr.StringCast("/ip4/1.2.3.4/tcp/" + strconv.Itoa(j))
+			}
+			ps.AddAddrs(id, addrs, 24*time.Hour)
+		}
+		clock.Add(25 * time.Hour)
+		b.StartTimer()
+		ps.gc()
+	}
 }

@@ -53,7 +53,14 @@ func (c *client) DialBack(ctx context.Context, p peer.ID) error {
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
 
-	s.SetDeadline(time.Now().Add(streamTimeout))
+	deadline := time.Now().Add(streamTimeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok {
+		if ctxDeadline.Before(deadline) {
+			deadline = ctxDeadline
+		}
+	}
+
+	s.SetDeadline(deadline)
 	// Might as well just reset the stream. Once we get to this point, we
 	// don't care about being nice.
 	defer s.Close()

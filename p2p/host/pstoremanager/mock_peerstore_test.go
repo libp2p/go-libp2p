@@ -25,6 +25,7 @@ import (
 type MockPeerstore struct {
 	ctrl     *gomock.Controller
 	recorder *MockPeerstoreMockRecorder
+	isgomock struct{}
 }
 
 // MockPeerstoreMockRecorder is the mock recorder for MockPeerstore.
@@ -45,27 +46,27 @@ func (m *MockPeerstore) EXPECT() *MockPeerstoreMockRecorder {
 }
 
 // AddAddr mocks base method.
-func (m *MockPeerstore) AddAddr(arg0 peer.ID, arg1 multiaddr.Multiaddr, arg2 time.Duration) {
+func (m *MockPeerstore) AddAddr(p peer.ID, addr multiaddr.Multiaddr, ttl time.Duration) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddAddr", arg0, arg1, arg2)
+	m.ctrl.Call(m, "AddAddr", p, addr, ttl)
 }
 
 // AddAddr indicates an expected call of AddAddr.
-func (mr *MockPeerstoreMockRecorder) AddAddr(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) AddAddr(p, addr, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAddr", reflect.TypeOf((*MockPeerstore)(nil).AddAddr), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAddr", reflect.TypeOf((*MockPeerstore)(nil).AddAddr), p, addr, ttl)
 }
 
 // AddAddrs mocks base method.
-func (m *MockPeerstore) AddAddrs(arg0 peer.ID, arg1 []multiaddr.Multiaddr, arg2 time.Duration) {
+func (m *MockPeerstore) AddAddrs(p peer.ID, addrs []multiaddr.Multiaddr, ttl time.Duration) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddAddrs", arg0, arg1, arg2)
+	m.ctrl.Call(m, "AddAddrs", p, addrs, ttl)
 }
 
 // AddAddrs indicates an expected call of AddAddrs.
-func (mr *MockPeerstoreMockRecorder) AddAddrs(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) AddAddrs(p, addrs, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAddrs", reflect.TypeOf((*MockPeerstore)(nil).AddAddrs), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAddrs", reflect.TypeOf((*MockPeerstore)(nil).AddAddrs), p, addrs, ttl)
 }
 
 // AddPrivKey mocks base method.
@@ -130,29 +131,29 @@ func (mr *MockPeerstoreMockRecorder) AddrStream(arg0, arg1 any) *gomock.Call {
 }
 
 // Addrs mocks base method.
-func (m *MockPeerstore) Addrs(arg0 peer.ID) []multiaddr.Multiaddr {
+func (m *MockPeerstore) Addrs(p peer.ID) []multiaddr.Multiaddr {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Addrs", arg0)
+	ret := m.ctrl.Call(m, "Addrs", p)
 	ret0, _ := ret[0].([]multiaddr.Multiaddr)
 	return ret0
 }
 
 // Addrs indicates an expected call of Addrs.
-func (mr *MockPeerstoreMockRecorder) Addrs(arg0 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) Addrs(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Addrs", reflect.TypeOf((*MockPeerstore)(nil).Addrs), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Addrs", reflect.TypeOf((*MockPeerstore)(nil).Addrs), p)
 }
 
 // ClearAddrs mocks base method.
-func (m *MockPeerstore) ClearAddrs(arg0 peer.ID) {
+func (m *MockPeerstore) ClearAddrs(p peer.ID) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ClearAddrs", arg0)
+	m.ctrl.Call(m, "ClearAddrs", p)
 }
 
 // ClearAddrs indicates an expected call of ClearAddrs.
-func (mr *MockPeerstoreMockRecorder) ClearAddrs(arg0 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) ClearAddrs(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAddrs", reflect.TypeOf((*MockPeerstore)(nil).ClearAddrs), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAddrs", reflect.TypeOf((*MockPeerstore)(nil).ClearAddrs), p)
 }
 
 // Close mocks base method.
@@ -190,18 +191,18 @@ func (mr *MockPeerstoreMockRecorder) FirstSupportedProtocol(arg0 any, arg1 ...an
 }
 
 // Get mocks base method.
-func (m *MockPeerstore) Get(arg0 peer.ID, arg1 string) (any, error) {
+func (m *MockPeerstore) Get(p peer.ID, key string) (any, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", arg0, arg1)
+	ret := m.ctrl.Call(m, "Get", p, key)
 	ret0, _ := ret[0].(any)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockPeerstoreMockRecorder) Get(arg0, arg1 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) Get(p, key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockPeerstore)(nil).Get), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockPeerstore)(nil).Get), p, key)
 }
 
 // GetProtocols mocks base method.
@@ -318,17 +319,17 @@ func (mr *MockPeerstoreMockRecorder) PubKey(arg0 any) *gomock.Call {
 }
 
 // Put mocks base method.
-func (m *MockPeerstore) Put(arg0 peer.ID, arg1 string, arg2 any) error {
+func (m *MockPeerstore) Put(p peer.ID, key string, val any) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Put", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "Put", p, key, val)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Put indicates an expected call of Put.
-func (mr *MockPeerstoreMockRecorder) Put(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) Put(p, key, val any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockPeerstore)(nil).Put), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockPeerstore)(nil).Put), p, key, val)
 }
 
 // RecordLatency mocks base method.
@@ -375,27 +376,27 @@ func (mr *MockPeerstoreMockRecorder) RemoveProtocols(arg0 any, arg1 ...any) *gom
 }
 
 // SetAddr mocks base method.
-func (m *MockPeerstore) SetAddr(arg0 peer.ID, arg1 multiaddr.Multiaddr, arg2 time.Duration) {
+func (m *MockPeerstore) SetAddr(p peer.ID, addr multiaddr.Multiaddr, ttl time.Duration) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetAddr", arg0, arg1, arg2)
+	m.ctrl.Call(m, "SetAddr", p, addr, ttl)
 }
 
 // SetAddr indicates an expected call of SetAddr.
-func (mr *MockPeerstoreMockRecorder) SetAddr(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) SetAddr(p, addr, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAddr", reflect.TypeOf((*MockPeerstore)(nil).SetAddr), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAddr", reflect.TypeOf((*MockPeerstore)(nil).SetAddr), p, addr, ttl)
 }
 
 // SetAddrs mocks base method.
-func (m *MockPeerstore) SetAddrs(arg0 peer.ID, arg1 []multiaddr.Multiaddr, arg2 time.Duration) {
+func (m *MockPeerstore) SetAddrs(p peer.ID, addrs []multiaddr.Multiaddr, ttl time.Duration) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetAddrs", arg0, arg1, arg2)
+	m.ctrl.Call(m, "SetAddrs", p, addrs, ttl)
 }
 
 // SetAddrs indicates an expected call of SetAddrs.
-func (mr *MockPeerstoreMockRecorder) SetAddrs(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) SetAddrs(p, addrs, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAddrs", reflect.TypeOf((*MockPeerstore)(nil).SetAddrs), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAddrs", reflect.TypeOf((*MockPeerstore)(nil).SetAddrs), p, addrs, ttl)
 }
 
 // SetProtocols mocks base method.
@@ -438,13 +439,13 @@ func (mr *MockPeerstoreMockRecorder) SupportsProtocols(arg0 any, arg1 ...any) *g
 }
 
 // UpdateAddrs mocks base method.
-func (m *MockPeerstore) UpdateAddrs(arg0 peer.ID, arg1, arg2 time.Duration) {
+func (m *MockPeerstore) UpdateAddrs(p peer.ID, oldTTL, newTTL time.Duration) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "UpdateAddrs", arg0, arg1, arg2)
+	m.ctrl.Call(m, "UpdateAddrs", p, oldTTL, newTTL)
 }
 
 // UpdateAddrs indicates an expected call of UpdateAddrs.
-func (mr *MockPeerstoreMockRecorder) UpdateAddrs(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockPeerstoreMockRecorder) UpdateAddrs(p, oldTTL, newTTL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAddrs", reflect.TypeOf((*MockPeerstore)(nil).UpdateAddrs), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAddrs", reflect.TypeOf((*MockPeerstore)(nil).UpdateAddrs), p, oldTTL, newTTL)
 }

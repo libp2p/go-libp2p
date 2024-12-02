@@ -30,6 +30,7 @@ import (
 	httpping "github.com/libp2p/go-libp2p/p2p/http/ping"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -995,4 +996,21 @@ func TestImpliedHostIsSet(t *testing.T) {
 		})
 	}
 
+}
+
+func TestErrServerClosed(t *testing.T) {
+	server := libp2phttp.Host{
+		InsecureAllowHTTP: true,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		err := server.Serve()
+		assert.Equal(t, http.ErrServerClosed, err)
+		close(done)
+	}()
+
+	server.Close()
+	<-done
 }

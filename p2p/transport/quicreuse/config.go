@@ -12,7 +12,7 @@ var quicConfig = &quic.Config{
 	MaxStreamReceiveWindow:     10 * (1 << 20), // 10 MB
 	MaxConnectionReceiveWindow: 15 * (1 << 20), // 15 MB
 	KeepAlivePeriod:            15 * time.Second,
-	Versions:                   []quic.VersionNumber{quic.Version1},
+	Versions:                   []quic.Version{quic.Version1},
 	// We don't use datagrams (yet), but this is necessary for WebTransport
 	EnableDatagrams: true,
 }

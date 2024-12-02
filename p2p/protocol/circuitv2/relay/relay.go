@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -117,7 +118,7 @@ func (r *Relay) Close() error {
 
 		r.host.RemoveStreamHandler(proto.ProtoIDv2Hop)
 		r.host.Network().StopNotify(r.notifiee)
-		r.scope.Done()
+		defer r.scope.Done()
 		r.cancel()
 		r.gc()
 		if r.metricsTracer != nil {
@@ -202,18 +203,16 @@ func (r *Relay) handleReserve(s network.Stream) pbv2.Status {
 		return pbv2.Status_PERMISSION_DENIED
 	}
 	now := time.Now()
+	expire := now.Add(r.rc.ReservationTTL)
 
 	_, exists := r.rsvp[p]
-	if !exists {
-		if err := r.constraints.AddReservation(p, a); err != nil {
-			r.mx.Unlock()
-			log.Debugf("refusing relay reservation for %s; IP constraint violation: %s", p, err)
-			r.handleError(s, pbv2.Status_RESERVATION_REFUSED)
-			return pbv2.Status_RESERVATION_REFUSED
-		}
+	if err := r.constraints.Reserve(p, a, expire); err != nil {
+		r.mx.Unlock()
+		log.Debugf("refusing relay reservation for %s; IP constraint violation: %s", p, err)
+		r.handleError(s, pbv2.Status_RESERVATION_REFUSED)
+		return pbv2.Status_RESERVATION_REFUSED
 	}
 
-	expire := now.Add(r.rc.ReservationTTL)
 	r.rsvp[p] = expire
 	r.host.ConnManager().TagPeer(p, "relay-reservation", ReservationTagWeight)
 	r.mx.Unlock()
@@ -226,7 +225,13 @@ func (r *Relay) handleReserve(s network.Stream) pbv2.Status {
 	// Delivery of the reservation might fail for a number of reasons.
 	// For example, the stream might be reset or the connection might be closed before the reservation is received.
 	// In that case, the reservation will just be garbage collected later.
-	if err := r.writeResponse(s, pbv2.Status_OK, r.makeReservationMsg(p, expire), r.makeLimitMsg(p)); err != nil {
+	rsvp := makeReservationMsg(
+		r.host.Peerstore().PrivKey(r.host.ID()),
+		r.host.ID(),
+		r.host.Addrs(),
+		p,
+		expire)
+	if err := r.writeResponse(s, pbv2.Status_OK, rsvp, r.makeLimitMsg(p)); err != nil {
 		log.Debugf("error writing reservation response; retracting reservation for %s", p)
 		s.Reset()
 		return pbv2.Status_CONNECTION_FAILED
@@ -310,7 +315,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) pbv2.Statu
 	connStTime := time.Now()
 
 	cleanup := func() {
-		span.Done()
+		defer span.Done()
 		r.mx.Lock()
 		r.rmConn(src)
 		r.rmConn(dest.ID)
@@ -569,31 +574,54 @@ func (r *Relay) writeResponse(s network.Stream, status pbv2.Status, rsvp *pbv2.R
 	return wr.WriteMsg(&msg)
 }
 
-func (r *Relay) makeReservationMsg(p peer.ID, expire time.Time) *pbv2.Reservation {
+func makeReservationMsg(
+	signingKey crypto.PrivKey,
+	selfID peer.ID,
+	selfAddrs []ma.Multiaddr,
+	p peer.ID,
+	expire time.Time,
+) *pbv2.Reservation {
 	expireUnix := uint64(expire.Unix())
 
+	rsvp := &pbv2.Reservation{Expire: &expireUnix}
+
+	selfP2PAddr, err := ma.NewComponent("p2p", selfID.String())
+	if err != nil {
+		log.Errorf("error creating p2p component: %s", err)
+		return rsvp
+	}
+
 	var addrBytes [][]byte
-	for _, addr := range r.host.Addrs() {
+	for _, addr := range selfAddrs {
 		if !manet.IsPublicAddr(addr) {
 			continue
 		}
 
-		addr = addr.Encapsulate(r.selfAddr)
+		id, _ := peer.IDFromP2PAddr(addr)
+		switch {
+		case id == "":
+			// No ID, we'll add one to the address
+			addr = addr.Encapsulate(selfP2PAddr)
+		case id == selfID:
+		// This address already has our ID in it.
+		// Do nothing
+		case id != selfID:
+			// This address has a different ID in it. Skip it.
+			log.Warnf("skipping address %s: contains an unexpected ID", addr)
+			continue
+		}
 		addrBytes = append(addrBytes, addr.Bytes())
 	}
 
-	rsvp := &pbv2.Reservation{
-		Expire: &expireUnix,
-		Addrs:  addrBytes,
-	}
+	rsvp.Addrs = addrBytes
 
 	voucher := &proto.ReservationVoucher{
-		Relay:      r.host.ID(),
+		Relay:      selfID,
 		Peer:       p,
 		Expiration: expire,
 	}
 
-	envelope, err := record.Seal(voucher, r.host.Peerstore().PrivKey(r.host.ID()))
+	envelope, err := record.Seal(voucher, signingKey)
 	if err != nil {
 		log.Errorf("error sealing voucher for %s: %s", p, err)
 		return rsvp
@@ -673,6 +701,7 @@ func (r *Relay) disconnected(n network.Network, c network.Conn) {
 	if ok {
 		delete(r.rsvp, p)
 	}
+	r.constraints.cleanupPeer(p)
 	r.mx.Unlock()
 
 	if ok && r.metricsTracer != nil {

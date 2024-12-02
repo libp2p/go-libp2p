@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/multiformats/go-multiaddr"
-	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 // DefaultSecurity is the default security option.
@@ -128,11 +127,6 @@ var DefaultConnectionManager = func(cfg *Config) error {
 	return cfg.Apply(ConnectionManager(mgr))
 }
 
-// DefaultMultiaddrResolver creates a default connection manager
-var DefaultMultiaddrResolver = func(cfg *Config) error {
-	return cfg.Apply(MultiaddrResolver(madns.DefaultResolver))
-}
-
 // DefaultPrometheusRegisterer configures libp2p to use the default registerer
 var DefaultPrometheusRegisterer = func(cfg *Config) error {
 	return cfg.Apply(PrometheusRegisterer(prometheus.DefaultRegisterer))
@@ -197,10 +191,6 @@ var defaults = []struct {
 	{
 		fallback: func(cfg *Config) bool { return cfg.ConnManager == nil },
 		opt:      DefaultConnectionManager,
-	},
-	{
-		fallback: func(cfg *Config) bool { return cfg.MultiaddrResolver == nil },
-		opt:      DefaultMultiaddrResolver,
 	},
 	{
 		fallback: func(cfg *Config) bool { return !cfg.DisableMetrics && cfg.PrometheusRegisterer == nil },
