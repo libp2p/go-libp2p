@@ -22,8 +22,8 @@ func TestPeerAddrsNextExpiry(t *testing.T) {
 	// t1 is before t2
 	t1 := time.Time{}.Add(1 * time.Second)
 	t2 := time.Time{}.Add(2 * time.Second)
-	heap.Push(pa, &expiringAddr{Addr: a1, Expiry: t1, TTL: 10 * time.Second, Peer: "p1"})
-	heap.Push(pa, &expiringAddr{Addr: a2, Expiry: t2, TTL: 10 * time.Second, Peer: "p2"})
+	paa.Insert(&expiringAddr{Addr: a1, Expiry: t1, TTL: 10 * time.Second, Peer: "p1"})
+	paa.Insert(&expiringAddr{Addr: a2, Expiry: t2, TTL: 10 * time.Second, Peer: "p2"})
 
 	if pa.NextExpiry() != t1 {
 		t.Fatal("expiry should be set to t1, got", pa.NextExpiry())
@@ -49,7 +49,7 @@ func TestPeerAddrsHeapProperty(t *testing.T) {
 	const N = 10000
 	expiringAddrs := peerAddrsInput(N)
 	for i := 0; i < N; i++ {
-		heap.Push(pa, expiringAddrs[i])
+		paa.Insert(expiringAddrs[i])
 	}
 
 	for i := 0; i < N; i++ {
@@ -70,7 +70,7 @@ func TestPeerAddrsHeapPropertyDeletions(t *testing.T) {
 	const N = 10000
 	expiringAddrs := peerAddrsInput(N)
 	for i := 0; i < N; i++ {
-		heap.Push(pa, expiringAddrs[i])
+		paa.Insert(expiringAddrs[i])
 	}
 
 	// delete every 3rd element
@@ -108,7 +108,7 @@ func TestPeerAddrsHeapPropertyUpdates(t *testing.T) {
 	var endElements []ma.Multiaddr
 	for i := 0; i < N; i += 3 {
 		expiringAddrs[i].Expiry = time.Time{}.Add(1000_000 * time.Second)
-		pa.Fix(expiringAddrs[i])
+		pa.Update(expiringAddrs[i])
 		endElements = append(endElements, expiringAddrs[i].Addr)
 	}
 
@@ -148,7 +148,7 @@ func TestPeerAddrsExpiry(t *testing.T) {
 			expiringAddrs[i].Expiry = time.Time{}.Add(time.Duration(1+rand.Intn(N)) * time.Second)
 		}
 		for i := 0; i < N; i++ {
-			heap.Push(pa, expiringAddrs[i])
+			pa.Insert(expiringAddrs[i])
 		}
 
 		expiry := time.Time{}.Add(time.Duration(1+rand.Intn(N)) * time.Second)
@@ -174,6 +174,18 @@ func TestPeerAddrsExpiry(t *testing.T) {
 	}
 }
 
+func TestPeerLimits(t *testing.T) {
+	ab := NewAddrBook()
+	defer ab.Close()
+	ab.maxUnconnectedAddrs = 1024
+
+	peers := peerAddrsInput(2048)
+	for _, p := range peers {
+		ab.AddAddr(p.Peer, p.Addr, p.TTL)
+	}
+	require.Equal(t, 1024, ab.addrs.NumUnconnectedAddrs())
+}
+
 func BenchmarkPeerAddrs(b *testing.B) {
 	sizes := [...]int{1, 10, 100, 1000, 10_000, 100_000, 1000_000}
 	for _, sz := range sizes {
@@ -184,7 +196,7 @@ func BenchmarkPeerAddrs(b *testing.B) {
 				pa := &paa
 				expiringAddrs := peerAddrsInput(sz)
 				for i := 0; i < sz; i++ {
-					heap.Push(pa, expiringAddrs[i])
+					pa.Insert(expiringAddrs[i])
 				}
 				b.StartTimer()
 				for {

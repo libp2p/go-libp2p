@@ -50,6 +50,10 @@ type CapableConn interface {
 // shutdown. NOTE: `Dial` and `Listen` may be called after or concurrently with
 // `Close`.
 //
+// In addition to the Transport interface, transports may implement
+// Resolver or SkipResolver interface. When wrapping/embedding a transport, you should
+// ensure that the Resolver/SkipResolver interface is handled correctly.
+//
 // For a conceptual overview, see https://docs.libp2p.io/concepts/transport/
 type Transport interface {
 	// Dial dials a remote peer. It should try to reuse local listener
@@ -83,6 +87,14 @@ type Transport interface {
 // multiaddr.
 type Resolver interface {
 	Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error)
+}
+
+// SkipResolver can be optionally implemented by transports that don't want to
+// resolve or transform the multiaddr. Useful for transports that indirectly
+// wrap other transports (e.g. p2p-circuit). This lets the inner transport
+// specify how a multiaddr is resolved later.
+type SkipResolver interface {
+	SkipResolve(ctx context.Context, maddr ma.Multiaddr) bool
 }
 
 // Listener is an interface closely resembling the net.Listener interface. The

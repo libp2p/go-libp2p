@@ -2,6 +2,7 @@ package basichost
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -246,6 +248,63 @@ func TestAllAddrs(t *testing.T) {
 	require.Len(t, h.AllAddrs(), 3)
 	// Should still contain the original addr.
 	require.True(t, ma.Contains(h.AllAddrs(), firstAddr), "should still contain the original addr")
+}
+
+func TestAllAddrsUnique(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("updates addrChangeTickrInterval which might be racy")
+	}
+	oldInterval := addrChangeTickrInterval
+	addrChangeTickrInterval = 100 * time.Millisecond
+	defer func() {
+		addrChangeTickrInterval = oldInterval
+	}()
+	sendNewAddrs := make(chan struct{})
+	opts := HostOpts{
+		AddrsFactory: func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			select {
+			case <-sendNewAddrs:
+				return []ma.Multiaddr{
+					ma.StringCast("/ip4/1.2.3.4/tcp/1"),
+					ma.StringCast("/ip4/1.2.3.4/tcp/1"),
+					ma.StringCast("/ip4/1.2.3.4/tcp/1"),
+					ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"),
+					ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"),
+				}
+			default:
+				return nil
+			}
+		},
+	}
+	// no listen addrs
+	h, err := NewHost(swarmt.GenSwarm(t, swarmt.OptDialOnly), &opts)
+	require.NoError(t, err)
+	defer h.Close()
+	h.Start()
+
+	sub, err := h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
+	require.NoError(t, err)
+	out := make(chan int)
+	done := make(chan struct{})
+	go func() {
+		cnt := 0
+		for {
+			select {
+			case <-sub.Out():
+				cnt++
+			case <-done:
+				out <- cnt
+				return
+			}
+		}
+	}()
+	close(sendNewAddrs)
+	require.Len(t, h.Addrs(), 2)
+	require.ElementsMatch(t, []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1"), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")}, h.Addrs())
+	time.Sleep(2*addrChangeTickrInterval + 1*time.Second) // the background loop runs every 5 seconds. Wait for 2x that time.
+	close(done)
+	cnt := <-out
+	require.Equal(t, 1, cnt)
 }
 
 // getHostPair gets a new pair of hosts.
@@ -882,4 +941,57 @@ func TestTrimHostAddrList(t *testing.T) {
 			require.ElementsMatch(t, got, tc.out)
 		})
 	}
+}
+
+func TestHostTimeoutNewStream(t *testing.T) {
+	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	require.NoError(t, err)
+	h1.Start()
+	defer h1.Close()
+
+	const proto = "/testing"
+	h2 := swarmt.GenSwarm(t)
+
+	h2.SetStreamHandler(func(s network.Stream) {
+		// First message is multistream header. Just echo it
+		msHeader := []byte("\x19/multistream/1.0.0\n")
+		_, err := s.Read(msHeader)
+		assert.NoError(t, err)
+		_, err = s.Write(msHeader)
+		assert.NoError(t, err)
+
+		buf := make([]byte, 1024)
+		n, err := s.Read(buf)
+		assert.NoError(t, err)
+
+		msgLen, varintN := binary.Uvarint(buf[:n])
+		buf = buf[varintN:]
+		proto := buf[:int(msgLen)]
+		if string(proto) == "/ipfs/id/1.0.0\n" {
+			// Signal we don't support identify
+			na := []byte("na\n")
+			n := binary.PutUvarint(buf, uint64(len(na)))
+			copy(buf[n:], na)
+
+			_, err = s.Write(buf[:int(n)+len(na)])
+			assert.NoError(t, err)
+		} else {
+			// Stall
+			time.Sleep(5 * time.Second)
+		}
+		t.Log("Resetting")
+		s.Reset()
+	})
+
+	err = h1.Connect(context.Background(), peer.AddrInfo{
+		ID:    h2.LocalPeer(),
+		Addrs: h2.ListenAddresses(),
+	})
+	require.NoError(t, err)
+
+	// No context passed in, fallback to negtimeout
+	h1.negtimeout = time.Second
+	_, err = h1.NewStream(context.Background(), h2.LocalPeer(), proto)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "context deadline exceeded")
 }

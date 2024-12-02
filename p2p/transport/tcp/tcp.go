@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/reuseport"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -32,6 +33,9 @@ type canKeepAlive interface {
 }
 
 var _ canKeepAlive = &net.TCPConn{}
+
+// Deprecated: Use tcpreuse.ReuseportIsAvailable
+var ReuseportIsAvailable = tcpreuse.ReuseportIsAvailable
 
 func tryKeepAlive(conn net.Conn, keepAlive bool) {
 	keepAliveConn, ok := conn.(canKeepAlive)
@@ -122,20 +126,25 @@ type TcpTransport struct {
 	disableReuseport bool // Explicitly disable reuseport.
 	enableMetrics    bool
 
+	// share and demultiplex TCP listeners across multiple transports
+	sharedTcp *tcpreuse.ConnMgr
+
 	// TCP connect timeout
 	connectTimeout time.Duration
 
 	rcmgr network.ResourceManager
 
 	reuse reuseport.Transport
+
+	metricsCollector *aggregatingCollector
 }
 
 var _ transport.Transport = &TcpTransport{}
 var _ transport.DialUpdater = &TcpTransport{}
 
 // NewTCPTransport creates a tcp transport object that tracks dialers and listeners
-// created. It represents an entire TCP stack (though it might not necessarily be).
-func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*TcpTransport, error) {
+// created.
+func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, sharedTCP *tcpreuse.ConnMgr, opts ...Option) (*TcpTransport, error) {
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
@@ -143,6 +152,7 @@ func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager,
 		upgrader:       upgrader,
 		connectTimeout: defaultConnectTimeout, // can be set by using the WithConnectionTimeout option
 		rcmgr:          rcmgr,
+		sharedTcp:      sharedTCP,
 	}
 	for _, o := range opts {
 		if err := o(tr); err != nil {
@@ -166,6 +176,10 @@ func (t *TcpTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Co
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, t.connectTimeout)
 		defer cancel()
+	}
+
+	if t.sharedTcp != nil {
+		return t.sharedTcp.DialContext(ctx, raddr)
 	}
 
 	if t.UseReuseport() {
@@ -212,7 +226,7 @@ func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p 
 	c := conn
 	if t.enableMetrics {
 		var err error
-		c, err = newTracingConn(conn, true)
+		c, err = newTracingConn(conn, t.metricsCollector, true)
 		if err != nil {
 			return nil, err
 		}
@@ -233,10 +247,10 @@ func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p 
 
 // UseReuseport returns true if reuseport is enabled and available.
 func (t *TcpTransport) UseReuseport() bool {
-	return !t.disableReuseport && ReuseportIsAvailable()
+	return !t.disableReuseport && tcpreuse.ReuseportIsAvailable()
 }
 
-func (t *TcpTransport) maListen(laddr ma.Multiaddr) (manet.Listener, error) {
+func (t *TcpTransport) unsharedMAListen(laddr ma.Multiaddr) (manet.Listener, error) {
 	if t.UseReuseport() {
 		return t.reuse.Listen(laddr)
 	}
@@ -245,12 +259,20 @@ func (t *TcpTransport) maListen(laddr ma.Multiaddr) (manet.Listener, error) {
 
 // Listen listens on the given multiaddr.
 func (t *TcpTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
-	list, err := t.maListen(laddr)
+	var list manet.Listener
+	var err error
+
+	if t.sharedTcp == nil {
+		list, err = t.unsharedMAListen(laddr)
+	} else {
+		list, err = t.sharedTcp.DemultiplexedListen(laddr, tcpreuse.DemultiplexedConnType_MultistreamSelect)
+	}
 	if err != nil {
 		return nil, err
 	}
+
 	if t.enableMetrics {
-		list = newTracingListener(&tcpListener{list, 0})
+		list = newTracingListener(&tcpListener{list, 0}, t.metricsCollector)
 	}
 	return t.upgrader.UpgradeListener(t, list), nil
 }

@@ -2,6 +2,7 @@ package holepunch
 
 import (
 	"context"
+	"slices"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -11,13 +12,7 @@ import (
 )
 
 func removeRelayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	result := make([]ma.Multiaddr, 0, len(addrs))
-	for _, addr := range addrs {
-		if !isRelayAddress(addr) {
-			result = append(result, addr)
-		}
-	}
-	return result
+	return slices.DeleteFunc(addrs, isRelayAddress)
 }
 
 func isRelayAddress(a ma.Multiaddr) bool {

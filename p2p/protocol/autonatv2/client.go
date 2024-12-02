@@ -3,6 +3,8 @@ package autonatv2
 import (
 	"context"
 	"fmt"
+	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -248,6 +250,13 @@ func newDialRequest(reqs []Request, nonce uint64) pb.Message {
 
 // handleDialBack receives the nonce on the dial-back stream
 func (ac *client) handleDialBack(s network.Stream) {
+	defer func() {
+		if rerr := recover(); rerr != nil {
+			fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
+		}
+		s.Reset()
+	}()
+
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)
 		s.Reset()

@@ -6,9 +6,19 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
 )
+
+type logInterface interface {
+	Errorf(string, ...interface{})
+}
+
+var log logInterface = logging.Logger("eventbus")
+
+const slowConsumerWarningTimeout = time.Second
 
 // /////////////////////
 // BUS
@@ -116,6 +126,7 @@ type wildcardSub struct {
 	w             *wildcardNode
 	metricsTracer MetricsTracer
 	name          string
+	closeOnce     sync.Once
 }
 
 func (w *wildcardSub) Out() <-chan interface{} {
@@ -123,10 +134,13 @@ func (w *wildcardSub) Out() <-chan interface{} {
 }
 
 func (w *wildcardSub) Close() error {
-	w.w.removeSink(w.ch)
-	if w.metricsTracer != nil {
-		w.metricsTracer.RemoveSubscriber(reflect.TypeOf(event.WildcardSubscription))
-	}
+	w.closeOnce.Do(func() {
+		w.w.removeSink(w.ch)
+		if w.metricsTracer != nil {
+			w.metricsTracer.RemoveSubscriber(reflect.TypeOf(event.WildcardSubscription))
+		}
+	})
+
 	return nil
 }
 
@@ -145,6 +159,7 @@ type sub struct {
 	dropper       func(reflect.Type)
 	metricsTracer MetricsTracer
 	name          string
+	closeOnce     sync.Once
 }
 
 func (s *sub) Name() string {
@@ -162,31 +177,32 @@ func (s *sub) Close() error {
 		for range s.ch {
 		}
 	}()
+	s.closeOnce.Do(func() {
+		for _, n := range s.nodes {
+			n.lk.Lock()
 
-	for _, n := range s.nodes {
-		n.lk.Lock()
+			for i := 0; i < len(n.sinks); i++ {
+				if n.sinks[i].ch == s.ch {
+					n.sinks[i], n.sinks[len(n.sinks)-1] = n.sinks[len(n.sinks)-1], nil
+					n.sinks = n.sinks[:len(n.sinks)-1]
 
-		for i := 0; i < len(n.sinks); i++ {
-			if n.sinks[i].ch == s.ch {
-				n.sinks[i], n.sinks[len(n.sinks)-1] = n.sinks[len(n.sinks)-1], nil
-				n.sinks = n.sinks[:len(n.sinks)-1]
-
-				if s.metricsTracer != nil {
-					s.metricsTracer.RemoveSubscriber(n.typ)
+					if s.metricsTracer != nil {
+						s.metricsTracer.RemoveSubscriber(n.typ)
+					}
+					break
 				}
-				break
+			}
+
+			tryDrop := len(n.sinks) == 0 && n.nEmitters.Load() == 0
+
+			n.lk.Unlock()
+
+			if tryDrop {
+				s.dropper(n.typ)
 			}
 		}
-
-		tryDrop := len(n.sinks) == 0 && n.nEmitters.Load() == 0
-
-		n.lk.Unlock()
-
-		if tryDrop {
-			s.dropper(n.typ)
-		}
-	}
-	close(s.ch)
+		close(s.ch)
+	})
 	return nil
 }
 
@@ -322,6 +338,8 @@ type wildcardNode struct {
 	nSinks        atomic.Int32
 	sinks         []*namedSink
 	metricsTracer MetricsTracer
+
+	slowConsumerTimer *time.Timer
 }
 
 func (n *wildcardNode) addSink(sink *namedSink) {
@@ -336,6 +354,12 @@ func (n *wildcardNode) addSink(sink *namedSink) {
 }
 
 func (n *wildcardNode) removeSink(ch chan interface{}) {
+	go func() {
+		// drain the event channel, will return when closed and drained.
+		// this is necessary to unblock publishes to this channel.
+		for range ch {
+		}
+	}()
 	n.nSinks.Add(-1) // ok to do outside the lock
 	n.Lock()
 	for i := 0; i < len(n.sinks); i++ {
@@ -347,6 +371,8 @@ func (n *wildcardNode) removeSink(ch chan interface{}) {
 	}
 	n.Unlock()
 }
+
+var wildcardType = reflect.TypeOf(event.WildcardSubscription)
 
 func (n *wildcardNode) emit(evt interface{}) {
 	if n.nSinks.Load() == 0 {
@@ -360,7 +386,16 @@ func (n *wildcardNode) emit(evt interface{}) {
 		// record channel full events before blocking
 		sendSubscriberMetrics(n.metricsTracer, sink)
 
-		sink.ch <- evt
+		select {
+		case sink.ch <- evt:
+		default:
+			slowConsumerTimer := emitAndLogError(n.slowConsumerTimer, wildcardType, evt, sink)
+			defer func() {
+				n.Lock()
+				n.slowConsumerTimer = slowConsumerTimer
+				n.Unlock()
+			}()
+		}
 	}
 	n.RUnlock()
 }
@@ -379,6 +414,8 @@ type node struct {
 
 	sinks         []*namedSink
 	metricsTracer MetricsTracer
+
+	slowConsumerTimer *time.Timer
 }
 
 func newNode(typ reflect.Type, metricsTracer MetricsTracer) *node {
@@ -404,9 +441,35 @@ func (n *node) emit(evt interface{}) {
 		// Sending metrics before sending on channel allows us to
 		// record channel full events before blocking
 		sendSubscriberMetrics(n.metricsTracer, sink)
-		sink.ch <- evt
+		select {
+		case sink.ch <- evt:
+		default:
+			n.slowConsumerTimer = emitAndLogError(n.slowConsumerTimer, n.typ, evt, sink)
+		}
 	}
 	n.lk.Unlock()
+}
+
+func emitAndLogError(timer *time.Timer, typ reflect.Type, evt interface{}, sink *namedSink) *time.Timer {
+	// Slow consumer. Log a warning if stalled for the timeout
+	if timer == nil {
+		timer = time.NewTimer(slowConsumerWarningTimeout)
+	} else {
+		timer.Reset(slowConsumerWarningTimeout)
+	}
+
+	select {
+	case sink.ch <- evt:
+		if !timer.Stop() {
+			<-timer.C
+		}
+	case <-timer.C:
+		log.Errorf("subscriber named \"%s\" is a slow consumer of %s. This can lead to libp2p stalling and hard to debug issues.", sink.name, typ)
+		// Continue to stall since there's nothing else we can do.
+		sink.ch <- evt
+	}
+
+	return timer
 }
 
 func sendSubscriberMetrics(metricsTracer MetricsTracer, sink *namedSink) {

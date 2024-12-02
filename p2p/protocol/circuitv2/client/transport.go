@@ -46,7 +46,19 @@ func AddTransport(h host.Host, upgrader transport.Upgrader) error {
 
 // Transport interface
 var _ transport.Transport = (*Client)(nil)
+
+// p2p-circuit implements the SkipResolver interface so that the underlying
+// transport can do the address resolution later. If you wrap this transport,
+// make sure you also implement SkipResolver as well.
+var _ transport.SkipResolver = (*Client)(nil)
 var _ io.Closer = (*Client)(nil)
+
+// SkipResolve returns true since we always defer to the inner transport for
+// the actual connection. By skipping resolution here, we let the inner
+// transport decide how to resolve the multiaddr
+func (c *Client) SkipResolve(ctx context.Context, maddr ma.Multiaddr) bool {
+	return true
+}
 
 func (c *Client) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
 	connScope, err := c.host.Network().ResourceManager().OpenConnection(network.DirOutbound, false, a)

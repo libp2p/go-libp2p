@@ -31,6 +31,7 @@ var (
 	RecentlyConnectedAddrTTL = time.Minute * 15
 
 	// OwnObservedAddrTTL is used for our own external addresses observed by peers.
+	//
 	// Deprecated: observed addresses are maintained till we disconnect from the peer which provided it
 	OwnObservedAddrTTL = time.Minute * 30
 )
@@ -65,6 +66,10 @@ type Peerstore interface {
 
 	// Peers returns all the peer IDs stored across all inner stores.
 	Peers() peer.IDSlice
+
+	// RemovePeer removes all the peer related information except its addresses. To remove the
+	// addresses use `AddrBook.ClearAddrs` or set the address ttls to 0.
+	RemovePeer(peer.ID)
 }
 
 // PeerMetadata can handle values of any type. Serializing values is
@@ -134,12 +139,13 @@ type AddrBook interface {
 //	}
 type CertifiedAddrBook interface {
 	// ConsumePeerRecord stores a signed peer record and the contained addresses for
-	// for ttl duration.
+	// ttl duration.
 	// The addresses contained in the signed peer record will expire after ttl. If any
 	// address is already present in the peer store, it'll expire at max of existing ttl and
 	// provided ttl.
 	// The signed peer record itself will be expired when all the addresses associated with the peer,
 	// self-certified or not, are removed from the AddrBook.
+	//
 	// To delete the signed peer record, use `AddrBook.UpdateAddrs`,`AddrBook.SetAddrs`, or
 	// `AddrBook.ClearAddrs` with ttl 0.
 	// Note: Future calls to ConsumePeerRecord will not expire self-certified addresses from the

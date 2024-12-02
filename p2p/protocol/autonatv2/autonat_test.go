@@ -657,5 +657,4 @@ func TestAreAddrsConsistency(t *testing.T) {
 			}
 		})
 	}
-
 }

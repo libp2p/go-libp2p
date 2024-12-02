@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/libp2p/go-libp2p"
@@ -125,18 +126,24 @@ func ExampleHost_overLibp2pStreams() {
 	// Output: Hello HTTP
 }
 
+var tcpPortRE = regexp.MustCompile(`/tcp/(\d+)`)
+
 func ExampleHost_Serve() {
 	server := libp2phttp.Host{
 		InsecureAllowHTTP: true, // For our example, we'll allow insecure HTTP
-		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50221/http")},
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
 	go server.Serve()
 	defer server.Close()
 
-	fmt.Println(server.Addrs())
+	for _, a := range server.Addrs() {
+		s := a.String()
+		addrWithoutSpecificPort := tcpPortRE.ReplaceAllString(s, "/tcp/<runtime-port>")
+		fmt.Println(addrWithoutSpecificPort)
+	}
 
-	// Output: [/ip4/127.0.0.1/tcp/50221/http]
+	// Output: /ip4/127.0.0.1/tcp/<runtime-port>/http
 }
 
 func ExampleHost_SetHTTPHandler() {

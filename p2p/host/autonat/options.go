@@ -51,6 +51,8 @@ var defaults = func(c *config) error {
 	return nil
 }
 
+const maxRefreshInterval = 24 * time.Hour
+
 // EnableService specifies that AutoNAT should be allowed to run a NAT service to help
 // other peers determine their own NAT status. The provided Network should not be the
 // default network/dialer of the host passed to `New`, as the NAT system will need to

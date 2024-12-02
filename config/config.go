@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -35,12 +36,13 @@ import (
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	"github.com/prometheus/client_golang/prometheus"
 
 	ma "github.com/multiformats/go-multiaddr"
-	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 	"go.uber.org/fx"
@@ -114,7 +116,7 @@ type Config struct {
 	Peerstore  peerstore.Peerstore
 	Reporter   metrics.Reporter
 
-	MultiaddrResolver *madns.Resolver
+	MultiaddrResolver network.MultiaddrDNSResolver
 
 	DisablePing bool
 
@@ -142,6 +144,10 @@ type Config struct {
 	CustomUDPBlackHoleSuccessCounter  bool
 	IPv6BlackHoleSuccessCounter       *swarm.BlackHoleSuccessCounter
 	CustomIPv6BlackHoleSuccessCounter bool
+
+	UserFxOptions []fx.Option
+
+	ShareTCPListener bool
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -286,7 +292,12 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),
-		fx.Provide(func() *madns.Resolver { return cfg.MultiaddrResolver }),
+		fx.Provide(func(gater connmgr.ConnectionGater, rcmgr network.ResourceManager) *tcpreuse.ConnMgr {
+			if !cfg.ShareTCPListener {
+				return nil
+			}
+			return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, gater, rcmgr)
+		}),
 		fx.Provide(func(cm *quicreuse.ConnManager, sw *swarm.Swarm) libp2pwebrtc.ListenUDPFn {
 			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {
 				quicAddrPorts := map[string]struct{}{}
@@ -432,16 +443,6 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Relay {
-		// If we've enabled the relay, we should filter out relay
-		// addresses by default.
-		//
-		// TODO: We shouldn't be doing this here.
-		originalAddrFactory := h.AddrsFactory
-		h.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			return originalAddrFactory(autorelay.Filter(addrs))
-		}
-	}
 	return h, nil
 }
 
@@ -493,6 +494,9 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			return sw, nil
 		}),
 		fx.Provide(cfg.newBasicHost),
+		fx.Provide(func(bh *bhost.BasicHost) identify.IDService {
+			return bh.IDService()
+		}),
 		fx.Provide(func(bh *bhost.BasicHost) host.Host {
 			return bh
 		}),
@@ -514,17 +518,8 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		)
 	}
 
-	// originalAddrFactory is the AddrFactory before it's modified by autorelay
-	// we need this for checking reachability via autonat
-	originalAddrFactory := func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		return addrs
-	}
-
 	// enable autorelay
 	fxopts = append(fxopts,
-		fx.Invoke(func(h *bhost.BasicHost) {
-			originalAddrFactory = h.AddrsFactory
-		}),
 		fx.Invoke(func(h *bhost.BasicHost, lifecycle fx.Lifecycle) error {
 			if cfg.EnableAutoRelay {
 				if !cfg.DisableMetrics {
@@ -556,12 +551,14 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		fxopts = append(fxopts, fx.Invoke(func(bho *routed.RoutedHost) { rh = bho }))
 	}
 
+	fxopts = append(fxopts, cfg.UserFxOptions...)
+
 	app := fx.New(fxopts...)
 	if err := app.Start(context.Background()); err != nil {
 		return nil, err
 	}
 
-	if err := cfg.addAutoNAT(bh, originalAddrFactory); err != nil {
+	if err := cfg.addAutoNAT(bh); err != nil {
 		app.Stop(context.Background())
 		if cfg.Routing != nil {
 			rh.Close()
@@ -577,11 +574,20 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	return &closableBasicHost{App: app, BasicHost: bh}, nil
 }
 
-func (cfg *Config) addAutoNAT(h *bhost.BasicHost, addrF AddrsFactory) error {
+func (cfg *Config) addAutoNAT(h *bhost.BasicHost) error {
+	// Only use public addresses for autonat
+	addrFunc := func() []ma.Multiaddr {
+		return slices.DeleteFunc(h.AllAddrs(), func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
+	}
+	if cfg.AddrsFactory != nil {
+		addrFunc = func() []ma.Multiaddr {
+			return slices.DeleteFunc(
+				slices.Clone(cfg.AddrsFactory(h.AllAddrs())),
+				func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
+		}
+	}
 	autonatOpts := []autonat.Option{
-		autonat.UsingAddresses(func() []ma.Multiaddr {
-			return addrF(h.AllAddrs())
-		}),
+		autonat.UsingAddresses(addrFunc),
 	}
 	if !cfg.DisableMetrics {
 		autonatOpts = append(autonatOpts, autonat.WithMetricsTracer(
@@ -664,7 +670,7 @@ func (cfg *Config) addAutoNAT(h *bhost.BasicHost, addrF AddrsFactory) error {
 
 	autonat, err := autonat.New(h, autonatOpts...)
 	if err != nil {
-		return fmt.Errorf("cannot enable autorelay; autonat failed to start: %v", err)
+		return fmt.Errorf("autonat init failed: %w", err)
 	}
 	h.SetAutoNat(autonat)
 	return nil

@@ -20,6 +20,7 @@ import (
 type MockResourceScopeSpan struct {
 	ctrl     *gomock.Controller
 	recorder *MockResourceScopeSpanMockRecorder
+	isgomock struct{}
 }
 
 // MockResourceScopeSpanMockRecorder is the mock recorder for MockResourceScopeSpan.
@@ -67,29 +68,29 @@ func (mr *MockResourceScopeSpanMockRecorder) Done() *gomock.Call {
 }
 
 // ReleaseMemory mocks base method.
-func (m *MockResourceScopeSpan) ReleaseMemory(arg0 int) {
+func (m *MockResourceScopeSpan) ReleaseMemory(size int) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ReleaseMemory", arg0)
+	m.ctrl.Call(m, "ReleaseMemory", size)
 }
 
 // ReleaseMemory indicates an expected call of ReleaseMemory.
-func (mr *MockResourceScopeSpanMockRecorder) ReleaseMemory(arg0 any) *gomock.Call {
+func (mr *MockResourceScopeSpanMockRecorder) ReleaseMemory(size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockResourceScopeSpan)(nil).ReleaseMemory), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockResourceScopeSpan)(nil).ReleaseMemory), size)
 }
 
 // ReserveMemory mocks base method.
-func (m *MockResourceScopeSpan) ReserveMemory(arg0 int, arg1 byte) error {
+func (m *MockResourceScopeSpan) ReserveMemory(size int, prio uint8) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReserveMemory", arg0, arg1)
+	ret := m.ctrl.Call(m, "ReserveMemory", size, prio)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ReserveMemory indicates an expected call of ReserveMemory.
-func (mr *MockResourceScopeSpanMockRecorder) ReserveMemory(arg0, arg1 any) *gomock.Call {
+func (mr *MockResourceScopeSpanMockRecorder) ReserveMemory(size, prio any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockResourceScopeSpan)(nil).ReserveMemory), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockResourceScopeSpan)(nil).ReserveMemory), size, prio)
 }
 
 // Stat mocks base method.

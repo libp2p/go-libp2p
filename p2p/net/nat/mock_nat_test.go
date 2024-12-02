@@ -22,6 +22,7 @@ import (
 type MockNAT struct {
 	ctrl     *gomock.Controller
 	recorder *MockNATMockRecorder
+	isgomock struct{}
 }
 
 // MockNATMockRecorder is the mock recorder for MockNAT.
@@ -42,32 +43,32 @@ func (m *MockNAT) EXPECT() *MockNATMockRecorder {
 }
 
 // AddPortMapping mocks base method.
-func (m *MockNAT) AddPortMapping(arg0 context.Context, arg1 string, arg2 int, arg3 string, arg4 time.Duration) (int, error) {
+func (m *MockNAT) AddPortMapping(ctx context.Context, protocol string, internalPort int, description string, timeout time.Duration) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddPortMapping", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "AddPortMapping", ctx, protocol, internalPort, description, timeout)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddPortMapping indicates an expected call of AddPortMapping.
-func (mr *MockNATMockRecorder) AddPortMapping(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockNATMockRecorder) AddPortMapping(ctx, protocol, internalPort, description, timeout any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddPortMapping", reflect.TypeOf((*MockNAT)(nil).AddPortMapping), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddPortMapping", reflect.TypeOf((*MockNAT)(nil).AddPortMapping), ctx, protocol, internalPort, description, timeout)
 }
 
 // DeletePortMapping mocks base method.
-func (m *MockNAT) DeletePortMapping(arg0 context.Context, arg1 string, arg2 int) error {
+func (m *MockNAT) DeletePortMapping(ctx context.Context, protocol string, internalPort int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeletePortMapping", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "DeletePortMapping", ctx, protocol, internalPort)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeletePortMapping indicates an expected call of DeletePortMapping.
-func (mr *MockNATMockRecorder) DeletePortMapping(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockNATMockRecorder) DeletePortMapping(ctx, protocol, internalPort any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortMapping", reflect.TypeOf((*MockNAT)(nil).DeletePortMapping), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePortMapping", reflect.TypeOf((*MockNAT)(nil).DeletePortMapping), ctx, protocol, internalPort)
 }
 
 // GetDeviceAddress mocks base method.

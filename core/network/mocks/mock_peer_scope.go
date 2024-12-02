@@ -21,6 +21,7 @@ import (
 type MockPeerScope struct {
 	ctrl     *gomock.Controller
 	recorder *MockPeerScopeMockRecorder
+	isgomock struct{}
 }
 
 // MockPeerScopeMockRecorder is the mock recorder for MockPeerScope.
@@ -70,29 +71,29 @@ func (mr *MockPeerScopeMockRecorder) Peer() *gomock.Call {
 }
 
 // ReleaseMemory mocks base method.
-func (m *MockPeerScope) ReleaseMemory(arg0 int) {
+func (m *MockPeerScope) ReleaseMemory(size int) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ReleaseMemory", arg0)
+	m.ctrl.Call(m, "ReleaseMemory", size)
 }
 
 // ReleaseMemory indicates an expected call of ReleaseMemory.
-func (mr *MockPeerScopeMockRecorder) ReleaseMemory(arg0 any) *gomock.Call {
+func (mr *MockPeerScopeMockRecorder) ReleaseMemory(size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockPeerScope)(nil).ReleaseMemory), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseMemory", reflect.TypeOf((*MockPeerScope)(nil).ReleaseMemory), size)
 }
 
 // ReserveMemory mocks base method.
-func (m *MockPeerScope) ReserveMemory(arg0 int, arg1 byte) error {
+func (m *MockPeerScope) ReserveMemory(size int, prio uint8) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReserveMemory", arg0, arg1)
+	ret := m.ctrl.Call(m, "ReserveMemory", size, prio)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ReserveMemory indicates an expected call of ReserveMemory.
-func (mr *MockPeerScopeMockRecorder) ReserveMemory(arg0, arg1 any) *gomock.Call {
+func (mr *MockPeerScopeMockRecorder) ReserveMemory(size, prio any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockPeerScope)(nil).ReserveMemory), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveMemory", reflect.TypeOf((*MockPeerScope)(nil).ReserveMemory), size, prio)
 }
 
 // Stat mocks base method.

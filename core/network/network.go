@@ -161,6 +161,14 @@ type Network interface {
 	ResourceManager() ResourceManager
 }
 
+type MultiaddrDNSResolver interface {
+	// ResolveDNSAddr resolves the first /dnsaddr component in a multiaddr.
+	// Recurisvely resolves DNSADDRs up to the recursion limit
+	ResolveDNSAddr(ctx context.Context, expectedPeerID peer.ID, maddr ma.Multiaddr, recursionLimit, outputLimit int) ([]ma.Multiaddr, error)
+	// ResolveDNSComponent resolves the first /{dns,dns4,dns6} component in a multiaddr.
+	ResolveDNSComponent(ctx context.Context, maddr ma.Multiaddr, outputLimit int) ([]ma.Multiaddr, error)
+}
+
 // Dialer represents a service that can dial out to peers
 // (this is usually just a Network, but other services may not need the whole
 // stack, and thus it becomes easier to mock)
