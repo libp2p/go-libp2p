@@ -79,7 +79,7 @@ func TestDialAddressSelection(t *testing.T) {
 	s, err := swarm.NewSwarm("local", nil, eventbus.NewBus())
 	require.NoError(t, err)
 
-	tcpTr, err := tcp.NewTCPTransport(nil, nil)
+	tcpTr, err := tcp.NewTCPTransport(nil, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.AddTransport(tcpTr))
 	reuse, err := quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})

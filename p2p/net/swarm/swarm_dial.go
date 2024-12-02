@@ -627,7 +627,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, updC
 	// Trust the transport? Yeah... right.
 	if connC.RemotePeer() != p {
 		connC.Close()
-		err = fmt.Errorf("BUG in transport %T: tried to dial %s, dialed %s", p, connC.RemotePeer(), tpt)
+		err = fmt.Errorf("BUG in transport %T: tried to dial %s, dialed %s", tpt, p, connC.RemotePeer())
 		log.Error(err)
 		return nil, err
 	}

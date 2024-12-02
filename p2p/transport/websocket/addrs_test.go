@@ -69,7 +69,7 @@ func TestConvertWebsocketMultiaddrToNetAddr(t *testing.T) {
 }
 
 func TestListeningOnDNSAddr(t *testing.T) {
-	ln, err := newListener(ma.StringCast("/dns/localhost/tcp/0/ws"), nil)
+	ln, err := newListener(ma.StringCast("/dns/localhost/tcp/0/ws"), nil, nil)
 	require.NoError(t, err)
 	addr := ln.Multiaddr()
 	first, rest := ma.SplitFirst(addr)

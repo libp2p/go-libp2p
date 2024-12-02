@@ -359,6 +359,7 @@ func (h *Host) Serve() error {
 	expectedErrCount := len(h.httpTransport.listeners)
 	select {
 	case <-h.httpTransport.closeListeners:
+		err = http.ErrServerClosed
 	case err = <-errCh:
 		expectedErrCount--
 	}

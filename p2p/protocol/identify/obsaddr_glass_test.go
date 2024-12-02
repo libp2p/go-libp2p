@@ -53,6 +53,24 @@ func TestShouldRecordObservationWithWebTransport(t *testing.T) {
 	require.True(t, shouldRecord)
 }
 
+func TestShouldNotRecordObservationWithRelayedAddr(t *testing.T) {
+	listenAddr := ma.StringCast("/ip4/1.2.3.4/udp/8888/quic-v1/p2p-circuit")
+	ifaceAddr := ma.StringCast("/ip4/10.0.0.2/udp/9999/quic-v1")
+	listenAddrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
+	ifaceListenAddrs := func() ([]ma.Multiaddr, error) { return []ma.Multiaddr{ifaceAddr}, nil }
+	addrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
+
+	c := &mockConn{
+		local:  listenAddr,
+		remote: ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/p2p-circuit"),
+	}
+	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/p2p-circuit")
+	o, err := NewObservedAddrManager(listenAddrs, addrs, ifaceListenAddrs, normalize)
+	require.NoError(t, err)
+	shouldRecord, _, _ := o.shouldRecordObservation(c, observedAddr)
+	require.False(t, shouldRecord)
+}
+
 func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
 	listenAddr1 := ma.StringCast("/ip4/0.0.0.0/tcp/1234")
 	ifaceAddr1 := ma.StringCast("/ip4/10.0.0.2/tcp/4321")

@@ -84,23 +84,33 @@ func (l *listener) handleIncoming() {
 		}
 		catcher.Reset()
 
-		// gate the connection if applicable
-		if l.upgrader.connGater != nil && !l.upgrader.connGater.InterceptAccept(maconn) {
-			log.Debugf("gater blocked incoming connection on local addr %s from %s",
-				maconn.LocalMultiaddr(), maconn.RemoteMultiaddr())
-			if err := maconn.Close(); err != nil {
-				log.Warnf("failed to close incoming connection rejected by gater: %s", err)
-			}
-			continue
+		// Check if we already have a connection scope. See the comment in tcpreuse/listener.go for an explanation.
+		var connScope network.ConnManagementScope
+		if sc, ok := maconn.(interface {
+			Scope() network.ConnManagementScope
+		}); ok {
+			connScope = sc.Scope()
 		}
-
-		connScope, err := l.rcmgr.OpenConnection(network.DirInbound, true, maconn.RemoteMultiaddr())
-		if err != nil {
-			log.Debugw("resource manager blocked accept of new connection", "error", err)
-			if err := maconn.Close(); err != nil {
-				log.Warnf("failed to incoming connection rejected by resource manager: %s", err)
+		if connScope == nil {
+			// gate the connection if applicable
+			if l.upgrader.connGater != nil && !l.upgrader.connGater.InterceptAccept(maconn) {
+				log.Debugf("gater blocked incoming connection on local addr %s from %s",
+					maconn.LocalMultiaddr(), maconn.RemoteMultiaddr())
+				if err := maconn.Close(); err != nil {
+					log.Warnf("failed to close incoming connection rejected by gater: %s", err)
+				}
+				continue
 			}
-			continue
+
+			var err error
+			connScope, err = l.rcmgr.OpenConnection(network.DirInbound, true, maconn.RemoteMultiaddr())
+			if err != nil {
+				log.Debugw("resource manager blocked accept of new connection", "error", err)
+				if err := maconn.Close(); err != nil {
+					log.Warnf("failed to open incoming connection. Rejected by resource manager: %s", err)
+				}
+				continue
+			}
 		}
 
 		// The go routine below calls Release when the context is

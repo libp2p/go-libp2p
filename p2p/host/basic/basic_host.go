@@ -122,9 +122,10 @@ type HostOpts struct {
 	// MultistreamMuxer is essential for the *BasicHost and will use a sensible default value if omitted.
 	MultistreamMuxer *msmux.MultistreamMuxer[protocol.ID]
 
-	// NegotiationTimeout determines the read and write timeouts on streams.
-	// If 0 or omitted, it will use DefaultNegotiationTimeout.
-	// If below 0, timeouts on streams will be deactivated.
+	// NegotiationTimeout determines the read and write timeouts when negotiating
+	// protocols for streams. If 0 or omitted, it will use
+	// DefaultNegotiationTimeout. If below 0, timeouts on streams will be
+	// deactivated.
 	NegotiationTimeout time.Duration
 
 	// AddrsFactory holds a function which can be used to override or filter the result of Addrs.
@@ -270,7 +271,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		h.hps, err = holepunch.NewService(h, h.ids, func() []ma.Multiaddr {
 			addrs := h.AllAddrs()
 			if opts.AddrsFactory != nil {
-				addrs = opts.AddrsFactory(addrs)
+				addrs = slices.Clone(opts.AddrsFactory(addrs))
 			}
 			// AllAddrs may ignore observed addresses in favour of NAT mappings. Use both for hole punching.
 			addrs = append(addrs, h.ids.OwnObservedAddrs()...)
@@ -689,6 +690,14 @@ func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
 // to create one. If ProtocolID is "", writes no header.
 // (Thread-safe)
 func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (str network.Stream, strErr error) {
+	if _, ok := ctx.Deadline(); !ok {
+		if h.negtimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, h.negtimeout)
+			defer cancel()
+		}
+	}
+
 	// If the caller wants to prevent the host from dialing, it should use the NoDial option.
 	if nodial, _ := network.GetNoDial(ctx); !nodial {
 		err := h.Connect(ctx, peer.AddrInfo{ID: p})
@@ -832,12 +841,10 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 // When used with AutoRelay, and if the host is not publicly reachable,
 // this will only have host's private, relay, and no public addresses.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
-	addrs := h.AddrsFactory(h.AllAddrs())
 	// Make a copy. Consumers can modify the slice elements
-	res := make([]ma.Multiaddr, len(addrs))
-	copy(res, addrs)
+	addrs := slices.Clone(h.AddrsFactory(h.AllAddrs()))
 	// Add certhashes for the addresses provided by the user via address factory.
-	return h.addCertHashes(ma.Unique(res))
+	return h.addCertHashes(ma.Unique(addrs))
 }
 
 // NormalizeMultiaddr returns a multiaddr suitable for equality checks.
