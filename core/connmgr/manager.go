@@ -34,7 +34,7 @@ type ConnManager interface {
 	// TagPeer tags a peer with a string, associating a weight with the tag.
 	TagPeer(peer.ID, string, int)
 
-	// Untag removes the tagged value from the peer.
+	// UntagPeer removes the tagged value from the peer.
 	UntagPeer(p peer.ID, tag string)
 
 	// UpsertTag updates an existing tag or inserts a new one.

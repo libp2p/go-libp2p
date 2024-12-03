@@ -28,10 +28,10 @@ type Host interface {
 	// Peerstore returns the Host's repository of Peer Addresses and Keys.
 	Peerstore() peerstore.Peerstore
 
-	// Returns the listen addresses of the Host
+	// Addrs returns the listen addresses of the Host
 	Addrs() []ma.Multiaddr
 
-	// Networks returns the Network interface of the Host
+	// Network returns the Network interface of the Host
 	Network() network.Network
 
 	// Mux returns the Mux multiplexing incoming streams to protocol handlers

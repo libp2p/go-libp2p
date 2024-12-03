@@ -582,7 +582,7 @@ func (cfg *Config) addAutoNAT(h *bhost.BasicHost) error {
 	if cfg.AddrsFactory != nil {
 		addrFunc = func() []ma.Multiaddr {
 			return slices.DeleteFunc(
-				cfg.AddrsFactory(h.AllAddrs()),
+				slices.Clone(cfg.AddrsFactory(h.AllAddrs())),
 				func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
 		}
 	}

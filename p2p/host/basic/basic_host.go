@@ -271,7 +271,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		h.hps, err = holepunch.NewService(h, h.ids, func() []ma.Multiaddr {
 			addrs := h.AllAddrs()
 			if opts.AddrsFactory != nil {
-				addrs = opts.AddrsFactory(addrs)
+				addrs = slices.Clone(opts.AddrsFactory(addrs))
 			}
 			// AllAddrs may ignore observed addresses in favour of NAT mappings. Use both for hole punching.
 			addrs = append(addrs, h.ids.OwnObservedAddrs()...)
@@ -841,12 +841,10 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 // When used with AutoRelay, and if the host is not publicly reachable,
 // this will only have host's private, relay, and no public addresses.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
-	addrs := h.AddrsFactory(h.AllAddrs())
 	// Make a copy. Consumers can modify the slice elements
-	res := make([]ma.Multiaddr, len(addrs))
-	copy(res, addrs)
+	addrs := slices.Clone(h.AddrsFactory(h.AllAddrs()))
 	// Add certhashes for the addresses provided by the user via address factory.
-	return h.addCertHashes(ma.Unique(res))
+	return h.addCertHashes(ma.Unique(addrs))
 }
 
 // NormalizeMultiaddr returns a multiaddr suitable for equality checks.
