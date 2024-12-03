@@ -78,6 +78,15 @@ docker compose -f docker-compose.base.yml -f docker-compose-linux.yml up
 and opening Grafana at http://localhost:3000.
 
 
+### Details on Pyroscope (Developer Profiling)
+
+Pyroscope is a continuous profiling platform that allows you to monitor the performance of your applications in real-time. In the provided code, it is used alongside Prometheus for profiling and metrics collection.
+
+#### Features:
+
+- Application Performance Monitoring: Tracks various profile types, including CPU usage, memory allocation.
+- Real-time Insights: Enables detailed analysis of bottlenecks and issues in your code.
+
 ### Making Dashboards usable with Provisioning
 
 The following section is only relevant for creators of dashboards.
