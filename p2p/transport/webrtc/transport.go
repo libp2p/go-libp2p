@@ -68,7 +68,7 @@ const (
 	DefaultFailedTimeout       = 30 * time.Second
 	DefaultKeepaliveTimeout    = 15 * time.Second
 
-	sctpReceiveBufferSize = 100_000
+	sctpReceiveBufferSize = maxMessageSizeRead * 20
 )
 
 type WebRTCTransport struct {
