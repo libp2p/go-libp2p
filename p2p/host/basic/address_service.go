@@ -9,7 +9,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
@@ -18,8 +17,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
-
-type peerRecordFunc func([]ma.Multiaddr) (*record.Envelope, error)
 
 type observedAddrsService interface {
 	OwnObservedAddrs() []ma.Multiaddr
@@ -34,12 +31,13 @@ type addressService struct {
 	addrsChangeChan      chan struct{}
 	addrsUpdated         chan struct{}
 	autoRelayAddrsSub    event.Subscription
-	autoRelayAddrs       func() []ma.Multiaddr
-	reachability         func() network.Reachability
-	ifaceAddrs           *interfaceAddrsCache
-	wg                   sync.WaitGroup
-	ctx                  context.Context
-	ctxCancel            context.CancelFunc
+	// There are wrapped in to functions for mocking
+	autoRelayAddrs func() []ma.Multiaddr
+	reachability   func() network.Reachability
+	ifaceAddrs     *interfaceAddrsCache
+	wg             sync.WaitGroup
+	ctx            context.Context
+	ctxCancel      context.CancelFunc
 }
 
 func NewAddressService(h *BasicHost, natmgr func(network.Network) NATManager,
@@ -177,17 +175,20 @@ func (a *addressService) AllAddrs() []ma.Multiaddr {
 
 	finalAddrs := make([]ma.Multiaddr, 0, 8)
 	finalAddrs = a.appendInterfaceAddrs(finalAddrs, listenAddrs)
-
-	// use nat mappings if we have them
 	finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs)
 	finalAddrs = ma.Unique(finalAddrs)
 
-	// Remove /p2p-circuit addresses from the list.
-	// The p2p-circuit transport listener reports its address as just /p2p-circuit
-	// This is useless for dialing. Users need to manage their circuit addresses themselves,
+	// Remove "/p2p-circuit" addresses from the list.
+	// The p2p-circuit listener reports its address as just /p2p-circuit. This is
+	// useless for dialing. Users need to manage their circuit addresses themselves,
 	// or use AutoRelay.
 	finalAddrs = slices.DeleteFunc(finalAddrs, func(a ma.Multiaddr) bool {
 		return a.Equal(p2pCircuitAddr)
+	})
+
+	// Remove any unspecified address from the list
+	finalAddrs = slices.DeleteFunc(finalAddrs, func(a ma.Multiaddr) bool {
+		return manet.IsIPUnspecified(a)
 	})
 
 	// Add certhashes for /webrtc-direct, /webtransport, etc addresses discovered
@@ -208,19 +209,23 @@ func (a *addressService) appendInterfaceAddrs(result []ma.Multiaddr, listenAddrs
 	return result
 }
 
+// appendNATAddrs appends the NAT-ed addrs for the listenAddrs. For unspecified listen addrs it appends the
+// public address for all the interfaces.
+// This automatically infers addresses from other transport addresses. For example, it'll infer a webtransport
+// address from a quic observed address.
+//
+// TODO: Merge the natmgr and identify.ObservedAddrManager in to one NatMapper module.
 func (a *addressService) appendNATAddrs(result []ma.Multiaddr, listenAddrs []ma.Multiaddr) []ma.Multiaddr {
 	ifaceAddrs := a.ifaceAddrs.All()
-	// use nat mappings if we have them
-	if a.natmgr != nil && a.natmgr.HasDiscoveredNAT() {
-		// we have a NAT device
-		for _, listen := range listenAddrs {
-			extMaddr := a.natmgr.GetMapping(listen)
-			result = appendNATAddrsForListenAddrs(result, listen, extMaddr, a.observedAddrsService.ObservedAddrsFor, ifaceAddrs)
-		}
-	} else {
+	if a.natmgr == nil || !a.natmgr.HasDiscoveredNAT() {
 		if a.observedAddrsService != nil {
 			result = append(result, a.observedAddrsService.OwnObservedAddrs()...)
 		}
+		return result
+	}
+	for _, listen := range listenAddrs {
+		extMaddr := a.natmgr.GetMapping(listen)
+		result = appendNATAddrsForListenAddrs(result, listen, extMaddr, a.observedAddrsService.ObservedAddrsFor, ifaceAddrs)
 	}
 	return result
 }
@@ -240,11 +245,6 @@ func (a *addressService) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if !ok {
 		return addrs
 	}
-
-	// Copy addrs slice since we'll be modifying it.
-	addrsOld := addrs
-	addrs = make([]ma.Multiaddr, len(addrsOld))
-	copy(addrs, addrsOld)
 
 	for i, addr := range addrs {
 		wtOK, wtN := libp2pwebtransport.IsWebtransportMultiaddr(addr)
@@ -411,6 +411,8 @@ func (i *interfaceAddrsCache) updateUnlocked() {
 	}
 }
 
+// getAllPossibleLocalAddrs gives all the possible address returned for `conn.LocalAddr` correspoinding
+// to the `listenAddr`
 func getAllPossibleLocalAddrs(listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
 	// If the nat mapping fails, use the observed addrs
 	resolved, err := manet.ResolveUnspecifiedAddress(listenAddr, ifaceAddrs)

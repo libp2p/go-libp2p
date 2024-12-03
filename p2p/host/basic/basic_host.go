@@ -90,6 +90,7 @@ type BasicHost struct {
 
 	disableSignedPeerRecord bool
 	signKey                 crypto.PrivKey
+	caBook                  peerstore.CertifiedAddrBook
 
 	autoNATMx sync.RWMutex
 	autoNat   autonat.AutoNAT
@@ -309,11 +310,12 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		if !ok {
 			return nil, errors.New("peerstore should also be a certified address book")
 		}
+		h.caBook = cab
 		rec, err := h.makeSignedPeerRecord(h.addressService.Addrs())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
 		}
-		if _, err := cab.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
+		if _, err := h.caBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
 			return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
 		}
 	}
@@ -398,56 +400,6 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 	handle(protoID, s)
 }
 
-func (h *BasicHost) background() {
-	defer h.refCount.Done()
-	var lastAddrs []ma.Multiaddr
-
-	// TODO: Deprecate this event and logic
-	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
-		changeEvt := h.makeUpdatedAddrEvent(lastAddrs, currentAddrs)
-		if changeEvt == nil {
-			return
-		}
-		// Our addresses have changed.
-		// store the signed peer record in the peer store.
-		if !h.disableSignedPeerRecord {
-			cabook, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
-			if !ok {
-				log.Errorf("peerstore doesn't implement certified address book")
-				return
-			}
-			if _, err := cabook.ConsumePeerRecord(changeEvt.SignedPeerRecord, peerstore.PermanentAddrTTL); err != nil {
-				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
-				return
-			}
-		}
-		// update host addresses in the peer store
-		removedAddrs := make([]ma.Multiaddr, 0, len(changeEvt.Removed))
-		for _, ua := range changeEvt.Removed {
-			removedAddrs = append(removedAddrs, ua.Address)
-		}
-		h.Peerstore().SetAddrs(h.ID(), currentAddrs, peerstore.PermanentAddrTTL)
-		h.Peerstore().SetAddrs(h.ID(), removedAddrs, 0)
-
-		// emit addr change event
-		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
-			log.Warnf("error emitting event for updated addrs: %s", err)
-		}
-	}
-
-	for {
-		curr := h.Addrs()
-		emitAddrChange(curr, lastAddrs)
-		lastAddrs = curr
-
-		select {
-		case <-h.addressService.AddrsUpdated():
-		case <-h.ctx.Done():
-			return
-		}
-	}
-}
-
 func (h *BasicHost) makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddressesUpdated {
 	if prev == nil && current == nil {
 		return nil
@@ -513,6 +465,51 @@ func (h *BasicHost) makeSignedPeerRecord(addrs []ma.Multiaddr) (*record.Envelope
 		Addrs: addrs,
 	})
 	return record.Seal(rec, h.signKey)
+}
+
+func (h *BasicHost) background() {
+	defer h.refCount.Done()
+	var lastAddrs []ma.Multiaddr
+
+	// TODO: Deprecate this event and logic once we have a new event for address with reachability
+	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
+		changeEvt := h.makeUpdatedAddrEvent(lastAddrs, currentAddrs)
+		if changeEvt == nil {
+			return
+		}
+		// Our addresses have changed.
+		// store the signed peer record in the peer store.
+		if !h.disableSignedPeerRecord {
+			if _, err := h.caBook.ConsumePeerRecord(changeEvt.SignedPeerRecord, peerstore.PermanentAddrTTL); err != nil {
+				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+				return
+			}
+		}
+		// update host addresses in the peer store
+		removedAddrs := make([]ma.Multiaddr, 0, len(changeEvt.Removed))
+		for _, ua := range changeEvt.Removed {
+			removedAddrs = append(removedAddrs, ua.Address)
+		}
+		h.Peerstore().SetAddrs(h.ID(), currentAddrs, peerstore.PermanentAddrTTL)
+		h.Peerstore().SetAddrs(h.ID(), removedAddrs, 0)
+
+		// emit addr change event
+		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
+			log.Warnf("error emitting event for updated addrs: %s", err)
+		}
+	}
+
+	for {
+		curr := h.Addrs()
+		emitAddrChange(curr, lastAddrs)
+		lastAddrs = curr
+
+		select {
+		case <-h.addressService.AddrsUpdated():
+		case <-h.ctx.Done():
+			return
+		}
+	}
 }
 
 // ID returns the (local) peer.ID associated with this Host
