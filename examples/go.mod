@@ -2,6 +2,8 @@ module github.com/libp2p/go-libp2p/examples
 
 go 1.22.0
 
+toolchain go1.22.3
+
 require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/uuid v1.6.0
