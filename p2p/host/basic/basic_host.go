@@ -905,8 +905,23 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 				continue
 			}
 
+			// Drop the IP from the external maddr
+			_, extMaddrNoIP := ma.SplitFirst(extMaddr)
+
+			// Determine whether the mapped port is valid
+			isValidPort := true
+			ma.ForEach(extMaddrNoIP, func(c ma.Component) bool {
+				switch c.Protocol().Code {
+				case ma.P_TCP, ma.P_UDP:
+					isValidPort = c.Value() != "0"
+					return false
+				default:
+					return true
+				}
+			})
+
 			// if the router reported a sane address
-			if !manet.IsIPUnspecified(extMaddr) {
+			if !manet.IsIPUnspecified(extMaddr) && isValidPort {
 				// Add in the mapped addr.
 				finalAddrs = append(finalAddrs, extMaddr)
 			} else {
@@ -939,9 +954,6 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 					continue
 				}
 
-				// Drop the IP from the external maddr
-				_, extMaddrNoIP := ma.SplitFirst(extMaddr)
-
 				for _, obsMaddr := range observed {
 					// Extract a public observed addr.
 					ip, _ := ma.SplitFirst(obsMaddr)
@@ -949,7 +961,13 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 						continue
 					}
 
-					finalAddrs = append(finalAddrs, ma.Join(ip, extMaddrNoIP))
+					// If the port is a valid port, concatenate the observed address and the mapped port;
+					// otherwise, add the observed address directly
+					if isValidPort {
+						finalAddrs = append(finalAddrs, ma.Join(ip, extMaddrNoIP))
+					} else {
+						finalAddrs = append(finalAddrs, obsMaddr)
+					}
 				}
 			}
 		}
