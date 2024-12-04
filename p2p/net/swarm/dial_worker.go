@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -295,6 +296,9 @@ loop:
 				}
 				ad.dialed = true
 				ad.dialRankingDelay = now.Sub(ad.createdAt)
+				if _, err := ad.addr.ValueForProtocol(ma.P_WEBRTC_DIRECT); err == nil {
+					fmt.Println("dial ranking delay", ad.addr, ad.dialRankingDelay)
+				}
 				err := w.s.dialNextAddr(ad.ctx, w.peer, ad.addr, w.resch)
 				if err != nil {
 					// Errored without attempting a dial. This happens in case of

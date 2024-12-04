@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -204,7 +203,7 @@ func TestAddrFactorCertHashAppend(t *testing.T) {
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
-func TestWebRTCDirectDialDelay(t *testing.T) {
+func TestOnlyWebRTCDirectDialNoDelay(t *testing.T) {
 	// This tests that only webrtc-direct dials are dialled immediately
 	// and not delayed by dial ranker.
 	h1, err := libp2p.New(
@@ -229,46 +228,43 @@ func TestWebRTCDirectDialDelay(t *testing.T) {
 func TestWebRTCWithQUICManyConnections(t *testing.T) {
 	// Correctly fixes: https://github.com/libp2p/js-libp2p/issues/2805
 
+	// The server has both /quic-v1 and /webrtc-direct listen addresses
 	h, err := libp2p.New(
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(libp2pwebrtc.New),
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/udp/0/quic-v1"),
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/udp/0/webrtc-direct"),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
 	require.NoError(t, err)
 	defer h.Close()
 
-	const N = 50
+	const N = 200
+	// These N dialers have both /quic-v1 and /webrtc-direct transports
 	var dialers [N]host.Host
 	for i := 0; i < N; i++ {
 		dialers[i], err = libp2p.New(libp2p.NoListenAddrs)
 		require.NoError(t, err)
 		defer dialers[i].Close()
 	}
-	// only webrtc dialer for dialing the peer later
+	// This dialer has only /webrtc-direct transport
 	d, err := libp2p.New(libp2p.Transport(libp2pwebrtc.New), libp2p.NoListenAddrs)
 	require.NoError(t, err)
 	defer d.Close()
 
-	startDial := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(N)
 	for i := 0; i < N; i++ {
-		go func() {
-			defer wg.Done()
-			<-startDial
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			// it is fine if the dial fails, we just want to take up all the webrtc
-			// listen queue
-			_ = dialers[i].Connect(ctx, peer.AddrInfo{ID: h.ID(), Addrs: h.Addrs()})
-		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		// With happy eyeballs these dialers will connect over only /quic-v1
+		// and not stall the /webrtc-direct handshake goroutines.
+		// it is fine if the dial fails, we just want to ensure that there's space
+		// in the /webrtc-direct listen queue
+		_ = dialers[i].Connect(ctx, peer.AddrInfo{ID: h.ID(), Addrs: h.Addrs()})
 	}
-	close(startDial)
-	wg.Wait()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// The webrtc only dialer should be able to connect to the peer
 	err = d.Connect(ctx, peer.AddrInfo{ID: h.ID(), Addrs: h.Addrs()})
 	require.NoError(t, err)
 }
