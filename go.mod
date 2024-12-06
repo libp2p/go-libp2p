@@ -32,7 +32,7 @@ require (
 	github.com/libp2p/go-nat v0.2.0
 	github.com/libp2p/go-netroute v0.2.1
 	github.com/libp2p/go-reuseport v0.4.0
-	github.com/libp2p/go-yamux/v4 v4.0.1
+	github.com/libp2p/go-yamux/v4 v4.0.2-0.20241120100319-39abe7ed206a
 	github.com/libp2p/zeroconf/v2 v2.2.0
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	crand "crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	mrand "math/rand"
@@ -462,7 +463,7 @@ func SubtestStreamReset(t *testing.T, tr network.Multiplexer) {
 		time.Sleep(time.Millisecond * 50)
 
 		_, err = s.Write([]byte("foo"))
-		if err != network.ErrReset {
+		if !errors.Is(err, network.ErrReset) {
 			t.Error("should have been stream reset")
 		}
 		s.Close()

@@ -203,3 +203,11 @@ func (c *capableConn) ConnState() network.ConnectionState {
 	cs.Transport = "websocket"
 	return cs
 }
+
+// CloseWithError implements network.CloseWithErrorer
+func (c *capableConn) CloseWithError(errCode network.ConnErrorCode) error {
+	if ce, ok := c.CapableConn.(network.CloseWithErrorer); ok {
+		return ce.CloseWithError(errCode)
+	}
+	return c.Close()
+}

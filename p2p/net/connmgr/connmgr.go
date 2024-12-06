@@ -175,7 +175,8 @@ func (cm *BasicConnMgr) memoryEmergency() {
 	// Trim connections without paying attention to the silence period.
 	for _, c := range cm.getConnsToCloseEmergency(target) {
 		log.Infow("low on memory. closing conn", "peer", c.RemotePeer())
-		c.Close()
+
+		c.CloseWithError(network.ConnGarbageCollected)
 	}
 
 	// finally, update the last trim time.
@@ -388,7 +389,7 @@ func (cm *BasicConnMgr) trim() {
 	// do the actual trim.
 	for _, c := range cm.getConnsToClose() {
 		log.Debugw("closing conn", "peer", c.RemotePeer())
-		c.Close()
+		c.CloseWithError(network.ConnGarbageCollected)
 	}
 }
 

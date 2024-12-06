@@ -144,6 +144,22 @@ func (s *stream) Reset() error {
 	return nil
 }
 
+func (s *stream) ResetWithError(errCode network.StreamErrorCode) error {
+	// Cancel any pending reads/writes with an error.
+	// TODO: Should these be the other way round(remote=true)?
+	s.write.CloseWithError(&network.StreamError{Remote: false, ErrorCode: errCode})
+	s.read.CloseWithError(&network.StreamError{Remote: false, ErrorCode: errCode})
+
+	select {
+	case s.reset <- struct{}{}:
+	default:
+	}
+	<-s.closed
+
+	// No meaningful error case here.
+	return nil
+}
+
 func (s *stream) teardown() {
 	// at this point, no streams are writing.
 	s.conn.removeStream(s)
