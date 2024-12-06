@@ -51,6 +51,10 @@ type mdnsService struct {
 }
 
 func NewMdnsService(host host.Host, serviceName string, notifee Notifee) *mdnsService {
+	return NewMdnsServiceWithContext(context.Background(), host, serviceName, notifee)
+}
+
+func NewMdnsServiceWithContext(ctx context.Context, host host.Host, serviceName string, notifee Notifee) *mdnsService {
 	if serviceName == "" {
 		serviceName = ServiceName
 	}
@@ -60,10 +64,9 @@ func NewMdnsService(host host.Host, serviceName string, notifee Notifee) *mdnsSe
 		peerName:    randomString(32 + rand.Intn(32)), // generate a random string between 32 and 63 characters long
 		notifee:     notifee,
 	}
-	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
+	s.ctx, s.ctxCancel = context.WithCancel(ctx)
 	return s
 }
-
 func (s *mdnsService) Start() error {
 	if err := s.startServer(); err != nil {
 		return err
