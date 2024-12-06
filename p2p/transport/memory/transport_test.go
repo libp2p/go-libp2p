@@ -1,33 +1,36 @@
 package memory
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
+	"context"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"io"
 	"testing"
 
-	ic "github.com/libp2p/go-libp2p/core/crypto"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
-func getTransport(t *testing.T) tpt.Transport {
+func getTransport(t *testing.T) (tpt.Transport, peer.ID) {
 	t.Helper()
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	require.NoError(t, err)
-	key, err := ic.UnmarshalRsaPrivateKey(x509.MarshalPKCS1PrivateKey(rsaKey))
+	rcmgr := &network.NullResourceManager{}
 	require.NoError(t, err)
-	tr, err := NewTransport(key, nil, nil)
+	tr, err := NewTransport(privKey, nil, rcmgr)
 	require.NoError(t, err)
-	return tr
+	peerID, err := peer.IDFromPrivateKey(privKey)
+	require.NoError(t, err)
+	t.Cleanup(func() { rcmgr.Close() })
+	return tr, peerID
 }
 
 func TestMemoryProtocol(t *testing.T) {
 	t.Parallel()
-	tr := getTransport(t)
+	tr, _ := getTransport(t)
 	defer tr.(io.Closer).Close()
 
 	protocols := tr.Protocols()
@@ -42,7 +45,7 @@ func TestMemoryProtocol(t *testing.T) {
 
 func TestCanDial(t *testing.T) {
 	t.Parallel()
-	tr := getTransport(t)
+	tr, _ := getTransport(t)
 	defer tr.(io.Closer).Close()
 
 	invalid := []string{
@@ -69,4 +72,68 @@ func TestCanDial(t *testing.T) {
 			t.Errorf("expected to be able to dial memory address (%s)", validAddr)
 		}
 	}
+}
+
+func TestTransport_Listen(t *testing.T) {
+	t.Parallel()
+	server, _ := getTransport(t)
+	defer server.(io.Closer).Close()
+
+	addr, err := ma.NewMultiaddr("/memory/1234")
+	require.NoError(t, err)
+	serverListener, err := server.Listen(addr)
+	require.NoError(t, err)
+	defer serverListener.Close()
+	lma := serverListener.Multiaddr()
+	require.Equal(t, addr, lma)
+}
+
+func TestTransport_Dial(t *testing.T) {
+	t.Parallel()
+	server, serverPeerID := getTransport(t)
+	client, clientPeerID := getTransport(t)
+	defer func() {
+		if server != nil {
+			err := server.(io.Closer).Close()
+			require.NoError(t, err)
+		}
+	}()
+
+	defer func() {
+		if client != nil {
+			err := client.(io.Closer).Close()
+			require.NoError(t, err)
+		}
+	}()
+
+	serverAddr, err := ma.NewMultiaddr("/memory/1234")
+	require.NoError(t, err)
+	serverListener, err := server.Listen(serverAddr)
+	require.NoError(t, err)
+	defer func() {
+		if serverListener != nil {
+			err = serverListener.Close()
+			require.NoError(t, err)
+		}
+	}()
+
+	c, err := client.Dial(context.Background(), serverAddr, serverPeerID)
+	require.NoError(t, err)
+	defer func() {
+		if c != nil {
+			err = c.Close()
+			require.NoError(t, err)
+		}
+	}()
+
+	require.Equal(t, serverAddr, c.RemoteMultiaddr())
+	require.Equal(t, clientPeerID, c.LocalPeer())
+	require.Equal(t, serverPeerID, c.RemotePeer())
+
+	// Try to dial address with no listener
+	otherAddr, err := ma.NewMultiaddr("/memory/4321")
+	require.NoError(t, err)
+
+	_, err = client.Dial(context.Background(), otherAddr, serverPeerID)
+	require.Error(t, err)
 }

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -52,6 +52,10 @@ type stream struct {
 	resetOnce   sync.Once // Protects closing localReset
 	localReset  chan struct{}
 	remoteReset <-chan struct{}
+
+	mu            sync.RWMutex
+	readDeadline  time.Time
+	writeDeadline time.Time
 
 	rerr onceError
 	werr onceError
@@ -111,15 +115,39 @@ func (p *stream) write(b []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 
+	p.mu.RLock()
+	writeDeadline := p.writeDeadline
+	p.mu.RUnlock()
+
+	if !writeDeadline.IsZero() && time.Now().After(writeDeadline) {
+		return 0, os.ErrDeadlineExceeded
+	}
+	var (
+		writeDeadlineTimer *time.Timer
+		writeDeadlineChan  <-chan time.Time
+	)
+	defer func() {
+		if writeDeadlineTimer != nil {
+			writeDeadlineTimer.Stop()
+		}
+	}()
+
+	if !writeDeadline.IsZero() {
+		writeDeadlineTimer = time.NewTimer(time.Until(writeDeadline))
+		writeDeadlineChan = writeDeadlineTimer.C
+	}
+
 	p.wrMu.Lock() // Ensure entirety of b is written together
 	defer p.wrMu.Unlock()
 
 	select {
+	case <-writeDeadlineChan:
+		err = os.ErrDeadlineExceeded
 	case p.wrTx <- b:
 		n += len(b)
 	}
 
-	return n, nil
+	return n, err
 }
 
 func (p *stream) Read(b []byte) (int, error) {
@@ -145,7 +173,32 @@ func (p *stream) read(b []byte) (n int, err error) {
 		err = io.EOF
 	}
 
+	p.mu.RLock()
+	readDeadline := p.readDeadline
+	p.mu.RUnlock()
+
+	if !readDeadline.IsZero() && time.Now().After(readDeadline) {
+		return 0, os.ErrDeadlineExceeded
+	}
+
+	var (
+		readDeadlineTimer *time.Timer
+		readDeadlineChan  <-chan time.Time
+	)
+	defer func() {
+		if readDeadlineTimer != nil {
+			readDeadlineTimer.Stop()
+		}
+	}()
+
+	if !readDeadline.IsZero() {
+		readDeadlineTimer = time.NewTimer(time.Until(readDeadline))
+		readDeadlineChan = readDeadlineTimer.C
+	}
+
 	select {
+	case <-readDeadlineChan:
+		err = os.ErrDeadlineExceeded
 	case bw, ok := <-p.rdRx:
 		if !ok {
 			err = io.EOF
@@ -197,15 +250,22 @@ func (s *stream) Reset() error {
 }
 
 func (s *stream) SetDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	_ = s.SetReadDeadline(t)
+	return s.SetWriteDeadline(t)
 }
 
 func (s *stream) SetReadDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readDeadline = t
+	return nil
 }
 
 func (s *stream) SetWriteDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.writeDeadline = t
+	return nil
 }
 
 func isClosedChan(c <-chan struct{}) bool {
