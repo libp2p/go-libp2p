@@ -15,6 +15,14 @@ import (
 	quicmetrics "github.com/quic-go/quic-go/metrics"
 )
 
+type QUICListener interface {
+	Accept(ctx context.Context) (quic.Connection, error)
+	Close() error
+	Addr() net.Addr
+}
+
+var _ QUICListener = &quic.Listener{}
+
 type ConnManager struct {
 	reuseUDP4       *reuse
 	reuseUDP6       *reuse
@@ -201,7 +209,7 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 	}
 	return &singleOwnerTransport{
 		packetConn: conn,
-		Transport: quic.Transport{
+		Transport: &quic.Transport{
 			Conn:              conn,
 			StatelessResetKey: &c.srk,
 			TokenGeneratorKey: &c.tokenKey,
@@ -279,7 +287,7 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{Transport: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
+	return &singleOwnerTransport{Transport: &quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
 }
 
 func (c *ConnManager) Protocols() []int {

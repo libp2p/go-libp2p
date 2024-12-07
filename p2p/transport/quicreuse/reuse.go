@@ -25,11 +25,11 @@ type refCountedQuicTransport interface {
 	IncreaseCount()
 
 	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error)
-	Listen(tlsConf *tls.Config, conf *quic.Config) (*quic.Listener, error)
+	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
 }
 
 type singleOwnerTransport struct {
-	quic.Transport
+	*quic.Transport
 
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
@@ -52,6 +52,10 @@ func (c *singleOwnerTransport) Close() error {
 
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 	return c.Transport.WriteTo(b, addr)
+}
+
+func (c *singleOwnerTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
+	return c.Transport.Listen(tlsConf, conf)
 }
 
 // Constant. Defined as variables to simplify testing.
@@ -120,6 +124,10 @@ func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 func (c *refcountedTransport) LocalAddr() net.Addr {
 	return c.Transport.Conn.LocalAddr()
+}
+
+func (c *refcountedTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
+	return c.Transport.Listen(tlsConf, conf)
 }
 
 func (c *refcountedTransport) DecreaseCount() {
