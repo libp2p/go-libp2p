@@ -118,6 +118,31 @@ func (c *ConnManager) getReuse(network string) (*reuse, error) {
 	}
 }
 
+// TODO: think about error handling here. There shouldn't be any need to return an error
+func (c *ConnManager) AddTransport(tr QUICTransport, conn net.PacketConn) error {
+	c.quicListenersMu.Lock()
+	defer c.quicListenersMu.Unlock()
+
+	refCountedTr := &singleOwnerTransport{
+		Transport:  tr,
+		packetConn: conn,
+		localAddr:  conn.LocalAddr(),
+	}
+
+	// TODO: think about quic.Config handling
+	ln, err := newQuicListener(refCountedTr, c.serverConfig)
+	if err != nil {
+		return err
+	}
+
+	key := conn.LocalAddr().String()
+	c.quicListeners[key] = quicListenerEntry{
+		refCount: 1,
+		ln:       ln,
+	}
+	return nil
+}
+
 func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
 	return c.ListenQUICAndAssociate(nil, addr, tlsConf, allowWindowIncrease)
 }
