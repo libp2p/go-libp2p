@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"sync"
 
@@ -22,6 +23,14 @@ type QUICListener interface {
 }
 
 var _ QUICListener = &quic.Listener{}
+
+type QUICTransport interface {
+	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
+	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error)
+	WriteTo(b []byte, addr net.Addr) (int, error)
+	ReadNonQUICPacket(ctx context.Context, b []byte) (int, net.Addr, error)
+	io.Closer
+}
 
 type ConnManager struct {
 	reuseUDP4       *reuse
@@ -209,10 +218,13 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 	}
 	return &singleOwnerTransport{
 		packetConn: conn,
-		Transport: &quic.Transport{
-			Conn:              conn,
-			StatelessResetKey: &c.srk,
-			TokenGeneratorKey: &c.tokenKey,
+		localAddr:  conn.LocalAddr(),
+		Transport: &wrappedQUICTransport{
+			&quic.Transport{
+				Conn:              conn,
+				StatelessResetKey: &c.srk,
+				TokenGeneratorKey: &c.tokenKey,
+			},
 		},
 	}, nil
 }
@@ -287,7 +299,7 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{Transport: &quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
+	return &singleOwnerTransport{Transport: &wrappedQUICTransport{&quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, packetConn: conn}, nil
 }
 
 func (c *ConnManager) Protocols() []int {
@@ -306,4 +318,12 @@ func (c *ConnManager) Close() error {
 
 func (c *ConnManager) ClientConfig() *quic.Config {
 	return c.clientConfig
+}
+
+type wrappedQUICTransport struct {
+	*quic.Transport
+}
+
+func (t *wrappedQUICTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
+	return t.Transport.Listen(tlsConf, conf)
 }

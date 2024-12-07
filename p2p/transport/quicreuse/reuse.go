@@ -29,19 +29,28 @@ type refCountedQuicTransport interface {
 }
 
 type singleOwnerTransport struct {
-	*quic.Transport
+	Transport QUICTransport
+
+	localAddr net.Addr
 
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
 }
 
+var _ QUICTransport = &singleOwnerTransport{}
+
 func (c *singleOwnerTransport) IncreaseCount() {}
-func (c *singleOwnerTransport) DecreaseCount() {
-	c.Transport.Close()
+func (c *singleOwnerTransport) DecreaseCount() { c.Transport.Close() }
+func (c *singleOwnerTransport) LocalAddr() net.Addr {
+	return c.localAddr
 }
 
-func (c *singleOwnerTransport) LocalAddr() net.Addr {
-	return c.Transport.Conn.LocalAddr()
+func (c *singleOwnerTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error) {
+	return c.Transport.Dial(ctx, addr, tlsConf, conf)
+}
+
+func (c *singleOwnerTransport) ReadNonQUICPacket(ctx context.Context, b []byte) (int, net.Addr, error) {
+	return c.Transport.ReadNonQUICPacket(ctx, b)
 }
 
 func (c *singleOwnerTransport) Close() error {
