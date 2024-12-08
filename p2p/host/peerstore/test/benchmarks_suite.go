@@ -36,11 +36,20 @@ func BenchmarkPeerstore(b *testing.B, factory PeerstoreFactory, variant string) 
 			ps, cleanup := factory()
 			defer cleanup()
 			b.ResetTimer()
+			itersPerBM := 10
 			for i := 0; i < b.N; i++ {
-				pp := peers[i%N]
-				ps.AddAddrs(pp.ID, pp.Addr, pstore.RecentlyConnectedAddrTTL)
-				ps.Addrs(pp.ID)
-				ps.ClearAddrs(pp.ID)
+				for j := 0; j < itersPerBM; j++ {
+					pp := peers[(i+j)%N]
+					ps.AddAddrs(pp.ID, pp.Addr, pstore.RecentlyConnectedAddrTTL)
+				}
+				for j := 0; j < itersPerBM; j++ {
+					pp := peers[(i+j)%N]
+					ps.Addrs(pp.ID)
+				}
+				for j := 0; j < itersPerBM; j++ {
+					pp := peers[(i+j)%N]
+					ps.ClearAddrs(pp.ID)
+				}
 			}
 		})
 
