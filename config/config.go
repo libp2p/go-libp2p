@@ -439,6 +439,8 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 		DisableIdentifyAddressDiscovery: cfg.DisableIdentifyAddressDiscovery,
 		EnableAutoNATv2:                 cfg.EnableAutoNATv2,
 		AutoNATv2Dialer:                 autonatv2Dialer,
+		EnableAutoRelay:                 cfg.EnableAutoRelay,
+		AutoRelayOpts:                   cfg.AutoRelayOpts,
 	})
 	if err != nil {
 		return nil, err
@@ -518,28 +520,6 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		)
 	}
 
-	// enable autorelay
-	fxopts = append(fxopts,
-		fx.Invoke(func(h *bhost.BasicHost, lifecycle fx.Lifecycle) error {
-			if cfg.EnableAutoRelay {
-				if !cfg.DisableMetrics {
-					mt := autorelay.WithMetricsTracer(
-						autorelay.NewMetricsTracer(autorelay.WithRegisterer(cfg.PrometheusRegisterer)))
-					mtOpts := []autorelay.Option{mt}
-					cfg.AutoRelayOpts = append(mtOpts, cfg.AutoRelayOpts...)
-				}
-
-				ar, err := autorelay.NewAutoRelay(h, cfg.AutoRelayOpts...)
-				if err != nil {
-					return err
-				}
-				lifecycle.Append(fx.StartStopHook(ar.Start, ar.Close))
-				return nil
-			}
-			return nil
-		}),
-	)
-
 	var bh *bhost.BasicHost
 	fxopts = append(fxopts, fx.Invoke(func(bho *bhost.BasicHost) { bh = bho }))
 	fxopts = append(fxopts, fx.Invoke(func(h *bhost.BasicHost, lifecycle fx.Lifecycle) {
@@ -554,17 +534,19 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	fxopts = append(fxopts, cfg.UserFxOptions...)
 
 	app := fx.New(fxopts...)
-	if err := app.Start(context.Background()); err != nil {
-		return nil, err
+	if app.Err() != nil {
+		return nil, fmt.Errorf("failed to create host: %w", app.Err())
 	}
-
 	if err := cfg.addAutoNAT(bh); err != nil {
-		app.Stop(context.Background())
 		if cfg.Routing != nil {
 			rh.Close()
 		} else {
 			bh.Close()
 		}
+		return nil, err
+	}
+
+	if err := app.Start(context.Background()); err != nil {
 		return nil, err
 	}
 
