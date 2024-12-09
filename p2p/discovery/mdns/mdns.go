@@ -3,10 +3,12 @@ package mdns
 import (
 	"context"
 	"errors"
+	"github.com/libp2p/go-libp2p/core/event"
 	"io"
 	"math/rand"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -69,6 +71,40 @@ func (s *mdnsService) Start() error {
 		return err
 	}
 	s.startResolver(s.ctx)
+
+	ipEvt, err := s.host.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
+	if err != nil {
+		if err = s.Close(); err != nil {
+			log.Errorf("failed to close mdns service: %s", err)
+		}
+		return err
+	}
+	go func() {
+		defer ipEvt.Close()
+		var addrUpdateDebounce sync.Once
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case evt := <-ipEvt.Out():
+				if _, ok := evt.(event.EvtLocalAddressesUpdated); ok {
+					addrUpdateDebounce.Do(func() {
+						time.AfterFunc(2*time.Second, func() {
+							addrUpdateDebounce = sync.Once{}
+							if s.server != nil {
+								s.server.Shutdown()
+								s.server = nil
+							}
+							if err = s.startServer(); err != nil {
+								log.Errorf("failed to restart mdns server: %s", err)
+							}
+						})
+					})
+				}
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -143,6 +179,7 @@ func (s *mdnsService) startServer() error {
 		txts,
 		nil,
 	)
+
 	if err != nil {
 		return err
 	}
