@@ -80,7 +80,11 @@ func (s *mdnsService) Start() error {
 		return err
 	}
 	go func() {
-		defer ipEvt.Close()
+		defer func() {
+			if err := ipEvt.Close(); err != nil {
+				log.Errorf("failed to close ipEvt: %s", err)
+			}
+		}()
 		var addrUpdateDebounce sync.Once
 		for {
 			select {
