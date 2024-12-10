@@ -10,6 +10,7 @@ services:
     image: grafana/grafana:latest
     depends_on:
       - prometheus
+      - pyroscope
     ports:
       - "3000:3000"
     environment:
@@ -27,3 +28,8 @@ services:
       - ./relaysvc/relaysvc.json:/var/lib/grafana/dashboards/relaysvc.json
       - ./swarm/swarm.json:/var/lib/grafana/dashboards/swarm.json
       - ./resource-manager/resource-manager.json:/var/lib/grafana/dashboards/resource-manager.json
+      - ./profiling/profiling.json:/var/lib/grafana/dashboards/profiling.json
+  pyroscope:
+    image: grafana/pyroscope:latest
+    ports:
+      - 4040:4040
