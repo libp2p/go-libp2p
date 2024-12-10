@@ -23,6 +23,10 @@ func (c *conn) Close() error {
 	return c.yamux().Close()
 }
 
+func (c *conn) CloseWithError(errCode network.ConnErrorCode) error {
+	return c.yamux().CloseWithError(uint32(errCode))
+}
+
 // IsClosed checks if yamux.Session is in closed state.
 func (c *conn) IsClosed() bool {
 	return c.yamux().IsClosed()
@@ -32,7 +36,7 @@ func (c *conn) IsClosed() bool {
 func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 	s, err := c.yamux().OpenStream(ctx)
 	if err != nil {
-		return nil, err
+		return nil, parseResetError(err)
 	}
 
 	return (*stream)(s), nil
@@ -41,7 +45,7 @@ func (c *conn) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 // AcceptStream accepts a stream opened by the other side.
 func (c *conn) AcceptStream() (network.MuxedStream, error) {
 	s, err := c.yamux().AcceptStream()
-	return (*stream)(s), err
+	return (*stream)(s), parseResetError(err)
 }
 
 func (c *conn) yamux() *yamux.Session {

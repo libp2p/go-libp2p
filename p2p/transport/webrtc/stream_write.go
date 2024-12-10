@@ -24,7 +24,7 @@ func (s *stream) Write(b []byte) (int, error) {
 	}
 	switch s.sendState {
 	case sendStateReset:
-		return 0, network.ErrReset
+		return 0, s.writeError
 	case sendStateDataSent, sendStateDataReceived:
 		return 0, errWriteAfterClose
 	}
@@ -48,7 +48,7 @@ func (s *stream) Write(b []byte) (int, error) {
 		}
 		switch s.sendState {
 		case sendStateReset:
-			return n, network.ErrReset
+			return n, s.writeError
 		case sendStateDataSent, sendStateDataReceived:
 			return n, errWriteAfterClose
 		}
@@ -119,7 +119,7 @@ func (s *stream) availableSendSpace() int {
 	return availableSpace
 }
 
-func (s *stream) cancelWrite() error {
+func (s *stream) cancelWrite(errCode network.StreamErrorCode) error {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
@@ -129,10 +129,12 @@ func (s *stream) cancelWrite() error {
 		return nil
 	}
 	s.sendState = sendStateReset
+	s.writeError = &network.StreamError{Remote: false, ErrorCode: errCode}
 	// Remove reference to this stream from data channel
 	s.dataChannel.OnBufferedAmountLow(nil)
 	s.notifyWriteStateChanged()
-	return s.writer.WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()})
+	code := uint32(errCode)
+	return s.writer.WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum(), ErrorCode: &code})
 }
 
 func (s *stream) CloseWrite() error {

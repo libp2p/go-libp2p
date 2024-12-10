@@ -11,7 +11,6 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
-
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
 )
@@ -54,12 +53,12 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		c, err := l.wrapConn(qconn)
 		if err != nil {
 			log.Debugf("failed to setup connection: %s", err)
-			qconn.CloseWithError(1, "")
+			qconn.CloseWithError(quic.ApplicationErrorCode(network.ConnResourceLimitExceeded), "")
 			continue
 		}
 		l.transport.addConn(qconn, c)
 		if l.transport.gater != nil && !(l.transport.gater.InterceptAccept(c) && l.transport.gater.InterceptSecured(network.DirInbound, c.remotePeerID, c)) {
-			c.closeWithError(errorCodeConnectionGating, "connection gated")
+			c.closeWithError(quic.ApplicationErrorCode(network.ConnGated), "connection gated")
 			continue
 		}
 

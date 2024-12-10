@@ -33,6 +33,14 @@ func (c *tconn) Close() error {
 	return nil
 }
 
+func (c *tconn) CloseWithError(code network.ConnErrorCode) error {
+	atomic.StoreUint32(&c.closed, 1)
+	if c.disconnectNotify != nil {
+		c.disconnectNotify(nil, c)
+	}
+	return nil
+}
+
 func (c *tconn) isClosed() bool {
 	return atomic.LoadUint32(&c.closed) == 1
 }
@@ -794,6 +802,7 @@ type mockConn struct {
 }
 
 func (m mockConn) Close() error                                          { panic("implement me") }
+func (m mockConn) CloseWithError(errCode network.ConnErrorCode) error    { panic("implement me") }
 func (m mockConn) LocalPeer() peer.ID                                    { panic("implement me") }
 func (m mockConn) RemotePeer() peer.ID                                   { panic("implement me") }
 func (m mockConn) RemotePublicKey() crypto.PubKey                        { panic("implement me") }
