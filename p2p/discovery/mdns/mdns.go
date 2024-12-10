@@ -48,6 +48,8 @@ type mdnsService struct {
 	server     *zeroconf.Server
 
 	notifee Notifee
+
+	mu sync.Mutex
 }
 
 func NewMdnsService(host host.Host, serviceName string, notifee Notifee) *mdnsService {
@@ -90,6 +92,7 @@ func (s *mdnsService) Start() error {
 				return
 			case evt := <-ipEvt.Out():
 				if _, ok := evt.(event.EvtLocalAddressesUpdated); ok {
+					s.mu.Lock()
 					if s.server != nil {
 						s.server.Shutdown()
 						s.server = nil
@@ -97,6 +100,7 @@ func (s *mdnsService) Start() error {
 					if err = s.startServer(); err != nil {
 						log.Errorf("failed to restart mdns server: %s", err)
 					}
+					s.mu.Unlock()
 				}
 			}
 		}
@@ -106,6 +110,9 @@ func (s *mdnsService) Start() error {
 }
 
 func (s *mdnsService) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.ctxCancel()
 	if s.server != nil {
 		s.server.Shutdown()
