@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"io"
 	"math/rand"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/libp2p/zeroconf/v2"
 
@@ -85,25 +83,20 @@ func (s *mdnsService) Start() error {
 				log.Errorf("failed to close ipEvt: %s", err)
 			}
 		}()
-		var addrUpdateDebounce sync.Once
+
 		for {
 			select {
 			case <-s.ctx.Done():
 				return
 			case evt := <-ipEvt.Out():
 				if _, ok := evt.(event.EvtLocalAddressesUpdated); ok {
-					addrUpdateDebounce.Do(func() {
-						time.AfterFunc(2*time.Second, func() {
-							addrUpdateDebounce = sync.Once{}
-							if s.server != nil {
-								s.server.Shutdown()
-								s.server = nil
-							}
-							if err = s.startServer(); err != nil {
-								log.Errorf("failed to restart mdns server: %s", err)
-							}
-						})
-					})
+					if s.server != nil {
+						s.server.Shutdown()
+						s.server = nil
+					}
+					if err = s.startServer(); err != nil {
+						log.Errorf("failed to restart mdns server: %s", err)
+					}
 				}
 			}
 		}
