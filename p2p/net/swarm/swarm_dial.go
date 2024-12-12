@@ -270,7 +270,7 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 		if conn.RemotePeer() != p {
 			conn.Close()
 			log.Errorw("Handshake failed to properly authenticate peer", "authenticated", conn.RemotePeer(), "expected", p)
-			return nil, fmt.Errorf("unexpected peer")
+			return nil, errors.New("unexpected peer")
 		}
 		return conn, nil
 	}

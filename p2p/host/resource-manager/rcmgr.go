@@ -2,6 +2,7 @@ package rcmgr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -352,7 +353,7 @@ func (r *resourceManager) OpenConnection(dir network.Direction, usefd bool, endp
 
 	ipAddr, ok := netip.AddrFromSlice(ip)
 	if !ok {
-		return nil, fmt.Errorf("failed to convert ip to netip.Addr")
+		return nil, errors.New("failed to convert ip to netip.Addr")
 	}
 	return r.openConnection(dir, usefd, endpoint, ipAddr)
 }
@@ -757,7 +758,7 @@ func (s *connectionScope) SetPeer(p peer.ID) error {
 	defer s.Unlock()
 
 	if s.peer != nil {
-		return fmt.Errorf("connection scope already attached to a peer")
+		return errors.New("connection scope already attached to a peer")
 	}
 
 	system := s.rcmgr.system

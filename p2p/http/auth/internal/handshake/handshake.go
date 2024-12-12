@@ -169,7 +169,7 @@ type sigParam struct {
 
 func verifySig(publicKey crypto.PubKey, prefix string, signedParts []sigParam, sig []byte) error {
 	if publicKey == nil {
-		return fmt.Errorf("no public key to verify signature")
+		return errors.New("no public key to verify signature")
 	}
 
 	b := pool.Get(4096)
@@ -183,7 +183,7 @@ func verifySig(publicKey crypto.PubKey, prefix string, signedParts []sigParam, s
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("signature verification failed")
+		return errors.New("signature verification failed")
 	}
 
 	return nil
@@ -191,7 +191,7 @@ func verifySig(publicKey crypto.PubKey, prefix string, signedParts []sigParam, s
 
 func sign(privKey crypto.PrivKey, prefix string, partsToSign []sigParam) ([]byte, error) {
 	if privKey == nil {
-		return nil, fmt.Errorf("no private key available to sign")
+		return nil, errors.New("no private key available to sign")
 	}
 	b := pool.Get(4096)
 	defer pool.Put(b)

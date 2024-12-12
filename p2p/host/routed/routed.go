@@ -2,7 +2,7 @@ package routedhost
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -151,7 +151,7 @@ func (rh *RoutedHost) findPeerAddrs(ctx context.Context, id peer.ID) ([]ma.Multi
 	}
 
 	if pi.ID != id {
-		err = fmt.Errorf("routing failure: provided addrs for different peer")
+		err = errors.New("routing failure: provided addrs for different peer")
 		log.Errorw("got wrong peer",
 			"error", err,
 			"wantedPeer", id,

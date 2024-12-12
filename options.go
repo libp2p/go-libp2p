@@ -73,7 +73,7 @@ func ListenAddrs(addrs ...ma.Multiaddr) Option {
 func Security(name string, constructor interface{}) Option {
 	return func(cfg *Config) error {
 		if cfg.Insecure {
-			return fmt.Errorf("cannot use security transports with an insecure libp2p configuration")
+			return errors.New("cannot use security transports with an insecure libp2p configuration")
 		}
 		cfg.SecurityTransports = append(cfg.SecurityTransports, config.Security{ID: protocol.ID(name), Constructor: constructor})
 		return nil
@@ -84,7 +84,7 @@ func Security(name string, constructor interface{}) Option {
 // It's incompatible with all other transport security protocols.
 var NoSecurity Option = func(cfg *Config) error {
 	if len(cfg.SecurityTransports) > 0 {
-		return fmt.Errorf("cannot use security transports with an insecure libp2p configuration")
+		return errors.New("cannot use security transports with an insecure libp2p configuration")
 	}
 	cfg.Insecure = true
 	return nil
@@ -198,7 +198,7 @@ func Transport(constructor interface{}, opts ...interface{}) Option {
 func Peerstore(ps peerstore.Peerstore) Option {
 	return func(cfg *Config) error {
 		if cfg.Peerstore != nil {
-			return fmt.Errorf("cannot specify multiple peerstore options")
+			return errors.New("cannot specify multiple peerstore options")
 		}
 
 		cfg.Peerstore = ps
@@ -210,7 +210,7 @@ func Peerstore(ps peerstore.Peerstore) Option {
 func PrivateNetwork(psk pnet.PSK) Option {
 	return func(cfg *Config) error {
 		if cfg.PSK != nil {
-			return fmt.Errorf("cannot specify multiple private network options")
+			return errors.New("cannot specify multiple private network options")
 		}
 
 		cfg.PSK = psk
@@ -222,7 +222,7 @@ func PrivateNetwork(psk pnet.PSK) Option {
 func BandwidthReporter(rep metrics.Reporter) Option {
 	return func(cfg *Config) error {
 		if cfg.Reporter != nil {
-			return fmt.Errorf("cannot specify multiple bandwidth reporter options")
+			return errors.New("cannot specify multiple bandwidth reporter options")
 		}
 
 		cfg.Reporter = rep
@@ -234,7 +234,7 @@ func BandwidthReporter(rep metrics.Reporter) Option {
 func Identity(sk crypto.PrivKey) Option {
 	return func(cfg *Config) error {
 		if cfg.PeerKey != nil {
-			return fmt.Errorf("cannot specify multiple identities")
+			return errors.New("cannot specify multiple identities")
 		}
 
 		cfg.PeerKey = sk
@@ -249,7 +249,7 @@ func Identity(sk crypto.PrivKey) Option {
 func ConnectionManager(connman connmgr.ConnManager) Option {
 	return func(cfg *Config) error {
 		if cfg.ConnManager != nil {
-			return fmt.Errorf("cannot specify multiple connection managers")
+			return errors.New("cannot specify multiple connection managers")
 		}
 		cfg.ConnManager = connman
 		return nil
@@ -260,7 +260,7 @@ func ConnectionManager(connman connmgr.ConnManager) Option {
 func AddrsFactory(factory config.AddrsFactory) Option {
 	return func(cfg *Config) error {
 		if cfg.AddrsFactory != nil {
-			return fmt.Errorf("cannot specify multiple address factories")
+			return errors.New("cannot specify multiple address factories")
 		}
 		cfg.AddrsFactory = factory
 		return nil
@@ -426,7 +426,7 @@ func NATPortMap() Option {
 func NATManager(nm config.NATManagerC) Option {
 	return func(cfg *Config) error {
 		if cfg.NATManager != nil {
-			return fmt.Errorf("cannot specify multiple NATManagers")
+			return errors.New("cannot specify multiple NATManagers")
 		}
 		cfg.NATManager = nm
 		return nil
@@ -445,7 +445,7 @@ func Ping(enable bool) Option {
 func Routing(rt config.RoutingC) Option {
 	return func(cfg *Config) error {
 		if cfg.Routing != nil {
-			return fmt.Errorf("cannot specify multiple routing options")
+			return errors.New("cannot specify multiple routing options")
 		}
 		cfg.Routing = rt
 		return nil

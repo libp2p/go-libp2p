@@ -2,7 +2,7 @@ package itest
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -286,7 +286,7 @@ func (e *Echo) Echo(p peer.ID, what string) error {
 	}
 
 	if what != string(buf[:n]) {
-		return fmt.Errorf("echo output doesn't match input")
+		return errors.New("echo output doesn't match input")
 	}
 
 	return nil

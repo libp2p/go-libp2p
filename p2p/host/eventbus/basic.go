@@ -44,7 +44,7 @@ type emitter struct {
 
 func (e *emitter) Emit(evt interface{}) error {
 	if e.closed.Load() {
-		return fmt.Errorf("emitter is closed")
+		return errors.New("emitter is closed")
 	}
 
 	e.n.emit(evt)
@@ -58,7 +58,7 @@ func (e *emitter) Emit(evt interface{}) error {
 
 func (e *emitter) Close() error {
 	if !e.closed.CompareAndSwap(false, true) {
-		return fmt.Errorf("closed an emitter more than once")
+		return errors.New("closed an emitter more than once")
 	}
 	if e.n.nEmitters.Add(-1) == 0 {
 		e.dropper(e.typ)
@@ -238,7 +238,7 @@ func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt
 	if len(types) > 1 {
 		for _, t := range types {
 			if t == event.WildcardSubscription {
-				return nil, fmt.Errorf("wildcard subscriptions must be started separately")
+				return nil, errors.New("wildcard subscriptions must be started separately")
 			}
 		}
 	}
@@ -293,7 +293,7 @@ func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt
 // emit(EventT{})
 func (b *basicBus) Emitter(evtType interface{}, opts ...event.EmitterOpt) (e event.Emitter, err error) {
 	if evtType == event.WildcardSubscription {
-		return nil, fmt.Errorf("illegal emitter for wildcard subscription")
+		return nil, errors.New("illegal emitter for wildcard subscription")
 	}
 
 	var settings emitterSettings
