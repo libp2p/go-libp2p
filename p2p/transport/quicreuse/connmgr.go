@@ -118,16 +118,25 @@ func (c *ConnManager) getReuse(network string) (*reuse, error) {
 	}
 }
 
-// TODO: think about error handling here. There shouldn't be any need to return an error
-func (c *ConnManager) AddTransport(tr QUICTransport, conn net.PacketConn) error {
+func (c *ConnManager) AddTransport(network string, tr QUICTransport, conn net.PacketConn) error {
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
-	refCountedTr := &singleOwnerTransport{
-		Transport:  tr,
-		packetConn: conn,
-		localAddr:  conn.LocalAddr(),
+	refCountedTr := &refcountedTransport{
+		QUICTransport: tr,
+		packetConn:    conn,
+		refCount:      1,
 	}
+
+	var reuse *reuse
+	reuse, err := c.getReuse(network)
+	if err != nil {
+		return err
+	}
+	// TODO: this assumes that the connection is a listening on 0.0.0.0
+	// We should generalize this to support listening on specific addresses
+	reuse.globalListeners[conn.LocalAddr().(*net.UDPAddr).Port] = refCountedTr
+	reuse.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = refCountedTr
 
 	// TODO: think about quic.Config handling
 	ln, err := newQuicListener(refCountedTr, c.serverConfig)
@@ -217,7 +226,7 @@ func (c *ConnManager) SharedNonQUICPacketConn(network string, laddr *net.UDPAddr
 			ctx:             ctx,
 			ctxCancel:       cancel,
 			owningTransport: t,
-			tr:              &t.Transport,
+			tr:              t.QUICTransport,
 		}, nil
 	}
 	return nil, errors.New("expected to be able to share with a QUIC listener, but the QUIC listener is not using a refcountedTransport. `DisableReuseport` should not be set")

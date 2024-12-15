@@ -74,7 +74,7 @@ var (
 )
 
 type refcountedTransport struct {
-	quic.Transport
+	QUICTransport
 
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
@@ -123,20 +123,20 @@ func (c *refcountedTransport) IncreaseCount() {
 
 func (c *refcountedTransport) Close() error {
 	// TODO(when we drop support for go 1.19) use errors.Join
-	c.Transport.Close()
+	c.QUICTransport.Close()
 	return c.packetConn.Close()
 }
 
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
-	return c.Transport.WriteTo(b, addr)
+	return c.QUICTransport.WriteTo(b, addr)
 }
 
 func (c *refcountedTransport) LocalAddr() net.Addr {
-	return c.Transport.Conn.LocalAddr()
+	return c.packetConn.LocalAddr()
 }
 
 func (c *refcountedTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
-	return c.Transport.Listen(tlsConf, conf)
+	return c.QUICTransport.Listen(tlsConf, conf)
 }
 
 func (c *refcountedTransport) DecreaseCount() {
@@ -319,11 +319,16 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	if err != nil {
 		return nil, err
 	}
-	tr := &refcountedTransport{Transport: quic.Transport{
-		Conn:              conn,
-		StatelessResetKey: r.statelessResetKey,
-		TokenGeneratorKey: r.tokenGeneratorKey,
-	}, packetConn: conn}
+	tr := &refcountedTransport{
+		QUICTransport: &wrappedQUICTransport{
+			Transport: &quic.Transport{
+				Conn:              conn,
+				StatelessResetKey: r.statelessResetKey,
+				TokenGeneratorKey: r.tokenGeneratorKey,
+			},
+		},
+		packetConn: conn,
+	}
 	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = tr
 	return tr, nil
 }
@@ -368,9 +373,11 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	}
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	tr := &refcountedTransport{
-		Transport: quic.Transport{
-			Conn:              conn,
-			StatelessResetKey: r.statelessResetKey,
+		QUICTransport: &wrappedQUICTransport{
+			Transport: &quic.Transport{
+				Conn:              conn,
+				StatelessResetKey: r.statelessResetKey,
+			},
 		},
 		packetConn: conn,
 	}
