@@ -382,13 +382,16 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		packetConn: conn,
 	}
 	tr.IncreaseCount()
+	return tr, r.AddTransport(tr, localAddr)
+}
 
+func (r *reuse) AddTransport(tr *refcountedTransport, localAddr *net.UDPAddr) error {
 	// Deal with listen on a global address
 	if localAddr.IP.IsUnspecified() {
 		// The kernel already checked that the laddr is not already listen
 		// so we need not check here (when we create ListenUDP).
 		r.globalListeners[localAddr.Port] = tr
-		return tr, nil
+		return nil
 	}
 
 	// Deal with listen on a unicast address
@@ -402,7 +405,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	// The kernel already checked that the laddr is not already listen
 	// so we need not check here (when we create ListenUDP).
 	r.unicast[localAddr.IP.String()][localAddr.Port] = tr
-	return tr, nil
+	return nil
 }
 
 func (r *reuse) Close() error {

@@ -122,6 +122,11 @@ func (c *ConnManager) AddTransport(network string, tr QUICTransport, conn net.Pa
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
+	localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return errors.New("expected a conn.LocalAddr() to return a *net.UDPAddr")
+	}
+
 	refCountedTr := &refcountedTransport{
 		QUICTransport: tr,
 		packetConn:    conn,
@@ -133,12 +138,10 @@ func (c *ConnManager) AddTransport(network string, tr QUICTransport, conn net.Pa
 	if err != nil {
 		return err
 	}
-	// TODO: this assumes that the connection is a listening on 0.0.0.0
-	// We should generalize this to support listening on specific addresses
-	reuse.globalListeners[conn.LocalAddr().(*net.UDPAddr).Port] = refCountedTr
-	reuse.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = refCountedTr
+	if err := reuse.AddTransport(refCountedTr, localAddr); err != nil {
+		return err
+	}
 
-	// TODO: think about quic.Config handling
 	ln, err := newQuicListener(refCountedTr, c.serverConfig)
 	if err != nil {
 		return err
