@@ -30,11 +30,12 @@ func newHmacPool(key []byte) *hmacPool {
 }
 
 func (p *hmacPool) Get() hash.Hash {
-	return p.p.Get().(hash.Hash)
+	h := p.p.Get().(hash.Hash)
+	h.Reset()
+	return h
 }
 
 func (p *hmacPool) Put(h hash.Hash) {
-	h.Reset()
 	p.p.Put(h)
 }
 
