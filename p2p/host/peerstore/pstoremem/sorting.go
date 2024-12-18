@@ -35,7 +35,7 @@ func (al addrList) Less(i, j int) bool {
 		return fdb
 	}
 
-	// if 'b' doesnt take a file descriptor
+	// if 'b' doesn't take a file descriptor
 	if !fdb {
 		return false
 	}
