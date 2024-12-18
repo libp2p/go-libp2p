@@ -24,4 +24,5 @@ for path in "${proto_array[@]}"; do
     proto_paths+="$path "
 done
 
+echo protoc --version $(protoc --version)
 protoc --proto_path=$root --go_out=$root --go_opt=paths=source_relative $proto_paths
