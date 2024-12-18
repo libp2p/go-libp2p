@@ -29,5 +29,7 @@ PROTOC_BIN_PATH="$("${SCRIPT_DIR}/download-protoc.sh")"
 export PATH="$PROTOC_BIN_PATH:$PATH"
 
 echo protoc --version $(protoc --version)
-echo protoc-gen-go --version $(protoc-gen-go --version)
-protoc --proto_path=$root --go_out=$root --go_opt=paths=source_relative $proto_paths
+(cd ${SCRIPT_DIR} && go build -o protoc-gen-go google.golang.org/protobuf/cmd/protoc-gen-go)
+
+echo protoc-gen-go --version $(${SCRIPT_DIR}/protoc-gen-go --version)
+protoc --plugin="${SCRIPT_DIR}/protoc-gen-go" --proto_path=$root --go_out=$root --go_opt=paths=source_relative $proto_paths
