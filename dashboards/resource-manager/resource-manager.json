@@ -379,7 +379,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "How many streams does each protocol have open.\n\nA protocol is similiar to a service except there may be many protocols for a single service. A service may have \nmultiple protocols for backwards compatibility. For example, bitswap the service is a single entity, but it supports bitswap protocols v1.1 and v1.2.\n\nA service is attached to a stream manually by the protocol developer. A service may be missing if there is no `StreamScope.SetService` call.",
+      "description": "How many streams does each protocol have open.\n\nA protocol is similar to a service except there may be many protocols for a single service. A service may have \nmultiple protocols for backwards compatibility. For example, bitswap the service is a single entity, but it supports bitswap protocols v1.1 and v1.2.\n\nA service is attached to a stream manually by the protocol developer. A service may be missing if there is no `StreamScope.SetService` call.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1217,7 +1217,7 @@
           "refId": "A"
         }
       ],
-      "title": "Curent outbound connections per peer histogram. Across all instances",
+      "title": "Current outbound connections per peer histogram. Across all instances",
       "type": "bargauge"
     },
     {
