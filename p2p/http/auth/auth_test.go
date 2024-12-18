@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"hash"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -240,4 +241,52 @@ func (irt *instrumentedRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 
 func (irt *instrumentedRoundTripper) TLSClientConfig() *tls.Config {
 	return irt.RoundTripper.(*http.Transport).TLSClientConfig
+}
+
+func TestConcurrentAuth(t *testing.T) {
+	serverKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	auth := ServerPeerIDAuth{
+		PrivKey: serverKey,
+		ValidHostnameFn: func(s string) bool {
+			return s == "example.com"
+		},
+		TokenTTL: time.Hour,
+		NoTLS:    true,
+		Next: func(peer peer.ID, w http.ResponseWriter, r *http.Request) {
+			reqBody, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			_, err = w.Write(reqBody)
+			require.NoError(t, err)
+		},
+	}
+
+	ts := httptest.NewServer(&auth)
+	t.Cleanup(ts.Close)
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+			require.NoError(t, err)
+
+			clientAuth := ClientPeerIDAuth{PrivKey: clientKey}
+			reqBody := []byte(fmt.Sprintf("echo %d", i))
+			req, err := http.NewRequest("POST", ts.URL, bytes.NewReader(reqBody))
+			require.NoError(t, err)
+			req.Host = "example.com"
+
+			client := ts.Client()
+			_, resp, err := clientAuth.AuthenticatedDo(client, req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			respBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, reqBody, respBody)
+		}()
+	}
+	wg.Wait()
 }
