@@ -15,6 +15,29 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/http/auth/internal/handshake"
 )
 
+type hmacPool struct {
+	p sync.Pool
+}
+
+func newHmacPool(key []byte) *hmacPool {
+	return &hmacPool{
+		p: sync.Pool{
+			New: func() any {
+				return hmac.New(sha256.New, key)
+			},
+		},
+	}
+}
+
+func (p *hmacPool) Get() hash.Hash {
+	return p.p.Get().(hash.Hash)
+}
+
+func (p *hmacPool) Put(h hash.Hash) {
+	h.Reset()
+	p.p.Put(h)
+}
+
 type ServerPeerIDAuth struct {
 	PrivKey  crypto.PrivKey
 	TokenTTL time.Duration
@@ -26,8 +49,9 @@ type ServerPeerIDAuth struct {
 	// which the Host header returns true.
 	ValidHostnameFn func(hostname string) bool
 
-	Hmac     hash.Hash
+	HmacKey  []byte
 	initHmac sync.Once
+	hmacPool *hmacPool
 }
 
 // ServeHTTP implements the http.Handler interface for PeerIDAuth. It will
@@ -36,14 +60,15 @@ type ServerPeerIDAuth struct {
 // requests.
 func (a *ServerPeerIDAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.initHmac.Do(func() {
-		if a.Hmac == nil {
+		if a.HmacKey == nil {
 			key := make([]byte, 32)
 			_, err := rand.Read(key)
 			if err != nil {
 				panic(err)
 			}
-			a.Hmac = hmac.New(sha256.New, key)
+			a.HmacKey = key
 		}
+		a.hmacPool = newHmacPool(a.HmacKey)
 	})
 
 	hostname := r.Host
@@ -76,11 +101,13 @@ func (a *ServerPeerIDAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	hmac := a.hmacPool.Get()
+	defer a.hmacPool.Put(hmac)
 	hs := handshake.PeerIDAuthHandshakeServer{
 		Hostname: hostname,
 		PrivKey:  a.PrivKey,
 		TokenTTL: a.TokenTTL,
-		Hmac:     a.Hmac,
+		Hmac:     hmac,
 	}
 	err := hs.ParseHeaderVal([]byte(r.Header.Get("Authorization")))
 	if err != nil {
@@ -95,11 +122,12 @@ func (a *ServerPeerIDAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, handshake.ErrExpiredChallenge),
 			errors.Is(err, handshake.ErrExpiredToken):
 
+			hmac.Reset()
 			hs := handshake.PeerIDAuthHandshakeServer{
 				Hostname: hostname,
 				PrivKey:  a.PrivKey,
 				TokenTTL: a.TokenTTL,
-				Hmac:     a.Hmac,
+				Hmac:     hmac,
 			}
 			hs.Run()
 			hs.SetHeader(w.Header())

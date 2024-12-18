@@ -2,11 +2,8 @@ package httppeeridauth
 
 import (
 	"bytes"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
-	"hash"
 	"fmt"
 	"io"
 	"net/http"
@@ -172,14 +169,12 @@ func TestMutualAuth(t *testing.T) {
 
 				t.Run("Tokens Invalidated", func(t *testing.T) {
 					// Clear the auth token on the server side
-					server.Hmac = func() hash.Hash {
-						key := make([]byte, 32)
-						_, err := rand.Read(key)
-						if err != nil {
-							panic(err)
-						}
-						return hmac.New(sha256.New, key)
-					}()
+					key := make([]byte, 32)
+					_, err := rand.Read(key)
+					if err != nil {
+						panic(err)
+					}
+					server.hmacPool = newHmacPool(key)
 
 					req, err := http.NewRequest("POST", ts.URL, nil)
 					req.GetBody = func() (io.ReadCloser, error) {
