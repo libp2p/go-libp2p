@@ -29,4 +29,5 @@ PROTOC_BIN_PATH="$("${SCRIPT_DIR}/download-protoc.sh")"
 export PATH="$PROTOC_BIN_PATH:$PATH"
 
 echo protoc --version $(protoc --version)
+echo protoc-gen-go --version $(protoc-gen-go --version)
 protoc --proto_path=$root --go_out=$root --go_opt=paths=source_relative $proto_paths
