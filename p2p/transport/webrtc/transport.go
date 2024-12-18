@@ -35,7 +35,7 @@ import (
 	"github.com/multiformats/go-multihash"
 
 	"github.com/pion/datachannel"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 var webrtcComponent *ma.Component

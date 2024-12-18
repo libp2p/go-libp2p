@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-msgio/pbio"
 
 	"github.com/pion/datachannel"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 const (

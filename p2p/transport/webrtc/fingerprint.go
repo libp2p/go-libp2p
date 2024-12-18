@@ -8,7 +8,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 // parseFingerprint is forked from pion to avoid bytes to string alloc,
