@@ -402,7 +402,7 @@ func TestHostProtoMismatch(t *testing.T) {
 	defer h2.Close()
 
 	h1.SetStreamHandler("/super", func(s network.Stream) {
-		t.Error("shouldnt get here")
+		t.Error("shouldn't get here")
 		s.Reset()
 	})
 
