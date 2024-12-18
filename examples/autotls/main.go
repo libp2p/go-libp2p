@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/ipfs/go-log/v2"
@@ -26,6 +28,7 @@ func main() {
 	log.SetLogLevel("basichost", "info") // Set the log level for the basichost package to info
 	log.SetLogLevel("autotls", "debug")  // Set the log level for the autotls-example package to debug
 	log.SetLogLevel("p2pforge", "debug") // Set the log level for the p2pforge package to debug
+	log.SetLogLevel("nat", "debug")      // Set the log level for the p2pforge package to debug
 
 	certLoaded := make(chan bool, 1) // Create a channel to signal when the cert is loaded
 
@@ -59,6 +62,7 @@ func main() {
 			// and use the forge domain (`libp2p.direct`) as the SNI hostname.
 			// This must use a separate port from the regular tcp/udp ports.
 			fmt.Sprintf("/ip4/0.0.0.0/tcp/15001/tls/sni/*.%s/ws", p2pforge.DefaultForgeDomain),
+			fmt.Sprintf("/ip6/::/tcp/15001/tls/sni/*.%s/ws", p2pforge.DefaultForgeDomain),
 		),
 
 		// Configure the TCP transport
@@ -108,4 +112,8 @@ func main() {
 	case <-ctx.Done():
 		logger.Info("Context done")
 	}
+	// Wait for interrupt signal
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
 }
