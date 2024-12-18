@@ -226,13 +226,13 @@ func TestNetworkSetup(t *testing.T) {
 		t.Errorf("should have 1 conn on initiator. Got: %d)", len(n2.Conns()))
 	}
 
-	// wait for reciever to see the conn.
+	// wait for receiver to see the conn.
 	for i := 0; i < 10 && len(n3.Conns()) == 0; i++ {
 		time.Sleep(time.Duration(10*i) * time.Millisecond)
 	}
 
 	if len(n3.Conns()) != 1 {
-		t.Errorf("should have 1 conn on reciever. Got: %d", len(n3.Conns()))
+		t.Errorf("should have 1 conn on receiver. Got: %d", len(n3.Conns()))
 	}
 
 	// p := PrinterTo(os.Stdout)
