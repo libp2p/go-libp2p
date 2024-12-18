@@ -58,7 +58,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 		addrch := ps.AddrStream(ctx, pid)
 
 		// while that subscription is active, publish ten more addrs
-		// this tests that it doesnt hang
+		// this tests that it doesn't hang
 		for i := 10; i < 20; i++ {
 			ps.AddAddr(pid, addrs[i], time.Hour)
 		}
@@ -116,7 +116,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 
 		cancel2()
 
-		// and add a few more addresses it doesnt hang afterwards
+		// and add a few more addresses it doesn't hang afterwards
 		for _, a := range addrs[80:] {
 			ps.AddAddr(pid, a, time.Hour)
 		}
