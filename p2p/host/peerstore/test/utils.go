@@ -1,7 +1,6 @@
 package test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -45,17 +44,12 @@ func RandomPeer(b *testing.B, addrCount int) *peerpair {
 	return &peerpair{pid, addrs}
 }
 
-func AddressProducer(ctx context.Context, b *testing.B, addrs chan *peerpair, addrsPerPeer int) {
-	b.Helper()
-	defer close(addrs)
-	for {
-		p := RandomPeer(b, addrsPerPeer)
-		select {
-		case addrs <- p:
-		case <-ctx.Done():
-			return
-		}
+func getPeerPairs(b *testing.B, n int, addrsPerPeer int) []*peerpair {
+	pps := make([]*peerpair, n)
+	for i := 0; i < n; i++ {
+		pps[i] = RandomPeer(b, addrsPerPeer)
 	}
+	return pps
 }
 
 func GenerateAddrs(count int) []ma.Multiaddr {
