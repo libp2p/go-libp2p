@@ -130,7 +130,7 @@ func (c *ConnManager) AddTransport(network string, tr QUICTransport, conn net.Pa
 	refCountedTr := &refcountedTransport{
 		QUICTransport: tr,
 		packetConn:    conn,
-		refCount:      1,
+		isExternal:    true,
 	}
 
 	var reuse *reuse

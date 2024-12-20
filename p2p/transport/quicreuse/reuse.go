@@ -84,6 +84,7 @@ type refcountedTransport struct {
 	mutex       sync.Mutex
 	refCount    int
 	unusedSince time.Time
+	isExternal  bool // if the transport was created externally, it is neither gc-ed nor closed
 
 	assocations map[any]struct{}
 }
@@ -151,6 +152,9 @@ func (c *refcountedTransport) DecreaseCount() {
 }
 
 func (c *refcountedTransport) ShouldGarbageCollect(now time.Time) bool {
+	if c.isExternal {
+		return false
+	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return !c.unusedSince.IsZero() && c.unusedSince.Add(maxUnusedDuration).Before(now)
@@ -193,14 +197,20 @@ func (r *reuse) gc() {
 	defer func() {
 		r.mutex.Lock()
 		for _, tr := range r.globalListeners {
-			tr.Close()
+			if !tr.isExternal {
+				tr.Close()
+			}
 		}
 		for _, tr := range r.globalDialers {
-			tr.Close()
+			if !tr.isExternal {
+				tr.Close()
+			}
 		}
 		for _, trs := range r.unicast {
 			for _, tr := range trs {
-				tr.Close()
+				if !tr.isExternal {
+					tr.Close()
+				}
 			}
 		}
 		r.mutex.Unlock()
