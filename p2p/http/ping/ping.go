@@ -31,7 +31,7 @@ func (Ping) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(body[:])
 }
 
-// SendPing send an ping request over HTTP. The provided client should be namespaced to the Ping protocol.
+// SendPing send a ping request over HTTP. The provided client should be namespaced to the Ping protocol.
 func SendPing(client http.Client) error {
 	body := [pingSize]byte{}
 	_, err := io.ReadFull(rand.Reader, body[:])
