@@ -138,21 +138,7 @@ func (c *ConnManager) AddTransport(network string, tr QUICTransport, conn net.Pa
 	if err != nil {
 		return err
 	}
-	if err := reuse.AddTransport(refCountedTr, localAddr); err != nil {
-		return err
-	}
-
-	ln, err := newQuicListener(refCountedTr, c.serverConfig)
-	if err != nil {
-		return err
-	}
-
-	key := conn.LocalAddr().String()
-	c.quicListeners[key] = quicListenerEntry{
-		refCount: 1,
-		ln:       ln,
-	}
-	return nil
+	return reuse.AddTransport(refCountedTr, localAddr)
 }
 
 func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {

@@ -3,6 +3,8 @@ package quicreuse
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -333,6 +335,20 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	return tr, nil
 }
 
+func (r *reuse) AddTransport(tr *refcountedTransport, laddr *net.UDPAddr) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if !laddr.IP.IsUnspecified() {
+		return errors.New("adding transport for specific IP not supported")
+	}
+	if _, ok := r.globalDialers[laddr.Port]; ok {
+		return fmt.Errorf("already have global dialer for port %d", laddr.Port)
+	}
+	r.globalDialers[laddr.Port] = tr
+	return nil
+}
+
 func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcountedTransport, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -382,16 +398,13 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		packetConn: conn,
 	}
 	tr.IncreaseCount()
-	return tr, r.AddTransport(tr, localAddr)
-}
 
-func (r *reuse) AddTransport(tr *refcountedTransport, localAddr *net.UDPAddr) error {
 	// Deal with listen on a global address
 	if localAddr.IP.IsUnspecified() {
 		// The kernel already checked that the laddr is not already listen
 		// so we need not check here (when we create ListenUDP).
 		r.globalListeners[localAddr.Port] = tr
-		return nil
+		return tr, nil
 	}
 
 	// Deal with listen on a unicast address
@@ -405,7 +418,7 @@ func (r *reuse) AddTransport(tr *refcountedTransport, localAddr *net.UDPAddr) er
 	// The kernel already checked that the laddr is not already listen
 	// so we need not check here (when we create ListenUDP).
 	r.unicast[localAddr.IP.String()][localAddr.Port] = tr
-	return nil
+	return tr, nil
 }
 
 func (r *reuse) Close() error {
