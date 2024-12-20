@@ -56,6 +56,8 @@ func main() {
 		libp2p.ListenAddrStrings(
 			"/ip4/0.0.0.0/tcp/5500",         // regular tcp connections
 			"/ip4/0.0.0.0/udp/5500/quic-v1", // a UDP endpoint for the QUIC transport
+			"/ip6/::/tcp/5500",              // a TCP endpoint for the QUIC transport
+			"/ip6/::/udp/5500/quic-v1",      // a UDP endpoint for the QUIC transport
 
 			// AutoTLS will automatically generate a certificate for this host
 			// and use the forge domain (`libp2p.direct`) as the SNI hostname.
