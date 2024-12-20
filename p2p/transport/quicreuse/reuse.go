@@ -218,7 +218,7 @@ func (r *reuse) gc() {
 				}
 				if len(trs) == 0 {
 					delete(r.unicast, ukey)
-					// If we've dropped all transports with a unicast binding,
+					// If we've dropped all transports with an unicast binding,
 					// assume our routes may have changed.
 					if len(r.unicast) == 0 {
 						r.routes = nil
@@ -367,7 +367,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		return tr, nil
 	}
 
-	// Deal with listen on a unicast address
+	// Deal with listen on an unicast address
 	if _, ok := r.unicast[localAddr.IP.String()]; !ok {
 		r.unicast[localAddr.IP.String()] = make(map[int]*refcountedTransport)
 		// Assume the system's routes may have changed if we're adding a new listener.
