@@ -41,7 +41,7 @@ func (s *Swarm) InterfaceListenAddresses() ([]ma.Multiaddr, error) {
 	}
 
 	// Cache is not valid
-	// Perfrom double checked locking
+	// Perfrom double-checked locking
 
 	s.listeners.Lock() // Lock start
 
