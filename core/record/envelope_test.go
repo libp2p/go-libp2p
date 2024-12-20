@@ -292,7 +292,7 @@ func TestEnvelopeValidateFailsIfContentsAreAltered(t *testing.T) {
 }
 
 // Since we're outside of the crypto package (to avoid import cycles with test package),
-// we can't alter the fields in a Envelope directly. This helper marshals
+// we can't alter the fields in an Envelope directly. This helper marshals
 // the envelope to a protobuf and calls the alterMsg function, which should
 // alter the protobuf message.
 // Returns the serialized altered protobuf message.

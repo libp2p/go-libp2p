@@ -48,7 +48,7 @@ func (s *Stream) String() string {
 	)
 }
 
-// Conn returns the Conn associated with this stream, as an network.Conn
+// Conn returns the Conn associated with this stream, as a network.Conn
 func (s *Stream) Conn() network.Conn {
 	return s.conn
 }

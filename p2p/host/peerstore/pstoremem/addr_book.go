@@ -488,7 +488,7 @@ func validAddrs(now time.Time, amap map[string]*expiringAddr) []ma.Multiaddr {
 	return good
 }
 
-// GetPeerRecord returns a Envelope containing a PeerRecord for the
+// GetPeerRecord returns an Envelope containing a PeerRecord for the
 // given peer id, if one exists.
 // Returns nil if no signed PeerRecord exists for the peer.
 func (mab *memoryAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
