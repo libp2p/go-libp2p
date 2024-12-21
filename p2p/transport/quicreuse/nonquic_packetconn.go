@@ -4,8 +4,6 @@ import (
 	"context"
 	"net"
 	"time"
-
-	"github.com/quic-go/quic-go"
 )
 
 // nonQUICPacketConn is a net.PacketConn that can be used to read and write
@@ -13,7 +11,7 @@ import (
 // other transports like WebRTC.
 type nonQUICPacketConn struct {
 	owningTransport refCountedQuicTransport
-	tr              *quic.Transport
+	tr              QUICTransport
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
 	readCtx         context.Context
@@ -32,7 +30,7 @@ func (n *nonQUICPacketConn) Close() error {
 
 // LocalAddr implements net.PacketConn.
 func (n *nonQUICPacketConn) LocalAddr() net.Addr {
-	return n.tr.Conn.LocalAddr()
+	return n.owningTransport.LocalAddr()
 }
 
 // ReadFrom implements net.PacketConn.
