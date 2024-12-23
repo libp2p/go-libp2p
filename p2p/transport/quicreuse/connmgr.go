@@ -37,6 +37,8 @@ type ConnManager struct {
 	reuseUDP6       *reuse
 	enableReuseport bool
 
+	customListenUDP listenUDP
+
 	enableMetrics bool
 	registerer    prometheus.Registerer
 
@@ -77,7 +79,9 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
 		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey)
+		cm.reuseUDP4.customListenUDP = cm.customListenUDP
 		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey)
+		cm.reuseUDP6.customListenUDP = cm.customListenUDP
 	}
 	return cm, nil
 }
@@ -238,7 +242,13 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 		return tr, nil
 	}
 
-	conn, err := net.ListenUDP(network, laddr)
+	var conn net.PacketConn
+	var err error
+	if c.customListenUDP != nil {
+		conn, err = c.customListenUDP(network, laddr)
+	} else {
+		conn, err = net.ListenUDP(network, laddr)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +330,14 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 	case "udp6":
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	conn, err := net.ListenUDP(network, laddr)
+	var conn net.PacketConn
+	var err error
+	if c.customListenUDP != nil {
+		conn, err = c.customListenUDP(network, laddr)
+	} else {
+		conn, err = net.ListenUDP(network, laddr)
+	}
+
 	if err != nil {
 		return nil, err
 	}
