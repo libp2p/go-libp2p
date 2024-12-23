@@ -140,8 +140,9 @@ func (c *refcountedTransport) ShouldGarbageCollect(now time.Time) bool {
 type reuse struct {
 	mutex sync.Mutex
 
-	closeChan  chan struct{}
-	gcStopChan chan struct{}
+	closeChan       chan struct{}
+	gcStopChan      chan struct{}
+	customListenUDP listenUDP
 
 	routes  routing.Router
 	unicast map[string] /* IP.String() */ map[int] /* port */ *refcountedTransport
@@ -298,7 +299,13 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	case "udp6":
 		addr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	conn, err := net.ListenUDP(network, addr)
+	var conn net.PacketConn
+	var err error
+	if r.customListenUDP != nil {
+		conn, err = r.customListenUDP(network, addr)
+	} else {
+		conn, err = net.ListenUDP(network, addr)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +352,13 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		}
 	}
 
-	conn, err := net.ListenUDP(network, laddr)
+	var conn net.PacketConn
+	var err error
+	if r.customListenUDP != nil {
+		conn, err = r.customListenUDP(network, laddr)
+	} else {
+		conn, err = net.ListenUDP(network, laddr)
+	}
 	if err != nil {
 		return nil, err
 	}
