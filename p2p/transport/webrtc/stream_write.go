@@ -2,6 +2,7 @@ package libp2pwebrtc
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -78,13 +79,14 @@ func (s *stream) Write(b []byte) (int, error) {
 			select {
 			case <-writeDeadlineChan:
 				s.mx.Lock()
+				fmt.Println("returning deadline exceeded")
 				return n, os.ErrDeadlineExceeded
 			case <-s.writeStateChanged:
 			}
 			s.mx.Lock()
 			continue
 		}
-		end := maxMessageSize
+		end := maxMessageSizeWrite
 		if end > availableSpace {
 			end = availableSpace
 		}
@@ -94,6 +96,7 @@ func (s *stream) Write(b []byte) (int, error) {
 		}
 		msg = pb.Message{Message: b[:end]}
 		if err := s.writer.WriteMsg(&msg); err != nil {
+			fmt.Println("err", err)
 			return n, err
 		}
 		n += end
