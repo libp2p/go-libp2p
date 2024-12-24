@@ -3,6 +3,7 @@ package rcmgr
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"strconv"
 
@@ -492,10 +493,7 @@ func buildMapWithDefault[K comparable](definedLimits map[K]ResourceLimits, defau
 		return nil
 	}
 
-	out := make(map[K]BaseLimit)
-	for k, l := range defaults {
-		out[k] = l
-	}
+	out := maps.Clone(defaults)
 
 	for k, l := range definedLimits {
 		if defaultForKey, ok := out[k]; ok {
