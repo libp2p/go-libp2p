@@ -100,5 +100,6 @@ Some notable users of go-libp2p are:
 - [Oasis Core](https://github.com/oasisprotocol/oasis-core) - The consensus and runtime layers of the [Oasis protocol](https://oasisprotocol.org/).
 - [Spacemesh](https://github.com/spacemeshos/go-spacemesh/) - The Go implementation of the [Spacemesh protocol](https://spacemesh.io/), a novel layer one blockchain
 - [Tau](https://github.com/taubyte/tau/) - Open source distributed Platform as a Service (PaaS)
+- [opBNB](https://github.com/bnb-chain/opbnb) - High-performance layer 2 solution for the BNB Smart Chain(BSC)
 
 Please open a pull request if you want your project (min. 250 GitHub stars) to be added here.
