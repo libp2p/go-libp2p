@@ -50,7 +50,7 @@ require (
 	github.com/pion/logging v0.2.2
 	github.com/pion/sctp v1.8.35
 	github.com/pion/stun v0.6.1
-	github.com/pion/webrtc/v4 v4.0.5
+	github.com/pion/webrtc/v4 v4.0.7
 	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/client_model v0.6.1
 	github.com/quic-go/quic-go v0.48.2
