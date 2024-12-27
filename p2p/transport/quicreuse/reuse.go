@@ -3,6 +3,8 @@ package quicreuse
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -25,23 +27,32 @@ type refCountedQuicTransport interface {
 	IncreaseCount()
 
 	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error)
-	Listen(tlsConf *tls.Config, conf *quic.Config) (*quic.Listener, error)
+	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
 }
 
 type singleOwnerTransport struct {
-	quic.Transport
+	Transport QUICTransport
+
+	localAddr net.Addr
 
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
 }
 
+var _ QUICTransport = &singleOwnerTransport{}
+
 func (c *singleOwnerTransport) IncreaseCount() {}
-func (c *singleOwnerTransport) DecreaseCount() {
-	c.Transport.Close()
+func (c *singleOwnerTransport) DecreaseCount() { c.Transport.Close() }
+func (c *singleOwnerTransport) LocalAddr() net.Addr {
+	return c.localAddr
 }
 
-func (c *singleOwnerTransport) LocalAddr() net.Addr {
-	return c.Transport.Conn.LocalAddr()
+func (c *singleOwnerTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error) {
+	return c.Transport.Dial(ctx, addr, tlsConf, conf)
+}
+
+func (c *singleOwnerTransport) ReadNonQUICPacket(ctx context.Context, b []byte) (int, net.Addr, error) {
+	return c.Transport.ReadNonQUICPacket(ctx, b)
 }
 
 func (c *singleOwnerTransport) Close() error {
@@ -54,6 +65,10 @@ func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 	return c.Transport.WriteTo(b, addr)
 }
 
+func (c *singleOwnerTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
+	return c.Transport.Listen(tlsConf, conf)
+}
+
 // Constant. Defined as variables to simplify testing.
 var (
 	garbageCollectInterval = 30 * time.Second
@@ -61,7 +76,7 @@ var (
 )
 
 type refcountedTransport struct {
-	quic.Transport
+	QUICTransport
 
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
@@ -69,6 +84,7 @@ type refcountedTransport struct {
 	mutex       sync.Mutex
 	refCount    int
 	unusedSince time.Time
+	isExternal  bool // if the transport was created externally, it is neither gc-ed nor closed
 
 	assocations map[any]struct{}
 }
@@ -110,16 +126,20 @@ func (c *refcountedTransport) IncreaseCount() {
 
 func (c *refcountedTransport) Close() error {
 	// TODO(when we drop support for go 1.19) use errors.Join
-	c.Transport.Close()
+	c.QUICTransport.Close()
 	return c.packetConn.Close()
 }
 
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
-	return c.Transport.WriteTo(b, addr)
+	return c.QUICTransport.WriteTo(b, addr)
 }
 
 func (c *refcountedTransport) LocalAddr() net.Addr {
-	return c.Transport.Conn.LocalAddr()
+	return c.packetConn.LocalAddr()
+}
+
+func (c *refcountedTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
+	return c.QUICTransport.Listen(tlsConf, conf)
 }
 
 func (c *refcountedTransport) DecreaseCount() {
@@ -132,6 +152,9 @@ func (c *refcountedTransport) DecreaseCount() {
 }
 
 func (c *refcountedTransport) ShouldGarbageCollect(now time.Time) bool {
+	if c.isExternal {
+		return false
+	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return !c.unusedSince.IsZero() && c.unusedSince.Add(maxUnusedDuration).Before(now)
@@ -174,14 +197,20 @@ func (r *reuse) gc() {
 	defer func() {
 		r.mutex.Lock()
 		for _, tr := range r.globalListeners {
-			tr.Close()
+			if !tr.isExternal {
+				tr.Close()
+			}
 		}
 		for _, tr := range r.globalDialers {
-			tr.Close()
+			if !tr.isExternal {
+				tr.Close()
+			}
 		}
 		for _, trs := range r.unicast {
 			for _, tr := range trs {
-				tr.Close()
+				if !tr.isExternal {
+					tr.Close()
+				}
 			}
 		}
 		r.mutex.Unlock()
@@ -302,13 +331,32 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	if err != nil {
 		return nil, err
 	}
-	tr := &refcountedTransport{Transport: quic.Transport{
-		Conn:              conn,
-		StatelessResetKey: r.statelessResetKey,
-		TokenGeneratorKey: r.tokenGeneratorKey,
-	}, packetConn: conn}
+	tr := &refcountedTransport{
+		QUICTransport: &wrappedQUICTransport{
+			Transport: &quic.Transport{
+				Conn:              conn,
+				StatelessResetKey: r.statelessResetKey,
+				TokenGeneratorKey: r.tokenGeneratorKey,
+			},
+		},
+		packetConn: conn,
+	}
 	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = tr
 	return tr, nil
+}
+
+func (r *reuse) AddTransport(tr *refcountedTransport, laddr *net.UDPAddr) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if !laddr.IP.IsUnspecified() {
+		return errors.New("adding transport for specific IP not supported")
+	}
+	if _, ok := r.globalDialers[laddr.Port]; ok {
+		return fmt.Errorf("already have global dialer for port %d", laddr.Port)
+	}
+	r.globalDialers[laddr.Port] = tr
+	return nil
 }
 
 func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcountedTransport, error) {
@@ -351,9 +399,11 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	}
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	tr := &refcountedTransport{
-		Transport: quic.Transport{
-			Conn:              conn,
-			StatelessResetKey: r.statelessResetKey,
+		QUICTransport: &wrappedQUICTransport{
+			Transport: &quic.Transport{
+				Conn:              conn,
+				StatelessResetKey: r.statelessResetKey,
+			},
 		},
 		packetConn: conn,
 	}
