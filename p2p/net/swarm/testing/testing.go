@@ -2,6 +2,7 @@ package testing
 
 import (
 	"crypto/rand"
+	"net"
 	"testing"
 	"time"
 
@@ -24,21 +25,26 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/require"
 )
 
 type config struct {
-	disableReuseport bool
-	dialOnly         bool
-	disableTCP       bool
-	disableQUIC      bool
-	connectionGater  connmgr.ConnectionGater
-	sk               crypto.PrivKey
-	swarmOpts        []swarm.Option
-	eventBus         event.Bus
+	disableReuseport    bool
+	dialOnly            bool
+	disableTCP          bool
+	disableQUIC         bool
+	disableWebTransport bool
+	disableWebRTC       bool
+	connectionGater     connmgr.ConnectionGater
+	sk                  crypto.PrivKey
+	swarmOpts           []swarm.Option
+	eventBus            event.Bus
 	clock
 }
 
@@ -86,6 +92,16 @@ var OptDisableTCP Option = func(_ testing.TB, c *config) {
 // OptDisableQUIC disables QUIC.
 var OptDisableQUIC Option = func(_ testing.TB, c *config) {
 	c.disableQUIC = true
+}
+
+// OptDisableWebTransport disables WebTransport.
+var OptDisableWebTransport Option = func(_ testing.TB, c *config) {
+	c.disableWebTransport = true
+}
+
+// OptDisableWebRTC disables WebRTC.
+var OptDisableWebRTC Option = func(_ testing.TB, c *config) {
+	c.disableWebRTC = true
 }
 
 // OptConnGater configures the given connection gater on the test
@@ -175,8 +191,10 @@ func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 			}
 		}
 	}
+	var quicListenAddr ma.Multiaddr
+	var reuse *quicreuse.ConnManager
 	if !cfg.disableQUIC {
-		reuse, err := quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+		reuse, err = quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,6 +207,75 @@ func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 		}
 		if !cfg.dialOnly {
 			if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")); err != nil {
+				t.Fatal(err)
+			}
+			for _, a := range s.ListenAddresses() {
+				if _, err := a.ValueForProtocol(ma.P_QUIC_V1); err == nil {
+					quicListenAddr = a
+					break
+				}
+			}
+		}
+	}
+	if !cfg.disableWebTransport {
+		if reuse == nil {
+			reuse, err = quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		wtTransport, err := libp2pwebtransport.New(priv, nil, reuse, cfg.connectionGater, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.AddTransport(wtTransport); err != nil {
+			t.Fatal(err)
+		}
+		if !cfg.dialOnly {
+			listenAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
+			if quicListenAddr != nil {
+				listenAddr = quicListenAddr.Encapsulate(ma.StringCast("/webtransport"))
+			}
+			if err := s.Listen(listenAddr); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	if !cfg.disableWebRTC {
+		listenUDPFn := func(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {
+				quicAddrPorts := map[string]struct{}{}
+				for _, addr := range s.ListenAddresses() {
+					if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
+						netw, addr, err := manet.DialArgs(addr)
+						if err != nil {
+							return false
+						}
+						quicAddrPorts[netw+"_"+addr] = struct{}{}
+					}
+				}
+				_, ok := quicAddrPorts[network+"_"+laddr.String()]
+				return ok
+			}
+			if hasQuicAddrPortFor(network, laddr) {
+				return reuse.SharedNonQUICPacketConn(network, laddr)
+			}
+			return net.ListenUDP(network, laddr)
+		}
+		wrtcTransport, err := libp2pwebrtc.New(priv, nil, cfg.connectionGater, nil, listenUDPFn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.AddTransport(wrtcTransport); err != nil {
+			t.Fatal(err)
+		}
+		if !cfg.dialOnly {
+			listenAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
+			if quicListenAddr != nil {
+				listenAddr = quicListenAddr.Decapsulate(ma.StringCast("/quic-v1")).Encapsulate(ma.StringCast("/webrtc-direct"))
+			}
+			if err := s.Listen(listenAddr); err != nil {
 				t.Fatal(err)
 			}
 		}
