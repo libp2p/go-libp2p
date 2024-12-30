@@ -60,10 +60,6 @@ func (s *Swarm) TransportForListening(a ma.Multiaddr) transport.Transport {
 	s.transports.RLock()
 	defer s.transports.RUnlock()
 	if len(s.transports.m) == 0 {
-		// make sure we're not just shutting down.
-		if s.transports.m != nil {
-			log.Error("you have no transports configured")
-		}
 		return nil
 	}
 
