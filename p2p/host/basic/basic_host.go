@@ -344,6 +344,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 }
 
 func (h *BasicHost) updateLocalIpAddr() {
+	if true {
+		return
+	}
 	h.addrMu.Lock()
 	defer h.addrMu.Unlock()
 
@@ -868,6 +871,8 @@ var p2pCircuitAddr = ma.StringCast("/p2p-circuit")
 
 // AllAddrs returns all the addresses the host is listening on except circuit addresses.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
+	return h.AddrsFactory(nil)
+
 	listenAddrs := h.Network().ListenAddresses()
 	if len(listenAddrs) == 0 {
 		return nil
