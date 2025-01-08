@@ -95,6 +95,9 @@ func main() {
 		// Configure the TCP transport
 		libp2p.Transport(tcp.NewTCPTransport),
 
+		// Share the same TCP listener between the TCP and WS transports
+		libp2p.ShareTCPListener(),
+
 		// Configure the QUIC transport
 		libp2p.Transport(quic.NewTransport),
 
