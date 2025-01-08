@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/ipfs/go-log/v2"
 
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
@@ -17,28 +18,52 @@ import (
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 )
 
-var logger = log.Logger("autotls")
+var logger = log.Logger("example")
+
+const userAgent = "go-libp2p/example/autotls"
 
 func main() {
 	// Create a background context
 	ctx := context.Background()
 
 	log.SetLogLevel("*", "error")
+	log.SetLogLevel("example", "debug")   // Set the log level for the example to debug
 	log.SetLogLevel("basichost", "info")  // Set the log level for the basichost package to info
 	log.SetLogLevel("autotls", "debug")   // Set the log level for the autotls-example package to debug
 	log.SetLogLevel("p2p-forge", "debug") // Set the log level for the p2pforge package to debug
-	log.SetLogLevel("nat", "debug")       // Set the log level for the p2pforge package to debug
+	log.SetLogLevel("nat", "debug")       // Set the log level for the libp2p nat package to debug
 
 	certLoaded := make(chan bool, 1) // Create a channel to signal when the cert is loaded
+
+	// TODO: this should not be necessary once https://github.com/ipshipyard/p2p-forge/issues/8 is resolved
+	rawLogger := logger.Desugar()
+	certmagic.Default.Logger = rawLogger.Named("default_fixme")
+	certmagic.DefaultACME.Logger = rawLogger.Named("default_acme_client_fixme")
 
 	// p2pforge is the AutoTLS client library.
 	// The cert manager handles the creation and management of certificate
 	certManager, err := p2pforge.NewP2PForgeCertMgr(
-		p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint), // Let's Encrypt production CA. You can also use the staging CA (p2pforge.DefaultCATestEndpoint) to avoid rate limiting.
+		// Configure CA ACME endpoint
+		// NOTE:
+		// This example uses Let's Encrypt staging CA (p2pforge.DefaultCATestEndpoint)
+		// which will not work correctly in browser, but is useful for initial testing.
+		// Production should use Let's Encrypt production CA (p2pforge.DefaultCAEndpoint).
+		p2pforge.WithCAEndpoint(p2pforge.DefaultCATestEndpoint), // test CA endpoint
+		// TODO: p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint),  // production CA endpoint
+
+		// Configure where to store certificate
+		p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: "p2p-forge-certs"}),
+
+		// Configure logger to use
+		p2pforge.WithLogger(rawLogger.Sugar().Named("autotls")),
+
+		// User-Agent to use during DNS-01 ACME challenge
+		p2pforge.WithUserAgent(userAgent),
+
+		// Optional hook called once certificate is ready
 		p2pforge.WithOnCertLoaded(func() {
 			certLoaded <- true
 		}),
-		p2pforge.WithUserAgent("go-libp2p/example/autotls"),
 	)
 
 	if err != nil {
@@ -54,11 +79,13 @@ func main() {
 		libp2p.NATPortMap(),   // Attempt to open ports using UPnP for NATed hosts.
 
 		libp2p.ListenAddrStrings(
-			"/ip4/0.0.0.0/tcp/5500",         // regular tcp connections
+			// Configure default catch-all listeners for TCP and UDP
+			"/ip4/0.0.0.0/tcp/5500",         // regular TCP IPv4 connections
 			"/ip4/0.0.0.0/udp/5500/quic-v1", // a UDP endpoint for the QUIC transport
-			"/ip6/::/tcp/5500",              // a TCP endpoint for the QUIC transport
+			"/ip6/::/tcp/5500",              // regular TCP IPv6 connections
 			"/ip6/::/udp/5500/quic-v1",      // a UDP endpoint for the QUIC transport
 
+			// Configure Secure WebSockets listeners on the same TCP port
 			// AutoTLS will automatically generate a certificate for this host
 			// and use the forge domain (`libp2p.direct`) as the SNI hostname.
 			fmt.Sprintf("/ip4/0.0.0.0/tcp/5500/tls/sni/*.%s/ws", p2pforge.DefaultForgeDomain),
@@ -74,7 +101,9 @@ func main() {
 		// Configure the WS transport with the AutoTLS cert manager
 		libp2p.Transport(ws.New, ws.WithTLSConfig(certManager.TLSConfig())),
 
-		libp2p.UserAgent("go-libp2p/example/autotls"),
+		// Configure user agent for libp2p identify protocol (https://github.com/libp2p/specs/blob/master/identify/README.md)
+		libp2p.UserAgent(userAgent),
+
 		// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
 		// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
 		// actual IP address of the host once detected
@@ -85,7 +114,7 @@ func main() {
 		panic(err)
 	}
 
-	logger.Info("Host created: ", h.ID())
+	logger.Info("Host created with PeerID: ", h.ID())
 
 	// Bootstrap the DHT to verify our public IPs address with AutoNAT
 	dhtOpts := []dht.Option{
