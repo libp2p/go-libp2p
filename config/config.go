@@ -446,27 +446,9 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 	return h, nil
 }
 
-// NewNode constructs a new libp2p Host from the Config.
-//
-// This function consumes the config. Do not reuse it (really!).
-func (cfg *Config) NewNode() (_ host.Host, createErr error) {
-
-	defer func() {
-		if createErr != nil {
-			if cfg.ResourceManager != nil {
-				cfg.ResourceManager.Close()
-			}
-			if cfg.ConnManager != nil {
-				cfg.ConnManager.Close()
-			}
-			if cfg.Peerstore != nil {
-				cfg.Peerstore.Close()
-			}
-		}
-	}()
-
+func (cfg *Config) validate() error {
 	if cfg.EnableAutoRelay && !cfg.Relay {
-		return nil, fmt.Errorf("cannot enable autorelay; relay is not enabled")
+		return fmt.Errorf("cannot enable autorelay; relay is not enabled")
 	}
 	// If possible check that the resource manager conn limit is higher than the
 	// limit set in the conn manager.
@@ -477,12 +459,35 @@ func (cfg *Config) NewNode() (_ host.Host, createErr error) {
 		}
 	}
 
-	if !cfg.DisableMetrics {
-		rcmgr.MustRegisterWith(cfg.PrometheusRegisterer)
+	if len(cfg.PSK) > 0 && cfg.ShareTCPListener {
+		return errors.New("cannot use shared TCP listener with PSK")
 	}
 
-	if len(cfg.PSK) > 0 && cfg.ShareTCPListener {
-		return nil, errors.New("cannot use shared TCP and WebSocket listener with PSK")
+	return nil
+}
+
+// NewNode constructs a new libp2p Host from the Config.
+//
+// This function consumes the config. Do not reuse it (really!).
+func (cfg *Config) NewNode() (host.Host, error) {
+
+	validateErr := cfg.validate()
+	if validateErr != nil {
+		if cfg.ResourceManager != nil {
+			cfg.ResourceManager.Close()
+		}
+		if cfg.ConnManager != nil {
+			cfg.ConnManager.Close()
+		}
+		if cfg.Peerstore != nil {
+			cfg.Peerstore.Close()
+		}
+
+		return nil, validateErr
+	}
+
+	if !cfg.DisableMetrics {
+		rcmgr.MustRegisterWith(cfg.PrometheusRegisterer)
 	}
 
 	fxopts := []fx.Option{

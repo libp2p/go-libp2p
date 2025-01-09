@@ -782,5 +782,5 @@ func TestSharedTCPAddr(t *testing.T) {
 		Transport(websocket.New),
 		PrivateNetwork(pnet.PSK([]byte{1, 2, 3})),
 	)
-	require.ErrorContains(t, err, "cannot use shared TCP and WebSocket listener with PSK")
+	require.ErrorContains(t, err, "cannot use shared TCP listener with PSK")
 }
