@@ -18,20 +18,21 @@ import (
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 )
 
-var logger = log.Logger("example")
+var logger = log.Logger("autotls-example")
 
 const userAgent = "go-libp2p/example/autotls"
+const identityKeyFile = "identity.key"
 
 func main() {
 	// Create a background context
 	ctx := context.Background()
 
 	log.SetLogLevel("*", "error")
-	log.SetLogLevel("example", "debug")   // Set the log level for the example to debug
-	log.SetLogLevel("basichost", "info")  // Set the log level for the basichost package to info
-	log.SetLogLevel("autotls", "debug")   // Set the log level for the autotls-example package to debug
-	log.SetLogLevel("p2p-forge", "debug") // Set the log level for the p2pforge package to debug
-	log.SetLogLevel("nat", "debug")       // Set the log level for the libp2p nat package to debug
+	log.SetLogLevel("autotls-example", "debug") // Set the log level for the example to debug
+	log.SetLogLevel("basichost", "info")        // Set the log level for the basichost package to info
+	log.SetLogLevel("autotls", "debug")         // Set the log level for the autotls-example package to debug
+	log.SetLogLevel("p2p-forge", "debug")       // Set the log level for the p2pforge package to debug
+	log.SetLogLevel("nat", "debug")             // Set the log level for the libp2p nat package to debug
 
 	certLoaded := make(chan bool, 1) // Create a channel to signal when the cert is loaded
 
@@ -74,9 +75,16 @@ func main() {
 	certManager.Start()
 	defer certManager.Stop()
 
+	// Load or generate a persistent peer identity key
+	privKey, err := LoadIdentity(identityKeyFile)
+	if err != nil {
+		panic(err)
+	}
+
 	opts := []libp2p.Option{
-		libp2p.DisableRelay(), // Disable relay, since we need a public IP address
-		libp2p.NATPortMap(),   // Attempt to open ports using UPnP for NATed hosts.
+		libp2p.Identity(privKey), // Use the loaded identity key
+		libp2p.DisableRelay(),    // Disable relay, since we need a public IP address
+		libp2p.NATPortMap(),      // Attempt to open ports using UPnP for NATed hosts.
 
 		libp2p.ListenAddrStrings(
 			// Configure default catch-all listeners for TCP and UDP
