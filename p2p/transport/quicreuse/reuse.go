@@ -84,7 +84,11 @@ type refcountedTransport struct {
 	mutex       sync.Mutex
 	refCount    int
 	unusedSince time.Time
-	isExternal  bool // if the transport was created externally, it is neither gc-ed nor closed
+
+	// Only set for transports we are borrowing.
+	// If set, we will _never_ close the underlying transport. We only close this
+	// channel to signal to the owner that we are done with it.
+	borrowDoneSignal chan struct{}
 
 	assocations map[any]struct{}
 }
@@ -125,9 +129,12 @@ func (c *refcountedTransport) IncreaseCount() {
 }
 
 func (c *refcountedTransport) Close() error {
-	// TODO(when we drop support for go 1.19) use errors.Join
-	c.QUICTransport.Close()
-	return c.packetConn.Close()
+	if c.borrowDoneSignal != nil {
+		close(c.borrowDoneSignal)
+		return nil
+	}
+
+	return errors.Join(c.QUICTransport.Close(), c.packetConn.Close())
 }
 
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
@@ -152,9 +159,6 @@ func (c *refcountedTransport) DecreaseCount() {
 }
 
 func (c *refcountedTransport) ShouldGarbageCollect(now time.Time) bool {
-	if c.isExternal {
-		return false
-	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return !c.unusedSince.IsZero() && c.unusedSince.Add(maxUnusedDuration).Before(now)
@@ -197,20 +201,14 @@ func (r *reuse) gc() {
 	defer func() {
 		r.mutex.Lock()
 		for _, tr := range r.globalListeners {
-			if !tr.isExternal {
-				tr.Close()
-			}
+			tr.Close()
 		}
 		for _, tr := range r.globalDialers {
-			if !tr.isExternal {
-				tr.Close()
-			}
+			tr.Close()
 		}
 		for _, trs := range r.unicast {
 			for _, tr := range trs {
-				if !tr.isExternal {
-					tr.Close()
-				}
+				tr.Close()
 			}
 		}
 		r.mutex.Unlock()

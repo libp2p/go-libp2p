@@ -118,27 +118,30 @@ func (c *ConnManager) getReuse(network string) (*reuse, error) {
 	}
 }
 
-func (c *ConnManager) AddTransport(network string, tr QUICTransport, conn net.PacketConn) error {
+// LendTransport is an advanced method used to lend an existing QUICTransport
+// to the ConnManager. The ConnManager will close the returned channel when it
+// is done with the transport, so that the owner may safely close the transport.
+func (c *ConnManager) LendTransport(network string, tr QUICTransport, conn net.PacketConn) (<-chan struct{}, error) {
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
 	localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return errors.New("expected a conn.LocalAddr() to return a *net.UDPAddr")
+		return nil, errors.New("expected a conn.LocalAddr() to return a *net.UDPAddr")
 	}
 
 	refCountedTr := &refcountedTransport{
-		QUICTransport: tr,
-		packetConn:    conn,
-		isExternal:    true,
+		QUICTransport:    tr,
+		packetConn:       conn,
+		borrowDoneSignal: make(chan struct{}),
 	}
 
 	var reuse *reuse
 	reuse, err := c.getReuse(network)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return reuse.AddTransport(refCountedTr, localAddr)
+	return refCountedTr.borrowDoneSignal, reuse.AddTransport(refCountedTr, localAddr)
 }
 
 func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {

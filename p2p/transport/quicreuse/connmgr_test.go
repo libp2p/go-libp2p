@@ -268,7 +268,8 @@ func TestExternalTransport(t *testing.T) {
 
 	cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
 	require.NoError(t, err)
-	require.NoError(t, cm.AddTransport("udp4", &wrappedQUICTransport{tr}, conn))
+	doneWithTr, err := cm.LendTransport("udp4", &wrappedQUICTransport{tr}, conn)
+	require.NoError(t, err)
 
 	// make sure this transport is used when listening on the same port
 	ln, err := cm.ListenQUICAndAssociate(
@@ -305,5 +306,12 @@ func TestExternalTransport(t *testing.T) {
 		require.Equal(t, port, addr.(*net.UDPAddr).Port)
 	case <-time.After(time.Second):
 		t.Fatal("timeout")
+	}
+
+	cm.Close()
+	select {
+	case <-doneWithTr:
+	default:
+		t.Fatal("doneWithTr not closed")
 	}
 }
