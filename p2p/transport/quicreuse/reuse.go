@@ -33,8 +33,6 @@ type refCountedQuicTransport interface {
 type singleOwnerTransport struct {
 	Transport QUICTransport
 
-	localAddr net.Addr
-
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
 }
@@ -44,7 +42,7 @@ var _ QUICTransport = &singleOwnerTransport{}
 func (c *singleOwnerTransport) IncreaseCount() {}
 func (c *singleOwnerTransport) DecreaseCount() { c.Transport.Close() }
 func (c *singleOwnerTransport) LocalAddr() net.Addr {
-	return c.localAddr
+	return c.packetConn.LocalAddr()
 }
 
 func (c *singleOwnerTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error) {

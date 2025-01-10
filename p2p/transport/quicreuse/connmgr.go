@@ -244,7 +244,6 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 	}
 	return &singleOwnerTransport{
 		packetConn: conn,
-		localAddr:  conn.LocalAddr(),
 		Transport: &wrappedQUICTransport{
 			&quic.Transport{
 				Conn:              conn,
