@@ -107,7 +107,8 @@ func (nat *NAT) GetMapping(protocol string, port int) (addr netip.AddrPort, foun
 		return netip.AddrPort{}, false
 	}
 	extPort, found := nat.mappings[entry{protocol: protocol, port: port}]
-	if !found {
+	// The mapping may have an invalid port.
+	if !found || extPort == 0 {
 		return netip.AddrPort{}, false
 	}
 	return netip.AddrPortFrom(nat.extAddr, uint16(extPort)), true
@@ -135,6 +136,9 @@ func (nat *NAT) AddMapping(ctx context.Context, protocol string, port int) error
 	// do it once synchronously, so first mapping is done right away, and before exiting,
 	// allowing users -- in the optimistic case -- to use results right after.
 	extPort := nat.establishMapping(ctx, protocol, port)
+	// Don't validate the mapping here, we refresh the mappings based on this map.
+	// We can try getting a port again in case it succeeds. In the worst case,
+	// this is one extra LAN request every few minutes.
 	nat.mappings[entry{protocol: protocol, port: port}] = extPort
 	return nil
 }
