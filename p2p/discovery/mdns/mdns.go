@@ -93,13 +93,18 @@ func (s *mdnsService) Start() error {
 			case evt := <-ipEvt.Out():
 				if _, ok := evt.(event.EvtLocalAddressesUpdated); ok {
 					s.mu.Lock()
+					s.ctxCancel()
 					if s.server != nil {
 						s.server.Shutdown()
 						s.server = nil
 					}
+					s.resolverWG.Wait()
+					s.ctx, s.ctxCancel = context.WithCancel(context.Background())
+					s.startResolver(s.ctx)
 					if err = s.startServer(); err != nil {
 						log.Errorf("failed to restart mdns server: %s", err)
 					}
+
 					s.mu.Unlock()
 				}
 			}

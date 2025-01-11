@@ -1,6 +1,8 @@
 package mdns
 
 import (
+	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
 	"sync"
 	"testing"
 	"time"
@@ -95,4 +97,39 @@ func TestOtherDiscovery(t *testing.T) {
 		5*time.Millisecond,
 		"expected peers to find each other",
 	)
+}
+
+func setupHost(t *testing.T) (host.Host, *notif) {
+	t.Helper()
+
+	h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+	require.NoError(t, err)
+
+	notif := &notif{}
+
+	s := NewMdnsService(h, "", notif)
+	require.NoError(t, s.Start())
+
+	return h, notif
+}
+
+func TestMdnsServiceIpChange(t *testing.T) {
+
+	host1, notif1 := setupHost(t)
+	defer host1.Close()
+
+	ipEvt, err := host1.EventBus().Emitter(new(event.EvtLocalAddressesUpdated))
+	require.NoError(t, err)
+
+	err = ipEvt.Emit(event.EvtLocalAddressesUpdated{})
+	require.NoError(t, err)
+
+	time.Sleep(2 * time.Second) // wait for host1 to restart mdns server
+
+	host2, notif2 := setupHost(t)
+	defer host2.Close()
+
+	assert.Eventually(t, func() bool {
+		return len(notif1.GetPeers()) == 1 && len(notif2.GetPeers()) == 1
+	}, 5*time.Second, 5*time.Millisecond)
 }
