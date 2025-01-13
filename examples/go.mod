@@ -1,8 +1,8 @@
 module github.com/libp2p/go-libp2p/examples
 
-go 1.23
+go 1.22.0
 
-toolchain go1.23.3
+toolchain go1.22.1
 
 require (
 	github.com/caddyserver/certmagic v0.21.6
@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipshipyard/p2p-forge v0.2.1
+	github.com/ipshipyard/p2p-forge v0.2.2
 	github.com/libp2p/go-libp2p v0.38.1
 	github.com/libp2p/go-libp2p-kad-dht v0.28.1
 	github.com/multiformats/go-multiaddr v0.14.0
