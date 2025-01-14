@@ -191,7 +191,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 		return nil, err
 	}
 	isWss := wsurl.Scheme == "wss"
-	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
+	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second, Proxy: http.ProxyFromEnvironment}
 	if isWss {
 		sni := ""
 		sni, err = raddr.ValueForProtocol(ma.P_SNI)
