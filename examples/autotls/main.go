@@ -13,7 +13,6 @@ import (
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
-	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 )
@@ -88,10 +87,8 @@ func main() {
 
 		libp2p.ListenAddrStrings(
 			// Configure default catch-all listeners for TCP and UDP
-			"/ip4/0.0.0.0/tcp/5500",         // regular TCP IPv4 connections
-			"/ip4/0.0.0.0/udp/5500/quic-v1", // a UDP endpoint for the QUIC transport
-			"/ip6/::/tcp/5500",              // regular TCP IPv6 connections
-			"/ip6/::/udp/5500/quic-v1",      // a UDP endpoint for the QUIC transport
+			"/ip4/0.0.0.0/tcp/5500", // regular TCP IPv4 connections
+			"/ip6/::/tcp/5500",      // regular TCP IPv6 connections
 
 			// Configure Secure WebSockets listeners on the same TCP port
 			// AutoTLS will automatically generate a certificate for this host
@@ -105,9 +102,6 @@ func main() {
 
 		// Share the same TCP listener between the TCP and WS transports
 		libp2p.ShareTCPListener(),
-
-		// Configure the QUIC transport
-		libp2p.Transport(quic.NewTransport),
 
 		// Configure the WS transport with the AutoTLS cert manager
 		libp2p.Transport(ws.New, ws.WithTLSConfig(certManager.TLSConfig())),
