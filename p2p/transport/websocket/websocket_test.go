@@ -16,11 +16,12 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"os"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	gws "github.com/gorilla/websocket"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -599,10 +600,12 @@ func TestHTTPSProxyDoesSocks(t *testing.T) {
 		proxyServerErr <- nil
 	}()
 
-	origEnv := os.Getenv("HTTPS_PROXY")
-	defer os.Setenv("HTTPS_PROXY", origEnv)
+	orig := gws.DefaultDialer.Proxy
+	defer func() { gws.DefaultDialer.Proxy = orig }()
 
-	os.Setenv("HTTPS_PROXY", "socks5://"+proxyServer.Addr().String())
+	proxyUrl, err := url.Parse("socks5://" + proxyServer.Addr().String())
+	require.NoError(t, err)
+	gws.DefaultDialer.Proxy = http.ProxyURL(proxyUrl)
 
 	tlsConfig := &tls.Config{InsecureSkipVerify: true} // Our test server doesn't have a cert signed by a CA
 	_, u := newSecureUpgrader(t)
@@ -612,8 +615,7 @@ func TestHTTPSProxyDoesSocks(t *testing.T) {
 	// This can be any wss address. We aren't actually going to dial it.
 	maToDial := ma.StringCast("/ip4/1.2.3.4/tcp/1/tls/sni/example.com/ws")
 	_, err = tpt.Dial(context.Background(), maToDial, "")
-	t.Log(err)
-	require.Error(t, err, "This should error as we don't have a real socks server")
+	require.ErrorContains(t, err, "failed to read connect reply from SOCKS5 proxy", "This should error as we don't have a real socks server")
 
 	select {
 	case <-time.After(1 * time.Second):
