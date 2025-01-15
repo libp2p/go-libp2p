@@ -563,7 +563,6 @@ func TestHTTPSProxyDoesSocks(t *testing.T) {
 			proxyServerErr <- err
 			return
 		}
-		fmt.Println("c", c)
 		defer c.Close()
 
 		req := [32]byte{}
