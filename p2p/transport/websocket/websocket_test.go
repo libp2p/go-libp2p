@@ -611,7 +611,7 @@ func TestHTTPSProxyDoesSocks(t *testing.T) {
 	require.NoError(t, err)
 
 	// This can be any wss address. We aren't actually going to dial it.
-	maToDial := ma.StringCast("/ip4/127.0.0.1/tcp/1/tls/sni/example.com/ws")
+	maToDial := ma.StringCast("/ip4/1.2.3.4/tcp/1/tls/sni/example.com/ws")
 	_, err = tpt.Dial(context.Background(), maToDial, "")
 	require.Error(t, err, "This should error as we don't have a real socks server")
 
