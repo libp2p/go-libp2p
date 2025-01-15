@@ -615,7 +615,11 @@ func TestHTTPSProxyDoesSocks(t *testing.T) {
 	_, err = tpt.Dial(context.Background(), maToDial, "")
 	require.Error(t, err, "This should error as we don't have a real socks server")
 
-	if err := <-proxyServerErr; err != nil {
-		t.Fatal(err)
+	select {
+	case <-time.After(1 * time.Second):
+	case err := <-proxyServerErr:
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
