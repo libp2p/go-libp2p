@@ -160,6 +160,8 @@ func (t *WebsocketTransport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]m
 	return []ma.Multiaddr{parsed.toMultiaddr()}, nil
 }
 
+// Dial will dial the given multiaddr and expect the given peer. If an
+// HTTPS_PROXY env is set, it will use that for the dial out.
 func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
