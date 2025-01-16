@@ -3,13 +3,14 @@ package mdns
 import (
 	"context"
 	"errors"
-	"github.com/libp2p/go-libp2p/core/event"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"io"
 	"math/rand"
 	"strings"
 	"sync"
+
+	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/libp2p/zeroconf/v2"
 

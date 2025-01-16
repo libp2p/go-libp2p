@@ -1,11 +1,12 @@
 package mdns
 
 import (
-	"github.com/libp2p/go-libp2p/core/event"
-	"github.com/libp2p/go-libp2p/core/host"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -114,7 +115,6 @@ func setupHost(t *testing.T) (host.Host, *notif) {
 }
 
 func TestMdnsServiceIpChange(t *testing.T) {
-
 	host1, notif1 := setupHost(t)
 	defer host1.Close()
 
@@ -131,5 +131,5 @@ func TestMdnsServiceIpChange(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		return len(notif1.GetPeers()) == 1 && len(notif2.GetPeers()) == 1
-	}, 5*time.Second, 5*time.Millisecond)
+	}, 5*time.Second, 100*time.Millisecond)
 }
