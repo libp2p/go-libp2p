@@ -399,8 +399,23 @@ func TestBlackHoledAddrBlocked(t *testing.T) {
 	require.ErrorIs(t, err, ErrDialRefusedBlackHole)
 }
 
+type mockDNSResolver struct {
+	ipsToReturn  []net.IPAddr
+	txtsToReturn []string
+}
+
+var _ madns.BasicResolver = (*mockDNSResolver)(nil)
+
+func (m *mockDNSResolver) LookupIPAddr(_ context.Context, _ string) ([]net.IPAddr, error) {
+	return m.ipsToReturn, nil
+}
+
+func (m *mockDNSResolver) LookupTXT(_ context.Context, _ string) ([]string, error) {
+	return m.txtsToReturn, nil
+}
+
 func TestSkipDialingManyDNS(t *testing.T) {
-	resolver, err := madns.NewResolver()
+	resolver, err := madns.NewResolver(madns.WithDefaultResolver(&mockDNSResolver{ipsToReturn: []net.IPAddr{{IP: net.ParseIP("1.2.3.4")}, {IP: net.ParseIP("1.2.3.5")}}}))
 	if err != nil {
 		t.Fatal(err)
 	}
