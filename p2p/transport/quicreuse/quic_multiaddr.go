@@ -28,17 +28,17 @@ func ToQuicMultiaddr(na net.Addr, version quic.Version) (ma.Multiaddr, error) {
 
 func FromQuicMultiaddr(addr ma.Multiaddr) (*net.UDPAddr, quic.Version, error) {
 	var version quic.Version
-	var partsBeforeQUIC []ma.Multiaddr
-	ma.ForEach(addr, func(c ma.Component) bool {
+	partsBeforeQUIC := make([]ma.Component, 0, 2)
+loop:
+	for _, c := range addr {
 		switch c.Protocol().Code {
 		case ma.P_QUIC_V1:
 			version = quic.Version1
-			return false
+			break loop
 		default:
-			partsBeforeQUIC = append(partsBeforeQUIC, &c)
-			return true
+			partsBeforeQUIC = append(partsBeforeQUIC, c)
 		}
-	})
+	}
 	if len(partsBeforeQUIC) == 0 {
 		return nil, version, errors.New("no addr before QUIC component")
 	}
@@ -46,7 +46,7 @@ func FromQuicMultiaddr(addr ma.Multiaddr) (*net.UDPAddr, quic.Version, error) {
 		// Not found
 		return nil, version, errors.New("unknown QUIC version")
 	}
-	netAddr, err := manet.ToNetAddr(ma.Join(partsBeforeQUIC...))
+	netAddr, err := manet.ToNetAddr(partsBeforeQUIC)
 	if err != nil {
 		return nil, version, err
 	}

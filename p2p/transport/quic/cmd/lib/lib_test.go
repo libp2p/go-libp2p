@@ -17,13 +17,14 @@ func TestCmd(t *testing.T) {
 	if ip.Protocol().Code == multiaddr.P_IP4 && ip.Value() == "0.0.0.0" {
 		// Windows can't dial to 0.0.0.0 so replace with localhost
 		var err error
-		ip, err = multiaddr.NewComponent("ip4", "127.0.0.1")
+		c, err := multiaddr.NewComponent("ip4", "127.0.0.1")
 		if err != nil {
 			t.Fatal(err)
 		}
+		ip = c
 	}
 
-	err := RunClient(multiaddr.Join(ip, rest).String(), l.ID.String())
+	err := RunClient(ip.Encapsulate(rest).String(), l.ID.String())
 	if err != nil {
 		t.Fatal(err)
 	}

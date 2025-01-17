@@ -38,7 +38,7 @@ require (
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b
 	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-base32 v0.1.0
-	github.com/multiformats/go-multiaddr v0.14.0
+	github.com/multiformats/go-multiaddr v0.15.0
 	github.com/multiformats/go-multiaddr-dns v0.4.1
 	github.com/multiformats/go-multiaddr-fmt v0.1.0
 	github.com/multiformats/go-multibase v0.2.0

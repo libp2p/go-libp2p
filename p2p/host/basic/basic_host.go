@@ -975,11 +975,11 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 				for _, obsMaddr := range observed {
 					// Extract a public observed addr.
 					ip, _ := ma.SplitFirst(obsMaddr)
-					if ip == nil || !manet.IsPublicAddr(ip) {
+					if ip == nil || !manet.IsPublicAddr(ip.Multiaddr()) {
 						continue
 					}
 
-					finalAddrs = append(finalAddrs, ma.Join(ip, extMaddrNoIP))
+					finalAddrs = append(finalAddrs, ip.Encapsulate(extMaddrNoIP))
 				}
 			}
 		}

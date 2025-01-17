@@ -532,7 +532,7 @@ func relativeMultiaddrURIToAbs(original *url.URL, relative *url.URL) (*url.URL, 
 	withoutPath, _ := ma.SplitFunc(originalMa, func(c ma.Component) bool {
 		return c.Protocol().Code == ma.P_HTTP_PATH
 	})
-	withNewPath := withoutPath.Encapsulate(relativePathComponent)
+	withNewPath := withoutPath.AppendComponent(relativePathComponent)
 	return url.Parse("multiaddr:" + withNewPath.String())
 }
 
@@ -937,10 +937,12 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 
 	_, afterHTTPS := ma.SplitFirst(afterIncludingHTTPS)
 	if afterHTTPS == nil {
-		return ma.Join(beforeHTTPS, tlsComponent, httpComponent), isHTTPMultiaddr
+		return beforeHTTPS.AppendComponent(tlsComponent, httpComponent), isHTTPMultiaddr
 	}
 
-	return ma.Join(beforeHTTPS, tlsComponent, httpComponent, afterHTTPS), isHTTPMultiaddr
+	t := beforeHTTPS.AppendComponent(tlsComponent, httpComponent)
+	t = append(t, afterHTTPS...)
+	return t, isHTTPMultiaddr
 }
 
 // getAndStorePeerMetadata looks up the protocol path in the well-known mapping and

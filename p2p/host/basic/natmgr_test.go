@@ -42,11 +42,11 @@ func TestMapping(t *testing.T) {
 	externalAddr := netip.AddrPortFrom(netip.AddrFrom4([4]byte{1, 2, 3, 4}), 4321)
 	// pretend that we have a TCP mapping
 	mockNAT.EXPECT().GetMapping("tcp", 1234).Return(externalAddr, true)
-	require.Equal(t, ma.StringCast("/ip4/1.2.3.4/tcp/4321"), m.GetMapping(ma.StringCast("/ip4/0.0.0.0/tcp/1234")))
+	require.Equal(t, "/ip4/1.2.3.4/tcp/4321", m.GetMapping(ma.StringCast("/ip4/0.0.0.0/tcp/1234")).String())
 
 	// pretend that we have a QUIC mapping
 	mockNAT.EXPECT().GetMapping("udp", 1234).Return(externalAddr, true)
-	require.Equal(t, ma.StringCast("/ip4/1.2.3.4/udp/4321/quic-v1"), m.GetMapping(ma.StringCast("/ip4/0.0.0.0/udp/1234/quic-v1")))
+	require.Equal(t, "/ip4/1.2.3.4/udp/4321/quic-v1", m.GetMapping(ma.StringCast("/ip4/0.0.0.0/udp/1234/quic-v1")).String())
 
 	// pretend that there's no mapping
 	mockNAT.EXPECT().GetMapping("tcp", 1234).Return(netip.AddrPort{}, false)
@@ -54,11 +54,11 @@ func TestMapping(t *testing.T) {
 
 	// make sure this works for WebSocket addresses as well
 	mockNAT.EXPECT().GetMapping("tcp", 1234).Return(externalAddr, true)
-	require.Equal(t, ma.StringCast("/ip4/1.2.3.4/tcp/4321/ws"), m.GetMapping(ma.StringCast("/ip4/0.0.0.0/tcp/1234/ws")))
+	require.Equal(t, "/ip4/1.2.3.4/tcp/4321/ws", m.GetMapping(ma.StringCast("/ip4/0.0.0.0/tcp/1234/ws")).String())
 
 	// make sure this works for WebTransport addresses as well
 	mockNAT.EXPECT().GetMapping("udp", 1234).Return(externalAddr, true)
-	require.Equal(t, ma.StringCast("/ip4/1.2.3.4/udp/4321/quic-v1/webtransport"), m.GetMapping(ma.StringCast("/ip4/0.0.0.0/udp/1234/quic-v1/webtransport")))
+	require.Equal(t, "/ip4/1.2.3.4/udp/4321/quic-v1/webtransport", m.GetMapping(ma.StringCast("/ip4/0.0.0.0/udp/1234/quic-v1/webtransport")).String())
 }
 
 func TestAddAndRemoveListeners(t *testing.T) {

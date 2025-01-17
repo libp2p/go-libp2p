@@ -191,16 +191,18 @@ func (m *certManager) cacheSerializedCertHashes() error {
 }
 
 func (m *certManager) cacheAddrComponent() error {
-	addr, err := addrComponentForCert(m.currentConfig.sha256[:])
+	var addr ma.Multiaddr
+	c, err := addrComponentForCert(m.currentConfig.sha256[:])
 	if err != nil {
 		return err
 	}
+	addr = addr.AppendComponent(c)
 	if m.nextConfig != nil {
 		comp, err := addrComponentForCert(m.nextConfig.sha256[:])
 		if err != nil {
 			return err
 		}
-		addr = addr.Encapsulate(comp)
+		addr = addr.AppendComponent(comp)
 	}
 	m.addrComp = addr
 	return nil

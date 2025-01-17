@@ -84,7 +84,7 @@ func stripCertHashes(addr ma.Multiaddr) ma.Multiaddr {
 }
 
 // create a /certhash multiaddr component using the SHA256 of foobar
-func getCerthashComponent(t *testing.T, b []byte) ma.Multiaddr {
+func getCerthashComponent(t *testing.T, b []byte) *ma.Component {
 	t.Helper()
 	h := sha256.Sum256(b)
 	mh, err := multihash.Encode(h[:], multihash.SHA2_256)
@@ -133,7 +133,7 @@ func TestTransport(t *testing.T) {
 		require.NoError(t, err)
 		_, port, err := net.SplitHostPort(addr)
 		require.NoError(t, err)
-		require.Equal(t, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic-v1/webtransport", port)), conn.RemoteMultiaddr())
+		require.Equal(t, fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic-v1/webtransport", port), conn.RemoteMultiaddr().String())
 		addrChan <- conn.RemoteMultiaddr()
 	}()
 
@@ -145,7 +145,7 @@ func TestTransport(t *testing.T) {
 	data, err := io.ReadAll(str)
 	require.NoError(t, err)
 	require.Equal(t, "foobar", string(data))
-	require.Equal(t, <-addrChan, conn.LocalMultiaddr())
+	require.Equal(t, (<-addrChan).String(), conn.LocalMultiaddr().String())
 	require.NoError(t, conn.Close())
 	require.True(t, conn.IsClosed())
 }
@@ -381,7 +381,7 @@ func TestConnectionGaterDialing(t *testing.T) {
 	defer ln.Close()
 
 	connGater.EXPECT().InterceptSecured(network.DirOutbound, serverID, gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, stripCertHashes(ln.Multiaddr()).String(), addrs.RemoteMultiaddr().String())
 	})
 	_, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), connGater, &network.NullResourceManager{})
@@ -405,8 +405,8 @@ func TestConnectionGaterInterceptAccept(t *testing.T) {
 	defer ln.Close()
 
 	connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.LocalMultiaddr())
-		require.NotEqual(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, stripCertHashes(ln.Multiaddr()).String(), addrs.LocalMultiaddr().String())
+		require.NotEqual(t, stripCertHashes(ln.Multiaddr()).String(), addrs.RemoteMultiaddr().String())
 	})
 
 	_, key := newIdentity(t)
@@ -437,8 +437,8 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 
 	connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true)
 	connGater.EXPECT().InterceptSecured(network.DirInbound, clientID, gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.LocalMultiaddr())
-		require.NotEqual(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, stripCertHashes(ln.Multiaddr()).String(), addrs.LocalMultiaddr().String())
+		require.NotEqual(t, stripCertHashes(ln.Multiaddr()).String(), addrs.RemoteMultiaddr().String())
 	})
 	// The handshake will complete, but the server will immediately close the connection.
 	conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
@@ -597,16 +597,12 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	defer tr2.(io.Closer).Close()
 
 	var addr ma.Multiaddr
-	for _, comp := range ma.Split(ln.Multiaddr()) {
+	for _, comp := range ln.Multiaddr() {
 		if _, err := comp.ValueForProtocol(ma.P_UDP); err == nil {
 			addr = addr.Encapsulate(ma.StringCast(fmt.Sprintf("/udp/%d", proxy.LocalAddr().(*net.UDPAddr).Port)))
 			continue
 		}
-		if addr == nil {
-			addr = comp
-			continue
-		}
-		addr = addr.Encapsulate(comp)
+		addr = append(addr, comp)
 	}
 
 	conn, err := tr2.Dial(context.Background(), addr, serverID)

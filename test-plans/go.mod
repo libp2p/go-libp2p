@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/libp2p/go-libp2p v0.0.0
-	github.com/multiformats/go-multiaddr v0.14.0
+	github.com/multiformats/go-multiaddr v0.15.0
 )
 
 require (

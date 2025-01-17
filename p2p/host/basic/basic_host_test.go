@@ -25,6 +25,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/matest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -300,7 +301,7 @@ func TestAllAddrsUnique(t *testing.T) {
 	}()
 	close(sendNewAddrs)
 	require.Len(t, h.Addrs(), 2)
-	require.ElementsMatch(t, []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1"), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")}, h.Addrs())
+	matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1"), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")}, h.Addrs())
 	time.Sleep(2*addrChangeTickrInterval + 1*time.Second) // the background loop runs every 5 seconds. Wait for 2x that time.
 	close(done)
 	cnt := <-out
@@ -650,13 +651,13 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 
 	// assert it's on the signed record
 	rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
-	require.Equal(t, taddrs, rc.Addrs)
+	matest.AssertEqualMultiaddrs(t, taddrs, rc.Addrs)
 
 	// assert it's in the peerstore
 	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 	require.NotNil(t, ev)
 	rc = peerRecordFromEnvelope(t, ev)
-	require.Equal(t, taddrs, rc.Addrs)
+	matest.AssertEqualMultiaddrs(t, taddrs, rc.Addrs)
 }
 
 func TestStatefulAddrEvents(t *testing.T) {
@@ -759,13 +760,13 @@ func TestHostAddrChangeDetection(t *testing.T) {
 
 		// assert it's on the signed record
 		rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
-		require.Equal(t, addrSets[i], rc.Addrs)
+		matest.AssertMultiaddrsMatch(t, addrSets[i], rc.Addrs)
 
 		// assert it's in the peerstore
 		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 		require.NotNil(t, ev)
 		rc = peerRecordFromEnvelope(t, ev)
-		require.Equal(t, addrSets[i], rc.Addrs)
+		matest.AssertMultiaddrsMatch(t, addrSets[i], rc.Addrs)
 	}
 }
 

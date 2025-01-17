@@ -82,7 +82,7 @@ func newSecureMuxer(t *testing.T) (peer.ID, []sec.SecureTransport) {
 	return id, []sec.SecureTransport{noiseTpt}
 }
 
-func lastComponent(t *testing.T, a ma.Multiaddr) ma.Multiaddr {
+func lastComponent(t *testing.T, a ma.Multiaddr) *ma.Component {
 	t.Helper()
 	_, wscomponent := ma.SplitLast(a)
 	require.NotNil(t, wscomponent)
@@ -335,7 +335,7 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 	if secure {
 		require.Contains(t, l.Multiaddr().String(), "tls")
 	} else {
-		require.Equal(t, lastComponent(t, l.Multiaddr()), wsComponent)
+		require.Equal(t, lastComponent(t, l.Multiaddr()).String(), wsComponent.String())
 	}
 	defer l.Close()
 
@@ -428,8 +428,8 @@ func TestWebsocketListenSecureAndInsecure(t *testing.T) {
 		conn, err := client.Dial(context.Background(), lnSecure.Multiaddr(), serverID)
 		require.NoError(t, err)
 		defer conn.Close()
-		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()), wssComponent)
-		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()), wssComponent)
+		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()).String(), wssComponent.String())
+		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()).String(), wssComponent.String())
 
 		// dialing the insecure address should fail
 		_, err = client.Dial(context.Background(), lnInsecure.Multiaddr(), serverID)
