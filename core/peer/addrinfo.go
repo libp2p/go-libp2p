@@ -54,7 +54,7 @@ func SplitAddr(m ma.Multiaddr) (transport ma.Multiaddr, id ID) {
 	}
 
 	transport, p2ppart := ma.SplitLast(m)
-	if p2ppart == nil || p2ppart.Protocol().Code != ma.P_P2P {
+	if p2ppart.Empty() || p2ppart.Protocol().Code != ma.P_P2P {
 		return m, ""
 	}
 	id = ID(p2ppart.RawValue()) // already validated by the multiaddr library.
@@ -109,11 +109,11 @@ func AddrInfoToP2pAddrs(pi *AddrInfo) ([]ma.Multiaddr, error) {
 		return nil, err
 	}
 	if len(pi.Addrs) == 0 {
-		return []ma.Multiaddr{p2ppart}, nil
+		return []ma.Multiaddr{p2ppart.AsMultiaddr()}, nil
 	}
 	addrs := make([]ma.Multiaddr, 0, len(pi.Addrs))
 	for _, addr := range pi.Addrs {
-		addrs = append(addrs, addr.Encapsulate(p2ppart))
+		addrs = append(addrs, addr.Encapsulate(p2ppart.AsMultiaddr()))
 	}
 	return addrs, nil
 }

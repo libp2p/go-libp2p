@@ -26,6 +26,7 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	matest "github.com/multiformats/go-multiaddr/matest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -188,12 +189,12 @@ func TestAddrResolution(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, mas, 1)
-	require.Contains(t, mas, addr2)
+	matest.AssertMultiaddrsContain(t, mas, addr2)
 
 	addrs := s.peers.Addrs(p1)
 	require.Len(t, addrs, 2)
-	require.Contains(t, addrs, addr1)
-	require.Contains(t, addrs, addr2)
+	matest.AssertMultiaddrsContain(t, addrs, addr1)
+	matest.AssertMultiaddrsContain(t, addrs, addr2)
 }
 
 func TestAddrResolutionRecursive(t *testing.T) {
@@ -234,8 +235,8 @@ func TestAddrResolutionRecursive(t *testing.T) {
 
 	addrs1 := s.Peerstore().Addrs(pi1.ID)
 	require.Len(t, addrs1, 2)
-	require.Contains(t, addrs1, addr1)
-	require.Contains(t, addrs1, addr2)
+	matest.AssertMultiaddrsContain(t, addrs1, addr1)
+	matest.AssertMultiaddrsContain(t, addrs1, addr2)
 
 	pi2, err := peer.AddrInfoFromP2pAddr(p2paddr2)
 	require.NoError(t, err)
@@ -247,7 +248,7 @@ func TestAddrResolutionRecursive(t *testing.T) {
 
 	addrs2 := s.Peerstore().Addrs(pi2.ID)
 	require.Len(t, addrs2, 1)
-	require.Contains(t, addrs2, addr1)
+	matest.AssertMultiaddrsContain(t, addrs2, addr1)
 }
 
 // see https://github.com/libp2p/go-libp2p/issues/2562

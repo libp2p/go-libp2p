@@ -38,7 +38,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-var webrtcComponent *ma.Component
+var webrtcComponent ma.Component
 
 func init() {
 	var err error
@@ -233,7 +233,7 @@ func (t *WebRTCTransport) listenSocket(socket net.PacketConn) (tpt.Listener, err
 	if err != nil {
 		return nil, err
 	}
-	listenerMultiaddr = listenerMultiaddr.Encapsulate(webrtcComponent).Encapsulate(certComp)
+	listenerMultiaddr = listenerMultiaddr.EncapsulateC(webrtcComponent).EncapsulateC(certComp)
 
 	return newListener(
 		t,
@@ -531,7 +531,7 @@ func (t *WebRTCTransport) AddCertHashes(addr ma.Multiaddr) (ma.Multiaddr, bool) 
 	if err != nil {
 		return nil, false
 	}
-	return addr.Encapsulate(certComp), true
+	return addr.EncapsulateC(certComp), true
 }
 
 type netConnWrapper struct {
