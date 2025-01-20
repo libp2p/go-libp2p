@@ -32,5 +32,7 @@ go run . -topicName=adifferenttopic
 Try opening several terminals, each running the app. When you type a message and hit enter in one, it
 should appear in all others that are connected to the same topic.
 
+Note: if missing the message in some terminals when opened the terminal at the same time, try to reopen the terminal to execute `go run .`.
+
 To quit, hit `Ctrl-C`.
 
