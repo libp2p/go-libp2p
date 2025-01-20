@@ -601,7 +601,7 @@ func makeReservationMsg(
 		switch {
 		case id == "":
 			// No ID, we'll add one to the address
-			addr = addr.Encapsulate(selfP2PAddr)
+			addr = addr.EncapsulateC(selfP2PAddr)
 		case id == selfID:
 		// This address already has our ID in it.
 		// Do nothing

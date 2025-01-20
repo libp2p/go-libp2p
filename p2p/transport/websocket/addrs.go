@@ -133,7 +133,7 @@ func parseMultiaddr(maddr ma.Multiaddr) (*url.URL, error) {
 type parsedWebsocketMultiaddr struct {
 	isWSS bool
 	// sni is the SNI value for the TLS handshake, and for setting HTTP Host header
-	sni *ma.Component
+	sni ma.Component
 	// the rest of the multiaddr before the /tls/sni/example.com/ws or /ws or /wss
 	restMultiaddr ma.Multiaddr
 }
@@ -141,13 +141,13 @@ type parsedWebsocketMultiaddr struct {
 func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
 	out := parsedWebsocketMultiaddr{}
 	// First check if we have a WSS component. If so we'll canonicalize it into a /tls/ws
-	withoutWss := a.Decapsulate(wssComponent)
+	withoutWss := a.Decapsulate(wssComponent.AsMultiaddr())
 	if !withoutWss.Equal(a) {
-		a = withoutWss.Encapsulate(tlsWsComponent)
+		a = withoutWss.Encapsulate(tlsWsAddr)
 	}
 
 	// Remove the ws component
-	withoutWs := a.Decapsulate(wsComponent)
+	withoutWs := a.Decapsulate(wsComponent.AsMultiaddr())
 	if withoutWs.Equal(a) {
 		return out, fmt.Errorf("not a websocket multiaddr")
 	}
@@ -156,9 +156,9 @@ func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
 	// If this is not a wss then withoutWs is the rest of the multiaddr
 	out.restMultiaddr = withoutWs
 	for {
-		var head *ma.Component
+		var head ma.Component
 		rest, head = ma.SplitLast(rest)
-		if head == nil || rest == nil {
+		if head.Empty() || rest.Empty() {
 			break
 		}
 

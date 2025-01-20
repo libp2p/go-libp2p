@@ -40,14 +40,14 @@ type listener struct {
 
 func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 	if !pwma.isWSS {
-		return pwma.restMultiaddr.Encapsulate(wsComponent)
+		return pwma.restMultiaddr.EncapsulateC(wsComponent)
 	}
 
-	if pwma.sni == nil {
-		return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(wsComponent)
+	if pwma.sni.Empty() {
+		return pwma.restMultiaddr.EncapsulateC(tlsComponent).EncapsulateC(wsComponent)
 	}
 
-	return pwma.restMultiaddr.Encapsulate(tlsComponent).Encapsulate(pwma.sni).Encapsulate(wsComponent)
+	return pwma.restMultiaddr.EncapsulateC(tlsComponent).EncapsulateC(pwma.sni).EncapsulateC(wsComponent)
 }
 
 // newListener creates a new listener from a raw net.Listener.
