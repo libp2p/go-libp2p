@@ -209,7 +209,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 			copytlsClientConf := t.tlsClientConf.Clone()
 			copytlsClientConf.ServerName = sni
 			dialer.TLSClientConfig = copytlsClientConf
-			ipAddr := wsurl.Host
+			ipPortAddr := wsurl.Host
 			// We set the `.Host` to the sni field so that the host header gets properly set.
 			wsurl.Host = sni + ":" + wsurl.Port()
 			// Setting the NetDial because we already have the resolved IP address, so we can avoid another resolution.
@@ -217,7 +217,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 				var tcpAddr *net.TCPAddr
 				var err error
 				if address == wsurl.Host {
-					tcpAddr, err = net.ResolveTCPAddr(network, ipAddr) // Use our already resolved IP address
+					tcpAddr, err = net.ResolveTCPAddr(network, ipPortAddr) // Use our already resolved IP address
 				} else {
 					tcpAddr, err = net.ResolveTCPAddr(network, address)
 				}
