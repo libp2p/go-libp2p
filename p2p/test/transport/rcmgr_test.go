@@ -47,7 +47,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						dialer = tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, ResourceManager: rcmgr})
 						expectedPeer = listener.ID()
 						expectedDir = network.DirOutbound
-						expectedAddr = matest.MultiaddrMatcher{listener.Addrs()[0]}
+						expectedAddr = matest.MultiaddrMatcher{Multiaddr: listener.Addrs()[0]}
 					} else {
 						listener = tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: rcmgr})
 						dialer = tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
