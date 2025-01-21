@@ -184,9 +184,8 @@ func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multi
 
 	addr, obsAddr, rtt, err := hp.initiateHolePunchImpl(str)
 	if err != nil {
-		log.Debugf("%s", err)
 		str.Reset()
-		return addr, obsAddr, rtt, err
+		return addr, obsAddr, rtt, fmt.Errorf("failed to initiateHolePunch: %w", err)
 	}
 	return addr, obsAddr, rtt, err
 }
@@ -278,7 +277,10 @@ func (nn *netNotifiee) Connected(_ network.Network, conn network.Conn) {
 				return
 			}
 
-			_ = hs.DirectConnect(conn.RemotePeer())
+			err := hs.DirectConnect(conn.RemotePeer())
+			if err != nil {
+				log.Debugf("attempt to perform DirectConnect to %s failed: %s", conn.RemotePeer(), err)
+			}
 		}()
 	}
 }
