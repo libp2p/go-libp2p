@@ -49,6 +49,11 @@ type holePuncher struct {
 
 	tracer *tracer
 	filter AddrFilter
+
+	// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
+	// pick the opposite roles for client/server a hole punch. Setting this to
+	// true preserves that behavior
+	legacyBehavior bool
 }
 
 func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma.Multiaddr, tracer *tracer, filter AddrFilter) *holePuncher {
