@@ -8,9 +8,12 @@ func GetTransport(a ma.Multiaddr) string {
 	if a == nil {
 		return "other"
 	}
-	for _, t := range transports {
-		if _, err := a.ValueForProtocol(t); err == nil {
-			return ma.ProtocolWithCode(t).Name
+	for i := len(a) - 1; i >= 0; i-- {
+		p := a[i].Protocol()
+		for _, t := range transports {
+			if p.Code == t {
+				return p.Name
+			}
 		}
 	}
 	return "other"
