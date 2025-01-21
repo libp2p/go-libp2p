@@ -920,7 +920,7 @@ func TestOutOfOrderConnectedNotifs(t *testing.T) {
 	doneCh := make(chan struct{})
 	errCh := make(chan error)
 
-	// This callback may be called before identify's Connnected callback completes. If it does, the IdentifyWait should still finish successfully.
+	// This callback may be called before identify's Connected callback completes. If it does, the IdentifyWait should still finish successfully.
 	h1.Network().Notify(&network.NotifyBundle{
 		ConnectedF: func(n network.Network, c network.Conn) {
 			idChan := h1.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(c)
