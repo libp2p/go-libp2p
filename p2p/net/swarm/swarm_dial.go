@@ -383,7 +383,7 @@ func chainResolvers(ctx context.Context, addrs []ma.Multiaddr, outputLimit int, 
 }
 
 // resolveAddrs resolves DNS/DNSADDR components in the given peer's addresses.
-// We want to resolve the DNS components to IP addresses becase we want the
+// We want to resolve the DNS components to IP addresses because we want the
 // swarm to manage ranking and dialing multiple connections, and a single DNS
 // address can resolve to multiple IP addresses.
 func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) []ma.Multiaddr {
