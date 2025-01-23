@@ -133,7 +133,6 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	for i := 1; i <= maxRetries; i++ {
 		addrs, obsAddrs, rtt, err := hp.initiateHolePunch(rp)
 		if err != nil {
-			log.Debugw("hole punching failed", "peer", rp, "error", err)
 			hp.tracer.ProtocolError(rp, err)
 			return err
 		}
