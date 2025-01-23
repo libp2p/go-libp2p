@@ -19,16 +19,20 @@ type stream struct {
 var _ network.MuxedStream = &stream{}
 
 func (s *stream) Read(b []byte) (n int, err error) {
+	var streamErr *quic.StreamError
+
 	n, err = s.Stream.Read(b)
-	if err != nil && errors.Is(err, &quic.StreamError{}) {
+	if err != nil && errors.As(err, &streamErr) {
 		err = network.ErrReset
 	}
 	return n, err
 }
 
 func (s *stream) Write(b []byte) (n int, err error) {
+	var streamErr *quic.StreamError
+
 	n, err = s.Stream.Write(b)
-	if err != nil && errors.Is(err, &quic.StreamError{}) {
+	if err != nil && errors.As(err, &streamErr) {
 		err = network.ErrReset
 	}
 	return n, err
