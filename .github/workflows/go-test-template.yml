@@ -109,7 +109,7 @@ jobs:
           run: test_analysis ${{ env.GOTESTFLAGS }}
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}_${{ matrix.go }}_test_results.db
           path: ./test_results.db
@@ -131,7 +131,7 @@ jobs:
           run: test_analysis -race ${{ env.GORACEFLAGS }} ./...
       - name: Upload test results (Race)
         if: (steps.race.conclusion == 'success' || steps.race.conclusion == 'failure')
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}_${{ matrix.go }}_test_results_race.db
           path: ./test_results.db
