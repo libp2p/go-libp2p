@@ -86,6 +86,15 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 
 	pendingJobs++
 	go func() {
+		nats, errs := discoverUPNP_GenIGDev(ctx)
+		select {
+		case resCh <- natsAndErrs{nats, errs}:
+		case <-ctx.Done():
+		}
+	}()
+
+	pendingJobs++
+	go func() {
 		nat, err := discoverNATPMP(ctx)
 		var nats []NAT
 		var errs []error
