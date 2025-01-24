@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +26,11 @@ type ErrNoNATFound struct {
 }
 
 func (e ErrNoNATFound) Error() string {
-	return fmt.Sprintf("no NAT found: %#v", e.Errs)
+	var errStrs []string
+	for _, err := range e.Errs {
+		errStrs = append(errStrs, err.Error())
+	}
+	return fmt.Sprintf("no NAT found: [%s]", strings.Join(errStrs, "; "))
 }
 
 // protocol is either "udp" or "tcp"
