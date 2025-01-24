@@ -4,15 +4,33 @@ package nat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
+
+	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-netroute"
 )
+
+var log = logging.Logger("internal/nat")
 
 var ErrNoExternalAddress = errors.New("no external address")
 var ErrNoInternalAddress = errors.New("no internal address")
-var ErrNoNATFound = errors.New("no NAT found")
+
+type ErrNoNATFound struct {
+	Errs []error
+}
+
+func (e ErrNoNATFound) Error() string {
+	var errStrs []string
+	for _, err := range e.Errs {
+		errStrs = append(errStrs, err.Error())
+	}
+	return fmt.Sprintf("no NAT found: [%s]", strings.Join(errStrs, "; "))
+}
 
 // protocol is either "udp" or "tcp"
 type NAT interface {
@@ -35,65 +53,91 @@ type NAT interface {
 	DeletePortMapping(ctx context.Context, protocol string, internalPort int) (err error)
 }
 
-// DiscoverNATs returns all NATs discovered in the network.
-func DiscoverNATs(ctx context.Context) <-chan NAT {
-	nats := make(chan NAT)
+// discoverNATs returns all NATs discovered in the network.
+func discoverNATs(ctx context.Context) ([]NAT, []error) {
+	type natsAndErrs struct {
+		nats []NAT
+		errs []error
+	}
+	upnpCh := make(chan natsAndErrs)
+	pmpCh := make(chan natsAndErrs)
 
 	go func() {
-		defer close(nats)
+		defer close(upnpCh)
 
-		upnpIg1 := discoverUPNP_IG1(ctx)
-		upnpIg2 := discoverUPNP_IG2(ctx)
-		natpmp := discoverNATPMP(ctx)
-		upnpGenIGDev := discoverUPNP_GenIGDev(ctx)
-		for upnpIg1 != nil || upnpIg2 != nil || natpmp != nil || upnpGenIGDev != nil {
-			var (
-				nat NAT
-				ok  bool
-			)
-			select {
-			case nat, ok = <-upnpIg1:
-				if !ok {
-					upnpIg1 = nil
-				}
-			case nat, ok = <-upnpIg2:
-				if !ok {
-					upnpIg2 = nil
-				}
-			case nat, ok = <-upnpGenIGDev:
-				if !ok {
-					upnpGenIGDev = nil
-				}
-			case nat, ok = <-natpmp:
-				if !ok {
-					natpmp = nil
-				}
-			case <-ctx.Done():
-				// timeout.
-				return
-			}
-			if ok {
-				select {
-				case nats <- nat:
-				case <-ctx.Done():
-					return
-				}
-			}
+		// We do these UPNP queries sequentially because some routers will fail to handle parallel requests.
+		nats, errs := discoverUPNP_IG1(ctx)
+
+		// Do IG2 after IG1 so that its NAT devices will appear as "better" when we
+		// find the best NAT to return below.
+		n, e := discoverUPNP_IG2(ctx)
+		nats = append(nats, n...)
+		errs = append(errs, e...)
+
+		if len(nats) == 0 {
+			// We don't have a NAT. We should try querying all devices over
+			// SSDP to find a InternetGatewayDevice. This shouldn't be necessary for
+			// a well behaved router.
+			n, e = discoverUPNP_GenIGDev(ctx)
+			nats = append(nats, n...)
+			errs = append(errs, e...)
+		}
+
+		select {
+		case upnpCh <- natsAndErrs{nats, errs}:
+		case <-ctx.Done():
 		}
 	}()
-	return nats
+
+	go func() {
+		defer close(pmpCh)
+		nat, err := discoverNATPMP(ctx)
+		var nats []NAT
+		var errs []error
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			nats = append(nats, nat)
+		}
+		select {
+		case pmpCh <- natsAndErrs{nats, errs}:
+		case <-ctx.Done():
+		}
+	}()
+
+	var nats []NAT
+	var errs []error
+
+	for upnpCh != nil && pmpCh != nil {
+		select {
+		case res := <-pmpCh:
+			pmpCh = nil
+			nats = append(nats, res.nats...)
+			errs = append(errs, res.errs...)
+		case res := <-upnpCh:
+			upnpCh = nil
+			nats = append(nats, res.nats...)
+			errs = append(errs, res.errs...)
+		case <-ctx.Done():
+			errs = append(errs, ctx.Err())
+			return nats, errs
+		}
+	}
+	return nats, errs
 }
 
 // DiscoverGateway attempts to find a gateway device.
 func DiscoverGateway(ctx context.Context) (NAT, error) {
-	var nats []NAT
-	for nat := range DiscoverNATs(ctx) {
-		nats = append(nats, nat)
-	}
+	nats, errs := discoverNATs(ctx)
+
 	switch len(nats) {
 	case 0:
-		return nil, ErrNoNATFound
+		return nil, ErrNoNATFound{Errs: errs}
 	case 1:
+		if len(errs) > 0 {
+			log.Debugf("NAT found, but some potentially unrelated errors occurred: %v", errs)
+		}
+
 		return nats[0], nil
 	}
 	gw, _ := getDefaultGateway()
@@ -115,6 +159,10 @@ func DiscoverGateway(ctx context.Context) (NAT, error) {
 		bestNATIsGw = natIsGw
 		bestNAT = nat
 	}
+
+	if len(errs) > 0 {
+		log.Debugf("NAT found, but some potentially unrelated errors occurred: %v", errs)
+	}
 	return bestNAT, nil
 }
 
@@ -122,4 +170,14 @@ var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func randomPort() int {
 	return random.Intn(math.MaxUint16-10000) + 10000
+}
+
+func getDefaultGateway() (net.IP, error) {
+	router, err := netroute.New()
+	if err != nil {
+		return nil, err
+	}
+
+	_, ip, _, err := router.Route(net.IPv4zero)
+	return ip, err
 }
