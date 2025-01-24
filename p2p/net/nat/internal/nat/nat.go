@@ -123,6 +123,15 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		pendingJobs--
 		select {
 		case res := <-resCh:
+			for _, n := range res.nats {
+				extAddr, _ := n.GetExternalAddress()
+				deviceAddr, _ := n.GetDeviceAddress()
+				log.Debugw("received NAT discovery result", "nat", n.Type(), "extAddr", extAddr, "deviceAddr", deviceAddr)
+			}
+			for _, err := range res.errs {
+				log.Debugw("received NAT discovery error", "err", err)
+			}
+
 			nats = append(nats, res.nats...)
 			errs = append(errs, res.errs...)
 		case <-ctx.Done():
