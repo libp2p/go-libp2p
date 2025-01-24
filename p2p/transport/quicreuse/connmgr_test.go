@@ -97,7 +97,7 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 	quicTr, err := cm.transportForListen(nil, netw, naddr)
 	require.NoError(t, err)
 	defer quicTr.Close()
-	if _, ok := quicTr.(*singleOwnerTransport).Transport.Conn.(quic.OOBCapablePacketConn); !ok {
+	if _, ok := quicTr.(*singleOwnerTransport).packetConn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }
@@ -156,7 +156,7 @@ func TestConnectionPassedToQUICForDialing(t *testing.T) {
 
 	require.NoError(t, err, "dial error")
 	defer quicTr.Close()
-	if _, ok := quicTr.(*singleOwnerTransport).Transport.Conn.(quic.OOBCapablePacketConn); !ok {
+	if _, ok := quicTr.(*singleOwnerTransport).packetConn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }
@@ -256,4 +256,62 @@ func testListener(t *testing.T, enableReuseport bool) {
 	cm.Close()
 
 	checkClosed(t, cm)
+}
+
+func TestExternalTransport(t *testing.T) {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero})
+	require.NoError(t, err)
+	defer conn.Close()
+	port := conn.LocalAddr().(*net.UDPAddr).Port
+	tr := &quic.Transport{Conn: conn}
+	defer tr.Close()
+
+	cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	doneWithTr, err := cm.LendTransport("udp4", &wrappedQUICTransport{tr}, conn)
+	require.NoError(t, err)
+
+	// make sure this transport is used when listening on the same port
+	ln, err := cm.ListenQUICAndAssociate(
+		"quic",
+		ma.StringCast(fmt.Sprintf("/ip4/0.0.0.0/udp/%d", port)),
+		&tls.Config{NextProtos: []string{"libp2p"}},
+		func(quic.Connection, uint64) bool { return false },
+	)
+	require.NoError(t, err)
+	defer ln.Close()
+	require.Equal(t, port, ln.Addr().(*net.UDPAddr).Port)
+
+	// make sure this transport is used when dialing out
+	udpLn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer udpLn.Close()
+	addrChan := make(chan net.Addr, 1)
+	go func() {
+		_, addr, _ := udpLn.ReadFrom(make([]byte, 2000))
+		addrChan <- addr
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err = cm.DialQUIC(
+		ctx,
+		ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", udpLn.LocalAddr().(*net.UDPAddr).Port)),
+		&tls.Config{NextProtos: []string{"libp2p"}},
+		func(quic.Connection, uint64) bool { return false },
+	)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	select {
+	case addr := <-addrChan:
+		require.Equal(t, port, addr.(*net.UDPAddr).Port)
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
+	}
+
+	cm.Close()
+	select {
+	case <-doneWithTr:
+	default:
+		t.Fatal("doneWithTr not closed")
+	}
 }

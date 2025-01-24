@@ -7,13 +7,12 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/libp2p/go-nat"
-
+	"github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate sh -c "go run go.uber.org/mock/mockgen -package nat -destination mock_nat_test.go github.com/libp2p/go-nat NAT"
+//go:generate sh -c "go run go.uber.org/mock/mockgen -package nat -destination mock_nat_test.go github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat NAT"
 
 func setupMockNAT(t *testing.T) (mockNAT *MockNAT, reset func()) {
 	t.Helper()
@@ -67,4 +66,19 @@ func TestRemoveMapping(t *testing.T) {
 
 	_, found = nat.GetMapping("tcp", 10000)
 	require.False(t, found, "didn't expect port mapping for deleted mapping")
+}
+
+func TestAddMappingInvalidPort(t *testing.T) {
+	mockNAT, reset := setupMockNAT(t)
+	defer reset()
+
+	mockNAT.EXPECT().GetExternalAddress().Return(net.IPv4(1, 2, 3, 4), nil)
+	nat, err := DiscoverNAT(context.Background())
+	require.NoError(t, err)
+
+	mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000, gomock.Any(), MappingDuration).Return(0, nil)
+	require.NoError(t, nat.AddMapping(context.Background(), "tcp", 10000))
+
+	_, found := nat.GetMapping("tcp", 10000)
+	require.False(t, found, "didn't expect a port mapping for invalid nat-ed port")
 }

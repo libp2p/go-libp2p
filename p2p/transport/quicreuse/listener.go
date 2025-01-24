@@ -29,7 +29,7 @@ type protoConf struct {
 }
 
 type quicListener struct {
-	l         *quic.Listener
+	l         QUICListener
 	transport refCountedQuicTransport
 	running   chan struct{}
 	addrs     []ma.Multiaddr
