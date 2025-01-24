@@ -12,7 +12,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate sh -c "go run go.uber.org/mock/mockgen -package nat -destination mock_nat_test.go github.com/libp2p/go-nat NAT"
+//go:generate sh -c "go run go.uber.org/mock/mockgen -package nat -destination mock_nat_test.go github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat NAT"
 
 func setupMockNAT(t *testing.T) (mockNAT *MockNAT, reset func()) {
 	t.Helper()
