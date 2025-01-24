@@ -122,7 +122,6 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		case res := <-resCh:
 			nats = append(nats, res.nats...)
 			errs = append(errs, res.errs...)
-			return nats, errs
 		case <-allDone:
 			return nats, errs
 		case <-ctx.Done():
