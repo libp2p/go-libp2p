@@ -101,7 +101,10 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		nats, errs := discoverUPNP_GenIGDev(ctx)
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
+			log.Debugf("discoverUPNP_GenIGDev: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
+			log.Debug("discoverUPNP_GenIGDev context done")
+
 		}
 	}()
 
