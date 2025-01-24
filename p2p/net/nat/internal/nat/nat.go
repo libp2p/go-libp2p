@@ -32,6 +32,14 @@ func (e ErrNoNATFound) Error() string {
 	return fmt.Sprintf("no NAT found: [%s]", strings.Join(errStrs, "; "))
 }
 
+func concatErrors(errs []error) string {
+	var errStrs []string
+	for _, err := range errs {
+		errStrs = append(errStrs, err.Error())
+	}
+	return strings.Join(errStrs, "; ")
+}
+
 // protocol is either "udp" or "tcp"
 type NAT interface {
 	// Type returns the kind of NAT port mapping service that is used
@@ -76,6 +84,7 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		nats, errs := discoverUPNP_IG1(ctx)
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
+			log.Debug("discoverUPNP_IG1: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
 			log.Debug("discoverUPNP_IG1 context done")
 		}
@@ -86,6 +95,7 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		nats, errs := discoverUPNP_IG2(ctx)
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
+			log.Debug("discoverUPNP_IG2: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
 			log.Debug("discoverUPNP_IG2 context done")
 		}
@@ -103,6 +113,7 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		}
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
+			log.Debug("discoverNATPMP: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
 			log.Debug("discoverNATPMP context done")
 		}
