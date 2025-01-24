@@ -160,6 +160,8 @@ func (t *WebsocketTransport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]m
 	return []ma.Multiaddr{parsed.toMultiaddr()}, nil
 }
 
+// Dial will dial the given multiaddr and expect the given peer. If an
+// HTTPS_PROXY env is set, it will use that for the dial out.
 func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
@@ -191,7 +193,11 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 		return nil, err
 	}
 	isWss := wsurl.Scheme == "wss"
-	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
+	dialer := ws.Dialer{
+		HandshakeTimeout: 30 * time.Second,
+		// Inherit the default proxy behavior
+		Proxy: ws.DefaultDialer.Proxy,
+	}
 	if isWss {
 		sni := ""
 		sni, err = raddr.ValueForProtocol(ma.P_SNI)
@@ -203,17 +209,23 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 			copytlsClientConf := t.tlsClientConf.Clone()
 			copytlsClientConf.ServerName = sni
 			dialer.TLSClientConfig = copytlsClientConf
-			ipAddr := wsurl.Host
-			// Setting the NetDial because we already have the resolved IP address, so we don't want to do another resolution.
+			ipPortAddr := wsurl.Host
 			// We set the `.Host` to the sni field so that the host header gets properly set.
+			wsurl.Host = sni + ":" + wsurl.Port()
+			// Setting the NetDial because we already have the resolved IP address, so we can avoid another resolution.
 			dialer.NetDial = func(network, address string) (net.Conn, error) {
-				tcpAddr, err := net.ResolveTCPAddr(network, ipAddr)
+				var tcpAddr *net.TCPAddr
+				var err error
+				if address == wsurl.Host {
+					tcpAddr, err = net.ResolveTCPAddr(network, ipPortAddr) // Use our already resolved IP address
+				} else {
+					tcpAddr, err = net.ResolveTCPAddr(network, address)
+				}
 				if err != nil {
 					return nil, err
 				}
 				return net.DialTCP("tcp", nil, tcpAddr)
 			}
-			wsurl.Host = sni + ":" + wsurl.Port()
 		} else {
 			dialer.TLSClientConfig = t.tlsClientConf
 		}

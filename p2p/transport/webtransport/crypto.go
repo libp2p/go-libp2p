@@ -86,6 +86,15 @@ func generateCert(key ic.PrivKey, start, end time.Time) (*x509.Certificate, *ecd
 	return ca, caPrivateKey, nil
 }
 
+type ErrCertHashMismatch struct {
+	Expected []byte
+	Actual   [][]byte
+}
+
+func (e ErrCertHashMismatch) Error() string {
+	return fmt.Sprintf("cert hash not found: %x (expected: %#x)", e.Expected, e.Actual)
+}
+
 func verifyRawCerts(rawCerts [][]byte, certHashes []multihash.DecodedMultihash) error {
 	if len(rawCerts) < 1 {
 		return errors.New("no cert")
@@ -105,7 +114,7 @@ func verifyRawCerts(rawCerts [][]byte, certHashes []multihash.DecodedMultihash) 
 		for _, h := range certHashes {
 			digests = append(digests, h.Digest)
 		}
-		return fmt.Errorf("cert hash not found: %#x (expected: %#x)", hash, digests)
+		return ErrCertHashMismatch{Expected: hash[:], Actual: digests}
 	}
 
 	cert, err := x509.ParseCertificate(leaf)
