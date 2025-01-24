@@ -53,11 +53,6 @@ type NAT interface {
 	DeletePortMapping(ctx context.Context, protocol string, internalPort int) (err error)
 }
 
-type result[V any] struct {
-	Value V
-	Err   error
-}
-
 // discoverNATs returns all NATs discovered in the network.
 func discoverNATs(ctx context.Context) ([]NAT, []error) {
 	var nats []NAT
