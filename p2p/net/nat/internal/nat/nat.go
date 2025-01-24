@@ -84,7 +84,7 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		nats, errs := discoverUPNP_IG1(ctx)
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
-			log.Debug("discoverUPNP_IG1: num NATs %d, errors %s", len(nats), concatErrors(errs))
+			log.Debugf("discoverUPNP_IG1: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
 			log.Debug("discoverUPNP_IG1 context done")
 		}
@@ -95,7 +95,7 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		nats, errs := discoverUPNP_IG2(ctx)
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
-			log.Debug("discoverUPNP_IG2: num NATs %d, errors %s", len(nats), concatErrors(errs))
+			log.Debugf("discoverUPNP_IG2: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
 			log.Debug("discoverUPNP_IG2 context done")
 		}
@@ -113,7 +113,7 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		}
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
-			log.Debug("discoverNATPMP: num NATs %d, errors %s", len(nats), concatErrors(errs))
+			log.Debugf("discoverNATPMP: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
 			log.Debug("discoverNATPMP context done")
 		}
