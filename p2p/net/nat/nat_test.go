@@ -7,8 +7,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/libp2p/go-nat"
-
+	"github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

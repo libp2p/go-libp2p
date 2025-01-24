@@ -12,42 +12,48 @@ var (
 	_ NAT = (*natpmpNAT)(nil)
 )
 
-func discoverNATPMP(ctx context.Context) <-chan NAT {
-	res := make(chan NAT, 1)
-
+func discoverNATPMP(ctx context.Context) (NAT, error) {
 	ip, err := getDefaultGateway()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	go func() {
-		defer close(res)
-		// Unfortunately, we can't actually _stop_ the natpmp
-		// library. However, we can at least close _our_ channel
-		// and walk away.
-		select {
-		case client, ok := <-discoverNATPMPWithAddr(ip):
-			if ok {
-				res <- &natpmpNAT{client, ip, make(map[int]int)}
-			}
-		case <-ctx.Done():
-		}
-	}()
-	return res
-}
+	clientCh := make(chan *natpmp.Client)
+	errCh := make(chan error)
 
-func discoverNATPMPWithAddr(ip net.IP) <-chan *natpmp.Client {
-	res := make(chan *natpmp.Client, 1)
+	// We can't cancel the natpmp library, but we can at least still return
+	// on context cancellation by putting this in a goroutine
 	go func() {
-		defer close(res)
-		client := natpmp.NewClient(ip)
-		_, err := client.GetExternalAddress()
+		client, err := discoverNATPMPWithAddr(ctx, ip)
 		if err != nil {
+			errCh <- err
 			return
 		}
-		res <- client
+		clientCh <- client
 	}()
-	return res
+
+	select {
+	case client := <-clientCh:
+		return &natpmpNAT{client, ip, make(map[int]int)}, nil
+	case err := <-errCh:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func discoverNATPMPWithAddr(ctx context.Context, ip net.IP) (*natpmp.Client, error) {
+	var client *natpmp.Client
+	if deadline, ok := ctx.Deadline(); ok {
+		client = natpmp.NewClientWithTimeout(ip, time.Until(deadline))
+	} else {
+		client = natpmp.NewClient(ip)
+	}
+	_, err := client.GetExternalAddress()
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
 }
 
 type natpmpNAT struct {

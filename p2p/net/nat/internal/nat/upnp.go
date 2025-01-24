@@ -16,197 +16,107 @@ import (
 
 var _ NAT = (*upnp_NAT)(nil)
 
-func discoverUPNP_IG1(ctx context.Context) <-chan NAT {
-	res := make(chan NAT)
-	go func() {
-		defer close(res)
-
-		// find devices
-		devs, err := goupnp.DiscoverDevicesCtx(ctx, internetgateway1.URN_WANConnectionDevice_1)
-		if err != nil {
-			return
-		}
-
-		for _, dev := range devs {
-			if dev.Root == nil {
-				continue
-			}
-
-			dev.Root.Device.VisitServices(func(srv *goupnp.Service) {
-				if ctx.Err() != nil {
-					return
-				}
-				switch srv.ServiceType {
-				case internetgateway1.URN_WANIPConnection_1:
-					client := &internetgateway1.WANIPConnection1{ServiceClient: goupnp.ServiceClient{
-						SOAPClient: srv.NewSOAPClient(),
-						RootDevice: dev.Root,
-						Service:    srv,
-					}}
-					_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
-					if err == nil && isNat {
-						select {
-						case res <- &upnp_NAT{client, make(map[int]int), "UPNP (IG1-IP1)", dev.Root}:
-						case <-ctx.Done():
-						}
-					}
-
-				case internetgateway1.URN_WANPPPConnection_1:
-					client := &internetgateway1.WANPPPConnection1{ServiceClient: goupnp.ServiceClient{
-						SOAPClient: srv.NewSOAPClient(),
-						RootDevice: dev.Root,
-						Service:    srv,
-					}}
-					_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
-					if err == nil && isNat {
-						select {
-						case res <- &upnp_NAT{client, make(map[int]int), "UPNP (IG1-PPP1)", dev.Root}:
-						case <-ctx.Done():
-						}
-					}
-
-				}
-			})
-		}
-
-	}()
-	return res
+func discoverUPNP_IG1(ctx context.Context) ([]NAT, []error) {
+	return discoverSearchTarget(ctx, internetgateway1.URN_WANConnectionDevice_1)
 }
 
-func discoverUPNP_IG2(ctx context.Context) <-chan NAT {
-	res := make(chan NAT)
-	go func() {
-		defer close(res)
-
-		// find devices
-		devs, err := goupnp.DiscoverDevicesCtx(ctx, internetgateway2.URN_WANConnectionDevice_2)
-		if err != nil {
-			return
-		}
-
-		for _, dev := range devs {
-			if dev.Root == nil {
-				continue
-			}
-
-			dev.Root.Device.VisitServices(func(srv *goupnp.Service) {
-				if ctx.Err() != nil {
-					return
-				}
-				switch srv.ServiceType {
-				case internetgateway2.URN_WANIPConnection_1:
-					client := &internetgateway2.WANIPConnection1{ServiceClient: goupnp.ServiceClient{
-						SOAPClient: srv.NewSOAPClient(),
-						RootDevice: dev.Root,
-						Service:    srv,
-					}}
-					_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
-					if err == nil && isNat {
-						select {
-						case res <- &upnp_NAT{client, make(map[int]int), "UPNP (IG2-IP1)", dev.Root}:
-						case <-ctx.Done():
-						}
-					}
-
-				case internetgateway2.URN_WANIPConnection_2:
-					client := &internetgateway2.WANIPConnection2{ServiceClient: goupnp.ServiceClient{
-						SOAPClient: srv.NewSOAPClient(),
-						RootDevice: dev.Root,
-						Service:    srv,
-					}}
-					_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
-					if err == nil && isNat {
-						select {
-						case res <- &upnp_NAT{client, make(map[int]int), "UPNP (IG2-IP2)", dev.Root}:
-						case <-ctx.Done():
-						}
-					}
-
-				case internetgateway2.URN_WANPPPConnection_1:
-					client := &internetgateway2.WANPPPConnection1{ServiceClient: goupnp.ServiceClient{
-						SOAPClient: srv.NewSOAPClient(),
-						RootDevice: dev.Root,
-						Service:    srv,
-					}}
-					_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
-					if err == nil && isNat {
-						select {
-						case res <- &upnp_NAT{client, make(map[int]int), "UPNP (IG2-PPP1)", dev.Root}:
-						case <-ctx.Done():
-						}
-					}
-
-				}
-			})
-		}
-
-	}()
-	return res
+func discoverUPNP_IG2(ctx context.Context) ([]NAT, []error) {
+	return discoverSearchTarget(ctx, internetgateway2.URN_WANConnectionDevice_2)
 }
 
-func discoverUPNP_GenIGDev(ctx context.Context) <-chan NAT {
-	res := make(chan NAT, 1)
-	go func() {
-		defer close(res)
+func discoverSearchTarget(ctx context.Context, target string) (nats []NAT, errs []error) {
+	// find devices
+	devs, err := goupnp.DiscoverDevicesCtx(ctx, target)
+	if err != nil {
+		errs = append(errs, err)
+		return
+	}
 
-		DeviceList, err := ssdp.Search(ssdp.All, 5, "")
-		if err != nil {
+	for _, dev := range devs {
+		if dev.Err != nil {
+			errs = append(errs, dev.Err)
+			continue
+		}
+		dev.Root.Device.VisitServices(serviceVisitor(ctx, dev.Root, &nats, &errs))
+	}
+	return
+}
+
+func discoverUPNP_GenIGDev(ctx context.Context) (nats []NAT, errs []error) {
+	DeviceList, err := ssdp.Search(ssdp.All, 5, "")
+	if err != nil {
+		errs = append(errs, err)
+		return
+	}
+	var gw ssdp.Service
+	for _, Service := range DeviceList {
+		if strings.Contains(Service.Type, "InternetGatewayDevice") {
+			gw = Service
+			break
+		}
+	}
+
+	DeviceURL, err := url.Parse(gw.Location)
+	if err != nil {
+		errs = append(errs, err)
+		return
+	}
+	RootDevice, err := goupnp.DeviceByURLCtx(ctx, DeviceURL)
+	if err != nil {
+		errs = append(errs, err)
+		return
+	}
+
+	RootDevice.Device.VisitServices(serviceVisitor(ctx, RootDevice, &nats, &errs))
+	return
+}
+
+func serviceVisitor(ctx context.Context, rootDevice *goupnp.RootDevice, outNats *[]NAT, outErrs *[]error) func(srv *goupnp.Service) {
+	return func(srv *goupnp.Service) {
+		if ctx.Err() != nil {
 			return
 		}
-		var gw ssdp.Service
-		for _, Service := range DeviceList {
-			if strings.Contains(Service.Type, "InternetGatewayDevice") {
-				gw = Service
-				break
+		switch srv.ServiceType {
+		case internetgateway2.URN_WANIPConnection_1:
+			client := &internetgateway2.WANIPConnection1{ServiceClient: goupnp.ServiceClient{
+				SOAPClient: srv.NewSOAPClient(),
+				RootDevice: rootDevice,
+				Service:    srv,
+			}}
+			_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
+			if err != nil {
+				*outErrs = append(*outErrs, err)
+			} else if isNat {
+				*outNats = append(*outNats, &upnp_NAT{client, make(map[int]int), "UPNP (IP1)", rootDevice})
+			}
+
+		case internetgateway2.URN_WANIPConnection_2:
+			client := &internetgateway2.WANIPConnection2{ServiceClient: goupnp.ServiceClient{
+				SOAPClient: srv.NewSOAPClient(),
+				RootDevice: rootDevice,
+				Service:    srv,
+			}}
+			_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
+			if err != nil {
+				*outErrs = append(*outErrs, err)
+			} else if isNat {
+				*outNats = append(*outNats, &upnp_NAT{client, make(map[int]int), "UPNP (IP2)", rootDevice})
+			}
+
+		case internetgateway2.URN_WANPPPConnection_1:
+			client := &internetgateway2.WANPPPConnection1{ServiceClient: goupnp.ServiceClient{
+				SOAPClient: srv.NewSOAPClient(),
+				RootDevice: rootDevice,
+				Service:    srv,
+			}}
+			_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
+			if err != nil {
+				*outErrs = append(*outErrs, err)
+			} else if isNat {
+				*outNats = append(*outNats, &upnp_NAT{client, make(map[int]int), "UPNP (PPP1)", rootDevice})
 			}
 		}
-
-		DeviceURL, err := url.Parse(gw.Location)
-		if err != nil {
-			return
-		}
-		RootDevice, err := goupnp.DeviceByURLCtx(ctx, DeviceURL)
-		if err != nil {
-			return
-		}
-
-		RootDevice.Device.VisitServices(func(srv *goupnp.Service) {
-			if ctx.Err() != nil {
-				return
-			}
-			switch srv.ServiceType {
-			case internetgateway1.URN_WANIPConnection_1:
-				client := &internetgateway1.WANIPConnection1{ServiceClient: goupnp.ServiceClient{
-					SOAPClient: srv.NewSOAPClient(),
-					RootDevice: RootDevice,
-					Service:    srv,
-				}}
-				_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
-				if err == nil && isNat {
-					select {
-					case res <- &upnp_NAT{client, make(map[int]int), "UPNP (IG1-IP1)", RootDevice}:
-					case <-ctx.Done():
-					}
-				}
-
-			case internetgateway1.URN_WANPPPConnection_1:
-				client := &internetgateway1.WANPPPConnection1{ServiceClient: goupnp.ServiceClient{
-					SOAPClient: srv.NewSOAPClient(),
-					RootDevice: RootDevice,
-					Service:    srv,
-				}}
-				_, isNat, err := client.GetNATRSIPStatusCtx(ctx)
-				if err == nil && isNat {
-					select {
-					case res <- &upnp_NAT{client, make(map[int]int), "UPNP (IG1-PPP1)", RootDevice}:
-					case <-ctx.Done():
-					}
-				}
-
-			}
-		})
-	}()
-	return res
+	}
 }
 
 type upnp_NAT_Client interface {
