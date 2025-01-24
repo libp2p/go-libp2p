@@ -149,4 +149,4 @@ require (
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
 
-replace github.com/libp2p/go-libp2p => github.com/libp2p/go-libp2p v0.38.2-0.20250124031147-b2939f150c20
+replace github.com/libp2p/go-libp2p => ../

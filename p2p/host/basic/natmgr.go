@@ -107,6 +107,7 @@ func (nmgr *natManager) background(ctx context.Context) {
 
 	discoverCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+	log.Info("DiscoverNAT start")
 	natInstance, err := discoverNAT(discoverCtx)
 	if err != nil {
 		log.Info("DiscoverNAT error:", err)
