@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -70,10 +69,10 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 	}
 	resCh := make(chan natsAndErrs)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	var pendingJobs int
+
+	pendingJobs++
 	go func() {
-		defer wg.Done()
 		nats, errs := discoverUPNP_IG1(ctx)
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
@@ -81,9 +80,8 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		}
 	}()
 
-	wg.Add(1)
+	pendingJobs++
 	go func() {
-		defer wg.Done()
 		nats, errs := discoverUPNP_IG2(ctx)
 		select {
 		case resCh <- natsAndErrs{nats, errs}:
@@ -91,9 +89,8 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		}
 	}()
 
-	wg.Add(1)
+	pendingJobs++
 	go func() {
-		defer wg.Done()
 		nat, err := discoverNATPMP(ctx)
 		var nats []NAT
 		var errs []error
@@ -108,24 +105,18 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 		}
 	}()
 
-	allDone := make(chan struct{})
-	go func() {
-		defer close(allDone)
-		wg.Wait()
-	}()
-
-	for {
+	for pendingJobs > 0 {
+		pendingJobs--
 		select {
 		case res := <-resCh:
 			nats = append(nats, res.nats...)
 			errs = append(errs, res.errs...)
-		case <-allDone:
-			return nats, errs
 		case <-ctx.Done():
 			errs = append(errs, ctx.Err())
 			return nats, errs
 		}
 	}
+	return nats, errs
 }
 
 // DiscoverGateway attempts to find a gateway device.
