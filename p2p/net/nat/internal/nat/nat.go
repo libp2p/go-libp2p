@@ -61,11 +61,6 @@ type NAT interface {
 	DeletePortMapping(ctx context.Context, protocol string, internalPort int) (err error)
 }
 
-type result[V any] struct {
-	Value V
-	Err   error
-}
-
 // discoverNATs returns all NATs discovered in the network.
 func discoverNATs(ctx context.Context) ([]NAT, []error) {
 	var nats []NAT
@@ -98,6 +93,15 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 			log.Debugf("discoverUPNP_IG2: num NATs %d, errors %s", len(nats), concatErrors(errs))
 		case <-ctx.Done():
 			log.Debug("discoverUPNP_IG2 context done")
+		}
+	}()
+
+	pendingJobs++
+	go func() {
+		nats, errs := discoverUPNP_GenIGDev(ctx)
+		select {
+		case resCh <- natsAndErrs{nats, errs}:
+		case <-ctx.Done():
 		}
 	}()
 
