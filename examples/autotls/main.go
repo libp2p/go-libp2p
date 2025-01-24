@@ -32,6 +32,7 @@ func main() {
 	log.SetLogLevel("autotls", "debug")         // Set the log level for the autotls-example package to debug
 	log.SetLogLevel("p2p-forge", "debug")       // Set the log level for the p2pforge package to debug
 	log.SetLogLevel("nat", "debug")             // Set the log level for the libp2p nat package to debug
+	log.SetLogLevel("internal/nat", "debug")    // Set the log level for the internal libp2p nat package to debug
 
 	certLoaded := make(chan bool, 1) // Create a channel to signal when the cert is loaded
 
