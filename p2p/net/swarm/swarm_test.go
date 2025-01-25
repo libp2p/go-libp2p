@@ -79,9 +79,8 @@ func makeSwarms(t *testing.T, num int, opts ...Option) []*swarm.Swarm {
 
 func connectSwarms(t *testing.T, ctx context.Context, swarms []*swarm.Swarm) {
 	var wg sync.WaitGroup
-	connect := func(s *swarm.Swarm, dst peer.ID, addr ma.Multiaddr) {
-		// TODO: make a DialAddr func.
-		s.Peerstore().AddAddr(dst, addr, peerstore.PermanentAddrTTL)
+	connect := func(s *swarm.Swarm, dst peer.ID, addrs []ma.Multiaddr) {
+		s.Peerstore().AddAddrs(dst, addrs, peerstore.TempAddrTTL)
 		if _, err := s.DialPeer(ctx, dst); err != nil {
 			t.Fatal("error swarm dialing to peer", err)
 		}
@@ -92,7 +91,7 @@ func connectSwarms(t *testing.T, ctx context.Context, swarms []*swarm.Swarm) {
 	for i, s1 := range swarms {
 		for _, s2 := range swarms[i+1:] {
 			wg.Add(1)
-			connect(s1, s2.LocalPeer(), s2.ListenAddresses()[0]) // try the first.
+			connect(s1, s2.LocalPeer(), s2.ListenAddresses())
 		}
 	}
 	wg.Wait()
