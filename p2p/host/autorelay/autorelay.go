@@ -3,16 +3,16 @@ package autorelay
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	ma "github.com/multiformats/go-multiaddr"
 
 	logging "github.com/ipfs/go-log/v2"
-	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = logging.Logger("autorelay")
@@ -21,8 +21,6 @@ type AutoRelay struct {
 	refCount  sync.WaitGroup
 	ctx       context.Context
 	ctxCancel context.CancelFunc
-
-	conf *config
 
 	mx     sync.Mutex
 	status network.Reachability
@@ -34,9 +32,9 @@ type AutoRelay struct {
 	metricsTracer MetricsTracer
 }
 
-func NewAutoRelay(bhost *basic.BasicHost, opts ...Option) (*AutoRelay, error) {
+func NewAutoRelay(host host.Host, opts ...Option) (*AutoRelay, error) {
 	r := &AutoRelay{
-		host:   bhost,
+		host:   host,
 		status: network.ReachabilityUnknown,
 	}
 	conf := defaultConfig
@@ -46,27 +44,18 @@ func NewAutoRelay(bhost *basic.BasicHost, opts ...Option) (*AutoRelay, error) {
 		}
 	}
 	r.ctx, r.ctxCancel = context.WithCancel(context.Background())
-	r.conf = &conf
-	r.relayFinder = newRelayFinder(bhost, conf.peerSource, &conf)
+	rf, err := newRelayFinder(host, &conf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create autorelay: %w", err)
+	}
+	r.relayFinder = rf
 	r.metricsTracer = &wrappedMetricsTracer{conf.metricsTracer}
 
-	// Update the host address factory to use autorelay addresses if we're private
-	//
-	// TODO: Don't update host address factory. Instead send our relay addresses on the eventbus.
-	// The host can decide how to handle those.
-	addrF := bhost.AddrsFactory
-	bhost.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		addrs = addrF(addrs)
-		r.mx.Lock()
-		defer r.mx.Unlock()
-
-		if r.status != network.ReachabilityPrivate {
-			return addrs
-		}
-		return r.relayFinder.relayAddrs(addrs)
-	}
-
 	return r, nil
+}
+
+func (r *AutoRelay) RelayAddrs() []ma.Multiaddr {
+	return r.relayFinder.RelayAddrs()
 }
 
 func (r *AutoRelay) Start() {
