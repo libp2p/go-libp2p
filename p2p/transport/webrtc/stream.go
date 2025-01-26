@@ -15,15 +15,17 @@ import (
 )
 
 const (
-	// maxMessageSize is the maximum message size of the Protobuf message we send / receive.
-	maxMessageSize = 16384
+	// maxMessageSizeRead is the maximum message size of the Protobuf message we send / receive.
+	maxMessageSizeRead = 256 * 1024
+	// maxMessageSizeWrite is the maximum message size of the Protobuf message we send / receive.
+	maxMessageSizeWrite = 64 * 1024
 	// maxSendBuffer is the maximum data we enqueue on the underlying data channel for writes.
 	// The underlying SCTP layer has an unbounded buffer for writes. We limit the amount enqueued
 	// per stream is limited to avoid a single stream monopolizing the entire connection.
-	maxSendBuffer = 2 * maxMessageSize
+	maxSendBuffer = 2 * maxMessageSizeWrite
 	// sendBufferLowThreshold is the threshold below which we write more data on the underlying
 	// data channel. We want a notification as soon as we can write 1 full sized message.
-	sendBufferLowThreshold = maxSendBuffer - maxMessageSize
+	sendBufferLowThreshold = maxSendBuffer - maxMessageSizeWrite
 	// maxTotalControlMessagesSize is the maximum total size of all control messages we will
 	// write on this stream.
 	// 4 control messages of size 10 bytes + 10 bytes buffer. This number doesn't need to be
@@ -31,15 +33,10 @@ const (
 	// send queue.
 	maxTotalControlMessagesSize = 50
 
-	// Proto overhead assumption is 5 bytes
+	// protoOverhead assumption is 5 bytes
 	protoOverhead = 5
-	// Varint overhead is assumed to be 2 bytes. This is safe since
-	// 1. This is only used and when writing message, and
-	// 2. We only send messages in chunks of `maxMessageSize - varintOverhead`
-	// which includes the data and the protobuf header. Since `maxMessageSize`
-	// is less than or equal to 2 ^ 14, the varint will not be more than
-	// 2 bytes in length.
-	varintOverhead = 2
+	// varintOverhead is the value of `maxMessageSizeWrite` in varint format
+	varintOverhead = 3
 	// maxFINACKWait is the maximum amount of time a stream will wait to read
 	// FIN_ACK before closing the data channel
 	maxFINACKWait = 10 * time.Second
@@ -106,7 +103,7 @@ func newStream(
 	onDone func(),
 ) *stream {
 	s := &stream{
-		reader:            pbio.NewDelimitedReader(rwc, maxMessageSize),
+		reader:            pbio.NewDelimitedReader(rwc, maxMessageSizeRead),
 		writer:            pbio.NewDelimitedWriter(rwc),
 		writeStateChanged: make(chan struct{}, 1),
 		id:                *channel.ID(),
