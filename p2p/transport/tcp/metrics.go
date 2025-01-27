@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/marten-seemann/tcp"
 	"github.com/mikioh/tcpinfo"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -250,6 +251,16 @@ func (c *tracingConn) Close() error {
 		c.closeErr = c.Conn.Close()
 	})
 	return c.closeErr
+}
+
+func (c *tracingConn) Scope() network.ConnManagementScope {
+	if cs, ok := c.Conn.(interface {
+		Scope() network.ConnManagementScope
+	}); ok {
+		return cs.Scope()
+	}
+	// upgrader is expected to handle this
+	return nil
 }
 
 func (c *tracingConn) getTCPInfo() (*tcpinfo.Info, error) {
