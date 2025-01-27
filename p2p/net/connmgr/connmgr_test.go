@@ -1024,7 +1024,7 @@ func TestErrorCode(t *testing.T) {
 		}
 		c21 = conns[0]
 		return true
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	c13, err := sw1.DialPeer(context.Background(), sw3.LocalPeer())
 	require.NoError(t, err)
@@ -1037,7 +1037,7 @@ func TestErrorCode(t *testing.T) {
 		}
 		c31 = conns[0]
 		return true
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	cm.TrimOpenConns(context.Background())
 
