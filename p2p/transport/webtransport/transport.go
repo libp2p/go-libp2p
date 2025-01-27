@@ -175,10 +175,12 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	sconn, err := t.upgrade(ctx, sess, p, certHashes)
 	if err != nil {
 		sess.CloseWithError(1, "")
+		qconn.CloseWithError(1, "")
 		return nil, err
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, sconn) {
 		sess.CloseWithError(errorCodeConnectionGating, "")
+		qconn.CloseWithError(errorCodeConnectionGating, "")
 		return nil, fmt.Errorf("secured connection gated")
 	}
 	conn := newConn(t, sess, sconn, scope, qconn)

@@ -14,30 +14,17 @@ const peekSize = 3
 
 type PeekedBytes = [peekSize]byte
 
-var errNotSupported = errors.New("not supported on this platform")
-
 var ErrNotTCPConn = errors.New("passed conn is not a TCPConn")
 
 func PeekBytes(conn manet.Conn) (PeekedBytes, manet.Conn, error) {
-	if c, ok := conn.(syscall.Conn); ok {
-		b, err := OSPeekConn(c)
-		if err == nil {
-			return b, conn, nil
-		}
-		if err != errNotSupported {
-			return PeekedBytes{}, nil, err
-		}
-		// Fallback to wrapping the coonn
-	}
-
 	if c, ok := conn.(ManetTCPConnInterface); ok {
-		return newFallbackSampledConn(c)
+		return newWrappedSampledConn(c)
 	}
 
 	return PeekedBytes{}, nil, ErrNotTCPConn
 }
 
-type fallbackPeekingConn struct {
+type wrappedSampledConn struct {
 	ManetTCPConnInterface
 	peekedBytes PeekedBytes
 	bytesPeeked uint8
@@ -69,16 +56,19 @@ type ManetTCPConnInterface interface {
 	tcpConnInterface
 }
 
-func newFallbackSampledConn(conn ManetTCPConnInterface) (PeekedBytes, *fallbackPeekingConn, error) {
-	s := &fallbackPeekingConn{ManetTCPConnInterface: conn}
-	_, err := io.ReadFull(conn, s.peekedBytes[:])
+func newWrappedSampledConn(conn ManetTCPConnInterface) (PeekedBytes, *wrappedSampledConn, error) {
+	s := &wrappedSampledConn{ManetTCPConnInterface: conn}
+	n, err := io.ReadFull(conn, s.peekedBytes[:])
 	if err != nil {
+		if n == 0 && err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
 		return s.peekedBytes, nil, err
 	}
 	return s.peekedBytes, s, nil
 }
 
-func (sc *fallbackPeekingConn) Read(b []byte) (int, error) {
+func (sc *wrappedSampledConn) Read(b []byte) (int, error) {
 	if int(sc.bytesPeeked) != len(sc.peekedBytes) {
 		red := copy(b, sc.peekedBytes[sc.bytesPeeked:])
 		sc.bytesPeeked += uint8(red)
