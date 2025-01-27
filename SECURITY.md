@@ -18,3 +18,4 @@ If you need assistance, please reach out to [security@libp2p.io](mailto:security
 ## Reporting a non security bug
 
 For non-security bugs, please simply file a GitHub [issue](https://github.com/libp2p/go-libp2p/issues/new).
+To report a security vulnerability, you can use the private reporting feature on GitHub:[vulnerability](https://github.com/libp2p/go-libp2p/security/advisories/new).
