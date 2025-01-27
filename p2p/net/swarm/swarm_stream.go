@@ -92,12 +92,7 @@ func (s *Stream) Reset() error {
 }
 
 func (s *Stream) ResetWithError(errCode network.StreamErrorCode) error {
-	var err error
-	if se, ok := s.stream.(network.ResetWithErrorer); ok {
-		err = se.ResetWithError(errCode)
-	} else {
-		err = s.stream.Reset()
-	}
+	err := s.stream.ResetWithError(errCode)
 	s.closeAndRemoveStream()
 	return err
 }

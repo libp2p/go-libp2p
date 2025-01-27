@@ -32,7 +32,13 @@ func (s *StreamError) Error() string {
 }
 
 func (s *StreamError) Is(target error) bool {
-	return target == ErrReset
+	if target == ErrReset {
+		return true
+	}
+	if tse, ok := target.(*StreamError); ok {
+		return tse.ErrorCode == s.ErrorCode && tse.Remote == s.Remote
+	}
+	return false
 }
 
 func (s *StreamError) Unwrap() error {
@@ -96,16 +102,14 @@ type MuxedStream interface {
 	// side to hang up and go away.
 	Reset() error
 
-	SetDeadline(time.Time) error
-	SetReadDeadline(time.Time) error
-	SetWriteDeadline(time.Time) error
-}
-
-type ResetWithErrorer interface {
-	// ResetWithError closes both ends of the stream with errCode. The errCode is sent
+	// ResetWithError aborts both ends of the stream with `errCode`. `errCode` is sent
 	// to the peer on a best effort basis. For transports that do not support sending
 	// error codes to remote peer, the behavior is identical to calling Reset
 	ResetWithError(errCode StreamErrorCode) error
+
+	SetDeadline(time.Time) error
+	SetReadDeadline(time.Time) error
+	SetWriteDeadline(time.Time) error
 }
 
 // MuxedConn represents a connection to a remote peer that has been

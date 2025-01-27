@@ -6,6 +6,7 @@ import (
 	"io"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
+
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
@@ -29,6 +30,16 @@ func (c *ConnError) Error() string {
 		return fmt.Sprintf("connection closed (%s): code: %d: transport error: %s", side, c.ErrorCode, c.TransportError)
 	}
 	return fmt.Sprintf("connection closed (%s): code: %d", side, c.ErrorCode)
+}
+
+func (c *ConnError) Is(target error) bool {
+	if target == ErrReset {
+		return true
+	}
+	if tce, ok := target.(*ConnError); ok {
+		return tce.ErrorCode == c.ErrorCode && tce.Remote == c.Remote
+	}
+	return false
 }
 
 func (c *ConnError) Unwrap() error {
