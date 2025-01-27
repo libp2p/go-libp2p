@@ -717,7 +717,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	}
 	defer func() {
 		if strErr != nil && s != nil {
-			s.Reset()
+			s.ResetWithError(network.StreamProtocolNegotiationFailed)
 		}
 	}()
 
@@ -768,6 +768,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 	}
 
 	if err := s.SetProtocol(selected); err != nil {
+		s.ResetWithError(network.StreamResourceLimitExceeded)
 		return nil, err
 	}
 	_ = h.Peerstore().AddProtocols(p, selected) // adding the protocol to the peerstore isn't critical
