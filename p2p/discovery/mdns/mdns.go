@@ -3,6 +3,7 @@ package mdns
 import (
 	"context"
 	"errors"
+	"github.com/wlynxg/anet"
 	"io"
 	"math/rand"
 	"strings"
@@ -133,6 +134,11 @@ func (s *mdnsService) startServer() error {
 		return err
 	}
 
+	ifaces, err := anet.Interfaces()
+	if err != nil {
+		return err
+	}
+
 	server, err := zeroconf.RegisterProxy(
 		s.peerName,
 		s.serviceName,
@@ -141,7 +147,7 @@ func (s *mdnsService) startServer() error {
 		s.peerName,
 		ips,
 		txts,
-		nil,
+		ifaces,
 	)
 	if err != nil {
 		return err
