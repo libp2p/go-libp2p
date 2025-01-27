@@ -144,11 +144,13 @@ func (s *stream) Reset() error {
 	return nil
 }
 
-func (s *stream) ResetWithError(errCode network.StreamErrorCode) error {
+// ResetWithError resets the stream. It ignores the provided error code.
+// TODO: Implement error code support.
+func (s *stream) ResetWithError(_ network.StreamErrorCode) error {
 	// Cancel any pending reads/writes with an error.
-	// TODO: Should these be the other way round(remote=true)?
-	s.write.CloseWithError(&network.StreamError{Remote: false, ErrorCode: errCode})
-	s.read.CloseWithError(&network.StreamError{Remote: false, ErrorCode: errCode})
+
+	s.write.CloseWithError(network.ErrReset)
+	s.read.CloseWithError(network.ErrReset)
 
 	select {
 	case s.reset <- struct{}{}:

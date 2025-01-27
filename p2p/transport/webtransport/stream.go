@@ -56,6 +56,12 @@ func (s *stream) Reset() error {
 	return nil
 }
 
+func (s *stream) ResetWithError(_ network.StreamErrorCode) error {
+	s.Stream.CancelRead(reset)
+	s.Stream.CancelWrite(reset)
+	return nil
+}
+
 func (s *stream) Close() error {
 	s.Stream.CancelRead(reset)
 	return s.Stream.Close()

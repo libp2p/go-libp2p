@@ -110,7 +110,8 @@ func (s *stream) closeRead(errCode network.StreamErrorCode, remote bool) error {
 	defer s.mx.Unlock()
 	var err error
 	if s.receiveState == receiveStateReceiving && s.closeForShutdownErr == nil {
-		err = s.writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		code := uint32(errCode)
+		err = s.writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum(), ErrorCode: &code})
 		s.receiveState = receiveStateReset
 		s.readError = &network.StreamError{Remote: remote, ErrorCode: errCode}
 	}

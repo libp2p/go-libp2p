@@ -27,7 +27,6 @@ func parseResetError(err error) error {
 	if errors.As(err, &ce) {
 		return &network.ConnError{Remote: ce.Remote, ErrorCode: network.ConnErrorCode(ce.ErrorCode)}
 	}
-	// TODO: How should we handle resets for reason other than a remote error
 	if errors.Is(err, yamux.ErrStreamReset) {
 		return fmt.Errorf("%w: %w", network.ErrReset, err)
 	}

@@ -138,11 +138,7 @@ func (c *Conn) start() {
 			}
 			scope, err := c.swarm.ResourceManager().OpenStream(c.RemotePeer(), network.DirInbound)
 			if err != nil {
-				if tse, ok := ts.(network.ResetWithErrorer); ok {
-					tse.ResetWithError(network.StreamResourceLimitExceeded)
-				} else {
-					ts.Reset()
-				}
+				ts.ResetWithError(network.StreamResourceLimitExceeded)
 				continue
 			}
 			c.swarm.refs.Add(1)

@@ -369,6 +369,7 @@ func TestRelayLimitData(t *testing.T) {
 			t.Fatalf("expected to read %d bytes but read %d", len(buf), n)
 		}
 	}
+
 	buf = make([]byte, 4096)
 	if _, err := rand.Read(buf); err != nil {
 		t.Fatal(err)

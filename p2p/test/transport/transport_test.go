@@ -868,115 +868,29 @@ func TestConnClosedWhenRemoteCloses(t *testing.T) {
 	}
 }
 
-// TestStreamErrorCode tests correctness for resetting stream with errors
-func TestStreamErrorCode(t *testing.T) {
-	for _, tc := range transportsToTest {
-		t.Run(tc.Name, func(t *testing.T) {
-			if tc.Name == "WebTransport" {
-				t.Skipf("skipping: %s, not implemented", tc.Name)
-				return
-			}
-			server := tc.HostGenerator(t, TransportTestCaseOpts{})
-			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
-			defer server.Close()
-			defer client.Close()
+func TestErrorCodes(t *testing.T) {
 
-			checkError := func(err error, code network.StreamErrorCode, remote bool) {
-				t.Helper()
-				if err == nil {
-					t.Fatal("expected non nil error")
-				}
-				se := &network.StreamError{}
-				if errors.As(err, &se) {
-					require.Equal(t, se.ErrorCode, code)
-					require.Equal(t, se.Remote, remote)
-					return
-				}
-				t.Fatal("expected network.StreamError, got:", err)
-			}
+	assertStreamErrors := func(s network.Stream, expectedError error) {
+		buf := make([]byte, 10)
+		_, err := s.Read(buf)
+		require.ErrorIs(t, err, expectedError)
 
-			errCh := make(chan error)
-			server.SetStreamHandler("/test", func(s network.Stream) {
-				defer s.Reset()
-				b := make([]byte, 10)
-				n, err := s.Read(b)
-				if !assert.NoError(t, err) {
-					return
-				}
-				_, err = s.Write(b[:n])
-				if !assert.NoError(t, err) {
-					return
-				}
-				_, err = s.Read(b)
-				fmt.Println(err)
-				errCh <- err
-
-				_, err = s.Write(b)
-				fmt.Println(err)
-				errCh <- err
-			})
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
-			s, err := client.NewStream(ctx, server.ID(), "/test")
-			require.NoError(t, err)
-
-			_, err = s.Write([]byte("hello"))
-			require.NoError(t, err)
-
-			buf := make([]byte, 10)
-			n, err := s.Read(buf)
-			require.NoError(t, err)
-			require.Equal(t, []byte("hello"), buf[:n])
-
-			err = s.ResetWithError(42)
-			require.NoError(t, err)
-
-			_, err = s.Read(buf)
-			checkError(err, 42, false)
-
-			_, err = s.Write(buf)
-			checkError(err, 42, false)
-
-			err = <-errCh // read error
-			checkError(err, 42, true)
-
-			err = <-errCh // write error
-			checkError(err, 42, true)
-		})
+		_, err = s.Write(buf)
+		require.ErrorIs(t, err, expectedError)
 	}
-}
 
-// TestStreamErrorCodeConnClosed tests correctness for resetting stream with errors
-func TestStreamErrorCodeConnClosed(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
-				t.Skipf("skipping: %s, not implemented", tc.Name)
-				return
-			}
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer server.Close()
 			defer client.Close()
 
-			checkError := func(err error, code network.ConnErrorCode, remote bool) {
-				t.Helper()
-				if err == nil {
-					t.Fatal("expected non nil error")
-				}
-				ce := &network.ConnError{}
-				if errors.As(err, &ce) {
-					require.Equal(t, code, ce.ErrorCode)
-					require.Equal(t, remote, ce.Remote)
-					return
-				}
-				t.Fatal("expected network.ConnError, got:", err)
-			}
+			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
 
-			errCh := make(chan error)
+			// setup stream handler
+			remoteStreamQ := make(chan network.Stream)
 			server.SetStreamHandler("/test", func(s network.Stream) {
-				defer s.Reset()
 				b := make([]byte, 10)
 				n, err := s.Read(b)
 				if !assert.NoError(t, err) {
@@ -986,115 +900,112 @@ func TestStreamErrorCodeConnClosed(t *testing.T) {
 				if !assert.NoError(t, err) {
 					return
 				}
-				_, err = s.Read(b)
-				errCh <- err
-
-				_, err = s.Write(b)
-				errCh <- err
+				remoteStreamQ <- s
 			})
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
-			s, err := client.NewStream(ctx, server.ID(), "/test")
-			require.NoError(t, err)
 
-			_, err = s.Write([]byte("hello"))
-			require.NoError(t, err)
+			// pingPong writes and reads "hello" on the stream
+			pingPong := func(s network.Stream) {
+				buf := []byte("hello")
+				_, err := s.Write(buf)
+				require.NoError(t, err)
 
-			buf := make([]byte, 10)
-			n, err := s.Read(buf)
-			require.NoError(t, err)
-			require.Equal(t, []byte("hello"), buf[:n])
-
-			err = s.Conn().CloseWithError(42)
-			require.NoError(t, err)
-
-			_, err = s.Read(buf)
-			checkError(err, 42, false)
-
-			_, err = s.Write(buf)
-			checkError(err, 42, false)
-
-			err = <-errCh
-			checkError(err, 42, true)
-
-			err = <-errCh
-			checkError(err, 42, true)
-		})
-	}
-}
-
-// TestConnectionErrorCode tests correctness for resetting stream with errors
-func TestConnectionErrorCode(t *testing.T) {
-	for _, tc := range transportsToTest {
-		t.Run(tc.Name, func(t *testing.T) {
-			if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
-				t.Skipf("skipping: %s, not implemented", tc.Name)
-				return
-			}
-			server := tc.HostGenerator(t, TransportTestCaseOpts{})
-			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
-			defer server.Close()
-			defer client.Close()
-
-			checkError := func(err error, code network.ConnErrorCode, remote bool) {
-				t.Helper()
-				if err == nil {
-					t.Fatal("expected non nil error")
-				}
-				ce := &network.ConnError{}
-				if errors.As(err, &ce) {
-					require.Equal(t, code, ce.ErrorCode)
-					require.Equal(t, remote, ce.Remote)
-					return
-				}
-				t.Fatal("expected network.ConnError, got:", err)
+				_, err = s.Read(buf)
+				require.NoError(t, err)
+				require.Equal(t, buf, []byte("hello"))
 			}
 
-			errCh := make(chan error)
-			server.SetStreamHandler("/test", func(s network.Stream) {
-				defer s.Reset()
-				b := make([]byte, 10)
-				n, err := s.Read(b)
-				if !assert.NoError(t, err) {
+			t.Run("StreamResetWithError", func(t *testing.T) {
+				if tc.Name == "WebTransport" {
+					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
-				_, err = s.Write(b[:n])
-				if !assert.NoError(t, err) {
-					return
-				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				s, err := client.NewStream(ctx, server.ID(), "/test")
+				require.NoError(t, err)
+				pingPong(s)
 
-				_, err = s.Read(b)
-				if !assert.Error(t, err) {
-					return
-				}
-				_, err = s.Conn().NewStream(context.Background())
-				errCh <- err
+				err = s.ResetWithError(42)
+				require.NoError(t, err)
+				assertStreamErrors(s, &network.StreamError{
+					ErrorCode: 42,
+					Remote:    false,
+				})
+
+				remoteStream := <-remoteStreamQ
+				defer remoteStream.Reset()
+
+				assertStreamErrors(remoteStream, &network.StreamError{
+					ErrorCode: 42,
+					Remote:    true,
+				})
 			})
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
-			s, err := client.NewStream(ctx, server.ID(), "/test")
-			require.NoError(t, err)
 
-			_, err = s.Write([]byte("hello"))
-			require.NoError(t, err)
+			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
+				if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
+					t.Skipf("skipping: %s, not implemented", tc.Name)
+					return
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				s, err := client.NewStream(ctx, server.ID(), "/test")
+				require.NoError(t, err)
+				pingPong(s)
 
-			buf := make([]byte, 10)
-			n, err := s.Read(buf)
-			require.NoError(t, err)
-			require.Equal(t, []byte("hello"), buf[:n])
+				err = s.Conn().CloseWithError(42)
+				require.NoError(t, err)
 
-			err = s.Conn().CloseWithError(42)
-			require.NoError(t, err)
+				assertStreamErrors(s, &network.ConnError{
+					ErrorCode: 42,
+					Remote:    false,
+				})
 
-			str, err := s.Conn().NewStream(context.Background())
-			require.Nil(t, str)
-			checkError(err, 42, false)
+				remoteStream := <-remoteStreamQ
+				defer remoteStream.Reset()
 
-			err = <-errCh
-			checkError(err, 42, true)
+				assertStreamErrors(remoteStream, &network.ConnError{
+					ErrorCode: 42,
+					Remote:    true,
+				})
+			})
 
+			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
+				if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
+					t.Skipf("skipping: %s, not implemented", tc.Name)
+					return
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				s, err := client.NewStream(ctx, server.ID(), "/test")
+				require.NoError(t, err)
+				pingPong(s)
+
+				err = s.Conn().CloseWithError(42)
+				require.NoError(t, err)
+
+				remoteStream := <-remoteStreamQ
+				defer remoteStream.Reset()
+
+				localErr := &network.ConnError{
+					ErrorCode: 42,
+					Remote:    false,
+				}
+
+				remoteErr := &network.ConnError{
+					ErrorCode: 42,
+					Remote:    true,
+				}
+
+				// assert these first to ensure that remote has closed the connection
+				assertStreamErrors(remoteStream, remoteErr)
+
+				_, err = s.Conn().NewStream(ctx)
+				require.ErrorIs(t, err, localErr)
+
+				_, err = remoteStream.Conn().NewStream(ctx)
+				require.ErrorIs(t, err, remoteErr)
+			})
 		})
 	}
 }

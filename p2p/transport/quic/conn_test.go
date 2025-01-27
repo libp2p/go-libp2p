@@ -330,7 +330,7 @@ func testStreamsErrorCode(t *testing.T, tc *connTestCase) {
 
 	str, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)
-	err = str.(network.ResetWithErrorer).ResetWithError(42)
+	err = str.ResetWithError(42)
 	require.NoError(t, err)
 
 	sstr, err := serverConn.AcceptStream()
