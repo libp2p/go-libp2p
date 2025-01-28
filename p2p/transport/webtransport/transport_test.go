@@ -179,7 +179,11 @@ func TestHashVerification(t *testing.T) {
 		var trErr *quic.TransportError
 		require.ErrorAs(t, err, &trErr)
 		require.Equal(t, quic.TransportErrorCode(0x12a), trErr.ErrorCode)
-		require.Contains(t, errors.Unwrap(trErr).Error(), "cert hash not found")
+		var errMismatchHash libp2pwebtransport.ErrCertHashMismatch
+		require.ErrorAs(t, err, &errMismatchHash)
+
+		e := sha256.Sum256([]byte("foobar"))
+		require.EqualValues(t, e[:], errMismatchHash.Actual[0])
 	})
 
 	t.Run("fails when adding a wrong hash", func(t *testing.T) {

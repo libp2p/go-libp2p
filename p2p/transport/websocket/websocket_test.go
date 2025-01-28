@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,10 +16,12 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	gws "github.com/gorilla/websocket"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -545,6 +548,78 @@ func TestResolveMultiaddr(t *testing.T) {
 			require.Len(t, addrs, 1)
 
 			require.Equal(t, expectedMA, addrs[0].String())
+		})
+	}
+}
+
+func TestSocksProxy(t *testing.T) {
+	testCases := []string{
+		"/ip4/1.2.3.4/tcp/1/ws",                     // No TLS
+		"/ip4/1.2.3.4/tcp/1/tls/ws",                 // TLS no SNI
+		"/ip4/1.2.3.4/tcp/1/tls/sni/example.com/ws", // TLS with an SNI
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc, func(t *testing.T) {
+			proxyServer, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			proxyServerErr := make(chan error, 1)
+
+			go func() {
+				defer proxyServer.Close()
+				c, err := proxyServer.Accept()
+				if err != nil {
+					proxyServerErr <- err
+					return
+				}
+				defer c.Close()
+
+				req := [32]byte{}
+				_, err = io.ReadFull(c, req[:3])
+				if err != nil {
+					proxyServerErr <- err
+					return
+				}
+
+				// Handshake a SOCKS5 client: https://www.rfc-editor.org/rfc/rfc1928.html#section-3
+				if !bytes.Equal([]byte{0x05, 0x01, 0x00}, req[:3]) {
+					t.Log("expected SOCKS5 connect request")
+					proxyServerErr <- err
+					return
+				}
+				_, err = c.Write([]byte{0x05, 0x00})
+				if err != nil {
+					proxyServerErr <- err
+					return
+				}
+
+				proxyServerErr <- nil
+			}()
+
+			orig := gws.DefaultDialer.Proxy
+			defer func() { gws.DefaultDialer.Proxy = orig }()
+
+			proxyUrl, err := url.Parse("socks5://" + proxyServer.Addr().String())
+			require.NoError(t, err)
+			gws.DefaultDialer.Proxy = http.ProxyURL(proxyUrl)
+
+			tlsConfig := &tls.Config{InsecureSkipVerify: true} // Our test server doesn't have a cert signed by a CA
+			_, u := newSecureUpgrader(t)
+			tpt, err := New(u, &network.NullResourceManager{}, nil, WithTLSClientConfig(tlsConfig))
+			require.NoError(t, err)
+
+			// This can be any wss address. We aren't actually going to dial it.
+			maToDial := ma.StringCast(tc)
+			_, err = tpt.Dial(context.Background(), maToDial, "")
+			require.ErrorContains(t, err, "failed to read connect reply from SOCKS5 proxy", "This should error as we don't have a real socks server")
+
+			select {
+			case <-time.After(1 * time.Second):
+			case err := <-proxyServerErr:
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 		})
 	}
 }
