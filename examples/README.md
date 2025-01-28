@@ -7,6 +7,7 @@ Let us know if you find any issue or if you want to contribute and add a new tut
 ## Examples and Tutorials
 
 - [The libp2p 'host'](./libp2p-host)
+- [The libp2p 'host' with Secure WebSockets and AutoTLS](./autotls)
 - [Building an http proxy with libp2p](./http-proxy)
 - [An echo host](./echo)
 - [Routed echo host](./routed-echo/)
