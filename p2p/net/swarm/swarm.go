@@ -385,8 +385,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	// If we do this in the Upgrader, we will not be able to do this.
 	if s.gater != nil {
 		if allow, _ := s.gater.InterceptUpgraded(c); !allow {
-			// TODO Send disconnect with reason here
-			err := tc.Close()
+			err := tc.CloseWithError(network.ConnGated)
 			if err != nil {
 				log.Warnf("failed to close connection with peer %s and addr %s; err: %s", p, addr, err)
 			}
@@ -511,6 +510,7 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 			var err error
 			c, err = s.waitForDirectConn(ctx, p)
 			if err != nil {
+				log.Debugf("failed to get direct connection to a limited peer %s: %s", p, err)
 				return nil, err
 			}
 		}
@@ -841,6 +841,14 @@ func (c *connWithMetrics) Close() error {
 	c.once.Do(func() {
 		c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
 		c.closeErr = c.CapableConn.Close()
+	})
+	return c.closeErr
+}
+
+func (c *connWithMetrics) CloseWithError(errCode network.ConnErrorCode) error {
+	c.once.Do(func() {
+		c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
+		c.closeErr = c.CapableConn.CloseWithError(errCode)
 	})
 	return c.closeErr
 }

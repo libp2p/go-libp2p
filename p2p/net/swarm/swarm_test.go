@@ -538,7 +538,7 @@ func TestResourceManagerAcceptStream(t *testing.T) {
 	if err == nil {
 		_, err = str.Read([]byte{0})
 	}
-	require.EqualError(t, err, "stream reset")
+	require.ErrorContains(t, err, "stream reset")
 }
 
 func TestListenCloseCount(t *testing.T) {

@@ -27,4 +27,8 @@ type Stream interface {
 
 	// Scope returns the user's view of this stream's resource scope
 	Scope() StreamScope
+
+	// ResetWithError closes both ends of the stream with errCode. The errCode is sent
+	// to the peer.
+	ResetWithError(errCode StreamErrorCode) error
 }

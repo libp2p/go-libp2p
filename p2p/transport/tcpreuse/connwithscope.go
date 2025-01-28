@@ -17,6 +17,11 @@ func (c connWithScope) Scope() network.ConnManagementScope {
 	return c.scope
 }
 
+func (c *connWithScope) Close() error {
+	c.scope.Done()
+	return c.ManetTCPConnInterface.Close()
+}
+
 func manetConnWithScope(c manet.Conn, scope network.ConnManagementScope) (manet.Conn, error) {
 	if tcpconn, ok := c.(sampledconn.ManetTCPConnInterface); ok {
 		return &connWithScope{tcpconn, scope}, nil

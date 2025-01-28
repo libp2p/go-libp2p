@@ -1,25 +1,27 @@
 package autorelay
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const protoIDv2 = circuitv2_proto.ProtoIDv2Hop
@@ -27,7 +29,8 @@ const protoIDv2 = circuitv2_proto.ProtoIDv2Hop
 // Terminology:
 // Candidate: Once we connect to a node and it supports relay protocol,
 // we call it a candidate, and consider using it as a relay.
-// Relay: Out of the list of candidates, we select a relay to connect to.
+//
+// Relay: Out of the list candidates, the ones we have a reservation with.
 // Currently, we just randomly select a candidate, but we can employ more sophisticated
 // selection strategies here (e.g. by facotring in the RTT).
 
@@ -35,7 +38,8 @@ const (
 	rsvpRefreshInterval = time.Minute
 	rsvpExpirationSlack = 2 * time.Minute
 
-	autorelayTag = "autorelay"
+	autorelayTag  = "autorelay"
+	maxRelayAddrs = 100
 )
 
 type candidate struct {
@@ -47,7 +51,7 @@ type candidate struct {
 // relayFinder is a Host that uses relays for connectivity when a NAT is detected.
 type relayFinder struct {
 	bootTime time.Time
-	host     *basic.BasicHost
+	host     host.Host
 
 	conf *config
 
@@ -70,31 +74,37 @@ type relayFinder struct {
 	// * a candidate is deleted due to its age
 	maybeRequestNewCandidates chan struct{} // cap: 1.
 
-	relayUpdated chan struct{}
+	relayReservationUpdated chan struct{}
 
 	relayMx sync.Mutex
 	relays  map[peer.ID]*circuitv2.Reservation
 
-	cachedAddrs       []ma.Multiaddr
-	cachedAddrsExpiry time.Time
+	circuitAddrs []ma.Multiaddr
 
 	// A channel that triggers a run of `runScheduledWork`.
 	triggerRunScheduledWork chan struct{}
 	metricsTracer           MetricsTracer
+
+	emitter event.Emitter
 }
 
 var errAlreadyRunning = errors.New("relayFinder already running")
 
-func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) *relayFinder {
-	if peerSource == nil {
+func newRelayFinder(host host.Host, conf *config) (*relayFinder, error) {
+	if conf.peerSource == nil {
 		panic("Can not create a new relayFinder. Need a Peer Source fn or a list of static relays. Refer to the documentation around `libp2p.EnableAutoRelay`")
+	}
+
+	emitter, err := host.EventBus().Emitter(new(event.EvtAutoRelayAddrsUpdated), eventbus.Stateful)
+	if err != nil {
+		return nil, err
 	}
 
 	return &relayFinder{
 		bootTime:                   conf.clock.Now(),
 		host:                       host,
 		conf:                       conf,
-		peerSource:                 peerSource,
+		peerSource:                 conf.peerSource,
 		candidates:                 make(map[peer.ID]*candidate),
 		backoff:                    make(map[peer.ID]time.Time),
 		candidateFound:             make(chan struct{}, 1),
@@ -102,9 +112,10 @@ func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) 
 		maybeRequestNewCandidates:  make(chan struct{}, 1),
 		triggerRunScheduledWork:    make(chan struct{}, 1),
 		relays:                     make(map[peer.ID]*circuitv2.Reservation),
-		relayUpdated:               make(chan struct{}, 1),
+		relayReservationUpdated:    make(chan struct{}, 1),
 		metricsTracer:              &wrappedMetricsTracer{conf.metricsTracer},
-	}
+		emitter:                    emitter,
+	}, nil
 }
 
 type scheduledWorkTimes struct {
@@ -147,7 +158,7 @@ func (rf *relayFinder) cleanupDisconnectedPeers(ctx context.Context) {
 			rf.relayMx.Unlock()
 
 			if push {
-				rf.clearCachedAddrsAndSignalAddressChange()
+				rf.notifyRelayReservationUpdated()
 				rf.metricsTracer.ReservationEnded(1)
 			}
 		}
@@ -198,14 +209,16 @@ func (rf *relayFinder) background(ctx context.Context) {
 
 	go rf.cleanupDisconnectedPeers(ctx)
 
+	// update addrs on starting the relay finder.
+	rf.updateAddrs()
 	for {
 		select {
 		case <-rf.candidateFound:
 			rf.notifyMaybeConnectToRelay()
 		case <-bootDelayTimer.Ch():
 			rf.notifyMaybeConnectToRelay()
-		case <-rf.relayUpdated:
-			rf.clearCachedAddrsAndSignalAddressChange()
+		case <-rf.relayReservationUpdated:
+			rf.updateAddrs()
 		case now := <-workTimer.Ch():
 			// Note: `now` is not guaranteed to be the current time. It's the time
 			// that the timer was fired. This is okay because we'll schedule
@@ -221,13 +234,39 @@ func (rf *relayFinder) background(ctx context.Context) {
 	}
 }
 
-func (rf *relayFinder) clearCachedAddrsAndSignalAddressChange() {
-	rf.relayMx.Lock()
-	rf.cachedAddrs = nil
-	rf.relayMx.Unlock()
-	rf.host.SignalAddressChange()
+func (rf *relayFinder) updateAddrs() {
+	oldAddrs := rf.circuitAddrs
+	rf.circuitAddrs = rf.getCircuitAddrs()
 
-	rf.metricsTracer.RelayAddressUpdated()
+	if areSortedAddrsDifferent(rf.circuitAddrs, oldAddrs) {
+		log.Debug("relay addresses updated", rf.circuitAddrs)
+		rf.metricsTracer.RelayAddressUpdated()
+		rf.metricsTracer.RelayAddressCount(len(rf.circuitAddrs))
+		if err := rf.emitter.Emit(event.EvtAutoRelayAddrsUpdated{RelayAddrs: slices.Clone(rf.circuitAddrs)}); err != nil {
+			log.Error("failed to emit event.EvtAutoRelayAddrs with RelayAddrs", rf.circuitAddrs, err)
+		}
+	}
+}
+
+// This function returns the p2p-circuit addrs for the host.
+// The returned addresses are of the form <relay's-addr>/p2p/<relay's-id>/p2p-circuit.
+func (rf *relayFinder) getCircuitAddrs() []ma.Multiaddr {
+	raddrs := make([]ma.Multiaddr, 0, 4*len(rf.relays)+4)
+	for p := range rf.relays {
+		addrs := cleanupAddressSet(rf.host.Peerstore().Addrs(p))
+		circuit := ma.StringCast(fmt.Sprintf("/p2p/%s/p2p-circuit", p))
+		for _, addr := range addrs {
+			pub := addr.Encapsulate(circuit)
+			raddrs = append(raddrs, pub)
+		}
+	}
+
+	// Sort the addresses. We depend on this order for checking diffs to send address update events.
+	slices.SortStableFunc(raddrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
+	if len(raddrs) > maxRelayAddrs {
+		raddrs = raddrs[:maxRelayAddrs]
+	}
+	return raddrs
 }
 
 func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, scheduledWork *scheduledWorkTimes, peerSourceRateLimiter chan<- struct{}) time.Time {
@@ -236,7 +275,7 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 	if now.After(scheduledWork.nextRefresh) {
 		scheduledWork.nextRefresh = now.Add(rsvpRefreshInterval)
 		if rf.refreshReservations(ctx, now) {
-			rf.clearCachedAddrsAndSignalAddressChange()
+			rf.notifyRelayReservationUpdated()
 		}
 	}
 
@@ -427,6 +466,13 @@ func (rf *relayFinder) notifyNewCandidate() {
 	}
 }
 
+func (rf *relayFinder) notifyRelayReservationUpdated() {
+	select {
+	case rf.relayReservationUpdated <- struct{}{}:
+	default:
+	}
+}
+
 // handleNewNode tests if a peer supports circuit v2.
 // This method is only run on private nodes.
 // If a peer does, it is added to the candidates map.
@@ -483,11 +529,16 @@ func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsR
 	}
 
 	// wait for identify to complete in at least one conn so that we can check the supported protocols
+	hi, ok := rf.host.(interface{ IDService() identify.IDService })
+	if !ok {
+		// if we don't have identify, assume the peer supports relay.
+		return true, nil
+	}
 	ready := make(chan struct{}, 1)
 	for _, conn := range conns {
 		go func(conn network.Conn) {
 			select {
-			case <-rf.host.IDService().IdentifyWait(conn):
+			case <-hi.IDService().IdentifyWait(conn):
 				select {
 				case ready <- struct{}{}:
 				default:
@@ -581,10 +632,7 @@ func (rf *relayFinder) maybeConnectToRelay(ctx context.Context) {
 
 		rf.host.ConnManager().Protect(id, autorelayTag) // protect the connection
 
-		select {
-		case rf.relayUpdated <- struct{}{}:
-		default:
-		}
+		rf.notifyRelayReservationUpdated()
 
 		rf.metricsTracer.ReservationRequestFinished(false, nil)
 
@@ -642,7 +690,6 @@ func (rf *relayFinder) refreshReservations(ctx context.Context, now time.Time) b
 		g.Go(func() error {
 			err := rf.refreshRelayReservation(ctx, p)
 			rf.metricsTracer.ReservationRequestFinished(true, err)
-
 			return err
 		})
 	}
@@ -717,49 +764,6 @@ func (rf *relayFinder) selectCandidates() []*candidate {
 	return candidates
 }
 
-// This function is computes the NATed relay addrs when our status is private:
-//   - The public addrs are removed from the address set.
-//   - The non-public addrs are included verbatim so that peers behind the same NAT/firewall
-//     can still dial us directly.
-//   - On top of those, we add the relay-specific addrs for the relays to which we are
-//     connected. For each non-private relay addr, we encapsulate the p2p-circuit addr
-//     through which we can be dialed.
-func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	rf.relayMx.Lock()
-	defer rf.relayMx.Unlock()
-
-	if rf.cachedAddrs != nil && rf.conf.clock.Now().Before(rf.cachedAddrsExpiry) {
-		return rf.cachedAddrs
-	}
-
-	raddrs := make([]ma.Multiaddr, 0, 4*len(rf.relays)+4)
-
-	// only keep private addrs from the original addr set
-	for _, addr := range addrs {
-		if manet.IsPrivateAddr(addr) {
-			raddrs = append(raddrs, addr)
-		}
-	}
-
-	// add relay specific addrs to the list
-	relayAddrCnt := 0
-	for p := range rf.relays {
-		addrs := cleanupAddressSet(rf.host.Peerstore().Addrs(p))
-		relayAddrCnt += len(addrs)
-		circuit := ma.StringCast(fmt.Sprintf("/p2p/%s/p2p-circuit", p))
-		for _, addr := range addrs {
-			pub := addr.Encapsulate(circuit)
-			raddrs = append(raddrs, pub)
-		}
-	}
-
-	rf.cachedAddrs = raddrs
-	rf.cachedAddrsExpiry = rf.conf.clock.Now().Add(30 * time.Second)
-
-	rf.metricsTracer.RelayAddressCount(relayAddrCnt)
-	return raddrs
-}
-
 func (rf *relayFinder) Start() error {
 	rf.ctxCancelMx.Lock()
 	defer rf.ctxCancelMx.Unlock()
@@ -817,4 +821,16 @@ func (rf *relayFinder) resetMetrics() {
 
 	rf.metricsTracer.RelayAddressCount(0)
 	rf.metricsTracer.ScheduledWorkUpdated(&scheduledWorkTimes{})
+}
+
+func areSortedAddrsDifferent(a, b []ma.Multiaddr) bool {
+	if len(a) != len(b) {
+		return true
+	}
+	for i, aa := range a {
+		if !aa.Equal(b[i]) {
+			return true
+		}
+	}
+	return false
 }

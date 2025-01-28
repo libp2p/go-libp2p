@@ -81,3 +81,8 @@ type EvtLocalAddressesUpdated struct {
 	// wrapped in a record.Envelope and signed by the Host's private key.
 	SignedPeerRecord *record.Envelope
 }
+
+// EvtAutoRelayAddrsUpdated is sent by the autorelay when the node's relay addresses are updated
+type EvtAutoRelayAddrsUpdated struct {
+	RelayAddrs []ma.Multiaddr
+}

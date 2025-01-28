@@ -132,6 +132,12 @@ func (c *connection) Close() error {
 	return nil
 }
 
+// CloseWithError closes the connection ignoring the error code. As there's no way to signal
+// the remote peer on closing the underlying peerconnection, we ignore the error code.
+func (c *connection) CloseWithError(_ network.ConnErrorCode) error {
+	return c.Close()
+}
+
 // closeWithError is used to Close the connection when the underlying DTLS connection fails
 func (c *connection) closeWithError(err error) {
 	c.closeOnce.Do(func() {

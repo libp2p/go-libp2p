@@ -17,5 +17,5 @@ jobs:
   go-check:
     uses: ipdxco/unified-github-workflows/.github/workflows/go-check.yml@v1.0
     with:
-      go-version: "1.22.x"
+      go-version: "1.24.x"
       go-generate-ignore-protoc-version-comments: true

@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -141,6 +142,13 @@ func (c *Conn) Scope() network.ConnManagementScope {
 		Scope() network.ConnManagementScope
 	}); ok {
 		return sc.Scope()
+	}
+	if nc, ok := nc.(*tls.Conn); ok {
+		if sc, ok := nc.NetConn().(interface {
+			Scope() network.ConnManagementScope
+		}); ok {
+			return sc.Scope()
+		}
 	}
 	return nil
 }

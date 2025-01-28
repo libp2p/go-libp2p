@@ -22,7 +22,7 @@ func (s *stream) Read(b []byte) (int, error) {
 	case receiveStateDataRead:
 		return 0, io.EOF
 	case receiveStateReset:
-		return 0, network.ErrReset
+		return 0, s.readError
 	}
 
 	if len(b) == 0 {
@@ -52,10 +52,11 @@ func (s *stream) Read(b []byte) (int, error) {
 					// datachannel. For these implementations a stream reset will be observed as an
 					// abrupt closing of the datachannel.
 					s.receiveState = receiveStateReset
-					return 0, network.ErrReset
+					s.readError = &network.StreamError{Remote: true}
+					return 0, s.readError
 				}
 				if s.receiveState == receiveStateReset {
-					return 0, network.ErrReset
+					return 0, s.readError
 				}
 				if s.receiveState == receiveStateDataRead {
 					return 0, io.EOF
@@ -73,7 +74,7 @@ func (s *stream) Read(b []byte) (int, error) {
 		}
 
 		// process flags on the message after reading all the data
-		s.processIncomingFlag(s.nextMessage.Flag)
+		s.processIncomingFlag(s.nextMessage)
 		s.nextMessage = nil
 		if s.closeForShutdownErr != nil {
 			return read, s.closeForShutdownErr
@@ -82,7 +83,7 @@ func (s *stream) Read(b []byte) (int, error) {
 		case receiveStateDataRead:
 			return read, io.EOF
 		case receiveStateReset:
-			return read, network.ErrReset
+			return read, s.readError
 		}
 	}
 }
@@ -101,12 +102,18 @@ func (s *stream) setDataChannelReadDeadline(t time.Time) error {
 }
 
 func (s *stream) CloseRead() error {
+	return s.closeRead(0, false)
+}
+
+func (s *stream) closeRead(errCode network.StreamErrorCode, remote bool) error {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 	var err error
 	if s.receiveState == receiveStateReceiving && s.closeForShutdownErr == nil {
-		err = s.writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		code := uint32(errCode)
+		err = s.writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum(), ErrorCode: &code})
 		s.receiveState = receiveStateReset
+		s.readError = &network.StreamError{Remote: remote, ErrorCode: errCode}
 	}
 	s.spawnControlMessageReader()
 	return err

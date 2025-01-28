@@ -2,6 +2,7 @@ package tcpreuse
 
 import (
 	"context"
+
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )

@@ -11,7 +11,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	tu "github.com/libp2p/go-libp2p/core/test"
+
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -26,6 +29,14 @@ type tconn struct {
 }
 
 func (c *tconn) Close() error {
+	atomic.StoreUint32(&c.closed, 1)
+	if c.disconnectNotify != nil {
+		c.disconnectNotify(nil, c)
+	}
+	return nil
+}
+
+func (c *tconn) CloseWithError(code network.ConnErrorCode) error {
 	atomic.StoreUint32(&c.closed, 1)
 	if c.disconnectNotify != nil {
 		c.disconnectNotify(nil, c)
@@ -794,6 +805,7 @@ type mockConn struct {
 }
 
 func (m mockConn) Close() error                                          { panic("implement me") }
+func (m mockConn) CloseWithError(errCode network.ConnErrorCode) error    { panic("implement me") }
 func (m mockConn) LocalPeer() peer.ID                                    { panic("implement me") }
 func (m mockConn) RemotePeer() peer.ID                                   { panic("implement me") }
 func (m mockConn) RemotePublicKey() crypto.PubKey                        { panic("implement me") }
@@ -985,4 +997,80 @@ type testLimitGetter struct {
 
 func (g testLimitGetter) GetConnLimit() int {
 	return g.limit
+}
+
+func TestErrorCode(t *testing.T) {
+	sw1, sw2, sw3 := swarmt.GenSwarm(t), swarmt.GenSwarm(t), swarmt.GenSwarm(t)
+	defer sw1.Close()
+	defer sw2.Close()
+	defer sw3.Close()
+
+	cm, err := NewConnManager(1, 1, WithGracePeriod(0), WithSilencePeriod(10))
+	require.NoError(t, err)
+	defer cm.Close()
+
+	sw1.Peerstore().AddAddrs(sw2.LocalPeer(), sw2.ListenAddresses(), peerstore.PermanentAddrTTL)
+	sw1.Peerstore().AddAddrs(sw3.LocalPeer(), sw3.ListenAddresses(), peerstore.PermanentAddrTTL)
+
+	c12, err := sw1.DialPeer(context.Background(), sw2.LocalPeer())
+	require.NoError(t, err)
+
+	var c21 network.Conn
+	require.Eventually(t, func() bool {
+		conns := sw2.ConnsToPeer(sw1.LocalPeer())
+		if len(conns) == 0 {
+			return false
+		}
+		c21 = conns[0]
+		return true
+	}, 10*time.Second, 100*time.Millisecond)
+
+	c13, err := sw1.DialPeer(context.Background(), sw3.LocalPeer())
+	require.NoError(t, err)
+
+	var c31 network.Conn
+	require.Eventually(t, func() bool {
+		conns := sw3.ConnsToPeer(sw1.LocalPeer())
+		if len(conns) == 0 {
+			return false
+		}
+		c31 = conns[0]
+		return true
+	}, 10*time.Second, 100*time.Millisecond)
+
+	not := cm.Notifee()
+	not.Connected(sw1, c12)
+	not.Connected(sw1, c13)
+
+	cm.TrimOpenConns(context.Background())
+
+	require.True(t, c12.IsClosed() || c13.IsClosed())
+	var c, cr network.Conn
+	if c12.IsClosed() {
+		c = c12
+		require.Eventually(t, func() bool {
+			conns := sw2.ConnsToPeer(sw1.LocalPeer())
+			if len(conns) == 0 {
+				cr = c21
+				return true
+			}
+			return false
+		}, 5*time.Second, 100*time.Millisecond)
+	} else {
+		c = c13
+		require.Eventually(t, func() bool {
+			conns := sw3.ConnsToPeer(sw1.LocalPeer())
+			if len(conns) == 0 {
+				cr = c31
+				return true
+			}
+			return false
+		}, 5*time.Second, 100*time.Millisecond)
+	}
+
+	_, err = c.NewStream(context.Background())
+	require.ErrorIs(t, err, &network.ConnError{ErrorCode: network.ConnGarbageCollected, Remote: false})
+
+	_, err = cr.NewStream(context.Background())
+	require.ErrorIs(t, err, &network.ConnError{ErrorCode: network.ConnGarbageCollected, Remote: true})
 }

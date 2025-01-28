@@ -260,6 +260,7 @@ func (m *multiplexedListener) run() error {
 			select {
 			case demux.buffer <- connWithScope:
 			case <-ctx.Done():
+				log.Debug("accept timeout; dropping connection from: %v", connWithScope.RemoteMultiaddr())
 				connWithScope.Close()
 			}
 		}()

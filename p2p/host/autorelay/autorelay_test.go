@@ -3,12 +3,14 @@ package autorelay_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -17,6 +19,7 @@ import (
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,7 +99,10 @@ func newRelay(t *testing.T) host.Host {
 				saddr := addr.String()
 				if strings.HasPrefix(saddr, "/ip4/127.0.0.1/") {
 					addrNoIP := strings.TrimPrefix(saddr, "/ip4/127.0.0.1")
-					addrs[i] = ma.StringCast("/dns4/localhost" + addrNoIP)
+					// .internal is classified as a public address as users
+					// are free to map this dns to a public ip address for
+					// use within a LAN
+					addrs[i] = ma.StringCast("/dns/libp2p.internal" + addrNoIP)
 				}
 			}
 			return addrs
@@ -516,4 +522,82 @@ func TestNoBusyLoop0MinInterval(t *testing.T) {
 	}, 500*time.Millisecond, 100*time.Millisecond)
 	val := atomic.LoadUint64(&calledTimes)
 	require.Less(t, val, uint64(2))
+}
+func TestAutoRelayAddrsEvent(t *testing.T) {
+	cl := newMockClock()
+	relays := []host.Host{newRelay(t), newRelay(t), newRelay(t), newRelay(t), newRelay(t)}
+	t.Cleanup(func() {
+		for _, r := range relays {
+			r.Close()
+		}
+	})
+
+	relayIDFromP2PAddr := func(a ma.Multiaddr) peer.ID {
+		r, c := ma.SplitLast(a)
+		if c.Protocol().Code != ma.P_CIRCUIT {
+			return ""
+		}
+		if id, err := peer.IDFromP2PAddr(r); err == nil {
+			return id
+		}
+		return ""
+	}
+
+	checkAddrsContainsPeersAsRelay := func(addrs []ma.Multiaddr, peers ...peer.ID) bool {
+		for _, p := range peers {
+			if !slices.ContainsFunc(addrs, func(a ma.Multiaddr) bool { return relayIDFromP2PAddr(a) == p }) {
+				return false
+			}
+		}
+		return true
+	}
+	peerChan := make(chan peer.AddrInfo, 5)
+	h := newPrivateNode(t,
+		func(context.Context, int) <-chan peer.AddrInfo {
+			return peerChan
+		},
+		autorelay.WithClock(cl),
+		autorelay.WithMinCandidates(1),
+		autorelay.WithMaxCandidates(10),
+		autorelay.WithNumRelays(5),
+		autorelay.WithBootDelay(1*time.Second),
+		autorelay.WithMinInterval(time.Hour),
+	)
+	defer h.Close()
+
+	sub, err := h.EventBus().Subscribe(new(event.EvtAutoRelayAddrsUpdated))
+	require.NoError(t, err)
+
+	peerChan <- peer.AddrInfo{ID: relays[0].ID(), Addrs: relays[0].Addrs()}
+	cl.AdvanceBy(time.Second)
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		e := <-sub.Out()
+		evt := e.(event.EvtAutoRelayAddrsUpdated)
+		if !checkAddrsContainsPeersAsRelay(evt.RelayAddrs, relays[0].ID()) {
+			collect.Errorf("expected %s to be in %v", relays[0].ID(), evt.RelayAddrs)
+		}
+		if checkAddrsContainsPeersAsRelay(evt.RelayAddrs, relays[1].ID()) {
+			collect.Errorf("expected %s to not be in %v", relays[1].ID(), evt.RelayAddrs)
+		}
+	}, 5*time.Second, 50*time.Millisecond)
+	for _, r := range relays[1:] {
+		peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		e := <-sub.Out()
+		evt := e.(event.EvtAutoRelayAddrsUpdated)
+		relayIds := []peer.ID{}
+		for _, r := range relays[1:] {
+			relayIds = append(relayIds, r.ID())
+		}
+		if !checkAddrsContainsPeersAsRelay(evt.RelayAddrs, relayIds...) {
+			c.Errorf("expected %s to be in %v", relayIds, evt.RelayAddrs)
+		}
+	}, 5*time.Second, 50*time.Millisecond)
+	select {
+	case e := <-sub.Out():
+		t.Fatal("expected no more events after all reservations obtained; got: ", e.(event.EvtAutoRelayAddrsUpdated))
+	case <-time.After(1 * time.Second):
+	}
 }

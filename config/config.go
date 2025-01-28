@@ -532,7 +532,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	}
 	fxopts = append(fxopts, transportOpts...)
 
-	// Configure routing and autorelay
+	// Configure routing
 	if cfg.Routing != nil {
 		fxopts = append(fxopts,
 			fx.Provide(cfg.Routing),

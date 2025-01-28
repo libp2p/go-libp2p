@@ -3,6 +3,7 @@ package libp2pquic
 import (
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
@@ -142,8 +143,8 @@ func (r *acceptLoopRunner) innerAccept(l *listener, expectedVersion quic.Version
 	select {
 	case ch <- acceptVal{conn: conn}:
 	default:
+		conn.CloseWithError(network.ConnRateLimited)
 		// accept queue filled up, drop the connection
-		conn.Close()
 		log.Warn("Accept queue filled. Dropping connection.")
 	}
 

@@ -34,8 +34,6 @@ var ErrHolePunching = errors.New("hole punching attempted; no active dial")
 
 var HolePunchTimeout = 5 * time.Second
 
-const errorCodeConnectionGating = 0x47415445 // GATE in ASCII
-
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
 	privKey     ic.PrivKey
@@ -169,7 +167,7 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 		remoteMultiaddr: raddr,
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, c) {
-		pconn.CloseWithError(errorCodeConnectionGating, "connection gated")
+		pconn.CloseWithError(quic.ApplicationErrorCode(network.ConnGated), "connection gated")
 		return nil, fmt.Errorf("secured connection gated")
 	}
 	t.addConn(pconn, c)

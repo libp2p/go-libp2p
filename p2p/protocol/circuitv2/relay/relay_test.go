@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -267,12 +268,12 @@ func TestRelayLimitTime(t *testing.T) {
 	if n > 0 {
 		t.Fatalf("expected to write 0 bytes, wrote %d", n)
 	}
-	if err != network.ErrReset {
+	if !errors.Is(err, network.ErrReset) {
 		t.Fatalf("expected reset, but got %s", err)
 	}
 
 	err = <-rch
-	if err != network.ErrReset {
+	if !errors.Is(err, network.ErrReset) {
 		t.Fatalf("expected reset, but got %s", err)
 	}
 }
@@ -300,7 +301,7 @@ func TestRelayLimitData(t *testing.T) {
 		}
 
 		n, err := s.Read(buf)
-		if err != network.ErrReset {
+		if !errors.Is(err, network.ErrReset) {
 			t.Fatalf("expected reset but got %s", err)
 		}
 		rch <- n
