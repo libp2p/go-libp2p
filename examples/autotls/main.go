@@ -86,7 +86,6 @@ func main() {
 		libp2p.NATPortMap(),      // Attempt to open ports using UPnP for NATed hosts.
 
 		libp2p.ListenAddrStrings(
-			// Configure default catch-all listeners for TCP and UDP
 			"/ip4/0.0.0.0/tcp/5500", // regular TCP IPv4 connections
 			"/ip6/::/tcp/5500",      // regular TCP IPv6 connections
 
