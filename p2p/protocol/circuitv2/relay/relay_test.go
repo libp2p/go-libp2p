@@ -309,7 +309,6 @@ func TestRelayLimitData(t *testing.T) {
 
 	rc := relay.DefaultResources()
 	rc.Limit.Duration = time.Second
-	// Due to yamux framing, 4 blocks of 1024 bytes will exceed the data limit
 	rc.Limit.Data = 4096
 
 	r, err := relay.New(hosts[1], relay.WithResources(rc))

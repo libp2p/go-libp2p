@@ -78,7 +78,7 @@ func (c *conn) Close() error {
 	return err
 }
 
-func (c *conn) CloseWithError(errCode network.ConnErrorCode) error {
+func (c *conn) CloseWithError(_ network.ConnErrorCode) error {
 	return c.Close()
 }
 

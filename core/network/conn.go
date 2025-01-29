@@ -33,17 +33,14 @@ func (c *ConnError) Error() string {
 }
 
 func (c *ConnError) Is(target error) bool {
-	if target == ErrReset {
-		return true
-	}
 	if tce, ok := target.(*ConnError); ok {
 		return tce.ErrorCode == c.ErrorCode && tce.Remote == c.Remote
 	}
 	return false
 }
 
-func (c *ConnError) Unwrap() error {
-	return c.TransportError
+func (c *ConnError) Unwrap() []error {
+	return []error{ErrReset, c.TransportError}
 }
 
 const (
@@ -56,6 +53,7 @@ const (
 	ConnGarbageCollected          ConnErrorCode = 1006
 	ConnShutdown                  ConnErrorCode = 1007
 	ConnGated                     ConnErrorCode = 1008
+	ConnCodeOutOfRange            ConnErrorCode = 1009
 )
 
 // Conn is a connection to a remote peer. It multiplexes streams.

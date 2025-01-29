@@ -25,22 +25,28 @@ func parseStreamError(err error) error {
 	}
 	se := &quic.StreamError{}
 	if errors.As(err, &se) {
-		code := se.ErrorCode
-		if code > math.MaxUint32 {
-			// TODO(sukunrt): do we need this?
-			code = reset
+		var code network.StreamErrorCode
+		if se.ErrorCode > math.MaxUint32 {
+			code = network.StreamCodeOutOfRange
+		} else {
+			code = network.StreamErrorCode(se.ErrorCode)
 		}
 		err = &network.StreamError{
-			ErrorCode:      network.StreamErrorCode(code),
+			ErrorCode:      code,
 			Remote:         se.Remote,
 			TransportError: se,
 		}
 	}
 	ae := &quic.ApplicationError{}
 	if errors.As(err, &ae) {
-		code := ae.ErrorCode
+		var code network.ConnErrorCode
+		if ae.ErrorCode > math.MaxUint32 {
+			code = network.ConnCodeOutOfRange
+		} else {
+			code = network.ConnErrorCode(ae.ErrorCode)
+		}
 		err = &network.ConnError{
-			ErrorCode:      network.ConnErrorCode(code),
+			ErrorCode:      code,
 			Remote:         ae.Remote,
 			TransportError: ae,
 		}
