@@ -188,6 +188,22 @@ var transportsToTest = []TransportTestCase{
 			return h
 		},
 	},
+	{
+		Name: "Circuit V2",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.EnableRelay())
+			libp2pOpts = append(libp2pOpts, libp2p.EnableRelayService())
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings(("/ip4/127.0.0.1/tcp/0/ws")))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
 }
 
 func TestPing(t *testing.T) {
