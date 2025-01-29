@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p-testing/race"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/matest"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -89,7 +90,7 @@ func TestInterceptAddrDial(t *testing.T) {
 			defer cancel()
 			gomock.InOrder(
 				connGater.EXPECT().InterceptPeerDial(h2.ID()).Return(true),
-				connGater.EXPECT().InterceptAddrDial(h2.ID(), h2.Addrs()[0]),
+				connGater.EXPECT().InterceptAddrDial(h2.ID(), matest.MultiaddrMatcher{Multiaddr: h2.Addrs()[0]}),
 			)
 			require.ErrorIs(t, h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}), swarm.ErrNoGoodAddresses)
 		})
@@ -155,7 +156,7 @@ func TestInterceptUpgradedOutgoing(t *testing.T) {
 				connGater.EXPECT().InterceptSecured(network.DirOutbound, h2.ID(), gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptUpgraded(gomock.Any()).Do(func(c network.Conn) {
 					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), c.RemoteMultiaddr())
+					require.Equal(t, stripCertHash(h2.Addrs()[0]).String(), c.RemoteMultiaddr().String())
 					require.Equal(t, h1.ID(), c.LocalPeer())
 					require.Equal(t, h2.ID(), c.RemotePeer())
 				}))
@@ -199,7 +200,7 @@ func TestInterceptAccept(t *testing.T) {
 			} else {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
 					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr(), "%s\n%s", h2.Addrs()[0], addrs.LocalMultiaddr())
+					matest.AssertEqualMultiaddr(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
 				})
 			}
 
@@ -237,7 +238,7 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptSecured(network.DirInbound, h1.ID(), gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
 					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+					matest.AssertEqualMultiaddr(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
 				}),
 			)
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
@@ -271,7 +272,7 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 				connGater.EXPECT().InterceptSecured(network.DirInbound, h1.ID(), gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptUpgraded(gomock.Any()).Do(func(c network.Conn) {
 					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), c.LocalMultiaddr())
+					require.Equal(t, stripCertHash(h2.Addrs()[0]).String(), c.LocalMultiaddr().String())
 					require.Equal(t, h1.ID(), c.RemotePeer())
 					require.Equal(t, h2.ID(), c.LocalPeer())
 				}),

@@ -23,7 +23,7 @@ func TestCmd(t *testing.T) {
 		}
 	}
 
-	err := RunClient(multiaddr.Join(ip, rest).String(), l.ID.String())
+	err := RunClient(ip.Encapsulate(rest).String(), l.ID.String())
 	if err != nil {
 		t.Fatal(err)
 	}

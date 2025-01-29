@@ -419,7 +419,7 @@ func (t *transport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]ma.Multiad
 	if err != nil {
 		return nil, err
 	}
-	return []ma.Multiaddr{beforeQuicMA.Encapsulate(quicComponent).Encapsulate(sniComponent).Encapsulate(afterQuicMA)}, nil
+	return []ma.Multiaddr{beforeQuicMA.EncapsulateC(quicComponent).EncapsulateC(sniComponent).Encapsulate(afterQuicMA)}, nil
 }
 
 // AddCertHashes adds the current certificate hashes to a multiaddress.

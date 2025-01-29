@@ -39,10 +39,10 @@ var dialMatcher = mafmt.And(
 		mafmt.Base(ma.P_WSS)))
 
 var (
-	wssComponent   = ma.StringCast("/wss")
-	tlsWsComponent = ma.StringCast("/tls/ws")
-	tlsComponent   = ma.StringCast("/tls")
-	wsComponent    = ma.StringCast("/ws")
+	wssComponent, _ = ma.NewComponent("wss", "")
+	tlsComponent, _ = ma.NewComponent("tls", "")
+	wsComponent, _  = ma.NewComponent("ws", "")
+	tlsWsAddr       = []ma.Component{tlsComponent, wsComponent}
 )
 
 func init() {
@@ -135,24 +135,24 @@ func (t *WebsocketTransport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]m
 		return []ma.Multiaddr{maddr}, nil
 	}
 
-	if parsed.sni == nil {
+	if parsed.sni.Empty() {
 		var err error
 		// We don't have an sni component, we'll use dns
-		ma.ForEach(parsed.restMultiaddr, func(c ma.Component) bool {
+	loop:
+		for _, c := range parsed.restMultiaddr {
 			switch c.Protocol().Code {
 			case ma.P_DNS, ma.P_DNS4, ma.P_DNS6:
 				// err shouldn't happen since this means we couldn't parse a dns hostname for an sni value.
 				parsed.sni, err = ma.NewComponent("sni", c.Value())
-				return false
+				break loop
 			}
-			return true
-		})
+		}
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if parsed.sni == nil {
+	if parsed.sni.Empty() {
 		// we didn't find anything to set the sni with. So we just return the given multiaddr
 		return []ma.Multiaddr{maddr}, nil
 	}

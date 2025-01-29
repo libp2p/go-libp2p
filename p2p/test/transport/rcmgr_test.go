@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/multiformats/go-multiaddr/matest"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -40,13 +41,13 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					var listener, dialer host.Host
 					var expectedPeer peer.ID
 					var expectedDir network.Direction
-					var expectedAddr interface{}
+					var expectedAddr gomock.Matcher
 					if testDialer {
 						listener = tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
 						dialer = tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, ResourceManager: rcmgr})
 						expectedPeer = listener.ID()
 						expectedDir = network.DirOutbound
-						expectedAddr = listener.Addrs()[0]
+						expectedAddr = matest.MultiaddrMatcher{Multiaddr: listener.Addrs()[0]}
 					} else {
 						listener = tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: rcmgr})
 						dialer = tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
