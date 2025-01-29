@@ -1009,7 +1009,6 @@ func TestErrorCode(t *testing.T) {
 	require.NoError(t, err)
 	defer cm.Close()
 
-	sw1.Notify(cm.Notifee())
 	sw1.Peerstore().AddAddrs(sw2.LocalPeer(), sw2.ListenAddresses(), peerstore.PermanentAddrTTL)
 	sw1.Peerstore().AddAddrs(sw3.LocalPeer(), sw3.ListenAddresses(), peerstore.PermanentAddrTTL)
 
@@ -1038,6 +1037,10 @@ func TestErrorCode(t *testing.T) {
 		c31 = conns[0]
 		return true
 	}, 10*time.Second, 100*time.Millisecond)
+
+	not := cm.Notifee()
+	not.Connected(sw1, c12)
+	not.Connected(sw1, c13)
 
 	cm.TrimOpenConns(context.Background())
 

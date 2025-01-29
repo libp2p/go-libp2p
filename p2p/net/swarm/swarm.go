@@ -850,11 +850,14 @@ func (c *connWithMetrics) Close() error {
 }
 
 func (c *connWithMetrics) CloseWithError(errCode network.ConnErrorCode) error {
-	c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
-	if ce, ok := c.CapableConn.(network.CloseWithErrorer); ok {
-		return ce.CloseWithError(errCode)
-	}
-	return c.CapableConn.Close()
+	c.once.Do(func() {
+		c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
+		if ce, ok := c.CapableConn.(network.CloseWithErrorer); ok {
+			c.closeErr = ce.CloseWithError(errCode)
+		}
+		c.closeErr = c.CapableConn.Close()
+	})
+	return c.closeErr
 }
 
 func (c *connWithMetrics) Stat() network.ConnStats {

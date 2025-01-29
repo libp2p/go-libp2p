@@ -869,7 +869,6 @@ func TestConnClosedWhenRemoteCloses(t *testing.T) {
 }
 
 func TestErrorCodes(t *testing.T) {
-
 	assertStreamErrors := func(s network.Stream, expectedError error) {
 		buf := make([]byte, 10)
 		_, err := s.Read(buf)
@@ -925,6 +924,9 @@ func TestErrorCodes(t *testing.T) {
 				require.NoError(t, err)
 				pingPong(s)
 
+				remoteStream := <-remoteStreamQ
+				defer remoteStream.Reset()
+
 				err = s.ResetWithError(42)
 				require.NoError(t, err)
 				assertStreamErrors(s, &network.StreamError{
@@ -932,12 +934,35 @@ func TestErrorCodes(t *testing.T) {
 					Remote:    false,
 				})
 
-				remoteStream := <-remoteStreamQ
-				defer remoteStream.Reset()
-
 				assertStreamErrors(remoteStream, &network.StreamError{
 					ErrorCode: 42,
 					Remote:    true,
+				})
+			})
+			t.Run("StreamResetWithErrorByRemote", func(t *testing.T) {
+				if tc.Name == "WebTransport" {
+					t.Skipf("skipping: %s, not implemented", tc.Name)
+					return
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				s, err := client.NewStream(ctx, server.ID(), "/test")
+				require.NoError(t, err)
+				pingPong(s)
+
+				remoteStream := <-remoteStreamQ
+
+				err = remoteStream.ResetWithError(42)
+				require.NoError(t, err)
+
+				assertStreamErrors(s, &network.StreamError{
+					ErrorCode: 42,
+					Remote:    true,
+				})
+
+				assertStreamErrors(remoteStream, &network.StreamError{
+					ErrorCode: 42,
+					Remote:    false,
 				})
 			})
 
@@ -952,6 +977,9 @@ func TestErrorCodes(t *testing.T) {
 				require.NoError(t, err)
 				pingPong(s)
 
+				remoteStream := <-remoteStreamQ
+				defer remoteStream.Reset()
+
 				err = s.Conn().CloseWithError(42)
 				require.NoError(t, err)
 
@@ -960,16 +988,13 @@ func TestErrorCodes(t *testing.T) {
 					Remote:    false,
 				})
 
-				remoteStream := <-remoteStreamQ
-				defer remoteStream.Reset()
-
 				assertStreamErrors(remoteStream, &network.ConnError{
 					ErrorCode: 42,
 					Remote:    true,
 				})
 			})
 
-			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
+			t.Run("NewStreamErrorByConnCloseWithError", func(t *testing.T) {
 				if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return

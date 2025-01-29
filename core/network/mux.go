@@ -32,17 +32,14 @@ func (s *StreamError) Error() string {
 }
 
 func (s *StreamError) Is(target error) bool {
-	if target == ErrReset {
-		return true
-	}
 	if tse, ok := target.(*StreamError); ok {
 		return tse.ErrorCode == s.ErrorCode && tse.Remote == s.Remote
 	}
 	return false
 }
 
-func (s *StreamError) Unwrap() error {
-	return s.TransportError
+func (s *StreamError) Unwrap() []error {
+	return []error{ErrReset, s.TransportError}
 }
 
 const (
@@ -55,6 +52,7 @@ const (
 	StreamGarbageCollected          StreamErrorCode = 1006
 	StreamShutdown                  StreamErrorCode = 1007
 	StreamGated                     StreamErrorCode = 1008
+	StreamCodeOutOfRange            StreamErrorCode = 1009
 )
 
 // MuxedStream is a bidirectional io pipe within a connection.
