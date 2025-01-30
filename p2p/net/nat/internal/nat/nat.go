@@ -24,6 +24,10 @@ type ErrNoNATFound struct {
 	Errs []error
 }
 
+func (e ErrNoNATFound) Unwrap() []error {
+	return e.Errs
+}
+
 func (e ErrNoNATFound) Error() string {
 	var errStrs []string
 	for _, err := range e.Errs {
