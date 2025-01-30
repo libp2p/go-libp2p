@@ -18,8 +18,8 @@ func discoverNATPMP(ctx context.Context) (NAT, error) {
 		return nil, err
 	}
 
-	clientCh := make(chan *natpmp.Client)
-	errCh := make(chan error)
+	clientCh := make(chan *natpmp.Client, 1)
+	errCh := make(chan error, 1)
 
 	// We can't cancel the natpmp library, but we can at least still return
 	// on context cancellation by putting this in a goroutine
