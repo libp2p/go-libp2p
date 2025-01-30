@@ -2,6 +2,7 @@ package nat
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -52,6 +53,9 @@ func discoverUPNP_GenIGDev(ctx context.Context) (nats []NAT, errs []error) {
 		return
 	}
 
+	// Limit the number of InternetGateways we'll query. Normally we'd only
+	// expect 1 or 2, but in case of a weird network we also don't want to do
+	// too much work.
 	const maxIGDevs = 3
 	foundIGDevs := 0
 	for _, Service := range DeviceList {
@@ -79,6 +83,10 @@ func discoverUPNP_GenIGDev(ctx context.Context) (nats []NAT, errs []error) {
 	return
 }
 
+// serviceVisitor is a vistor function that visits all services of a root
+// device and collects NATs.
+//
+// It works on InternetGateway V1 and V2 devices. For V1 devices, V2 services should not be encountered, and the visitor will collect an error in that case.
 func serviceVisitor(ctx context.Context, rootDevice *goupnp.RootDevice, outNats *[]NAT, outErrs *[]error) func(srv *goupnp.Service) {
 	return func(srv *goupnp.Service) {
 		if ctx.Err() != nil {
@@ -99,6 +107,10 @@ func serviceVisitor(ctx context.Context, rootDevice *goupnp.RootDevice, outNats 
 			}
 
 		case internetgateway2.URN_WANIPConnection_2:
+			if rootDevice.Device.DeviceType == internetgateway2.URN_WANConnectionDevice_1 {
+				*outErrs = append(*outErrs, fmt.Errorf("found V2 service on V1 device"))
+				return
+			}
 			client := &internetgateway2.WANIPConnection2{ServiceClient: goupnp.ServiceClient{
 				SOAPClient: srv.NewSOAPClient(),
 				RootDevice: rootDevice,
