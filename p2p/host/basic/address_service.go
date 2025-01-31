@@ -138,7 +138,7 @@ func (a *addressService) background() {
 }
 
 // Addrs returns the node's dialable addresses both public and private.
-// If autorealy is enabled and node reachability is private, it returns
+// If autorelay is enabled and node reachability is private, it returns
 // the node's relay addresses and private network addresses.
 func (a *addressService) Addrs() []ma.Multiaddr {
 	addrs := a.AllAddrs()
@@ -411,7 +411,7 @@ func (i *interfaceAddrsCache) updateUnlocked() {
 	}
 }
 
-// getAllPossibleLocalAddrs gives all the possible address returned for `conn.LocalAddr` correspoinding
+// getAllPossibleLocalAddrs gives all the possible address returned for `conn.LocalAddr` corresponding
 // to the `listenAddr`
 func getAllPossibleLocalAddrs(listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
 	// If the nat mapping fails, use the observed addrs
