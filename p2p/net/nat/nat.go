@@ -11,7 +11,7 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 
-	"github.com/libp2p/go-nat"
+	"github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat"
 )
 
 // ErrNoMapping signals no mapping exists for an address
