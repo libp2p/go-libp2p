@@ -112,7 +112,7 @@ func discoverNATs(ctx context.Context) ([]NAT, []error) {
 	var nats []NAT
 	var errs []error
 
-	for upnpCh != nil && pmpCh != nil {
+	for upnpCh != nil || pmpCh != nil {
 		select {
 		case res := <-pmpCh:
 			pmpCh = nil
