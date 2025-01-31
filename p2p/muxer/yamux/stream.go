@@ -15,17 +15,17 @@ type stream yamux.Stream
 
 var _ network.MuxedStream = &stream{}
 
-func parseResetError(err error) error {
+func parseError(err error) error {
 	if err == nil {
 		return err
 	}
 	se := &yamux.StreamError{}
 	if errors.As(err, &se) {
-		return &network.StreamError{Remote: se.Remote, ErrorCode: network.StreamErrorCode(se.ErrorCode)}
+		return &network.StreamError{Remote: se.Remote, ErrorCode: network.StreamErrorCode(se.ErrorCode), TransportError: err}
 	}
 	ce := &yamux.GoAwayError{}
 	if errors.As(err, &ce) {
-		return &network.ConnError{Remote: ce.Remote, ErrorCode: network.ConnErrorCode(ce.ErrorCode)}
+		return &network.ConnError{Remote: ce.Remote, ErrorCode: network.ConnErrorCode(ce.ErrorCode), TransportError: err}
 	}
 	if errors.Is(err, yamux.ErrStreamReset) {
 		return fmt.Errorf("%w: %w", network.ErrReset, err)
@@ -35,12 +35,12 @@ func parseResetError(err error) error {
 
 func (s *stream) Read(b []byte) (n int, err error) {
 	n, err = s.yamux().Read(b)
-	return n, parseResetError(err)
+	return n, parseError(err)
 }
 
 func (s *stream) Write(b []byte) (n int, err error) {
 	n, err = s.yamux().Write(b)
-	return n, parseResetError(err)
+	return n, parseError(err)
 }
 
 func (s *stream) Close() error {
