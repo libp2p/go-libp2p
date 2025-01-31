@@ -81,11 +81,7 @@ func (c *Conn) doClose(errCode network.ConnErrorCode) {
 	c.streams.Unlock()
 
 	if errCode != 0 {
-		if ce, ok := c.conn.(network.CloseWithErrorer); ok {
-			c.err = ce.CloseWithError(errCode)
-		} else {
-			c.err = c.conn.Close()
-		}
+		c.err = c.conn.CloseWithError(errCode)
 	} else {
 		c.err = c.conn.Close()
 	}
