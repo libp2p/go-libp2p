@@ -124,6 +124,10 @@ type MuxedConn interface {
 	// Close closes the stream muxer and the the underlying net.Conn.
 	io.Closer
 
+	// CloseWithError closes the connection with errCode. The errCode is sent
+	// to the peer.
+	CloseWithError(errCode ConnErrorCode) error
+
 	// IsClosed returns whether a connection is fully closed, so it can
 	// be garbage collected.
 	IsClosed() bool
@@ -133,12 +137,6 @@ type MuxedConn interface {
 
 	// AcceptStream accepts a stream opened by the other side.
 	AcceptStream() (MuxedStream, error)
-}
-
-type CloseWithErrorer interface {
-	// CloseWithError closes the connection with errCode. The errCode is sent
-	// to the peer.
-	CloseWithError(errCode ConnErrorCode) error
 }
 
 // Multiplexer wraps a net.Conn with a stream multiplexing

@@ -143,7 +143,7 @@ func (r *acceptLoopRunner) innerAccept(l *listener, expectedVersion quic.Version
 	select {
 	case ch <- acceptVal{conn: conn}:
 	default:
-		conn.(network.CloseWithErrorer).CloseWithError(network.ConnRateLimited)
+		conn.CloseWithError(network.ConnRateLimited)
 		// accept queue filled up, drop the connection
 		log.Warn("Accept queue filled. Dropping connection.")
 	}
