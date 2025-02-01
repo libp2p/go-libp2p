@@ -3,6 +3,7 @@ package tcp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"runtime"
@@ -117,11 +118,28 @@ func WithMetrics() Option {
 	}
 }
 
+func WithCustomDialer(d CustomTCPDialer) Option {
+	return func(tr *TcpTransport) error {
+		tr.customDialer = d
+		return nil
+	}
+}
+
+type ContextDialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
+type CustomTCPDialer func(raddr ma.Multiaddr) (ContextDialer, error)
+
 // TcpTransport is the TCP transport.
 type TcpTransport struct {
 	// Connection upgrader for upgrading insecure stream connections to
 	// secure multiplex connections.
 	upgrader transport.Upgrader
+
+	// custom dialer to use for dialing. If set, it will be the *ONLY* dialer
+	// used. The transport will not attempt to reuse the listen port to
+	// dial or the shared TCP transport for dialing.
+	customDialer CustomTCPDialer
 
 	disableReuseport bool // Explicitly disable reuseport.
 	enableMetrics    bool
@@ -170,12 +188,42 @@ func (t *TcpTransport) CanDial(addr ma.Multiaddr) bool {
 	return dialMatcher.Matches(addr)
 }
 
+func (t *TcpTransport) customDial(ctx context.Context, raddr ma.Multiaddr) (manet.Conn, error) {
+	// get the net.Dial friendly arguments from the remote addr
+	rnet, rnaddr, err := manet.DialArgs(raddr)
+	if err != nil {
+		return nil, err
+	}
+	dialer, err := t.customDialer(raddr)
+	if err != nil {
+		return nil, err
+	}
+
+	// ok, Dial!
+	var nconn net.Conn
+	switch rnet {
+	case "tcp", "tcp4", "tcp6", "udp", "udp4", "udp6", "unix":
+		nconn, err = dialer.DialContext(ctx, rnet, rnaddr)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unrecognized network: %s", rnet)
+	}
+
+	return manet.WrapNetConn(nconn)
+}
+
 func (t *TcpTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Conn, error) {
 	// Apply the deadline iff applicable
 	if t.connectTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, t.connectTimeout)
 		defer cancel()
+	}
+
+	if t.customDialer != nil {
+		return t.customDial(ctx, raddr)
 	}
 
 	if t.sharedTcp != nil {

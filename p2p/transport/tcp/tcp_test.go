@@ -3,6 +3,7 @@ package tcp
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -204,4 +205,76 @@ func makeInsecureMuxer(t *testing.T) (peer.ID, []sec.SecureTransport) {
 	id, err := peer.IDFromPrivateKey(priv)
 	require.NoError(t, err)
 	return id, []sec.SecureTransport{insecure.NewWithIdentity(insecure.ID, id, priv)}
+}
+
+type errDialer struct {
+	err error
+}
+
+func (d errDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	return nil, d.err
+}
+
+func TestCustomTCPDialer(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		peerA, ia := makeInsecureMuxer(t)
+		ua, err := tptu.New(ia, muxers, nil, nil, nil)
+		require.NoError(t, err)
+		ta, err := NewTCPTransport(ua, nil, nil)
+		require.NoError(t, err)
+		ln, err := ta.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
+		require.NoError(t, err)
+		defer ln.Close()
+
+		_, ib := makeInsecureMuxer(t)
+		ub, err := tptu.New(ib, muxers, nil, nil, nil)
+		require.NoError(t, err)
+		called := false
+		customDialer := func(raddr ma.Multiaddr) (ContextDialer, error) {
+			called = true
+			return &net.Dialer{}, nil
+		}
+		tb, err := NewTCPTransport(ub, nil, nil, WithCustomDialer(customDialer))
+		require.NoError(t, err)
+
+		conn, err := tb.Dial(context.Background(), ln.Multiaddr(), peerA)
+		require.NoError(t, err)
+		require.NotNil(t, conn)
+		require.True(t, called, "custom dialer should have been called")
+		conn.Close()
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		peerA, ia := makeInsecureMuxer(t)
+		ua, err := tptu.New(ia, muxers, nil, nil, nil)
+		require.NoError(t, err)
+		ta, err := NewTCPTransport(ua, nil, nil)
+		require.NoError(t, err)
+		ln, err := ta.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
+		require.NoError(t, err)
+		defer ln.Close()
+
+		for _, test := range []string{"error in factory", "error in custom dialer"} {
+			t.Run(test, func(t *testing.T) {
+				_, ib := makeInsecureMuxer(t)
+				ub, err := tptu.New(ib, muxers, nil, nil, nil)
+				require.NoError(t, err)
+				customErr := errors.New("custom dialer error")
+				customDialer := func(raddr ma.Multiaddr) (ContextDialer, error) {
+					if test == "error in factory" {
+						return nil, customErr
+					} else {
+						return errDialer{err: customErr}, nil
+					}
+				}
+				tb, err := NewTCPTransport(ub, nil, nil, WithCustomDialer(customDialer))
+				require.NoError(t, err)
+
+				conn, err := tb.Dial(context.Background(), ln.Multiaddr(), peerA)
+				require.Error(t, err)
+				require.ErrorContains(t, err, customErr.Error())
+				require.Nil(t, conn)
+			})
+		}
+	})
 }
