@@ -26,9 +26,9 @@ func (s *StreamError) Error() string {
 		side = "remote"
 	}
 	if s.TransportError != nil {
-		return fmt.Sprintf("stream reset (%s): code: %d: transport error: %s", side, s.ErrorCode, s.TransportError)
+		return fmt.Sprintf("stream reset (%s): code: 0x%x: transport error: %s", side, s.ErrorCode, s.TransportError)
 	}
-	return fmt.Sprintf("stream reset (%s): code: %d", side, s.ErrorCode)
+	return fmt.Sprintf("stream reset (%s): code: 0x%x", side, s.ErrorCode)
 }
 
 func (s *StreamError) Is(target error) bool {
@@ -44,15 +44,15 @@ func (s *StreamError) Unwrap() []error {
 
 const (
 	StreamNoError                   StreamErrorCode = 0
-	StreamProtocolNegotiationFailed StreamErrorCode = 1001
-	StreamResourceLimitExceeded     StreamErrorCode = 1002
-	StreamRateLimited               StreamErrorCode = 1003
-	StreamProtocolViolation         StreamErrorCode = 1004
-	StreamSupplanted                StreamErrorCode = 1005
-	StreamGarbageCollected          StreamErrorCode = 1006
-	StreamShutdown                  StreamErrorCode = 1007
-	StreamGated                     StreamErrorCode = 1008
-	StreamCodeOutOfRange            StreamErrorCode = 1009
+	StreamProtocolNegotiationFailed StreamErrorCode = 0x0401
+	StreamResourceLimitExceeded     StreamErrorCode = 0x0402
+	StreamRateLimited               StreamErrorCode = 0x0403
+	StreamProtocolViolation         StreamErrorCode = 0x0404
+	StreamSupplanted                StreamErrorCode = 0x0405
+	StreamGarbageCollected          StreamErrorCode = 0x0406
+	StreamShutdown                  StreamErrorCode = 0x0407
+	StreamGated                     StreamErrorCode = 0x0408
+	StreamCodeOutOfRange            StreamErrorCode = 0x0409
 )
 
 // MuxedStream is a bidirectional io pipe within a connection.

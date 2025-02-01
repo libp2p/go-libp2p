@@ -27,9 +27,9 @@ func (c *ConnError) Error() string {
 		side = "remote"
 	}
 	if c.TransportError != nil {
-		return fmt.Sprintf("connection closed (%s): code: %d: transport error: %s", side, c.ErrorCode, c.TransportError)
+		return fmt.Sprintf("connection closed (%s): code: 0x%x: transport error: %s", side, c.ErrorCode, c.TransportError)
 	}
-	return fmt.Sprintf("connection closed (%s): code: %d", side, c.ErrorCode)
+	return fmt.Sprintf("connection closed (%s): code: 0x%x", side, c.ErrorCode)
 }
 
 func (c *ConnError) Is(target error) bool {
@@ -45,15 +45,15 @@ func (c *ConnError) Unwrap() []error {
 
 const (
 	ConnNoError                   ConnErrorCode = 0
-	ConnProtocolNegotiationFailed ConnErrorCode = 1001
-	ConnResourceLimitExceeded     ConnErrorCode = 1002
-	ConnRateLimited               ConnErrorCode = 1003
-	ConnProtocolViolation         ConnErrorCode = 1004
-	ConnSupplanted                ConnErrorCode = 1005
-	ConnGarbageCollected          ConnErrorCode = 1006
-	ConnShutdown                  ConnErrorCode = 1007
-	ConnGated                     ConnErrorCode = 1008
-	ConnCodeOutOfRange            ConnErrorCode = 1009
+	ConnProtocolNegotiationFailed ConnErrorCode = 0x0400
+	ConnResourceLimitExceeded     ConnErrorCode = 0x0401
+	ConnRateLimited               ConnErrorCode = 0x0402
+	ConnProtocolViolation         ConnErrorCode = 0x0403
+	ConnSupplanted                ConnErrorCode = 0x0404
+	ConnGarbageCollected          ConnErrorCode = 0x0405
+	ConnShutdown                  ConnErrorCode = 0x0406
+	ConnGated                     ConnErrorCode = 0x0407
+	ConnCodeOutOfRange            ConnErrorCode = 0x0408
 )
 
 // Conn is a connection to a remote peer. It multiplexes streams.
