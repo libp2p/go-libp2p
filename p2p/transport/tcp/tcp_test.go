@@ -215,7 +215,7 @@ func (d errDialer) DialContext(ctx context.Context, network, address string) (ne
 	return nil, d.err
 }
 
-func TestCustomTCPDialer(t *testing.T) {
+func TestCustomOverrideTCPDialer(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		peerA, ia := makeInsecureMuxer(t)
 		ua, err := tptu.New(ia, muxers, nil, nil, nil)
@@ -234,7 +234,7 @@ func TestCustomTCPDialer(t *testing.T) {
 			called = true
 			return &net.Dialer{}, nil
 		}
-		tb, err := NewTCPTransport(ub, nil, nil, WithCustomDialer(customDialer))
+		tb, err := NewTCPTransport(ub, nil, nil, WithDialerForAddr(customDialer))
 		require.NoError(t, err)
 
 		conn, err := tb.Dial(context.Background(), ln.Multiaddr(), peerA)
@@ -267,7 +267,7 @@ func TestCustomTCPDialer(t *testing.T) {
 						return errDialer{err: customErr}, nil
 					}
 				}
-				tb, err := NewTCPTransport(ub, nil, nil, WithCustomDialer(customDialer))
+				tb, err := NewTCPTransport(ub, nil, nil, WithDialerForAddr(customDialer))
 				require.NoError(t, err)
 
 				conn, err := tb.Dial(context.Background(), ln.Multiaddr(), peerA)

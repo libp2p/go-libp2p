@@ -118,9 +118,11 @@ func WithMetrics() Option {
 	}
 }
 
-func WithCustomDialer(d CustomTCPDialer) Option {
+// WithDialerForAddr sets a custom dialer for the given address.
+// If set, it will be the *ONLY* dialer used.
+func WithDialerForAddr(d DialerForAddr) Option {
 	return func(tr *TcpTransport) error {
-		tr.customDialer = d
+		tr.overrideDialerForAddr = d
 		return nil
 	}
 }
@@ -128,7 +130,11 @@ func WithCustomDialer(d CustomTCPDialer) Option {
 type ContextDialer interface {
 	DialContext(ctx context.Context, network, address string) (net.Conn, error)
 }
-type CustomTCPDialer func(raddr ma.Multiaddr) (ContextDialer, error)
+
+// DialerForAddr is a function that returns a dialer for a given address.
+// Implementations must return either a ContextDialer or an error. It is
+// invalid to return nil, nil.
+type DialerForAddr func(raddr ma.Multiaddr) (ContextDialer, error)
 
 // TcpTransport is the TCP transport.
 type TcpTransport struct {
@@ -136,10 +142,10 @@ type TcpTransport struct {
 	// secure multiplex connections.
 	upgrader transport.Upgrader
 
-	// custom dialer to use for dialing. If set, it will be the *ONLY* dialer
+	// optional custom dialer to use for dialing. If set, it will be the *ONLY* dialer
 	// used. The transport will not attempt to reuse the listen port to
 	// dial or the shared TCP transport for dialing.
-	customDialer CustomTCPDialer
+	overrideDialerForAddr DialerForAddr
 
 	disableReuseport bool // Explicitly disable reuseport.
 	enableMetrics    bool
@@ -194,9 +200,12 @@ func (t *TcpTransport) customDial(ctx context.Context, raddr ma.Multiaddr) (mane
 	if err != nil {
 		return nil, err
 	}
-	dialer, err := t.customDialer(raddr)
+	dialer, err := t.overrideDialerForAddr(raddr)
 	if err != nil {
 		return nil, err
+	}
+	if dialer == nil {
+		return nil, fmt.Errorf("dialer for address %s is nil", raddr)
 	}
 
 	// ok, Dial!
@@ -222,7 +231,7 @@ func (t *TcpTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Co
 		defer cancel()
 	}
 
-	if t.customDialer != nil {
+	if t.overrideDialerForAddr != nil {
 		return t.customDial(ctx, raddr)
 	}
 

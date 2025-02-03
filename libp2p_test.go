@@ -794,7 +794,7 @@ func TestCustomTCPDialer(t *testing.T) {
 	}
 
 	h, err := New(
-		Transport(tcp.NewTCPTransport, tcp.WithCustomDialer(customDialer)),
+		Transport(tcp.NewTCPTransport, tcp.WithDialerForAddr(customDialer)),
 	)
 	require.NoError(t, err)
 	defer h.Close()
