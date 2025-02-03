@@ -600,7 +600,7 @@ func SwarmOpts(opts ...swarm.Option) Option {
 
 // DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses
 // in identify. If you know your public addresses upfront, the recommended way is to use
-// AddressFactory to provide the external adddress to the host and use this option to disable
+// AddressFactory to provide the external address to the host and use this option to disable
 // discovery from identify.
 func DisableIdentifyAddressDiscovery() Option {
 	return func(cfg *Config) error {
