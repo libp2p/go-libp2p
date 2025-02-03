@@ -165,11 +165,14 @@ func (c *refcountedTransport) ShouldGarbageCollect(now time.Time) bool {
 type reuse struct {
 	mutex sync.Mutex
 
-	closeChan       chan struct{}
-	gcStopChan      chan struct{}
-	customListenUDP listenUDP
+	closeChan  chan struct{}
+	gcStopChan chan struct{}
 
-	routes  routing.Router
+	overrideListenUDP listenUDP
+
+	overrideSourceIPSelectorFn func() (SourceIPSelector, error)
+
+	routes  SourceIPSelector
 	unicast map[string] /* IP.String() */ map[int] /* port */ *refcountedTransport
 	// globalListeners contains transports that are listening on 0.0.0.0 / ::
 	globalListeners map[int]*refcountedTransport
@@ -184,11 +187,15 @@ type reuse struct {
 
 func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey) *reuse {
 	r := &reuse{
-		unicast:           make(map[string]map[int]*refcountedTransport),
-		globalListeners:   make(map[int]*refcountedTransport),
-		globalDialers:     make(map[int]*refcountedTransport),
-		closeChan:         make(chan struct{}),
-		gcStopChan:        make(chan struct{}),
+		unicast:         make(map[string]map[int]*refcountedTransport),
+		globalListeners: make(map[int]*refcountedTransport),
+		globalDialers:   make(map[int]*refcountedTransport),
+		closeChan:       make(chan struct{}),
+		gcStopChan:      make(chan struct{}),
+		overrideSourceIPSelectorFn: func() (SourceIPSelector, error) {
+			r, err := netroute.New()
+			return &netrouteSourceIPSelector{routes: r}, err
+		},
 		statelessResetKey: srk,
 		tokenGeneratorKey: tokenKey,
 	}
@@ -251,7 +258,7 @@ func (r *reuse) gc() {
 					} else {
 						// Ignore the error, there's nothing we can do about
 						// it.
-						r.routes, _ = netroute.New()
+						r.routes, _ = r.overrideSourceIPSelectorFn()
 					}
 				}
 			}
@@ -271,7 +278,7 @@ func (r *reuse) transportWithAssociationForDial(association any, network string,
 	r.mutex.Unlock()
 
 	if router != nil {
-		_, _, src, err := router.Route(raddr.IP)
+		src, err := router.PreferredSourceIPForDestination(raddr)
 		if err == nil && !src.IsUnspecified() {
 			ip = &src
 		}
@@ -326,8 +333,8 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	}
 	var conn net.PacketConn
 	var err error
-	if r.customListenUDP != nil {
-		conn, err = r.customListenUDP(network, addr)
+	if r.overrideListenUDP != nil {
+		conn, err = r.overrideListenUDP(network, addr)
 	} else {
 		conn, err = net.ListenUDP(network, addr)
 	}
@@ -398,8 +405,8 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 
 	var conn net.PacketConn
 	var err error
-	if r.customListenUDP != nil {
-		conn, err = r.customListenUDP(network, laddr)
+	if r.overrideListenUDP != nil {
+		conn, err = r.overrideListenUDP(network, laddr)
 	} else {
 		conn, err = net.ListenUDP(network, laddr)
 	}
@@ -431,7 +438,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		r.unicast[localAddr.IP.String()] = make(map[int]*refcountedTransport)
 		// Assume the system's routes may have changed if we're adding a new listener.
 		// Ignore the error, there's nothing we can do.
-		r.routes, _ = netroute.New()
+		r.routes, _ = r.overrideSourceIPSelectorFn()
 	}
 
 	// The kernel already checked that the laddr is not already listen
@@ -444,4 +451,17 @@ func (r *reuse) Close() error {
 	close(r.closeChan)
 	<-r.gcStopChan
 	return nil
+}
+
+type SourceIPSelector interface {
+	PreferredSourceIPForDestination(dst *net.UDPAddr) (net.IP, error)
+}
+
+type netrouteSourceIPSelector struct {
+	routes routing.Router
+}
+
+func (s *netrouteSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr) (net.IP, error) {
+	_, _, src, err := s.routes.Route(dst.IP)
+	return src, err
 }

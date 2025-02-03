@@ -10,9 +10,16 @@ type Option func(*ConnManager) error
 
 type listenUDP func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
 
-func CustomListenUDP(f listenUDP) Option {
+func OverrideListenUDP(f listenUDP) Option {
 	return func(m *ConnManager) error {
-		m.customListenUDP = f
+		m.overrideListenUDP = f
+		return nil
+	}
+}
+
+func OverrideSourceIPSelector(f func() (SourceIPSelector, error)) Option {
+	return func(m *ConnManager) error {
+		m.overrideSourceIPSelectorFn = f
 		return nil
 	}
 }
