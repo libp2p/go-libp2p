@@ -37,7 +37,8 @@ type ConnManager struct {
 	reuseUDP6       *reuse
 	enableReuseport bool
 
-	customListenUDP listenUDP
+	overrideListenUDP          listenUDP
+	overrideSourceIPSelectorFn func() (SourceIPSelector, error)
 
 	enableMetrics bool
 	registerer    prometheus.Registerer
@@ -79,9 +80,16 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
 		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey)
-		cm.reuseUDP4.customListenUDP = cm.customListenUDP
+		cm.reuseUDP4.overrideListenUDP = cm.overrideListenUDP
+		if cm.overrideSourceIPSelectorFn != nil {
+			cm.reuseUDP4.overrideSourceIPSelectorFn = cm.overrideSourceIPSelectorFn
+		}
+
 		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey)
-		cm.reuseUDP6.customListenUDP = cm.customListenUDP
+		if cm.overrideSourceIPSelectorFn != nil {
+			cm.reuseUDP6.overrideSourceIPSelectorFn = cm.overrideSourceIPSelectorFn
+		}
+		cm.reuseUDP6.overrideListenUDP = cm.overrideListenUDP
 	}
 	return cm, nil
 }
@@ -244,8 +252,8 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 
 	var conn net.PacketConn
 	var err error
-	if c.customListenUDP != nil {
-		conn, err = c.customListenUDP(network, laddr)
+	if c.overrideListenUDP != nil {
+		conn, err = c.overrideListenUDP(network, laddr)
 	} else {
 		conn, err = net.ListenUDP(network, laddr)
 	}
@@ -332,8 +340,8 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 	}
 	var conn net.PacketConn
 	var err error
-	if c.customListenUDP != nil {
-		conn, err = c.customListenUDP(network, laddr)
+	if c.overrideListenUDP != nil {
+		conn, err = c.overrideListenUDP(network, laddr)
 	} else {
 		conn, err = net.ListenUDP(network, laddr)
 	}
