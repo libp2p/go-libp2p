@@ -44,15 +44,15 @@ func (s *StreamError) Unwrap() []error {
 
 const (
 	StreamNoError                   StreamErrorCode = 0
-	StreamProtocolNegotiationFailed StreamErrorCode = 0x0401
-	StreamResourceLimitExceeded     StreamErrorCode = 0x0402
-	StreamRateLimited               StreamErrorCode = 0x0403
-	StreamProtocolViolation         StreamErrorCode = 0x0404
-	StreamSupplanted                StreamErrorCode = 0x0405
-	StreamGarbageCollected          StreamErrorCode = 0x0406
-	StreamShutdown                  StreamErrorCode = 0x0407
-	StreamGated                     StreamErrorCode = 0x0408
-	StreamCodeOutOfRange            StreamErrorCode = 0x0409
+	StreamProtocolNegotiationFailed StreamErrorCode = 0x1001
+	StreamResourceLimitExceeded     StreamErrorCode = 0x1002
+	StreamRateLimited               StreamErrorCode = 0x1003
+	StreamProtocolViolation         StreamErrorCode = 0x1004
+	StreamSupplanted                StreamErrorCode = 0x1005
+	StreamGarbageCollected          StreamErrorCode = 0x1006
+	StreamShutdown                  StreamErrorCode = 0x1007
+	StreamGated                     StreamErrorCode = 0x1008
+	StreamCodeOutOfRange            StreamErrorCode = 0x1009
 )
 
 // MuxedStream is a bidirectional io pipe within a connection.

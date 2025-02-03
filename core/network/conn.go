@@ -45,15 +45,15 @@ func (c *ConnError) Unwrap() []error {
 
 const (
 	ConnNoError                   ConnErrorCode = 0
-	ConnProtocolNegotiationFailed ConnErrorCode = 0x0400
-	ConnResourceLimitExceeded     ConnErrorCode = 0x0401
-	ConnRateLimited               ConnErrorCode = 0x0402
-	ConnProtocolViolation         ConnErrorCode = 0x0403
-	ConnSupplanted                ConnErrorCode = 0x0404
-	ConnGarbageCollected          ConnErrorCode = 0x0405
-	ConnShutdown                  ConnErrorCode = 0x0406
-	ConnGated                     ConnErrorCode = 0x0407
-	ConnCodeOutOfRange            ConnErrorCode = 0x0408
+	ConnProtocolNegotiationFailed ConnErrorCode = 0x1000
+	ConnResourceLimitExceeded     ConnErrorCode = 0x1001
+	ConnRateLimited               ConnErrorCode = 0x1002
+	ConnProtocolViolation         ConnErrorCode = 0x1003
+	ConnSupplanted                ConnErrorCode = 0x1004
+	ConnGarbageCollected          ConnErrorCode = 0x1005
+	ConnShutdown                  ConnErrorCode = 0x1006
+	ConnGated                     ConnErrorCode = 0x1007
+	ConnCodeOutOfRange            ConnErrorCode = 0x1008
 )
 
 // Conn is a connection to a remote peer. It multiplexes streams.
