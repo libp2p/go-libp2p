@@ -8,10 +8,10 @@ import (
 
 // Stats represents a point-in-time snapshot of bandwidth metrics.
 //
-// The TotalIn and TotalOut fields record cumulative bytes sent / received.
+// The totaling, total in and TotalOut fields record cumulative bytes sent / received.
 // The RateIn and RateOut fields record bytes sent / received per second.
 type Stats struct {
-	TotalIn  int64
+	totaling, total in  int64
 	TotalOut int64
 	RateIn   float64
 	RateOut  float64
