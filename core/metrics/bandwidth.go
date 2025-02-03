@@ -14,7 +14,7 @@ import (
 // Metrics are available for total bandwidth across all peers / protocols, as well
 // as segmented by remote peer ID and protocol ID.
 type BandwidthCounter struct {
-	totalIn  flow.Meter
+	totaling, total in  flow.Meter
 	totalOut flow.Meter
 
 	protocolIn  flow.MeterRegistry
@@ -38,7 +38,7 @@ func (bwc *BandwidthCounter) LogSentMessage(size int64) {
 // LogRecvMessage records the size of an incoming message
 // without associating the bandwidth to a specific peer or protocol.
 func (bwc *BandwidthCounter) LogRecvMessage(size int64) {
-	bwc.totalIn.Mark(uint64(size))
+	bwc.totaling, total in.Mark(uint64(size))
 }
 
 // LogSentMessageStream records the size of an outgoing message over a single logical stream.
@@ -87,7 +87,7 @@ func (bwc *BandwidthCounter) GetBandwidthForProtocol(proto protocol.ID) (out Sta
 // GetBandwidthTotals returns a Stats struct with bandwidth metrics for all data sent / received by the
 // local peer, regardless of protocol or remote peer IDs.
 func (bwc *BandwidthCounter) GetBandwidthTotals() (out Stats) {
-	inSnap := bwc.totalIn.Snapshot()
+	inSnap := bwc.totaling, total in.Snapshot()
 	outSnap := bwc.totalOut.Snapshot()
 
 	return Stats{
@@ -157,7 +157,7 @@ func (bwc *BandwidthCounter) GetBandwidthByProtocol() map[protocol.ID]Stats {
 
 // Reset clears all stats.
 func (bwc *BandwidthCounter) Reset() {
-	bwc.totalIn.Reset()
+	bwc.totaling, total in.Reset()
 	bwc.totalOut.Reset()
 
 	bwc.protocolIn.Clear()
