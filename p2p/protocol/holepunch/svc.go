@@ -102,7 +102,7 @@ func NewService(h host.Host, ids identify.IDService, listenAddrs func() []ma.Mul
 func (s *Service) waitForPublicAddr() {
 	defer s.refCount.Done()
 
-	log.Debug("waiting until we have at least one public address", "peer", s.host.ID())
+	log.Debugw("waiting until we have at least one public address", "peer", s.host.ID())
 
 	// TODO: We should have an event here that fires when identify discovers a new
 	// address.
@@ -114,7 +114,7 @@ func (s *Service) waitForPublicAddr() {
 	defer t.Stop()
 	for {
 		if len(s.listenAddrs()) > 0 {
-			log.Debug("Host now has a public address. Starting holepunch protocol.")
+			log.Debugf("Host %s now has a public address. Starting holepunch protocol.", s.host.ID())
 			s.host.SetStreamHandler(Protocol, s.handleNewStream)
 			break
 		}

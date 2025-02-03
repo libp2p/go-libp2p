@@ -54,6 +54,7 @@ func holePunchConnect(ctx context.Context, host host.Host, pi peer.AddrInfo, isC
 	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 	defer cancel()
 
+	log.Debugw("holepunchConnect", "host", host.ID(), "peer", pi.ID, "addrs", pi.Addrs)
 	if err := host.Connect(dialCtx, pi); err != nil {
 		log.Debugw("hole punch attempt with peer failed", "peer ID", pi.ID, "error", err)
 		return err
