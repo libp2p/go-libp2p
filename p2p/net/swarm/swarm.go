@@ -823,31 +823,36 @@ type connWithMetrics struct {
 	opened        time.Time
 	dir           network.Direction
 	metricsTracer MetricsTracer
+	once          sync.Once
+	closeErr      error
 }
 
-func wrapWithMetrics(capableConn transport.CapableConn, metricsTracer MetricsTracer, opened time.Time, dir network.Direction) connWithMetrics {
-	c := connWithMetrics{CapableConn: capableConn, opened: opened, dir: dir, metricsTracer: metricsTracer}
+func wrapWithMetrics(capableConn transport.CapableConn, metricsTracer MetricsTracer, opened time.Time, dir network.Direction) *connWithMetrics {
+	c := &connWithMetrics{CapableConn: capableConn, opened: opened, dir: dir, metricsTracer: metricsTracer}
 	c.metricsTracer.OpenedConnection(c.dir, capableConn.RemotePublicKey(), capableConn.ConnState(), capableConn.LocalMultiaddr())
 	return c
 }
 
-func (c connWithMetrics) completedHandshake() {
+func (c *connWithMetrics) completedHandshake() {
 	c.metricsTracer.CompletedHandshake(time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
 }
 
-func (c connWithMetrics) Close() error {
-	c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
-	return c.CapableConn.Close()
+func (c *connWithMetrics) Close() error {
+	c.once.Do(func() {
+		c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
+		c.closeErr = c.CapableConn.Close()
+	})
+	return c.closeErr
 }
 
-func (c connWithMetrics) Stat() network.ConnStats {
+func (c *connWithMetrics) Stat() network.ConnStats {
 	if cs, ok := c.CapableConn.(network.ConnStat); ok {
 		return cs.Stat()
 	}
 	return network.ConnStats{}
 }
 
-var _ network.ConnStat = connWithMetrics{}
+var _ network.ConnStat = &connWithMetrics{}
 
 type ResolverFromMaDNS struct {
 	*madns.Resolver

@@ -13,6 +13,9 @@ import (
 // TransportForDialing retrieves the appropriate transport for dialing the given
 // multiaddr.
 func (s *Swarm) TransportForDialing(a ma.Multiaddr) transport.Transport {
+	if a == nil {
+		return nil
+	}
 	protocols := a.Protocols()
 	if len(protocols) == 0 {
 		return nil
@@ -34,6 +37,9 @@ func (s *Swarm) TransportForDialing(a ma.Multiaddr) transport.Transport {
 	if id, _ := peer.IDFromP2PAddr(a); id != "" {
 		// This addr has a p2p component. Drop it so we can check transport.
 		a, _ = ma.SplitLast(a)
+		if a == nil {
+			return nil
+		}
 	}
 	for _, t := range s.transports.m {
 		if t.CanDial(a) {

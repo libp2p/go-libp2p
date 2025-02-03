@@ -26,6 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/transport"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
@@ -761,6 +762,7 @@ func TestSharedTCPAddr(t *testing.T) {
 		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888/ws"),
 	)
 	require.NoError(t, err)
+	defer h.Close()
 	sawTCP := false
 	sawWS := false
 	for _, addr := range h.Addrs() {
@@ -773,5 +775,12 @@ func TestSharedTCPAddr(t *testing.T) {
 	}
 	require.True(t, sawTCP)
 	require.True(t, sawWS)
-	h.Close()
+
+	_, err = New(
+		ShareTCPListener(),
+		Transport(tcp.NewTCPTransport),
+		Transport(websocket.New),
+		PrivateNetwork(pnet.PSK([]byte{1, 2, 3})),
+	)
+	require.ErrorContains(t, err, "cannot use shared TCP listener with PSK")
 }
