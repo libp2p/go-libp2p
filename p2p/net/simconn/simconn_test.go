@@ -253,7 +253,7 @@ func TestSimConnDeadlinesWithLatency(t *testing.T) {
 
 func TestSimpleHolePunch(t *testing.T) {
 	router := &SimpleFirewallRouter{
-		nodes: make(map[net.Addr]*simpleNodeFirewall),
+		nodes: make(map[string]*simpleNodeFirewall),
 	}
 
 	// Create two peers
