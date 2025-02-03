@@ -512,7 +512,7 @@ func MultiaddrResolver(rslv network.MultiaddrDNSResolver) Option {
 //
 //  1. On receiving an inbound Relay connection, it attempts to create a direct connection with the remote peer
 //     by initiating and co-ordinating a hole punch over the Relayed connection.
-//  2. If a peer sees a request to co-ordinate a hole punch on an outbound Relay connection,
+//  2. If a peer sees a request to coordinate a hole punch on an outbound Relay connection,
 //     it will participate in the hole-punch to create a direct connection with the remote peer.
 //
 // If the hole punch is successful, all new streams will thereafter be created on the hole-punched connection.
@@ -523,7 +523,7 @@ func MultiaddrResolver(rslv network.MultiaddrDNSResolver) Option {
 //
 // It is not mandatory but nice to also enable the `AutoRelay` option (See `EnableAutoRelay`)
 // so the peer can discover and connect to Relay servers  if it discovers that it is NATT'd and has private reachability via AutoNAT.
-// This will then enable it to advertise Relay addresses which can be used to accept inbound Relay connections to then co-ordinate
+// This will then enable it to advertise Relay addresses which can be used to accept inbound Relay connections to then coordinate
 // a hole punch.
 //
 // If `EnableAutoRelay` is configured and the user is confident that the peer has private reachability/is NATT'd,
