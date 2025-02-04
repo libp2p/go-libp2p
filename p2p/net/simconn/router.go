@@ -126,6 +126,9 @@ func (r *SimpleFirewallRouter) AddNode(addr net.Addr, conn *SimConn) {
 }
 
 func (r *SimpleFirewallRouter) AddPublicNode(addr net.Addr, conn *SimConn) {
+	if r.nodes == nil {
+		r.nodes = make(map[string]*simpleNodeFirewall)
+	}
 	r.nodes[addr.String()] = &simpleNodeFirewall{
 		public: true,
 		node:   conn,
