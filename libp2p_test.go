@@ -784,3 +784,31 @@ func TestSharedTCPAddr(t *testing.T) {
 	)
 	require.ErrorContains(t, err, "cannot use shared TCP listener with PSK")
 }
+
+func TestCustomTCPDialer(t *testing.T) {
+	expectedErr := errors.New("custom dialer called, but not implemented")
+	customDialer := func(raddr ma.Multiaddr) (tcp.ContextDialer, error) {
+		// Normally a user would implement this by returning a custom dialer
+		// Here, we just test that this is called.
+		return nil, expectedErr
+	}
+
+	h, err := New(
+		Transport(tcp.NewTCPTransport, tcp.WithDialerForAddr(customDialer)),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+
+	var randID peer.ID
+	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
+	require.NoError(t, err)
+	randID, err = peer.IDFromPrivateKey(priv)
+	require.NoError(t, err)
+
+	err = h.Connect(context.Background(), peer.AddrInfo{
+		ID: randID,
+		// This won't actually be dialed since we return an error above
+		Addrs: []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/4")},
+	})
+	require.ErrorContains(t, err, expectedErr.Error())
+}
