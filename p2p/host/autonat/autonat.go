@@ -2,7 +2,6 @@ package autonat
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"slices"
 	"sync/atomic"

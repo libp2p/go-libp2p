@@ -60,7 +60,7 @@ func NewAutoRelay(bhost *basic.BasicHost, opts ...Option) (*AutoRelay, error) {
 		r.mx.Lock()
 		defer r.mx.Unlock()
 
-		if r.status != network.ReachabilityPrivate {
+		if r.status == network.ReachabilityPublic {
 			return addrs
 		}
 		return r.relayFinder.relayAddrs(addrs)
