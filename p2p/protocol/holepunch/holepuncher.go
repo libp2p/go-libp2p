@@ -91,6 +91,7 @@ func (hp *holePuncher) beginDirectConnect(p peer.ID) error {
 // It first attempts a direct dial (if we have a public address of that peer), and then
 // coordinates a hole punch over the given relay connection.
 func (hp *holePuncher) DirectConnect(p peer.ID) error {
+	log.Debugw("beginDirectConnect", "host", hp.host.ID(), "peer", p)
 	if err := hp.beginDirectConnect(p); err != nil {
 		return err
 	}
@@ -107,14 +108,17 @@ func (hp *holePuncher) DirectConnect(p peer.ID) error {
 func (hp *holePuncher) directConnect(rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
 	if getDirectConnection(hp.host, rp) != nil {
+		log.Debugw("already connected", "host", hp.host.ID(), "peer", rp)
 		return nil
 	}
+
+	log.Debugw("attempting direct dial", "host", hp.host.ID(), "peer", rp, "addrs", hp.host.Peerstore().Addrs(rp))
 	// short-circuit hole punching if a direct dial works.
 	// attempt a direct connection ONLY if we have a public address for the remote peer
 	for _, a := range hp.host.Peerstore().Addrs(rp) {
 		if !isRelayAddress(a) && manet.IsPublicAddr(a) {
 			forceDirectConnCtx := network.WithForceDirectDial(hp.ctx, "hole-punching")
-			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
+			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, 100*time.Millisecond)
 
 			tstart := time.Now()
 			// This dials *all* addresses, public and private, from the peerstore.
@@ -185,6 +189,7 @@ func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multi
 		return nil, nil, 0, fmt.Errorf("failed to open hole-punching stream: %w", err)
 	}
 	defer str.Close()
+	log.Debugf("initiateHolePunch: %s, %s", str.Conn().RemotePeer(), str.Conn().RemoteMultiaddr())
 
 	addr, obsAddr, rtt, err := hp.initiateHolePunchImpl(str)
 	if err != nil {
