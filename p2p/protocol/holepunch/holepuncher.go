@@ -20,10 +20,7 @@ import (
 // ErrHolePunchActive is returned from DirectConnect when another hole punching attempt is currently running
 var ErrHolePunchActive = errors.New("another hole punching attempt to this peer is active")
 
-const (
-	dialTimeout = 5 * time.Second
-	maxRetries  = 3
-)
+const maxRetries = 3
 
 // The holePuncher is run on the peer that's behind a NAT / Firewall.
 // It observes new incoming connections via a relay that it has a reservation with,
@@ -39,6 +36,8 @@ type holePuncher struct {
 
 	ids         identify.IDService
 	listenAddrs func() []ma.Multiaddr
+
+	directDialTimeout time.Duration
 
 	// active hole punches for deduplicating
 	activeMx sync.Mutex
@@ -118,7 +117,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	for _, a := range hp.host.Peerstore().Addrs(rp) {
 		if !isRelayAddress(a) && manet.IsPublicAddr(a) {
 			forceDirectConnCtx := network.WithForceDirectDial(hp.ctx, "hole-punching")
-			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, 100*time.Millisecond)
+			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, hp.directDialTimeout)
 
 			tstart := time.Now()
 			// This dials *all* addresses, public and private, from the peerstore.
@@ -159,7 +158,9 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			}
 			hp.tracer.StartHolePunch(rp, addrs, rtt)
 			hp.tracer.HolePunchAttempt(pi.ID)
-			err := holePunchConnect(hp.ctx, hp.host, pi, false)
+			ctx, cancel := context.WithTimeout(hp.ctx, hp.directDialTimeout)
+			err := holePunchConnect(ctx, hp.host, pi, false)
+			cancel()
 			dt := time.Since(start)
 			hp.tracer.EndHolePunch(rp, dt, err)
 			if err == nil {

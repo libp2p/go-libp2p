@@ -19,6 +19,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+const defaultDirectDialTimeout = 5 * time.Second
+
 // Protocol is the libp2p protocol for Hole Punching.
 const Protocol protocol.ID = "/libp2p/dcutr"
 
@@ -38,6 +40,13 @@ var ErrClosed = errors.New("hole punching service closing")
 
 type Option func(*Service) error
 
+func DirectDialTimeout(timeout time.Duration) Option {
+	return func(s *Service) error {
+		s.directDialTimeout = timeout
+		return nil
+	}
+}
+
 // The Service runs on every node that supports the DCUtR protocol.
 type Service struct {
 	ctx       context.Context
@@ -52,8 +61,9 @@ type Service struct {
 	// publicly reachable relay addresses.
 	listenAddrs func() []ma.Multiaddr
 
-	holePuncherMx sync.Mutex
-	holePuncher   *holePuncher
+	directDialTimeout time.Duration
+	holePuncherMx     sync.Mutex
+	holePuncher       *holePuncher
 
 	hasPublicAddrsChan chan struct{}
 
@@ -83,6 +93,7 @@ func NewService(h host.Host, ids identify.IDService, listenAddrs func() []ma.Mul
 		ids:                ids,
 		listenAddrs:        listenAddrs,
 		hasPublicAddrsChan: make(chan struct{}),
+		directDialTimeout:  defaultDirectDialTimeout,
 	}
 
 	for _, opt := range opts {
@@ -137,6 +148,7 @@ func (s *Service) waitForPublicAddr() {
 		return
 	}
 	s.holePuncher = newHolePuncher(s.host, s.ids, s.listenAddrs, s.tracer, s.filter)
+	s.holePuncher.directDialTimeout = s.directDialTimeout
 	s.holePuncherMx.Unlock()
 	close(s.hasPublicAddrsChan)
 }
@@ -258,7 +270,9 @@ func (s *Service) handleNewStream(str network.Stream) {
 	log.Debugw("starting hole punch", "peer", rp)
 	start := time.Now()
 	s.tracer.HolePunchAttempt(pi.ID)
-	err = holePunchConnect(s.ctx, s.host, pi, true)
+	ctx, cancel := context.WithTimeout(s.ctx, s.directDialTimeout)
+	err = holePunchConnect(ctx, s.host, pi, true)
+	cancel()
 	dt := time.Since(start)
 	s.tracer.EndHolePunch(rp, dt, err)
 	s.tracer.HolePunchFinished("receiver", 1, addrs, ownAddrs, getDirectConnection(s.host, rp))
