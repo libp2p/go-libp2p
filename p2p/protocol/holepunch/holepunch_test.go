@@ -157,6 +157,7 @@ func learnAddrs(h1, h2 host.Host) {
 }
 
 func pingAtoB(t *testing.T, a, b host.Host) {
+	t.Helper()
 	p1 := ping.NewPingService(a)
 	require.NoError(t, a.Connect(context.Background(), peer.AddrInfo{
 		ID:    b.ID(),
@@ -170,6 +171,7 @@ func pingAtoB(t *testing.T, a, b host.Host) {
 }
 
 func MustNewHost(t *testing.T, opts ...libp2p.Option) host.Host {
+	t.Helper()
 	h, err := libp2p.New(opts...)
 	require.NoError(t, err)
 	return h
@@ -193,14 +195,13 @@ func TestEndToEndSimConnect(t *testing.T) {
 	)
 	h1 := MustNewHost(t,
 		quicSimConn(false, router),
-		libp2p.ForceReachabilityPrivate(),
 		libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
 		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
 		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
+
 	h2 := MustNewHost(t,
 		quicSimConn(false, router),
-		libp2p.ForceReachabilityPrivate(),
 		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
 		libp2p.ResourceManager(&network.NullResourceManager{}),
 		connectToRelay(&relay),
