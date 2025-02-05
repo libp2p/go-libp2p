@@ -82,12 +82,12 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey)
 		cm.reuseUDP4.overrideListenUDP = cm.overrideListenUDP
 		if cm.overrideSourceIPSelectorFn != nil {
-			cm.reuseUDP4.overrideSourceIPSelectorFn = cm.overrideSourceIPSelectorFn
+			cm.reuseUDP4.sourceIPSelectorFn = cm.overrideSourceIPSelectorFn
 		}
 
 		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey)
 		if cm.overrideSourceIPSelectorFn != nil {
-			cm.reuseUDP6.overrideSourceIPSelectorFn = cm.overrideSourceIPSelectorFn
+			cm.reuseUDP6.sourceIPSelectorFn = cm.overrideSourceIPSelectorFn
 		}
 		cm.reuseUDP6.overrideListenUDP = cm.overrideListenUDP
 	}
