@@ -223,6 +223,7 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	if len(obsAddrs) == 0 {
 		return nil, nil, 0, errors.New("aborting hole punch initiation as we have no public address")
 	}
+	log.Debugf("initiating hole punch with %s", obsAddrs)
 
 	start := time.Now()
 	if err := w.WriteMsg(&pb.HolePunch{
