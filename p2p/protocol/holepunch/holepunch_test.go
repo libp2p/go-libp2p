@@ -238,76 +238,81 @@ func MustNewHost(t *testing.T, opts ...libp2p.Option) host.Host {
 }
 
 func TestEndToEndSimConnect(t *testing.T) {
-	h1tr := &mockEventTracer{}
-	h2tr := &mockEventTracer{}
+	for _, useLegacyHolePunchingBehavior := range []bool{true, false} {
+		t.Run(fmt.Sprintf("legacy=%t", useLegacyHolePunchingBehavior), func(t *testing.T) {
+			h1tr := &mockEventTracer{}
+			h2tr := &mockEventTracer{}
 
-	router := &simconn.SimpleFirewallRouter{}
-	relay := MustNewHost(t,
-		quicSimConn(true, router),
-		libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
-		libp2p.DisableRelay(),
-		libp2p.ResourceManager(&network.NullResourceManager{}),
-		libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
-			// Setup relay service
-			_, err := relayv2.New(h)
-			require.NoError(t, err)
-		})),
-	)
-	h1 := MustNewHost(t,
-		quicSimConn(false, router),
-		libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
-		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
-		libp2p.ResourceManager(&network.NullResourceManager{}),
-	)
+			router := &simconn.SimpleFirewallRouter{}
+			relay := MustNewHost(t,
+				quicSimConn(true, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
+				libp2p.DisableRelay(),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
+					// Setup relay service
+					_, err := relayv2.New(h)
+					require.NoError(t, err)
+				})),
+			)
 
-	h2 := MustNewHost(t,
-		quicSimConn(false, router),
-		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
-		libp2p.ResourceManager(&network.NullResourceManager{}),
-		connectToRelay(&relay),
-		libp2p.EnableHolePunching(holepunch.WithTracer(h2tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
-	)
+			h1 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+			)
 
-	defer h1.Close()
-	defer h2.Close()
-	defer relay.Close()
+			h2 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				connectToRelay(&relay),
+				libp2p.EnableHolePunching(holepunch.WithTracer(h2tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
+			)
 
-	// Wait for holepunch service to start
-	waitForHolePunchingSvcActive(t, h1)
-	waitForHolePunchingSvcActive(t, h2)
+			defer h1.Close()
+			defer h2.Close()
+			defer relay.Close()
 
-	learnAddrs(h1, h2)
-	pingAtoB(t, h1, h2)
+			// Wait for holepunch service to start
+			waitForHolePunchingSvcActive(t, h1)
+			waitForHolePunchingSvcActive(t, h2)
 
-	// wait till a direct connection is complete
-	ensureDirectConn(t, h1, h2)
-	// ensure no hole-punching streams are open on either side
-	ensureNoHolePunchingStream(t, h1, h2)
-	var h2Events []*holepunch.Event
-	require.Eventually(t,
-		func() bool {
-			h2Events = h2tr.getEvents()
-			return len(h2Events) == 4
-		},
-		time.Second,
-		100*time.Millisecond,
-	)
-	require.Equal(t, holepunch.DirectDialEvtT, h2Events[0].Type)
-	require.Equal(t, holepunch.StartHolePunchEvtT, h2Events[1].Type)
-	require.Equal(t, holepunch.HolePunchAttemptEvtT, h2Events[2].Type)
-	require.Equal(t, holepunch.EndHolePunchEvtT, h2Events[3].Type)
+			learnAddrs(h1, h2)
+			pingAtoB(t, h1, h2)
 
-	h1Events := h1tr.getEvents()
-	// We don't really expect a hole-punched connection to be established in this test,
-	// as we probably don't get the timing right for the TCP simultaneous open.
-	// From time to time, it still happens occasionally, and then we get a EndHolePunchEvtT here.
-	if len(h1Events) != 2 && len(h1Events) != 3 {
-		t.Fatal("expected either 2 or 3 events")
-	}
-	require.Equal(t, holepunch.StartHolePunchEvtT, h1Events[0].Type)
-	require.Equal(t, holepunch.HolePunchAttemptEvtT, h1Events[1].Type)
-	if len(h1Events) == 3 {
-		require.Equal(t, holepunch.EndHolePunchEvtT, h1Events[2].Type)
+			// wait till a direct connection is complete
+			ensureDirectConn(t, h1, h2)
+			// ensure no hole-punching streams are open on either side
+			ensureNoHolePunchingStream(t, h1, h2)
+			var h2Events []*holepunch.Event
+			require.Eventually(t,
+				func() bool {
+					h2Events = h2tr.getEvents()
+					return len(h2Events) == 4
+				},
+				time.Second,
+				100*time.Millisecond,
+			)
+			require.Equal(t, holepunch.DirectDialEvtT, h2Events[0].Type)
+			require.Equal(t, holepunch.StartHolePunchEvtT, h2Events[1].Type)
+			require.Equal(t, holepunch.HolePunchAttemptEvtT, h2Events[2].Type)
+			require.Equal(t, holepunch.EndHolePunchEvtT, h2Events[3].Type)
+
+			h1Events := h1tr.getEvents()
+			// We don't really expect a hole-punched connection to be established in this test,
+			// as we probably don't get the timing right for the TCP simultaneous open.
+			// From time to time, it still happens occasionally, and then we get a EndHolePunchEvtT here.
+			if len(h1Events) != 2 && len(h1Events) != 3 {
+				t.Fatal("expected either 2 or 3 events")
+			}
+			require.Equal(t, holepunch.StartHolePunchEvtT, h1Events[0].Type)
+			require.Equal(t, holepunch.HolePunchAttemptEvtT, h1Events[1].Type)
+			if len(h1Events) == 3 {
+				require.Equal(t, holepunch.EndHolePunchEvtT, h1Events[2].Type)
+			}
+		})
 	}
 }
 
@@ -664,4 +669,18 @@ func waitForHolePunchingSvcActive(t *testing.T, h host.Host) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Contains(c, h.Mux().Protocols(), holepunch.Protocol)
 	}, time.Second, 100*time.Millisecond)
+}
+
+// setLegacyBehavior is an option that controls the isClient behavior of the hole punching service.
+// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
+// pick the opposite roles for client/server a hole punch. Setting this to
+// true preserves that behavior.
+//
+// Currently, only exposed for testing purposes.
+// Do not set this unless you know what you are doing.
+func SetLegacyBehavior(legacyBehavior bool) holepunch.Option {
+	return func(s *holepunch.Service) error {
+		s.SetLegacyBehavior(legacyBehavior)
+		return nil
+	}
 }

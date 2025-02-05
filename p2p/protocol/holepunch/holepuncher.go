@@ -63,6 +63,8 @@ func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma
 		tracer:      tracer,
 		filter:      filter,
 		listenAddrs: listenAddrs,
+
+		legacyBehavior: true,
 	}
 	hp.ctx, hp.ctxCancel = context.WithCancel(context.Background())
 	h.Network().Notify((*netNotifiee)(hp))
@@ -159,7 +161,11 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			hp.tracer.StartHolePunch(rp, addrs, rtt)
 			hp.tracer.HolePunchAttempt(pi.ID)
 			ctx, cancel := context.WithTimeout(hp.ctx, hp.directDialTimeout)
-			err := holePunchConnect(ctx, hp.host, pi, false)
+			isClient := true
+			if hp.legacyBehavior {
+				isClient = false
+			}
+			err := holePunchConnect(ctx, hp.host, pi, isClient)
 			cancel()
 			dt := time.Since(start)
 			hp.tracer.EndHolePunch(rp, dt, err)
