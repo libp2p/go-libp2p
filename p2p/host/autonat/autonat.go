@@ -97,9 +97,9 @@ func New(h host.Host, options ...Option) (AutoNAT, error) {
 		service.Enable()
 	}
 
-	// Emit initial reachability event
-	_ = emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: conf.reachability})
 	if conf.forceReachability {
+		emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: conf.reachability})
+
 		return &StaticAutoNAT{
 			host:         h,
 			reachability: conf.reachability,
