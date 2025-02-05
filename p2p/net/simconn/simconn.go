@@ -10,10 +10,6 @@ import (
 
 var ErrDeadlineExceeded = errors.New("deadline exceeded")
 
-type sendPacketer interface {
-	SendPacket(p Packet)
-}
-
 type Router interface {
 	SendPacket(deadline time.Time, p Packet) error
 }
@@ -27,8 +23,6 @@ type Packet struct {
 type SimConn struct {
 	mu     sync.Mutex
 	closed bool
-
-	mtu int
 
 	packetsSent atomic.Uint64
 	packetsRcvd atomic.Uint64
