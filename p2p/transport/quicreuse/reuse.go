@@ -170,7 +170,7 @@ type reuse struct {
 
 	overrideListenUDP listenUDP
 
-	overrideSourceIPSelectorFn func() (SourceIPSelector, error)
+	sourceIPSelectorFn func() (SourceIPSelector, error)
 
 	routes  SourceIPSelector
 	unicast map[string] /* IP.String() */ map[int] /* port */ *refcountedTransport
@@ -192,7 +192,7 @@ func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey) *re
 		globalDialers:   make(map[int]*refcountedTransport),
 		closeChan:       make(chan struct{}),
 		gcStopChan:      make(chan struct{}),
-		overrideSourceIPSelectorFn: func() (SourceIPSelector, error) {
+		sourceIPSelectorFn: func() (SourceIPSelector, error) {
 			r, err := netroute.New()
 			return &netrouteSourceIPSelector{routes: r}, err
 		},
@@ -258,7 +258,7 @@ func (r *reuse) gc() {
 					} else {
 						// Ignore the error, there's nothing we can do about
 						// it.
-						r.routes, _ = r.overrideSourceIPSelectorFn()
+						r.routes, _ = r.sourceIPSelectorFn()
 					}
 				}
 			}
@@ -438,7 +438,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		r.unicast[localAddr.IP.String()] = make(map[int]*refcountedTransport)
 		// Assume the system's routes may have changed if we're adding a new listener.
 		// Ignore the error, there's nothing we can do.
-		r.routes, _ = r.overrideSourceIPSelectorFn()
+		r.routes, _ = r.sourceIPSelectorFn()
 	}
 
 	// The kernel already checked that the laddr is not already listen
