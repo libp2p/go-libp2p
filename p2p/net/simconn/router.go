@@ -78,10 +78,13 @@ func (f *simpleNodeFirewall) String() string {
 }
 
 type SimpleFirewallRouter struct {
+	mu    sync.Mutex
 	nodes map[string]*simpleNodeFirewall
 }
 
 func (r *SimpleFirewallRouter) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	nodes := make([]string, 0, len(r.nodes))
 	for _, node := range r.nodes {
 		nodes = append(nodes, node.String())
@@ -90,6 +93,8 @@ func (r *SimpleFirewallRouter) String() string {
 }
 
 func (r *SimpleFirewallRouter) SendPacket(deadline time.Time, p Packet) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	toNode, exists := r.nodes[p.To.String()]
 	if !exists {
 		return errors.New("unknown destination")
@@ -116,6 +121,8 @@ func (r *SimpleFirewallRouter) SendPacket(deadline time.Time, p Packet) error {
 }
 
 func (r *SimpleFirewallRouter) AddNode(addr net.Addr, conn *SimConn) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.nodes == nil {
 		r.nodes = make(map[string]*simpleNodeFirewall)
 	}
@@ -126,6 +133,8 @@ func (r *SimpleFirewallRouter) AddNode(addr net.Addr, conn *SimConn) {
 }
 
 func (r *SimpleFirewallRouter) AddPublicNode(addr net.Addr, conn *SimConn) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.nodes == nil {
 		r.nodes = make(map[string]*simpleNodeFirewall)
 	}
@@ -136,6 +145,8 @@ func (r *SimpleFirewallRouter) AddPublicNode(addr net.Addr, conn *SimConn) {
 }
 
 func (r *SimpleFirewallRouter) RemoveNode(addr net.Addr) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.nodes == nil {
 		return
 	}
