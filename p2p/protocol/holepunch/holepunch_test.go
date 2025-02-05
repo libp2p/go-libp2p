@@ -166,6 +166,7 @@ func TestDirectDialWorks(t *testing.T) {
 		libp2p.ResourceManager(&network.NullResourceManager{}),
 		connectToRelay(&relay),
 		libp2p.EnableHolePunching(holepunch.WithTracer(tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
+		libp2p.ForceReachabilityPrivate(),
 	)
 
 	defer h1.Close()
@@ -261,6 +262,7 @@ func TestEndToEndSimConnect(t *testing.T) {
 				libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
 				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
 				libp2p.ResourceManager(&network.NullResourceManager{}),
+				libp2p.ForceReachabilityPrivate(),
 			)
 
 			h2 := MustNewHost(t,
@@ -269,6 +271,7 @@ func TestEndToEndSimConnect(t *testing.T) {
 				libp2p.ResourceManager(&network.NullResourceManager{}),
 				connectToRelay(&relay),
 				libp2p.EnableHolePunching(holepunch.WithTracer(h2tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
+				libp2p.ForceReachabilityPrivate(),
 			)
 
 			defer h1.Close()
@@ -525,19 +528,19 @@ func TestFailuresOnResponder(t *testing.T) {
 			)
 			h1 := MustNewHost(t,
 				quicSimConn(false, router),
-				// libp2p.ForceReachabilityPrivate(),
 				libp2p.EnableHolePunching(opts...),
 				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
 				libp2p.ResourceManager(&network.NullResourceManager{}),
 				connectToRelay(&relay),
+				libp2p.ForceReachabilityPrivate(),
 			)
 
 			h2 := MustNewHost(t,
 				quicSimConn(false, router),
-				// libp2p.ForceReachabilityPrivate(),
 				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
 				libp2p.ResourceManager(&network.NullResourceManager{}),
 				connectToRelay(&relay),
+				libp2p.ForceReachabilityPrivate(),
 			)
 
 			defer h1.Close()
