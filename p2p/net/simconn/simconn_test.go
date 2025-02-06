@@ -228,6 +228,7 @@ func TestSimConnDeadlinesWithLatency(t *testing.T) {
 	})
 
 	t.Run("read fails after deadline", func(t *testing.T) {
+		defer reset()
 		// Set a short deadline
 		deadline := time.Now().Add(50 * time.Millisecond) // Less than router latency
 		err := conn2.SetReadDeadline(deadline)
@@ -239,7 +240,7 @@ func TestSimConnDeadlinesWithLatency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			// Send data after setting deadline
-			_, err = conn1.WriteTo([]byte("test"), addr2)
+			_, err := conn1.WriteTo([]byte("test"), addr2)
 			require.NoError(t, err)
 		}()
 
@@ -247,7 +248,6 @@ func TestSimConnDeadlinesWithLatency(t *testing.T) {
 		buf := make([]byte, 1024)
 		_, _, err = conn2.ReadFrom(buf)
 		require.ErrorIs(t, err, ErrDeadlineExceeded)
-		reset()
 	})
 }
 
