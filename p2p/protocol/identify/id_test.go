@@ -104,7 +104,7 @@ func emitAddrChangeEvt(t *testing.T, h host.Host) {
 	}
 }
 
-// TestIDServiceWait gives the ID service 1s to finish after dialing
+// TestIDService gives the ID service 1s to finish after dialing
 // this is because it used to be concurrent. Now, Dial wait till the
 // id service is done.
 func TestIDService(t *testing.T) {
