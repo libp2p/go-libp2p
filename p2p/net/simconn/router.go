@@ -11,11 +11,14 @@ import (
 // PerfectRouter is a router that has no latency or jitter and can route to
 // every node
 type PerfectRouter struct {
+	mu    sync.Mutex
 	nodes map[net.Addr]*SimConn
 }
 
 // SendPacket implements Router.
 func (r *PerfectRouter) SendPacket(deadline time.Time, p Packet) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	conn, ok := r.nodes[p.To]
 	if !ok {
 		return errors.New("unknown destination")
