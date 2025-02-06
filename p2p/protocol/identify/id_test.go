@@ -44,9 +44,8 @@ func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiadd
 
 func testHasAgentVersion(t *testing.T, h host.Host, p peer.ID) {
 	v, err := h.Peerstore().Get(p, "AgentVersion")
-	if v.(string) != "github.com/libp2p/go-libp2p" { // this is the default user agent
-		t.Error("agent version mismatch", err)
-	}
+	require.NoError(t, err, "fetching agent version")
+	require.Equal(t, "github.com/libp2p/go-libp2p", v, "agent version")
 }
 
 func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) {
