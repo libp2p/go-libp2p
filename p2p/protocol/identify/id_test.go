@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	useragent "github.com/libp2p/go-libp2p/p2p/protocol/identify/internal/user-agent"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	mockClock "github.com/benbjohnson/clock"
@@ -45,7 +46,7 @@ func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiadd
 func testHasAgentVersion(t *testing.T, h host.Host, p peer.ID) {
 	v, err := h.Peerstore().Get(p, "AgentVersion")
 	require.NoError(t, err, "fetching agent version")
-	require.Equal(t, "github.com/libp2p/go-libp2p", v, "agent version")
+	require.Equal(t, useragent.DefaultUserAgent(), v, "agent version")
 }
 
 func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) {
