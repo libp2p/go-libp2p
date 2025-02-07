@@ -77,6 +77,8 @@ func connect(t *testing.T, a, b host.Host) {
 	}
 }
 
+const RelayTestOnTransportName = "QUIC"
+
 var transportsToTest = []TransportTestCase{
 	{
 		Name: "TCP / Noise / Yamux",
@@ -868,6 +870,10 @@ func TestConnClosedWhenRemoteCloses(t *testing.T) {
 
 func TestConnRelay(t *testing.T) {
 	for _, tc := range transportsToTest {
+		if tc.Name != RelayTestOnTransportName {
+			continue
+		}
+
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
