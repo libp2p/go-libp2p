@@ -31,8 +31,9 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	libp2pmemory "github.com/libp2p/go-libp2p/p2p/transport/memory"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+  "github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"go.uber.org/mock/gomock"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -156,21 +157,6 @@ var transportsToTest = []TransportTestCase{
 		Name: "WebSocket-Shared",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
-			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
-			if opts.NoListen {
-				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
-			} else {
-				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/ws"))
-			}
-			h, err := libp2p.New(libp2pOpts...)
-			require.NoError(t, err)
-			return h
-		},
-	},
-	{
-		Name: "WebSocket",
-		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
-			libp2pOpts := transformOpts(opts)
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
@@ -218,6 +204,21 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "Memory",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pmemory.NewTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/memory/1234"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
