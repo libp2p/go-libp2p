@@ -8,6 +8,7 @@ import (
 	"net"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -21,7 +22,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
-	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
@@ -97,11 +97,13 @@ type BasicHost struct {
 
 	addrChangeChan chan struct{}
 
-	addrMu                 sync.RWMutex
+	addrMu                 sync.RWMutex // protects the following fields
 	updateLocalIPv4Backoff backoff.ExpBackoff
 	updateLocalIPv6Backoff backoff.ExpBackoff
 	filteredInterfaceAddrs []ma.Multiaddr
 	allInterfaceAddrs      []ma.Multiaddr
+
+	relayAddrs atomic.Value
 
 	disableSignedPeerRecord bool
 	signKey                 crypto.PrivKey
@@ -110,8 +112,6 @@ type BasicHost struct {
 	autoNat autonat.AutoNAT
 
 	autonatv2 *autonatv2.AutoNAT
-	addrSub   event.Subscription
-	autorelay *autorelay.AutoRelay
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -173,9 +173,6 @@ type HostOpts struct {
 	DisableIdentifyAddressDiscovery bool
 	EnableAutoNATv2                 bool
 	AutoNATv2Dialer                 host.Host
-
-	EnableAutoRelay bool
-	AutoRelayOpts   []autorelay.Option
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -192,10 +189,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		return nil, err
 	}
 
-	addrSub, err := opts.EventBus.Subscribe(new(event.EvtAutoRelayAddrs))
-	if err != nil {
-		return nil, err
-	}
 	hostCtx, cancel := context.WithCancel(context.Background())
 	h := &BasicHost{
 		network:                 n,
@@ -208,9 +201,8 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
-		addrSub:                 addrSub,
 	}
-
+	h.relayAddrs.Store([]ma.Multiaddr{})
 	h.updateLocalIpAddr()
 
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}, eventbus.Stateful); err != nil {
@@ -340,21 +332,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		}
 	}
 
-	if opts.EnableAutoRelay {
-		if opts.EnableMetrics {
-			mt := autorelay.WithMetricsTracer(
-				autorelay.NewMetricsTracer(autorelay.WithRegisterer(opts.PrometheusRegisterer)))
-			mtOpts := []autorelay.Option{mt}
-			opts.AutoRelayOpts = append(mtOpts, opts.AutoRelayOpts...)
-		}
-
-		ar, err := autorelay.NewAutoRelay(h, opts.AutoRelayOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create autorelay: %w", err)
-		}
-		h.autorelay = ar
-	}
-
 	n.SetStreamHandler(h.newStreamHandler)
 
 	// register to be notified when the network's listen addrs change,
@@ -457,9 +434,6 @@ func (h *BasicHost) Start() {
 	h.psManager.Start()
 	h.refCount.Add(1)
 	h.ids.Start()
-	if h.autorelay != nil {
-		h.autorelay.Start()
-	}
 	if h.autonatv2 != nil {
 		err := h.autonatv2.Start()
 		if err != nil {
@@ -625,6 +599,13 @@ func (h *BasicHost) background() {
 		}
 	}
 
+	addrSub, err := h.EventBus().Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("basic host address loop"))
+	if err != nil {
+		log.Errorf("failed to subscribe to the EvtAutoRelayAddrs: %s", err)
+		return
+	}
+	defer addrSub.Close()
+
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
 	ticker := time.NewTicker(addrChangeTickrInterval)
@@ -642,7 +623,12 @@ func (h *BasicHost) background() {
 		select {
 		case <-ticker.C:
 		case <-h.addrChangeChan:
-		case <-h.addrSub.Out():
+		case e := <-addrSub.Out():
+			if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
+				h.relayAddrs.Store(slices.Clone(evt.RelayAddrs))
+			} else {
+				log.Errorf("received unexpected event: %T %v", e, e)
+			}
 		case <-h.ctx.Done():
 			return
 		}
@@ -874,9 +860,13 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 func (h *BasicHost) Addrs() []ma.Multiaddr {
 	addrs := h.AllAddrs()
 	// Make a copy. Consumers can modify the slice elements
-	if h.autoNat != nil && h.autorelay != nil && h.autoNat.Status() == network.ReachabilityPrivate {
-		addrs = slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return manet.IsPublicAddr(a) })
-		addrs = append(addrs, h.autorelay.RelayAddrs()...)
+	if h.GetAutoNat() != nil && h.GetAutoNat().Status() == network.ReachabilityPrivate {
+		relayAddrs := h.relayAddrs.Load().([]ma.Multiaddr)
+		// Only remove public addresses if we have relay addresses.
+		if len(relayAddrs) > 0 {
+			addrs = slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return manet.IsPublicAddr(a) })
+			addrs = append(addrs, relayAddrs...)
+		}
 	}
 	addrs = slices.Clone(h.AddrsFactory(addrs))
 	// Add certhashes for the addresses provided by the user via address factory.
@@ -1142,9 +1132,6 @@ func (h *BasicHost) Close() error {
 		if h.autonatv2 != nil {
 			h.autonatv2.Close()
 		}
-		if h.autorelay != nil {
-			h.autorelay.Close()
-		}
 
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 		_ = h.emitters.evtLocalAddrsUpdated.Close()
@@ -1159,8 +1146,6 @@ func (h *BasicHost) Close() error {
 		}
 
 		h.refCount.Wait()
-
-		_ = h.addrSub.Close()
 
 		if h.Network().ResourceManager() != nil {
 			h.Network().ResourceManager().Close()

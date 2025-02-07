@@ -10,7 +10,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	ma "github.com/multiformats/go-multiaddr"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -54,10 +53,6 @@ func NewAutoRelay(host host.Host, opts ...Option) (*AutoRelay, error) {
 	return r, nil
 }
 
-func (r *AutoRelay) RelayAddrs() []ma.Multiaddr {
-	return r.relayFinder.RelayAddrs()
-}
-
 func (r *AutoRelay) Start() {
 	r.refCount.Add(1)
 	go func() {
@@ -82,7 +77,6 @@ func (r *AutoRelay) background() {
 			if !ok {
 				return
 			}
-			// TODO: push changed addresses
 			evt := ev.(event.EvtLocalReachabilityChanged)
 			switch evt.Reachability {
 			case network.ReachabilityPrivate, network.ReachabilityUnknown:

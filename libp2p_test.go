@@ -466,7 +466,6 @@ func TestDialCircuitAddrWithWrappedResourceManager(t *testing.T) {
 		),
 		peerstore.TempAddrTTL,
 	)
-	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
