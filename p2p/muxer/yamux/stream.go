@@ -7,7 +7,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 
-	"github.com/libp2p/go-yamux/v4"
+	"github.com/libp2p/go-yamux/v5"
 )
 
 // stream implements mux.MuxedStream over yamux.Stream.
