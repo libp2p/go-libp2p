@@ -22,14 +22,26 @@ import (
 
 //go:generate go run go.uber.org/mock/mockgen -package transport_integration -destination mock_connection_gater_test.go github.com/libp2p/go-libp2p/core/connmgr ConnectionGater
 
-func stripCertHash(addr ma.Multiaddr) ma.Multiaddr {
+// normalize removes the certhash and replaces /wss with /tls/ws
+func normalize(addr ma.Multiaddr) ma.Multiaddr {
 	for {
 		if _, err := addr.ValueForProtocol(ma.P_CERTHASH); err != nil {
 			break
 		}
 		addr, _ = ma.SplitLast(addr)
 	}
-	return addr
+
+	// replace /wss with /tls/ws
+	components := []ma.Multiaddr{}
+	ma.ForEach(addr, func(c ma.Component) bool {
+		if c.Protocol().Code == ma.P_WSS {
+			components = append(components, ma.StringCast("/tls/ws"))
+		} else {
+			components = append(components, &c)
+		}
+		return true
+	})
+	return ma.Join(components...)
 }
 
 func addrPort(addr ma.Multiaddr) netip.AddrPort {
@@ -119,8 +131,7 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 				connGater.EXPECT().InterceptPeerDial(h2.ID()).Return(true),
 				connGater.EXPECT().InterceptAddrDial(h2.ID(), gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptSecured(network.DirOutbound, h2.ID(), gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-					// remove the certhash component from WebTransport and WebRTC addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]).String(), addrs.RemoteMultiaddr().String())
+					require.Equal(t, normalize(h2.Addrs()[0]), normalize(addrs.RemoteMultiaddr()))
 				}),
 			)
 			err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
@@ -154,8 +165,7 @@ func TestInterceptUpgradedOutgoing(t *testing.T) {
 				connGater.EXPECT().InterceptAddrDial(h2.ID(), gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptSecured(network.DirOutbound, h2.ID(), gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptUpgraded(gomock.Any()).Do(func(c network.Conn) {
-					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), c.RemoteMultiaddr())
+					require.Equal(t, normalize(h2.Addrs()[0]), normalize(c.RemoteMultiaddr()))
 					require.Equal(t, h1.ID(), c.LocalPeer())
 					require.Equal(t, h2.ID(), c.RemotePeer())
 				}))
@@ -189,17 +199,15 @@ func TestInterceptAccept(t *testing.T) {
 				// In WebRTC, retransmissions of the STUN packet might cause us to create multiple connections,
 				// if the first connection attempt is rejected.
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
-					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+					require.Equal(t, normalize(h2.Addrs()[0]), normalize(addrs.LocalMultiaddr()))
 				}).AnyTimes()
-			} else if strings.Contains(tc.Name, "WebSocket-Shared") {
+			} else if strings.Contains(tc.Name, "WebSocket-Shared") || strings.Contains(tc.Name, "WebSocket-Secured-Shared") {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
 					require.Equal(t, addrPort(h2.Addrs()[0]), addrPort(addrs.LocalMultiaddr()))
 				})
 			} else {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
-					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr(), "%s\n%s", h2.Addrs()[0], addrs.LocalMultiaddr())
+					require.Equal(t, normalize(h2.Addrs()[0]), normalize(addrs.LocalMultiaddr()))
 				})
 			}
 
@@ -236,8 +244,7 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 			gomock.InOrder(
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptSecured(network.DirInbound, h1.ID(), gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+					require.Equal(t, normalize(h2.Addrs()[0]), normalize(addrs.LocalMultiaddr()))
 				}),
 			)
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
@@ -270,8 +277,7 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptSecured(network.DirInbound, h1.ID(), gomock.Any()).Return(true),
 				connGater.EXPECT().InterceptUpgraded(gomock.Any()).Do(func(c network.Conn) {
-					// remove the certhash component from WebTransport addresses
-					require.Equal(t, stripCertHash(h2.Addrs()[0]), c.LocalMultiaddr())
+					require.Equal(t, normalize(h2.Addrs()[0]), normalize(c.LocalMultiaddr()))
 					require.Equal(t, h1.ID(), c.RemotePeer())
 					require.Equal(t, h2.ID(), c.LocalPeer())
 				}),
