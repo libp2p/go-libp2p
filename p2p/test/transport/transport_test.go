@@ -48,7 +48,6 @@ type TransportTestCase struct {
 type TransportTestCaseOpts struct {
 	NoListen        bool
 	NoRcmgr         bool
-	EnabledRelay    bool
 	ConnGater       connmgr.ConnectionGater
 	ResourceManager network.ResourceManager
 }
@@ -91,9 +90,6 @@ var transportsToTest = []TransportTestCase{
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
 			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
-			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
 			return h
@@ -109,9 +105,6 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
-			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -130,9 +123,6 @@ var transportsToTest = []TransportTestCase{
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
 			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
-			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
 			return h
@@ -148,9 +138,6 @@ var transportsToTest = []TransportTestCase{
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/ws"))
 			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
-			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
 			return h
@@ -164,9 +151,6 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/ws"))
-			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -182,9 +166,6 @@ var transportsToTest = []TransportTestCase{
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
 			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
-			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
 			return h
@@ -198,9 +179,6 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
-			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -217,8 +195,19 @@ var transportsToTest = []TransportTestCase{
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
 			}
-			if opts.EnabledRelay {
-				libp2pOpts = append(libp2pOpts, libp2p.EnableRelay(), libp2p.EnableRelayService())
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "circuit-v2",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -870,10 +859,6 @@ func TestConnClosedWhenRemoteCloses(t *testing.T) {
 
 func TestConnRelay(t *testing.T) {
 	for _, tc := range transportsToTest {
-		if tc.Name != RelayTestOnTransportName {
-			continue
-		}
-
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -881,7 +866,7 @@ func TestConnRelay(t *testing.T) {
 			var hosts []host.Host
 			// Set host
 			for i := 0; i < 3; i++ {
-				h := tc.HostGenerator(t, TransportTestCaseOpts{EnabledRelay: true})
+				h := tc.HostGenerator(t, TransportTestCaseOpts{})
 				hosts = append(hosts, h)
 			}
 
