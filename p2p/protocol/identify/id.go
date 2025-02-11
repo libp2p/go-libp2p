@@ -445,10 +445,9 @@ func newStreamAndNegotiate(ctx context.Context, c network.Conn, proto protocol.I
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return nil, err
 	}
-	err = s.SetDeadline(time.Now().Add(Timeout))
-	if err != nil {
-		return nil, err
-	}
+
+	// Ignore the error. Consistent with our previous behavior. (See https://github.com/libp2p/go-libp2p/issues/3109)
+	_ = s.SetDeadline(time.Now().Add(Timeout))
 
 	if err := s.SetProtocol(proto); err != nil {
 		log.Warnf("error setting identify protocol for stream: %s", err)

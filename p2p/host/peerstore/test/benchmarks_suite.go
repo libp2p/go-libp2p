@@ -1,124 +1,79 @@
 package test
 
 import (
-	"context"
 	"fmt"
-	"sort"
 	"testing"
 
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 )
 
-var peerstoreBenchmarks = map[string]func(pstore.Peerstore, chan *peerpair) func(*testing.B){
-	"AddAddrs": benchmarkAddAddrs,
-	"SetAddrs": benchmarkSetAddrs,
-	"GetAddrs": benchmarkGetAddrs,
-	// The in-between get allows us to benchmark the read-through cache.
-	"AddGetAndClearAddrs": benchmarkAddGetAndClearAddrs,
-	// Calls PeersWithAddr on a peerstore with 1000 peers.
-	"Get1000PeersWithAddrs": benchmarkGet1000PeersWithAddrs,
-}
-
 func BenchmarkPeerstore(b *testing.B, factory PeerstoreFactory, variant string) {
-	// Parameterises benchmarks to tackle peers with 1, 10, 100 multiaddrs.
-	params := []struct {
-		n  int
-		ch chan *peerpair
-	}{
-		{1, make(chan *peerpair, 100)},
-		{10, make(chan *peerpair, 100)},
-		{100, make(chan *peerpair, 100)},
-	}
+	for _, sz := range []int{1, 10, 100} {
+		const N = 10000
+		peers := getPeerPairs(b, N, sz)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Start all test peer producing goroutines, where each produces peers with as many
-	// multiaddrs as the n field in the param struct.
-	for _, p := range params {
-		go AddressProducer(ctx, b, p.ch, p.n)
-	}
-
-	// So tests are always run in the same order.
-	ordernames := make([]string, 0, len(peerstoreBenchmarks))
-	for name := range peerstoreBenchmarks {
-		ordernames = append(ordernames, name)
-	}
-	sort.Strings(ordernames)
-
-	for _, name := range ordernames {
-		bench := peerstoreBenchmarks[name]
-		for _, p := range params {
-			// Create a new peerstore.
-			ps, closeFunc := factory()
-
-			// Run the test.
-			b.Run(fmt.Sprintf("%s-%dAddrs-%s", name, p.n, variant), bench(ps, p.ch))
-
-			// Cleanup.
-			if closeFunc != nil {
-				closeFunc()
+		b.Run(fmt.Sprintf("AddAddrs-%d", sz), func(b *testing.B) {
+			ps, cleanup := factory()
+			defer cleanup()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				pp := peers[i%N]
+				ps.AddAddrs(pp.ID, pp.Addr, pstore.RecentlyConnectedAddrTTL)
 			}
-		}
-	}
-}
+		})
 
-func benchmarkAddAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.B) {
-	return func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			pp := <-addrs
-			ps.AddAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
-		}
-	}
-}
+		b.Run(fmt.Sprintf("GetAddrs-%d", sz), func(b *testing.B) {
+			ps, cleanup := factory()
+			defer cleanup()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				pp := peers[i%N]
+				ps.SetAddrs(pp.ID, pp.Addr, pstore.RecentlyConnectedAddrTTL)
+			}
+		})
 
-func benchmarkSetAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.B) {
-	return func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			pp := <-addrs
-			ps.SetAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
-		}
-	}
-}
+		b.Run(fmt.Sprintf("GetAndClearAddrs-%d", sz), func(b *testing.B) {
+			ps, cleanup := factory()
+			defer cleanup()
+			b.ResetTimer()
+			itersPerBM := 10
+			for i := 0; i < b.N; i++ {
+				for j := 0; j < itersPerBM; j++ {
+					pp := peers[(i+j)%N]
+					ps.AddAddrs(pp.ID, pp.Addr, pstore.RecentlyConnectedAddrTTL)
+				}
+				for j := 0; j < itersPerBM; j++ {
+					pp := peers[(i+j)%N]
+					ps.Addrs(pp.ID)
+				}
+				for j := 0; j < itersPerBM; j++ {
+					pp := peers[(i+j)%N]
+					ps.ClearAddrs(pp.ID)
+				}
+			}
+		})
 
-func benchmarkGetAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.B) {
-	return func(b *testing.B) {
-		pp := <-addrs
-		ps.SetAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
+		b.Run(fmt.Sprintf("PeersWithAddrs-%d", sz), func(b *testing.B) {
+			ps, cleanup := factory()
+			defer cleanup()
+			for _, pp := range peers {
+				ps.AddAddrs(pp.ID, pp.Addr, pstore.RecentlyConnectedAddrTTL)
+			}
 
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = ps.Addrs(pp.ID)
-		}
-	}
-}
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = ps.PeersWithAddrs()
+			}
+		})
 
-func benchmarkAddGetAndClearAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.B) {
-	return func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			pp := <-addrs
-			ps.AddAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
-			ps.Addrs(pp.ID)
-			ps.ClearAddrs(pp.ID)
-		}
-	}
-}
-
-func benchmarkGet1000PeersWithAddrs(ps pstore.Peerstore, addrs chan *peerpair) func(*testing.B) {
-	return func(b *testing.B) {
-		var peers = make([]*peerpair, 1000)
-		for i := range peers {
-			pp := <-addrs
-			ps.AddAddrs(pp.ID, pp.Addr, pstore.PermanentAddrTTL)
-			peers[i] = pp
-		}
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = ps.PeersWithAddrs()
-		}
+		b.Run(fmt.Sprintf("SetAddrs-%d", sz), func(b *testing.B) {
+			ps, cleanup := factory()
+			defer cleanup()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				pp := peers[i%N]
+				ps.SetAddrs(pp.ID, pp.Addr, pstore.RecentlyConnectedAddrTTL)
+			}
+		})
 	}
 }
