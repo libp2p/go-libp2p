@@ -58,11 +58,20 @@ func (c *Conn) ID() string {
 // open notifications must finish before we can fire off the close
 // notifications).
 func (c *Conn) Close() error {
-	c.closeOnce.Do(c.doClose)
+	c.closeOnce.Do(func() {
+		c.doClose(0)
+	})
 	return c.err
 }
 
-func (c *Conn) doClose() {
+func (c *Conn) CloseWithError(errCode network.ConnErrorCode) error {
+	c.closeOnce.Do(func() {
+		c.doClose(errCode)
+	})
+	return c.err
+}
+
+func (c *Conn) doClose(errCode network.ConnErrorCode) {
 	c.swarm.removeConn(c)
 
 	// Prevent new streams from opening.
@@ -71,7 +80,11 @@ func (c *Conn) doClose() {
 	c.streams.m = nil
 	c.streams.Unlock()
 
-	c.err = c.conn.Close()
+	if errCode != 0 {
+		c.err = c.conn.CloseWithError(errCode)
+	} else {
+		c.err = c.conn.Close()
+	}
 
 	// Send the connectedness event after closing the connection.
 	// This ensures that both remote connection close and local connection
@@ -121,7 +134,7 @@ func (c *Conn) start() {
 			}
 			scope, err := c.swarm.ResourceManager().OpenStream(c.RemotePeer(), network.DirInbound)
 			if err != nil {
-				ts.Reset()
+				ts.ResetWithError(network.StreamResourceLimitExceeded)
 				continue
 			}
 			c.swarm.refs.Add(1)

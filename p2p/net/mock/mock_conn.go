@@ -185,3 +185,7 @@ func (c *conn) Stat() network.ConnStats {
 func (c *conn) Scope() network.ConnScope {
 	return &network.NullScope{}
 }
+
+func (c *conn) CloseWithError(_ network.ConnErrorCode) error {
+	return c.Close()
+}

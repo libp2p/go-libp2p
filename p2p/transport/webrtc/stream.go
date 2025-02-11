@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-msgio/pbio"
 
 	"github.com/pion/datachannel"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 const (
@@ -69,8 +69,9 @@ type stream struct {
 
 	// readerMx ensures that only a single goroutine reads from the reader. Read is not threadsafe
 	// But we may need to read from reader for control messages from a different goroutine.
-	readerMx sync.Mutex
-	reader   pbio.Reader
+	readerMx  sync.Mutex
+	reader    pbio.Reader
+	readError error
 
 	// this buffer is limited up to a single message. Reason we need it
 	// is because a reader might read a message midway, and so we need a
@@ -82,6 +83,7 @@ type stream struct {
 	writeStateChanged chan struct{}
 	sendState         sendState
 	writeDeadline     time.Time
+	writeError        error
 
 	controlMessageReaderOnce sync.Once
 	// controlMessageReaderEndTime is the end time for reading FIN_ACK from the control
@@ -146,6 +148,10 @@ func (s *stream) Close() error {
 }
 
 func (s *stream) Reset() error {
+	return s.ResetWithError(0)
+}
+
+func (s *stream) ResetWithError(errCode network.StreamErrorCode) error {
 	s.mx.Lock()
 	isClosed := s.closeForShutdownErr != nil
 	s.mx.Unlock()
@@ -154,8 +160,8 @@ func (s *stream) Reset() error {
 	}
 
 	defer s.cleanup()
-	cancelWriteErr := s.cancelWrite()
-	closeReadErr := s.CloseRead()
+	cancelWriteErr := s.cancelWrite(errCode)
+	closeReadErr := s.closeRead(errCode, false)
 	s.setDataChannelReadDeadline(time.Now().Add(-1 * time.Hour))
 	return errors.Join(closeReadErr, cancelWriteErr)
 }
@@ -175,19 +181,20 @@ func (s *stream) SetDeadline(t time.Time) error {
 	return s.SetWriteDeadline(t)
 }
 
-// processIncomingFlag process the flag on an incoming message
+// processIncomingFlag processes the flag(FIN/RST/etc) on msg.
 // It needs to be called while the mutex is locked.
-func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
-	if flag == nil {
+func (s *stream) processIncomingFlag(msg *pb.Message) {
+	if msg.Flag == nil {
 		return
 	}
 
-	switch *flag {
+	switch msg.GetFlag() {
 	case pb.Message_STOP_SENDING:
 		// We must process STOP_SENDING after sending a FIN(sendStateDataSent). Remote peer
 		// may not send a FIN_ACK once it has sent a STOP_SENDING
 		if s.sendState == sendStateSending || s.sendState == sendStateDataSent {
 			s.sendState = sendStateReset
+			s.writeError = &network.StreamError{Remote: true, ErrorCode: network.StreamErrorCode(msg.GetErrorCode())}
 		}
 		s.notifyWriteStateChanged()
 	case pb.Message_FIN_ACK:
@@ -206,6 +213,11 @@ func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 	case pb.Message_RESET:
 		if s.receiveState == receiveStateReceiving {
 			s.receiveState = receiveStateReset
+			s.readError = &network.StreamError{Remote: true, ErrorCode: network.StreamErrorCode(msg.GetErrorCode())}
+		}
+		if s.sendState == sendStateSending || s.sendState == sendStateDataSent {
+			s.sendState = sendStateReset
+			s.writeError = &network.StreamError{Remote: true, ErrorCode: network.StreamErrorCode(msg.GetErrorCode())}
 		}
 		s.spawnControlMessageReader()
 	}
@@ -235,7 +247,7 @@ func (s *stream) spawnControlMessageReader() {
 			s.readerMx.Unlock()
 
 			if s.nextMessage != nil {
-				s.processIncomingFlag(s.nextMessage.Flag)
+				s.processIncomingFlag(s.nextMessage)
 				s.nextMessage = nil
 			}
 			var msg pb.Message
@@ -266,7 +278,7 @@ func (s *stream) spawnControlMessageReader() {
 					}
 					return
 				}
-				s.processIncomingFlag(msg.Flag)
+				s.processIncomingFlag(&msg)
 			}
 		}()
 	})

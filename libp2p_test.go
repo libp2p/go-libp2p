@@ -26,6 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/transport"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
@@ -761,6 +762,7 @@ func TestSharedTCPAddr(t *testing.T) {
 		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888/ws"),
 	)
 	require.NoError(t, err)
+	defer h.Close()
 	sawTCP := false
 	sawWS := false
 	for _, addr := range h.Addrs() {
@@ -773,5 +775,40 @@ func TestSharedTCPAddr(t *testing.T) {
 	}
 	require.True(t, sawTCP)
 	require.True(t, sawWS)
-	h.Close()
+
+	_, err = New(
+		ShareTCPListener(),
+		Transport(tcp.NewTCPTransport),
+		Transport(websocket.New),
+		PrivateNetwork(pnet.PSK([]byte{1, 2, 3})),
+	)
+	require.ErrorContains(t, err, "cannot use shared TCP listener with PSK")
+}
+
+func TestCustomTCPDialer(t *testing.T) {
+	expectedErr := errors.New("custom dialer called, but not implemented")
+	customDialer := func(raddr ma.Multiaddr) (tcp.ContextDialer, error) {
+		// Normally a user would implement this by returning a custom dialer
+		// Here, we just test that this is called.
+		return nil, expectedErr
+	}
+
+	h, err := New(
+		Transport(tcp.NewTCPTransport, tcp.WithDialerForAddr(customDialer)),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+
+	var randID peer.ID
+	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
+	require.NoError(t, err)
+	randID, err = peer.IDFromPrivateKey(priv)
+	require.NoError(t, err)
+
+	err = h.Connect(context.Background(), peer.AddrInfo{
+		ID: randID,
+		// This won't actually be dialed since we return an error above
+		Addrs: []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/4")},
+	})
+	require.ErrorContains(t, err, expectedErr.Error())
 }

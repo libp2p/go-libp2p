@@ -17,7 +17,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
 	"github.com/pion/sctp"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 var _ tpt.CapableConn = &connection{}
@@ -130,6 +130,12 @@ func (c *connection) ConnState() network.ConnectionState {
 func (c *connection) Close() error {
 	c.closeWithError(errConnClosed)
 	return nil
+}
+
+// CloseWithError closes the connection ignoring the error code. As there's no way to signal
+// the remote peer on closing the underlying peerconnection, we ignore the error code.
+func (c *connection) CloseWithError(_ network.ConnErrorCode) error {
+	return c.Close()
 }
 
 // closeWithError is used to Close the connection when the underlying DTLS connection fails

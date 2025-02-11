@@ -159,10 +159,11 @@ func TestCleanupConnWhenBlocked(t *testing.T) {
 	s.SetReadDeadline(time.Now().Add(10 * time.Second))
 	b := [1]byte{}
 	_, err = s.Read(b[:])
-	if err != nil && errors.As(err, &quicErr) {
+	connError := &network.ConnError{}
+	if err != nil && errors.As(err, &connError) {
 		// We hit our expected application error
 		return
 	}
 
-	t.Fatalf("expected application error, got %v", err)
+	t.Fatalf("expected network.ConnError, got %v", err)
 }

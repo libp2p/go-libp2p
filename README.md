@@ -67,12 +67,25 @@ Guidelines:
 - ask questions or talk about things in our [discussion forums](https://discuss.libp2p.io), or open an [issue](https://github.com/libp2p/go-libp2p/issues) for bug reports, or #libp2p-implementers on [Filecoin slack](https://filecoin.io/slack).
 - ensure you are able to contribute (no legal issues please -- we use the DCO)
 - get in touch with @libp2p/go-libp2p-maintainers about how best to contribute
+- No drive-by contributions seeking to collect airdrops.
+  - Many projects aim to reward contributors to common goods. Great. However,
+    this creates an unfortunate incentive for low-effort PRs, submitted solely to
+    claim rewards. These PRs consume maintainers’ time and energy to triage, with
+    little to no impact on end users. If we suspect this is the intent of a PR,
+    we may close it without comment. If you believe this was done in error,
+    contact us via email. Reference this README section and explain why your PR
+    is not a “drive-by contribution.”
 - have fun!
 
 There's a few things you can do right now to help out:
- - Go through the modules below and **check out existing issues**. This would be especially useful for modules in active development. Some knowledge of IPFS/libp2p may be required, as well as the infrastructure behind it - for instance, you may need to read up on p2p and more complex operations like muxing to be able to help technically.
  - **Perform code reviews**.
  - **Add tests**. There can never be enough tests.
+ - Go through the modules below and **check out existing issues**. This would
+   be especially useful for modules in active development. Some knowledge of
+   IPFS/libp2p may be required, as well as the infrastructure behind it - for
+   instance, you may need to read up on p2p and more complex operations like
+   muxing to be able to help technically.
+
 
 ## Supported Go Versions
 
