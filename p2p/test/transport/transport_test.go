@@ -28,6 +28,8 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
@@ -67,6 +69,16 @@ func transformOpts(opts TransportTestCaseOpts) []config.Option {
 	}
 	return libp2pOpts
 }
+
+func connect(t *testing.T, a, b host.Host) {
+	pi := peer.AddrInfo{ID: a.ID(), Addrs: a.Addrs()}
+	err := b.Connect(context.Background(), pi)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+const RelayTestOnTransportName = "QUIC"
 
 var transportsToTest = []TransportTestCase{
 	{
@@ -219,6 +231,20 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "circuit-v2",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -864,6 +890,128 @@ func TestConnClosedWhenRemoteCloses(t *testing.T) {
 			require.Eventually(t, func() bool {
 				return server.Network().Connectedness(client.ID()) == network.NotConnected
 			}, 5*time.Second, 50*time.Millisecond)
+		})
+	}
+}
+
+func TestConnRelay(t *testing.T) {
+	for _, tc := range transportsToTest {
+		t.Run(tc.Name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			var hosts []host.Host
+			// Set host
+			for i := 0; i < 3; i++ {
+				h := tc.HostGenerator(t, TransportTestCaseOpts{})
+				hosts = append(hosts, h)
+			}
+
+			// Set stream handler
+			rch := make(chan []byte, 1)
+			hosts[0].SetStreamHandler("test", func(s network.Stream) {
+				defer s.Close()
+				defer close(rch)
+
+				buf := make([]byte, 1024)
+				nread := 0
+				for nread < len(buf) {
+					n, err := s.Read(buf[nread:])
+					nread += n
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+						t.Fatal(err)
+					}
+				}
+
+				rch <- buf[:nread]
+			})
+
+			r, err := relay.New(hosts[1])
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+
+			connect(t, hosts[0], hosts[1])
+			connect(t, hosts[1], hosts[2])
+
+			rinfo := hosts[1].Peerstore().PeerInfo(hosts[1].ID())
+			rsvp, err := client.Reserve(ctx, hosts[0], rinfo)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if rsvp.Voucher == nil {
+				t.Fatal("no reservation voucher")
+			}
+
+			raddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s/p2p-circuit/p2p/%s", hosts[1].ID(), hosts[0].ID()))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			sub, err := hosts[2].EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
+			require.NoError(t, err)
+
+			err = hosts[2].Connect(ctx, peer.AddrInfo{ID: hosts[0].ID(), Addrs: []ma.Multiaddr{raddr}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for {
+				var e interface{}
+				select {
+				case e = <-sub.Out():
+				case <-time.After(2 * time.Second):
+					t.Fatal("expected limited connectivity event")
+				}
+				evt, ok := e.(event.EvtPeerConnectednessChanged)
+				if !ok {
+					t.Fatalf("invalid event: %s", e)
+				}
+				if evt.Peer == hosts[0].ID() {
+					if evt.Connectedness != network.Limited {
+						t.Fatalf("expected limited connectivity %s", evt.Connectedness)
+					}
+					break
+				}
+			}
+
+			conns := hosts[2].Network().ConnsToPeer(hosts[0].ID())
+			if len(conns) != 1 {
+				t.Fatalf("expected 1 connection, but got %d", len(conns))
+			}
+			if !conns[0].Stat().Limited {
+				t.Fatal("expected transient connection")
+			}
+
+			s, err := hosts[2].NewStream(network.WithAllowLimitedConn(ctx, "test"), hosts[0].ID(), "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			msg := []byte("relay works!")
+			nwritten, err := s.Write(msg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if nwritten != len(msg) {
+				t.Fatalf("expected to write %d bytes, but wrote %d instead", len(msg), nwritten)
+			}
+			s.CloseWrite()
+
+			got := <-rch
+			if !bytes.Equal(msg, got) {
+				t.Fatalf("Wrong echo; expected %s but got %s", string(msg), string(got))
+			}
+
+			t.Cleanup(func() {
+				for i := range len(hosts) {
+					hosts[i].Close()
+				}
+			})
 		})
 	}
 }
