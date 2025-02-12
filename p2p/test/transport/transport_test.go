@@ -3,10 +3,16 @@ package transport_integration
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"runtime"
 	"strings"
@@ -14,6 +20,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
@@ -30,9 +38,9 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	"go.uber.org/mock/gomock"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -67,6 +75,44 @@ func transformOpts(opts TransportTestCaseOpts) []config.Option {
 	return libp2pOpts
 }
 
+func selfSignedTLSConfig(t *testing.T) *tls.Config {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	notBefore := time.Now()
+	notAfter := notBefore.Add(365 * 24 * time.Hour)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	require.NoError(t, err)
+
+	certTemplate := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Test"},
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	cert := tls.Certificate{
+		Certificate: [][]byte{derBytes},
+		PrivateKey:  priv,
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+	return tlsConfig
+}
+
 var transportsToTest = []TransportTestCase{
 	{
 		Name: "TCP / Noise / Yamux",
@@ -88,7 +134,7 @@ var transportsToTest = []TransportTestCase{
 		Name: "TCP / TLS / Yamux",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
-			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
 			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -105,7 +151,7 @@ var transportsToTest = []TransportTestCase{
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
-			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
 			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -122,7 +168,7 @@ var transportsToTest = []TransportTestCase{
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
-			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
 			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
 			libp2pOpts = append(libp2pOpts, libp2p.Transport(tcp.NewTCPTransport, tcp.WithMetrics()))
 			if opts.NoListen {
@@ -139,7 +185,7 @@ var transportsToTest = []TransportTestCase{
 		Name: "TCP-WithMetrics / TLS / Yamux",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
-			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
 			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
 			libp2pOpts = append(libp2pOpts, libp2p.Transport(tcp.NewTCPTransport, tcp.WithMetrics()))
 			if opts.NoListen {
@@ -168,6 +214,23 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "WebSocket-Secured-Shared",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
+			if opts.NoListen {
+				config := tls.Config{InsecureSkipVerify: true}
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.Transport(websocket.New, websocket.WithTLSClientConfig(&config)))
+			} else {
+				config := selfSignedTLSConfig(t)
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/sni/localhost/tls/ws"), libp2p.Transport(websocket.New, websocket.WithTLSConfig(config)))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "WebSocket",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -175,6 +238,22 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/ws"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebSocket-Secured",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				config := tls.Config{InsecureSkipVerify: true}
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.Transport(websocket.New, websocket.WithTLSClientConfig(&config)))
+			} else {
+				config := selfSignedTLSConfig(t)
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/sni/localhost/tls/ws"), libp2p.Transport(websocket.New, websocket.WithTLSConfig(config)))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
