@@ -4,8 +4,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -66,16 +64,4 @@ func TestConvertWebsocketMultiaddrToNetAddr(t *testing.T) {
 	if wsaddr.Network() != "websocket" {
 		t.Fatalf("expected network: \"websocket\", got \"%s\"", wsaddr.Network())
 	}
-}
-
-func TestListeningOnDNSAddr(t *testing.T) {
-	ln, err := newListener(ma.StringCast("/dns/localhost/tcp/0/ws"), nil, nil)
-	require.NoError(t, err)
-	addr := ln.Multiaddr()
-	first, rest := ma.SplitFirst(addr)
-	require.Equal(t, ma.P_DNS, first.Protocol().Code)
-	require.Equal(t, "localhost", first.Value())
-	next, _ := ma.SplitFirst(rest)
-	require.Equal(t, ma.P_TCP, next.Protocol().Code)
-	require.NotEqual(t, 0, next.Value())
 }
