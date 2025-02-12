@@ -130,6 +130,7 @@ func main() {
 
 	go dht.Bootstrap(ctx)
 
+	// Wait for peers to verify public address with AutoNAT
 	time.Sleep(5 * time.Second)
 
 	logger.Info("Addresses: ", h.Addrs())
