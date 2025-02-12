@@ -35,10 +35,8 @@ func main() {
 
 	certLoaded := make(chan bool, 1) // Create a channel to signal when the cert is loaded
 
-	// TODO: this should not be necessary once https://github.com/ipshipyard/p2p-forge/issues/8 is resolved
+	// use dedicated logger for autotls feature
 	rawLogger := logger.Desugar()
-	certmagic.Default.Logger = rawLogger.Named("default_fixme")
-	certmagic.DefaultACME.Logger = rawLogger.Named("default_acme_client_fixme")
 
 	// p2pforge is the AutoTLS client library.
 	// The cert manager handles the creation and management of certificate
