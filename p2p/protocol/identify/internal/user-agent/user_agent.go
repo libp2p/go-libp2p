@@ -1,9 +1,15 @@
-package identify
+package useragent
 
 import (
 	"fmt"
 	"runtime/debug"
 )
+
+func DefaultUserAgent() string {
+	return defaultUserAgent
+}
+
+var defaultUserAgent = "github.com/libp2p/go-libp2p"
 
 func init() {
 	bi, ok := debug.ReadBuildInfo()

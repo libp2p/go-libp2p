@@ -510,6 +510,7 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 			var err error
 			c, err = s.waitForDirectConn(ctx, p)
 			if err != nil {
+				log.Debugf("failed to get direct connection to a limited peer %s: %s", p, err)
 				return nil, err
 			}
 		}
