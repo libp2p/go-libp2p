@@ -215,7 +215,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 
 	errChan := make(chan error)
 	const N = 10
-	// num concurrnetRequests will stall and N will fail
+	// num concurrentRequests will stall and N will fail
 	for i := 0; i < concurrentRequests+N; i++ {
 		go func() {
 			_, err := c.GetReachability(context.Background(), []Request{{Addr: c.host.Addrs()[0], SendDialData: false}})

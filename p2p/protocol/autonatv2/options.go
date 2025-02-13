@@ -21,7 +21,7 @@ func defaultSettings() *autoNATSettings {
 		serverRPM:                            60, // 1 every second
 		serverPerPeerRPM:                     12, // 1 every 5 seconds
 		serverDialDataRPM:                    12, // 1 every 5 seconds
-		maxConcurrentRequestsPerPeer:         5,
+		maxConcurrentRequestsPerPeer:         2,
 		dataRequestPolicy:                    amplificationAttackPrevention,
 		amplificatonAttackPreventionDialWait: 3 * time.Second,
 		now:                                  time.Now,
