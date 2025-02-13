@@ -33,16 +33,16 @@ func normalize(addr ma.Multiaddr) ma.Multiaddr {
 	}
 
 	// replace /wss with /tls/ws
-	components := []ma.Multiaddr{}
+	var components ma.Multiaddr
 	ma.ForEach(addr, func(c ma.Component) bool {
 		if c.Protocol().Code == ma.P_WSS {
-			components = append(components, ma.StringCast("/tls/ws"))
+			components = append(components, ma.StringCast("/tls/ws")...)
 		} else {
-			components = append(components, &c)
+			components = append(components, c)
 		}
 		return true
 	})
-	return ma.Join(components...)
+	return components
 }
 
 func addrPort(addr ma.Multiaddr) netip.AddrPort {
