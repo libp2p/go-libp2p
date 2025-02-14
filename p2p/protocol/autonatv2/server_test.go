@@ -243,6 +243,11 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 			t.Fatalf("expected %d errors: got: %d", concurrentRequests, i)
 		}
 	}
+	select {
+	case err := <-errChan:
+		t.Fatalf("expected no more errors: got: %v", err)
+	default:
+	}
 }
 
 func TestServerDataRequestJitter(t *testing.T) {
