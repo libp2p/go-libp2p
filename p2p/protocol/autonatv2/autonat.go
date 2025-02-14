@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"math/rand/v2"
+
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -16,7 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
-	"golang.org/x/exp/rand"
 )
 
 const (
@@ -211,7 +212,7 @@ func (p *peersMap) GetRand() peer.ID {
 	if len(p.peers) == 0 {
 		return ""
 	}
-	return p.peers[rand.Intn(len(p.peers))]
+	return p.peers[rand.IntN(len(p.peers))]
 }
 
 func (p *peersMap) Put(pid peer.ID) {
