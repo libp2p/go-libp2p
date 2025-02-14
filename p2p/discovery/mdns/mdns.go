@@ -87,7 +87,7 @@ func (s *mdnsService) getIPs(addrs []ma.Multiaddr) ([]string, error) {
 	var ip4, ip6 string
 	for _, addr := range addrs {
 		first, _ := ma.SplitFirst(addr)
-		if first == nil {
+		if first.Empty() {
 			continue
 		}
 		if ip4 == "" && first.Protocol().Code == ma.P_IP4 {

@@ -151,7 +151,7 @@ func (nmgr *natManager) doSync() {
 	for _, maddr := range nmgr.net.ListenAddresses() {
 		// Strip the IP
 		maIP, rest := ma.SplitFirst(maddr)
-		if maIP == nil || rest == nil {
+		if maIP.Empty() || rest.Empty() {
 			continue
 		}
 
@@ -169,7 +169,7 @@ func (nmgr *natManager) doSync() {
 
 		// Extract the port/protocol
 		proto, _ := ma.SplitFirst(rest)
-		if proto == nil {
+		if proto.Empty() {
 			continue
 		}
 

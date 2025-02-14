@@ -52,7 +52,7 @@ func isRelayAddr(a ma.Multiaddr) bool {
 }
 
 func isDNSAddr(a ma.Multiaddr) bool {
-	if first, _ := ma.SplitFirst(a); first != nil {
+	if first, _ := ma.SplitFirst(a); !first.Empty() {
 		switch first.Protocol().Code {
 		case ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
 			return true
