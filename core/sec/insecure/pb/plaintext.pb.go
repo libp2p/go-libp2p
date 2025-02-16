@@ -7,12 +7,13 @@
 package pb
 
 import (
-	pb "github.com/libp2p/go-libp2p/core/crypto/pb"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	pb "github.com/libp2p/go-libp2p/core/crypto/pb"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
