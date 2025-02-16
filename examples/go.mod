@@ -1,8 +1,6 @@
 module github.com/libp2p/go-libp2p/examples
 
-go 1.22.0
-
-toolchain go1.22.1
+go 1.23
 
 require (
 	github.com/caddyserver/certmagic v0.21.6
