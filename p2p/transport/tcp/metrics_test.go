@@ -15,8 +15,10 @@ func TestTcpTransportCollectsMetricsWithSharedTcpSocket(t *testing.T) {
 	peerA, ia := makeInsecureMuxer(t)
 	_, ib := makeInsecureMuxer(t)
 
-	sharedTCPSocketA := tcpreuse.NewConnMgr(false, nil, nil)
-	sharedTCPSocketB := tcpreuse.NewConnMgr(false, nil, nil)
+	upg, err := tptu.New(ia, muxers, nil, nil, nil)
+	require.NoError(t, err)
+	sharedTCPSocketA := tcpreuse.NewConnMgr(false, upg)
+	sharedTCPSocketB := tcpreuse.NewConnMgr(false, upg)
 
 	ua, err := tptu.New(ia, muxers, nil, nil, nil)
 	require.NoError(t, err)
