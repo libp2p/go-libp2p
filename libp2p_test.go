@@ -775,3 +775,17 @@ func TestSharedTCPAddr(t *testing.T) {
 	require.True(t, sawWS)
 	h.Close()
 }
+
+func BenchmarkAllAddrs(b *testing.B) {
+	h, err := New()
+
+	addrsHost := h.(interface{ AllAddrs() []ma.Multiaddr })
+	require.NoError(b, err)
+	defer h.Close()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		addrsHost.AllAddrs()
+	}
+}

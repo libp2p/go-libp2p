@@ -1,13 +1,17 @@
 package basichost
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,18 +137,24 @@ func (m *mockObservedAddrs) ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr 
 }
 
 func TestAddressService(t *testing.T) {
-	getAddrService := func() *addressService {
+	type pushRelayAddrs func(relayAddrs []ma.Multiaddr)
+	getAddrService := func() (*addressService, pushRelayAddrs) {
 		h, err := NewHost(swarmt.GenSwarm(t), &HostOpts{DisableIdentifyAddressDiscovery: true})
 		require.NoError(t, err)
+		h.Start()
 		t.Cleanup(func() { h.Close() })
 
-		as := h.addressService
-		return as
+		em, err := h.eventbus.Emitter(new(event.EvtAutoRelayAddrs), eventbus.Stateful)
+		require.NoError(t, err)
+		return h.addressService, func(relayAddrs []ma.Multiaddr) {
+			err := em.Emit(event.EvtAutoRelayAddrs{RelayAddrs: relayAddrs})
+			require.NoError(t, err)
+		}
 	}
 
 	t.Run("NAT Address", func(t *testing.T) {
-		as := getAddrService()
-		as.natmgr = &mockNatManager{
+		as, _ := getAddrService()
+		as.natManager = &mockNatManager{
 			HasDiscoveredNATFunc: func() bool { return true },
 			GetMappingFunc: func(addr ma.Multiaddr) ma.Multiaddr {
 				if _, err := addr.ValueForProtocol(ma.P_UDP); err == nil {
@@ -153,12 +163,15 @@ func TestAddressService(t *testing.T) {
 				return nil
 			},
 		}
-		require.Contains(t, as.Addrs(), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"))
+		as.SignalAddressChange()
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			assert.Contains(collect, as.Addrs(), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"), "%s\n%s", as.Addrs(), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"))
+		}, 5*time.Second, 30*time.Millisecond)
 	})
 
 	t.Run("NAT And Observed Address", func(t *testing.T) {
-		as := getAddrService()
-		as.natmgr = &mockNatManager{
+		as, _ := getAddrService()
+		as.natManager = &mockNatManager{
 			HasDiscoveredNATFunc: func() bool { return true },
 			GetMappingFunc: func(addr ma.Multiaddr) ma.Multiaddr {
 				if _, err := addr.ValueForProtocol(ma.P_UDP); err == nil {
@@ -175,12 +188,15 @@ func TestAddressService(t *testing.T) {
 				return nil
 			},
 		}
-		require.Contains(t, as.Addrs(), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"))
-		require.Contains(t, as.Addrs(), ma.StringCast("/ip4/2.2.2.2/tcp/1"))
+		as.SignalAddressChange()
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			assert.Contains(collect, as.Addrs(), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"), "%s\n%s", as.Addrs(), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"))
+			assert.Contains(collect, as.Addrs(), ma.StringCast("/ip4/2.2.2.2/tcp/1"), "%s\n%s", as.Addrs(), ma.StringCast("/ip4/2.2.2.2/tcp/1"))
+		}, 5*time.Second, 30*time.Millisecond)
 	})
 	t.Run("Only Observed Address", func(t *testing.T) {
-		as := getAddrService()
-		as.natmgr = nil
+		as, _ := getAddrService()
+		as.natManager = nil
 		as.observedAddrsService = &mockObservedAddrs{
 			ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
 				if _, err := addr.ValueForProtocol(ma.P_TCP); err == nil {
@@ -192,12 +208,15 @@ func TestAddressService(t *testing.T) {
 				return []ma.Multiaddr{ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1")}
 			},
 		}
-		require.NotContains(t, as.Addrs(), ma.StringCast("/ip4/2.2.2.2/tcp/1"))
-		require.Contains(t, as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
+		as.SignalAddressChange()
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			assert.NotContains(collect, as.Addrs(), ma.StringCast("/ip4/2.2.2.2/tcp/1"), "%s\n%s", as.Addrs(), ma.StringCast("/ip4/2.2.2.2/tcp/1"))
+			assert.Contains(collect, as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"), "%s\n%s", as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
+		}, 5*time.Second, 30*time.Millisecond)
 	})
 	t.Run("Public Addrs Removed When Private", func(t *testing.T) {
-		as := getAddrService()
-		as.natmgr = nil
+		as, pushRelayAddrs := getAddrService()
+		as.natManager = nil
 		as.observedAddrsService = &mockObservedAddrs{
 			OwnObservedAddrsFunc: func() []ma.Multiaddr {
 				return []ma.Multiaddr{ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1")}
@@ -207,17 +226,18 @@ func TestAddressService(t *testing.T) {
 			return network.ReachabilityPrivate
 		}
 		relayAddr := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1/p2p/QmdXGaeGiVA745XorV1jr11RHxB9z4fqykm6xCUPX1aTJo/p2p-circuit")
-		as.autoRelayAddrs = func() []ma.Multiaddr {
-			return []ma.Multiaddr{relayAddr}
-		}
-		require.NotContains(t, as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
-		require.Contains(t, as.Addrs(), relayAddr)
-		require.Contains(t, as.AllAddrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
+		pushRelayAddrs([]ma.Multiaddr{relayAddr})
+
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			assert.NotContains(collect, as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"), "%s\n%s", as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
+			assert.Contains(collect, as.Addrs(), relayAddr, "%s\n%s", as.Addrs(), relayAddr)
+			assert.Contains(collect, as.AllAddrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"), "%s\n%s", as.AllAddrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
+		}, 5*time.Second, 30*time.Millisecond)
 	})
 
 	t.Run("AddressFactory gets relay addresses", func(t *testing.T) {
-		as := getAddrService()
-		as.natmgr = nil
+		as, pushRelayAddrs := getAddrService()
+		as.natManager = nil
 		as.observedAddrsService = &mockObservedAddrs{
 			OwnObservedAddrsFunc: func() []ma.Multiaddr {
 				return []ma.Multiaddr{ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1")}
@@ -227,9 +247,7 @@ func TestAddressService(t *testing.T) {
 			return network.ReachabilityPrivate
 		}
 		relayAddr := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1/p2p/QmdXGaeGiVA745XorV1jr11RHxB9z4fqykm6xCUPX1aTJo/p2p-circuit")
-		as.autoRelayAddrs = func() []ma.Multiaddr {
-			return []ma.Multiaddr{relayAddr}
-		}
+		pushRelayAddrs([]ma.Multiaddr{relayAddr})
 		as.addrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
 			for _, a := range addrs {
 				if a.Equal(relayAddr) {
@@ -238,13 +256,15 @@ func TestAddressService(t *testing.T) {
 			}
 			return nil
 		}
-		require.Contains(t, as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
-		require.NotContains(t, as.Addrs(), relayAddr)
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			assert.Contains(collect, as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"), "%s\n%s", as.Addrs(), ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1"))
+			assert.NotContains(collect, as.Addrs(), relayAddr, "%s\n%s", as.Addrs(), relayAddr)
+		}, 5*time.Second, 30*time.Millisecond)
 	})
 
 	t.Run("updates addresses on signaling", func(t *testing.T) {
-		as := getAddrService()
-		as.natmgr = nil
+		as, _ := getAddrService()
+		as.natManager = nil
 		updateChan := make(chan struct{})
 		a1 := ma.StringCast("/ip4/1.1.1.1/udp/1/quic-v1")
 		a2 := ma.StringCast("/ip4/1.1.1.1/tcp/1")
@@ -267,6 +287,21 @@ func TestAddressService(t *testing.T) {
 			require.NotContains(t, as.Addrs(), a1)
 		case <-time.After(2 * time.Second):
 			t.Fatal("expected addrs to be updated")
+		}
+	})
+}
+
+func BenchmarkAreAddrsDifferent(b *testing.B) {
+	var addrs [10]ma.Multiaddr
+	for i := 0; i < len(addrs); i++ {
+		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
+	}
+	as := &addressService{}
+	b.Run("areAddrsDifferent", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			as.areAddrsDifferent(addrs[:], addrs[:])
 		}
 	})
 }

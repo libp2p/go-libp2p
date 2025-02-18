@@ -18,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
+	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
@@ -76,7 +77,6 @@ type BasicHost struct {
 	ids          identify.IDService
 	hps          *holepunch.Service
 	pings        *ping.PingService
-	natmgr       NATManager
 	cmgr         connmgr.ConnManager
 	eventbus     event.Bus
 	relayManager *relaysvc.RelayManager
@@ -248,7 +248,24 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		addrFactory = opts.AddrsFactory
 	}
 
-	h.addressService, err = NewAddressService(h, opts.NATManager, addrFactory)
+	var natmgr NATManager
+	if opts.NATManager != nil {
+		natmgr = opts.NATManager(h.Network())
+	}
+	var tfl func(ma.Multiaddr) transport.Transport
+	if s, ok := h.Network().(interface {
+		TransportForListening(ma.Multiaddr) transport.Transport
+	}); ok {
+		tfl = s.TransportForListening
+	}
+	h.addressService, err = NewAddressService(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, func() network.Reachability {
+		h.autoNATMx.RLock()
+		defer h.autoNATMx.RUnlock()
+		if h.autoNat == nil {
+			return network.ReachabilityUnknown
+		}
+		return h.autoNat.Status()
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}
@@ -260,7 +277,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			opts.HolePunchingOptions = append(hpOpts, opts.HolePunchingOptions...)
 
 		}
-		h.hps, err = holepunch.NewService(h, h.ids, h.addressService.GetHolePunchAddrs, opts.HolePunchingOptions...)
+		h.hps, err = holepunch.NewService(h, h.ids, h.addressService.GetDirectAddrs, opts.HolePunchingOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
 		}
@@ -779,9 +796,6 @@ func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
 func (h *BasicHost) Close() error {
 	h.closeSync.Do(func() {
 		h.ctxCancel()
-		if h.natmgr != nil {
-			h.natmgr.Close()
-		}
 		if h.cmgr != nil {
 			h.cmgr.Close()
 		}
