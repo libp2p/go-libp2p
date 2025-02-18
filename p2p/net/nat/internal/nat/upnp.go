@@ -63,6 +63,7 @@ func discoverUPNP_GenIGDev(ctx context.Context) (nats []NAT, errs []error) {
 			continue
 		}
 		if foundIGDevs >= maxIGDevs {
+			log.Debug("found more than maxIGDevs UPnP devices, stopping search")
 			break
 		}
 		foundIGDevs++
