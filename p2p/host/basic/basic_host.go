@@ -1004,6 +1004,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	return finalAddrs
 }
 
+// addCertHashes adds certhashes to the relevant addresses. It modifies `addrs` in place.
 func (h *BasicHost) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	// This is a temporary workaround/hack that fixes #2233. Once we have a
 	// proper address pipeline, rework this. See the issue for more context.
@@ -1019,11 +1020,6 @@ func (h *BasicHost) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if !ok {
 		return addrs
 	}
-
-	// Copy addrs slice since we'll be modifying it.
-	addrsOld := addrs
-	addrs = make([]ma.Multiaddr, len(addrsOld))
-	copy(addrs, addrsOld)
 
 	for i, addr := range addrs {
 		wtOK, wtN := libp2pwebtransport.IsWebtransportMultiaddr(addr)
