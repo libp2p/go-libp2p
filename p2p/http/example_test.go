@@ -8,12 +8,85 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2phttp "github.com/libp2p/go-libp2p/p2p/http"
+	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	ma "github.com/multiformats/go-multiaddr"
 )
+
+func ExampleHost_authenticatedHTTP() {
+	clientKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+	client := libp2phttp.Host{
+		ClientPeerIDAuth: &httpauth.ClientPeerIDAuth{
+			TokenTTL: time.Hour,
+			PrivKey:  clientKey,
+		},
+	}
+
+	serverKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+	server := libp2phttp.Host{
+		ServerPeerIDAuth: &httpauth.ServerPeerIDAuth{
+			PrivKey: serverKey,
+			// No TLS for this example. In practice you want to use TLS.
+			NoTLS: true,
+			ValidHostnameFn: func(hostname string) bool {
+				return strings.HasPrefix(hostname, "127.0.0.1")
+			},
+			TokenTTL: time.Hour,
+		},
+		// No TLS for this example. In practice you want to use TLS.
+		InsecureAllowHTTP: true,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+
+	observedClientID := ""
+	server.SetHTTPHandler("/echo-id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observedClientID = libp2phttp.ClientPeerID(r).String()
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	go server.Serve()
+	defer server.Close()
+
+	expectedServerID, err := peer.IDFromPrivateKey(serverKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	httpClient := http.Client{Transport: &client}
+	url := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/echo-id", server.Addrs()[0], expectedServerID)
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	resp.Body.Close()
+
+	expectedClientID, err := peer.IDFromPrivateKey(clientKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if observedClientID != expectedClientID.String() {
+		log.Fatal("observedClientID does not match expectedClientID")
+	}
+
+	observedServerID := libp2phttp.ServerPeerID(resp)
+	if observedServerID != expectedServerID {
+		log.Fatal("observedServerID does not match expectedServerID")
+	}
+
+	fmt.Println("Successfully authenticated HTTP request")
+	// Output: Successfully authenticated HTTP request
+}
 
 func ExampleHost_withAStockGoHTTPClient() {
 	server := libp2phttp.Host{
