@@ -97,7 +97,7 @@ type BasicHost struct {
 
 	autonatv2      *autonatv2.AutoNAT
 	autorelay      *autorelay.AutoRelay
-	addressService *addressService
+	addressService *addressManager
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -258,17 +258,19 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}); ok {
 		tfl = s.TransportForListening
 	}
-	h.addressService, err = NewAddressService(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, func() network.Reachability {
-		h.autoNATMx.RLock()
-		defer h.autoNATMx.RUnlock()
-		if h.autoNat == nil {
-			return network.ReachabilityUnknown
-		}
-		return h.autoNat.Status()
-	})
+	h.addressService, err = NewAddressManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}
+	// register to be notified when the network's listen addrs change,
+	// so we can update our address set and push events if needed
+	listenHandler := func(network.Network, ma.Multiaddr) {
+		h.addressService.signalAddressChange()
+	}
+	n.Notify(&network.NotifyBundle{
+		ListenF:      listenHandler,
+		ListenCloseF: listenHandler,
+	})
 
 	if opts.EnableHolePunching {
 		if opts.EnableMetrics {
@@ -337,16 +339,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		}
 	}
 
-	// register to be notified when the network's listen addrs change,
-	// so we can update our address set and push events if needed
-	listenHandler := func(network.Network, ma.Multiaddr) {
-		h.addressService.SignalAddressChange()
-	}
-	n.Notify(&network.NotifyBundle{
-		ListenF:      listenHandler,
-		ListenCloseF: listenHandler,
-	})
-
 	return h, nil
 }
 
@@ -363,10 +355,11 @@ func (h *BasicHost) Start() {
 			log.Errorf("autonat v2 failed to start: %s", err)
 		}
 	}
+	if err := h.addressService.Start(); err != nil {
+		log.Errorf("address service failed to start: %s", err)
+	}
 	h.refCount.Add(1)
 	go h.background()
-	h.addressService.Start()
-
 }
 
 // newStreamHandler is the remote-opened stream handler for network.Network
@@ -786,10 +779,17 @@ func (h *BasicHost) SetAutoNat(a autonat.AutoNAT) {
 }
 
 // GetAutoNat returns the host's AutoNAT service, if AutoNAT is enabled.
+//
+// Deprecated: Use `BasicHost.Reachability` to get the host's reachability.
 func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
 	h.autoNATMx.Lock()
 	defer h.autoNATMx.Unlock()
 	return h.autoNat
+}
+
+// Reachability returns the host's reachability status.
+func (h *BasicHost) Reachability() network.Reachability {
+	return *h.addressService.nodeReachability.Load()
 }
 
 // Close shuts down the Host's services (network, etc).

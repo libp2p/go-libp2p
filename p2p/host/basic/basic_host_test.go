@@ -734,7 +734,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		lk.Lock()
 		currentAddrSet = i
 		lk.Unlock()
-		h.addressService.SignalAddressChange()
+		h.addressService.signalAddressChange()
 		evt := waitForAddrChangeEvent(ctx, sub, t)
 		if !updatedAddrEventsEqual(expectedEvents[i-1], evt) {
 			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i-1], evt)
