@@ -103,7 +103,7 @@ type BasicHost struct {
 	filteredInterfaceAddrs []ma.Multiaddr
 	allInterfaceAddrs      []ma.Multiaddr
 
-	relayAddrs atomic.Value
+	relayAddrs atomic.Pointer[[]ma.Multiaddr]
 
 	disableSignedPeerRecord bool
 	signKey                 crypto.PrivKey
@@ -202,7 +202,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
 	}
-	h.relayAddrs.Store([]ma.Multiaddr{})
+
+	var relayAddrs []ma.Multiaddr
+	h.relayAddrs.Store(&relayAddrs)
 	h.updateLocalIpAddr()
 
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}, eventbus.Stateful); err != nil {
@@ -625,7 +627,10 @@ func (h *BasicHost) background() {
 		case <-h.addrChangeChan:
 		case e := <-addrSub.Out():
 			if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
-				h.relayAddrs.Store(slices.Clone(evt.RelayAddrs))
+				// Copy to a new slice. Copying to the slice pointed to by relayAddrs
+				// will introduce a race.
+				addrs := slices.Clone(evt.RelayAddrs)
+				h.relayAddrs.Store(&addrs)
 			} else {
 				log.Errorf("received unexpected event: %T %v", e, e)
 			}
@@ -861,11 +866,11 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 	addrs := h.AllAddrs()
 	// Make a copy. Consumers can modify the slice elements
 	if h.GetAutoNat() != nil && h.GetAutoNat().Status() == network.ReachabilityPrivate {
-		relayAddrs := h.relayAddrs.Load().([]ma.Multiaddr)
+		relayAddrsPtr := h.relayAddrs.Load()
 		// Only remove public addresses if we have relay addresses.
-		if len(relayAddrs) > 0 {
+		if relayAddrsPtr != nil && len(*relayAddrsPtr) > 0 {
 			addrs = slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return manet.IsPublicAddr(a) })
-			addrs = append(addrs, relayAddrs...)
+			addrs = append(addrs, *relayAddrsPtr...)
 		}
 	}
 	addrs = slices.Clone(h.AddrsFactory(addrs))
