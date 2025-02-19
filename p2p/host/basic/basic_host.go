@@ -992,7 +992,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	}
 	finalAddrs = ma.Unique(finalAddrs)
 	// Remove /p2p-circuit addresses from the list.
-	// The p2p-circuit tranport listener reports its address as just /p2p-circuit
+	// The p2p-circuit transport listener reports its address as just /p2p-circuit
 	// This is useless for dialing. Users need to manage their circuit addresses themselves,
 	// or use AutoRelay.
 	finalAddrs = slices.DeleteFunc(finalAddrs, func(a ma.Multiaddr) bool {
