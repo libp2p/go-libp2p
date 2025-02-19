@@ -50,7 +50,7 @@ func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 			return nil, err
 		}
 		ip := tcpAddr.IP
-		if !ip.IsLoopback() && !ip.IsGlobalUnicast() {
+		if !ip.IsLoopback() && !ip.IsGlobalUnicast() && !ip.IsLinkLocalUnicast() {
 			return nil, fmt.Errorf("undialable IP: %s", ip)
 		}
 
