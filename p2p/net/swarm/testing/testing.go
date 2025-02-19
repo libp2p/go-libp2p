@@ -29,7 +29,6 @@ import (
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/require"
 )
@@ -191,7 +190,6 @@ func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 			}
 		}
 	}
-	var quicListenAddr ma.Multiaddr
 	var reuse *quicreuse.ConnManager
 	if !cfg.disableQUIC {
 		reuse, err = quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
@@ -208,12 +206,6 @@ func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 		if !cfg.dialOnly {
 			if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")); err != nil {
 				t.Fatal(err)
-			}
-			for _, a := range s.ListenAddresses() {
-				if _, err := a.ValueForProtocol(ma.P_QUIC_V1); err == nil {
-					quicListenAddr = a
-					break
-				}
 			}
 		}
 	}
@@ -232,35 +224,13 @@ func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 			t.Fatal(err)
 		}
 		if !cfg.dialOnly {
-			listenAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
-			if quicListenAddr != nil {
-				listenAddr = quicListenAddr.Encapsulate(ma.StringCast("/webtransport"))
-			}
-			if err := s.Listen(listenAddr); err != nil {
+			if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
-
 	if !cfg.disableWebRTC {
 		listenUDPFn := func(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
-			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {
-				quicAddrPorts := map[string]struct{}{}
-				for _, addr := range s.ListenAddresses() {
-					if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
-						netw, addr, err := manet.DialArgs(addr)
-						if err != nil {
-							return false
-						}
-						quicAddrPorts[netw+"_"+addr] = struct{}{}
-					}
-				}
-				_, ok := quicAddrPorts[network+"_"+laddr.String()]
-				return ok
-			}
-			if hasQuicAddrPortFor(network, laddr) {
-				return reuse.SharedNonQUICPacketConn(network, laddr)
-			}
 			return net.ListenUDP(network, laddr)
 		}
 		wrtcTransport, err := libp2pwebrtc.New(priv, nil, cfg.connectionGater, nil, listenUDPFn)
@@ -271,11 +241,7 @@ func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 			t.Fatal(err)
 		}
 		if !cfg.dialOnly {
-			listenAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
-			if quicListenAddr != nil {
-				listenAddr = quicListenAddr.Decapsulate(ma.StringCast("/quic-v1")).Encapsulate(ma.StringCast("/webrtc-direct"))
-			}
-			if err := s.Listen(listenAddr); err != nil {
+			if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")); err != nil {
 				t.Fatal(err)
 			}
 		}
