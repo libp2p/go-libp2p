@@ -734,7 +734,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		lk.Lock()
 		currentAddrSet = i
 		lk.Unlock()
-		h.addressService.signalAddressChange()
+		h.addressManager.triggerAddrsUpdate()
 		evt := waitForAddrChangeEvent(ctx, sub, t)
 		if !updatedAddrEventsEqual(expectedEvents[i-1], evt) {
 			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i-1], evt)
@@ -931,9 +931,6 @@ func TestHostTimeoutNewStream(t *testing.T) {
 	require.NoError(t, err)
 	h1.Start()
 	defer h1.Close()
-	defer func() {
-		fmt.Println("starting close")
-	}()
 
 	const proto = "/testing"
 	h2 := swarmt.GenSwarm(t)

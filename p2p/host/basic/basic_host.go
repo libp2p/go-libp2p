@@ -20,7 +20,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
-	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
@@ -96,8 +95,7 @@ type BasicHost struct {
 	autoNat   autonat.AutoNAT
 
 	autonatv2      *autonatv2.AutoNAT
-	autorelay      *autorelay.AutoRelay
-	addressService *addressManager
+	addressManager *addrsManager
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -159,9 +157,6 @@ type HostOpts struct {
 	DisableIdentifyAddressDiscovery bool
 	EnableAutoNATv2                 bool
 	AutoNATv2Dialer                 host.Host
-
-	EnableAutoRelay bool
-	AutoRelayOpts   []autorelay.Option
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -197,10 +192,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		return nil, err
 	}
 
-	if !opts.DisableSignedPeerRecord {
-		h.signKey = h.Peerstore().PrivKey(h.ID())
-	}
-
 	if opts.MultistreamMuxer != nil {
 		h.mux = opts.MultistreamMuxer
 	}
@@ -228,21 +219,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		return nil, fmt.Errorf("failed to create Identify service: %s", err)
 	}
 
-	if opts.EnableAutoRelay {
-		if opts.EnableMetrics {
-			mt := autorelay.WithMetricsTracer(
-				autorelay.NewMetricsTracer(autorelay.WithRegisterer(opts.PrometheusRegisterer)))
-			mtOpts := []autorelay.Option{mt}
-			opts.AutoRelayOpts = append(mtOpts, opts.AutoRelayOpts...)
-		}
-
-		ar, err := autorelay.NewAutoRelay(h, opts.AutoRelayOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create autorelay: %w", err)
-		}
-		h.autorelay = ar
-	}
-
 	addrFactory := DefaultAddrsFactory
 	if opts.AddrsFactory != nil {
 		addrFactory = opts.AddrsFactory
@@ -258,14 +234,14 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}); ok {
 		tfl = s.TransportForListening
 	}
-	h.addressService, err = newAddressManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids)
+	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}
 	// register to be notified when the network's listen addrs change,
 	// so we can update our address set and push events if needed
 	listenHandler := func(network.Network, ma.Multiaddr) {
-		h.addressService.signalAddressChange()
+		h.addressManager.triggerAddrsUpdate()
 	}
 	n.Notify(&network.NotifyBundle{
 		ListenF:      listenHandler,
@@ -279,7 +255,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			opts.HolePunchingOptions = append(hpOpts, opts.HolePunchingOptions...)
 
 		}
-		h.hps, err = holepunch.NewService(h, h.ids, h.addressService.GetDirectAddrs, opts.HolePunchingOptions...)
+		h.hps, err = holepunch.NewService(h, h.ids, h.addressManager.HolePunchAddrs, opts.HolePunchingOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
 		}
@@ -322,15 +298,15 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		}
 	}
 
-	n.SetStreamHandler(h.newStreamHandler)
-
 	if !h.disableSignedPeerRecord {
+		h.signKey = h.Peerstore().PrivKey(h.ID())
 		cab, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
 		if !ok {
 			return nil, errors.New("peerstore should also be a certified address book")
 		}
 		h.caBook = cab
-		rec, err := h.makeSignedPeerRecord(h.addressService.Addrs())
+
+		rec, err := h.makeSignedPeerRecord(h.addressManager.Addrs())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
 		}
@@ -338,26 +314,35 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
 		}
 	}
+	n.SetStreamHandler(h.newStreamHandler)
 
 	return h, nil
 }
 
 // Start starts background tasks in the host
+// TODO: Return error and handle it in the caller?
 func (h *BasicHost) Start() {
 	h.psManager.Start()
 	h.ids.Start()
-	if h.autorelay != nil {
-		h.autorelay.Start()
-	}
 	if h.autonatv2 != nil {
 		err := h.autonatv2.Start()
 		if err != nil {
 			log.Errorf("autonat v2 failed to start: %s", err)
 		}
 	}
-	if err := h.addressService.Start(); err != nil {
+	if err := h.addressManager.Start(); err != nil {
 		log.Errorf("address service failed to start: %s", err)
 	}
+
+	// Ensure we have the correct peer record after Start returns
+	rec, err := h.makeSignedPeerRecord(h.addressManager.Addrs())
+	if err != nil {
+		log.Errorf("failed to create signed record: %w", err)
+	}
+	if _, err := h.caBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
+		log.Errorf("failed to persist signed record to peerstore: %w", err)
+	}
+
 	h.refCount.Add(1)
 	go h.background()
 }
@@ -481,7 +466,6 @@ func (h *BasicHost) background() {
 	defer h.refCount.Done()
 	var lastAddrs []ma.Multiaddr
 
-	// TODO: Deprecate this event and logic once we have a new event for address with reachability
 	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
 		changeEvt := h.makeUpdatedAddrEvent(lastAddrs, currentAddrs)
 		if changeEvt == nil {
@@ -515,7 +499,7 @@ func (h *BasicHost) background() {
 		lastAddrs = curr
 
 		select {
-		case <-h.addressService.AddrsUpdated():
+		case <-h.addressManager.AddrsUpdated():
 		case <-h.ctx.Done():
 			return
 		}
@@ -709,6 +693,7 @@ func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			return nil
 		}
 	}
+
 	return h.dialPeer(ctx, pi.ID)
 }
 
@@ -745,7 +730,7 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 // When used with AutoRelay, and if the host is not publicly reachable,
 // this will only have host's private, relay, and no public addresses.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
-	return h.addressService.Addrs()
+	return h.addressManager.Addrs()
 }
 
 // NormalizeMultiaddr returns a multiaddr suitable for equality checks.
@@ -767,80 +752,7 @@ func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 
 // AllAddrs returns all the addresses the host is listening on except circuit addresses.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
-	return h.addressService.AllAddrs()
-}
-
-// SetAutoNat sets the autonat service for the host.
-func (h *BasicHost) SetAutoNat(a autonat.AutoNAT) {
-	h.autoNATMx.Lock()
-	defer h.autoNATMx.Unlock()
-	if h.autoNat == nil {
-		h.autoNat = a
-	}
-}
-
-// GetAutoNat returns the host's AutoNAT service, if AutoNAT is enabled.
-//
-// Deprecated: Use `BasicHost.Reachability` to get the host's reachability.
-func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
-	h.autoNATMx.Lock()
-	defer h.autoNATMx.Unlock()
-	return h.autoNat
-}
-
-// Reachability returns the host's reachability status.
-func (h *BasicHost) Reachability() network.Reachability {
-	return *h.addressService.nodeReachability.Load()
-}
-
-// Close shuts down the Host's services (network, etc).
-func (h *BasicHost) Close() error {
-	h.closeSync.Do(func() {
-		h.ctxCancel()
-		if h.cmgr != nil {
-			h.cmgr.Close()
-		}
-
-		h.addressService.Close()
-
-		if h.ids != nil {
-			h.ids.Close()
-		}
-		if h.autoNat != nil {
-			h.autoNat.Close()
-		}
-		if h.relayManager != nil {
-			h.relayManager.Close()
-		}
-		if h.hps != nil {
-			h.hps.Close()
-		}
-		if h.autonatv2 != nil {
-			h.autonatv2.Close()
-		}
-		if h.autorelay != nil {
-			h.autorelay.Close()
-		}
-
-		_ = h.emitters.evtLocalProtocolsUpdated.Close()
-
-		if err := h.network.Close(); err != nil {
-			log.Errorf("swarm close failed: %v", err)
-		}
-
-		h.psManager.Close()
-		if h.Peerstore() != nil {
-			h.Peerstore().Close()
-		}
-
-		h.refCount.Wait()
-
-		if h.Network().ResourceManager() != nil {
-			h.Network().ResourceManager().Close()
-		}
-	})
-
-	return nil
+	return h.addressManager.DirectAddrs()
 }
 
 func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
@@ -893,6 +805,77 @@ func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
 		}
 	}
 	return addrs
+}
+
+// SetAutoNat sets the autonat service for the host.
+func (h *BasicHost) SetAutoNat(a autonat.AutoNAT) {
+	h.autoNATMx.Lock()
+	defer h.autoNATMx.Unlock()
+	if h.autoNat == nil {
+		h.autoNat = a
+	}
+}
+
+// GetAutoNat returns the host's AutoNAT service, if AutoNAT is enabled.
+//
+// Deprecated: Use `BasicHost.Reachability` to get the host's reachability.
+func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
+	h.autoNATMx.Lock()
+	defer h.autoNATMx.Unlock()
+	return h.autoNat
+}
+
+// Reachability returns the host's reachability status.
+func (h *BasicHost) Reachability() network.Reachability {
+	return *h.addressManager.hostReachability.Load()
+}
+
+// Close shuts down the Host's services (network, etc).
+func (h *BasicHost) Close() error {
+	h.closeSync.Do(func() {
+		h.ctxCancel()
+		if h.cmgr != nil {
+			h.cmgr.Close()
+		}
+
+		h.addressManager.Close()
+
+		if h.ids != nil {
+			h.ids.Close()
+		}
+		if h.autoNat != nil {
+			h.autoNat.Close()
+		}
+		if h.relayManager != nil {
+			h.relayManager.Close()
+		}
+		if h.hps != nil {
+			h.hps.Close()
+		}
+		if h.autonatv2 != nil {
+			h.autonatv2.Close()
+		}
+
+		_ = h.emitters.evtLocalProtocolsUpdated.Close()
+		_ = h.emitters.evtLocalAddrsUpdated.Close()
+
+		if err := h.network.Close(); err != nil {
+			log.Errorf("swarm close failed: %v", err)
+		}
+
+		h.psManager.Close()
+		if h.Peerstore() != nil {
+			h.Peerstore().Close()
+		}
+
+		h.refCount.Wait()
+
+		if h.Network().ResourceManager() != nil {
+			h.Network().ResourceManager().Close()
+		}
+	})
+
+	return nil
 }
 
 type streamWrapper struct {

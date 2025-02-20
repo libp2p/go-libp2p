@@ -10,6 +10,7 @@ import (
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
+
 	"github.com/libp2p/go-nat"
 )
 

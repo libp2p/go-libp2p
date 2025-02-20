@@ -26,64 +26,60 @@ type observedAddrsManager interface {
 	ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr
 }
 
-type addressManager struct {
+type addrsManager struct {
 	eventbus              event.Bus
 	natManager            NATManager
 	addrsFactory          AddrsFactory
-	addrsChangeChan       chan struct{}
-	addrsUpdated          chan struct{}
 	listenAddrs           func() []ma.Multiaddr
 	transportForListening func(ma.Multiaddr) transport.Transport
-	observedAddrsService  observedAddrsManager
+	observedAddrsManager  observedAddrsManager
+	interfaceAddrs        *interfaceAddrsCache
 
-	interfaceAddrs *interfaceAddrsCache
-	wg             sync.WaitGroup
-	ctx            context.Context
-	ctxCancel      context.CancelFunc
+	triggerAddrsUpdateChan chan struct{}
+	addrsUpdated           chan struct{}
+	hostReachability       atomic.Pointer[network.Reachability]
 
-	addrsMx    sync.RWMutex
+	addrsMx    sync.RWMutex // protects fields below
 	localAddrs []ma.Multiaddr
 	relayAddrs []ma.Multiaddr
 
-	nodeReachability atomic.Pointer[network.Reachability]
+	wg        sync.WaitGroup
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 }
 
-func newAddressManager(
+func newAddrsManager(
 	eventbus event.Bus,
 	natmgr NATManager,
-	addrFactory AddrsFactory,
+	addrsFactory AddrsFactory,
 	listenAddrs func() []ma.Multiaddr,
 	transportForListening func(ma.Multiaddr) transport.Transport,
-	observedAddrsService observedAddrsManager,
-) (*addressManager, error) {
+	observedAddrsManager observedAddrsManager,
+) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	as := &addressManager{
-		eventbus:              eventbus,
-		listenAddrs:           listenAddrs,
-		transportForListening: transportForListening,
-		observedAddrsService:  observedAddrsService,
-		natManager:            natmgr,
-		addrsFactory:          addrFactory,
-		addrsChangeChan:       make(chan struct{}, 1),
-		addrsUpdated:          make(chan struct{}, 1),
-		interfaceAddrs:        &interfaceAddrsCache{},
-		ctx:                   ctx,
-		ctxCancel:             cancel,
+	as := &addrsManager{
+		eventbus:               eventbus,
+		listenAddrs:            listenAddrs,
+		transportForListening:  transportForListening,
+		observedAddrsManager:   observedAddrsManager,
+		natManager:             natmgr,
+		addrsFactory:           addrsFactory,
+		triggerAddrsUpdateChan: make(chan struct{}, 1),
+		addrsUpdated:           make(chan struct{}, 1),
+		interfaceAddrs:         &interfaceAddrsCache{},
+		ctx:                    ctx,
+		ctxCancel:              cancel,
 	}
 	unknownReachability := network.ReachabilityUnknown
-	as.nodeReachability.Store(&unknownReachability)
+	as.hostReachability.Store(&unknownReachability)
 	return as, nil
 }
 
-func (a *addressManager) Start() error {
-	err := a.background()
-	if err != nil {
-		return fmt.Errorf("error starting address service: %s", err)
-	}
-	return nil
+func (a *addrsManager) Start() error {
+	return a.background()
 }
 
-func (a *addressManager) Close() {
+func (a *addrsManager) Close() {
 	a.ctxCancel()
 	if a.natManager != nil {
 		err := a.natManager.Close()
@@ -94,28 +90,31 @@ func (a *addressManager) Close() {
 	a.wg.Wait()
 }
 
-func (a *addressManager) AddrsUpdated() chan struct{} {
+// AddrsUpdated returns a channel that's notified when the addresses change.
+// This is only intended to be used by the basichost for updating the signed
+// peer record.
+func (a *addrsManager) AddrsUpdated() chan struct{} {
 	return a.addrsUpdated
 }
 
-func (a *addressManager) NetNotifee() network.Notifiee {
+func (a *addrsManager) NetNotifee() network.Notifiee {
 	return &network.NotifyBundle{
-		ListenF:      func(network.Network, ma.Multiaddr) { a.signalAddressChange() },
-		ListenCloseF: func(network.Network, ma.Multiaddr) { a.signalAddressChange() },
+		ListenF:      func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
+		ListenCloseF: func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
 	}
 }
 
-func (a *addressManager) signalAddressChange() {
-	// This is ugly, we update here and in the background loop, but this ensures the nice property
-	// that host.Addrs after host.Network().Listen will return the recently added listen address
+func (a *addrsManager) triggerAddrsUpdate() {
+	// This is ugly, we update here *and* in the background loop, but this ensures the nice property
+	// that host.Addrs after host.Network().Listen(...) will return the recently added listen address.
 	a.updateLocalAddrs()
 	select {
-	case a.addrsChangeChan <- struct{}{}:
+	case a.triggerAddrsUpdateChan <- struct{}{}:
 	default:
 	}
 }
 
-func (a *addressManager) background() error {
+func (a *addrsManager) background() error {
 	autoRelayAddrsSub, err := a.eventbus.Subscribe(new(event.EvtAutoRelayAddrsUpdated))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
@@ -140,7 +139,7 @@ func (a *addressManager) background() error {
 	select {
 	case e := <-autonatReachabilitySub.Out():
 		if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
-			a.nodeReachability.Store(&evt.Reachability)
+			a.hostReachability.Store(&evt.Reachability)
 		}
 	default:
 	}
@@ -168,6 +167,7 @@ func (a *addressManager) background() error {
 			a.updateLocalAddrs()
 			curr := a.Addrs()
 			if a.areAddrsDifferent(prev, curr) {
+				log.Debugf("host addresses updated: %s", curr)
 				select {
 				case a.addrsUpdated <- struct{}{}:
 				default:
@@ -176,14 +176,14 @@ func (a *addressManager) background() error {
 			prev = curr
 			select {
 			case <-ticker.C:
-			case <-a.addrsChangeChan:
+			case <-a.triggerAddrsUpdateChan:
 			case e := <-autoRelayAddrsSub.Out():
 				if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
 					a.updateRelayAddrs(evt.RelayAddrs)
 				}
 			case e := <-autonatReachabilitySub.Out():
 				if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
-					a.nodeReachability.Store(&evt.Reachability)
+					a.hostReachability.Store(&evt.Reachability)
 				}
 			case <-a.ctx.Done():
 				return
@@ -196,9 +196,10 @@ func (a *addressManager) background() error {
 // Addrs returns the node's dialable addresses both public and private.
 // If autorelay is enabled and node reachability is private, it returns
 // the node's relay addresses and private network addresses.
-func (a *addressManager) Addrs() []ma.Multiaddr {
-	addrs := a.AllAddrs()
-	if *a.nodeReachability.Load() == network.ReachabilityPrivate {
+func (a *addrsManager) Addrs() []ma.Multiaddr {
+	addrs := a.DirectAddrs()
+	rch := a.hostReachability.Load()
+	if rch != nil && *rch == network.ReachabilityPrivate {
 		a.addrsMx.RLock()
 		// Delete public addresses if the node's reachability is private, and we have relay addresses
 		if len(a.relayAddrs) > 0 {
@@ -210,38 +211,49 @@ func (a *addressManager) Addrs() []ma.Multiaddr {
 	// Make a copy. Consumers can modify the slice elements
 	addrs = slices.Clone(a.addrsFactory(addrs))
 	// Add certhashes for the addresses provided by the user via address factory.
-	return a.addCertHashes(ma.Unique(addrs))
+	addrs = a.addCertHashes(ma.Unique(addrs))
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
+	return addrs
 }
 
-// GetDirectAddrs returns the node's public direct listen addresses.
-func (a *addressManager) GetDirectAddrs() []ma.Multiaddr {
-	addrs := a.AllAddrs()
+// HolePunchAddrs returns the node's public direct listen addresses for hole punching.
+func (a *addrsManager) HolePunchAddrs() []ma.Multiaddr {
+	addrs := a.DirectAddrs()
 	addrs = slices.Clone(a.addrsFactory(addrs))
 	// AllAddrs may ignore observed addresses in favour of NAT mappings.
 	// Use both for hole punching.
-	addrs = append(addrs, a.observedAddrsService.OwnObservedAddrs()...)
+	if a.observedAddrsManager != nil {
+		addrs = append(addrs, a.observedAddrsManager.OwnObservedAddrs()...)
+	}
 	addrs = ma.Unique(addrs)
 	return slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
 }
 
-// AllAddrs returns all the addresses the host is listening on except circuit addresses.
-func (a *addressManager) AllAddrs() []ma.Multiaddr {
+// DirectAddrs returns all the addresses the host is listening on except circuit addresses.
+func (a *addrsManager) DirectAddrs() []ma.Multiaddr {
 	a.addrsMx.RLock()
 	defer a.addrsMx.RUnlock()
 	return slices.Clone(a.localAddrs)
 }
 
+func (a *addrsManager) updateRelayAddrs(addrs []ma.Multiaddr) {
+	a.addrsMx.Lock()
+	defer a.addrsMx.Unlock()
+	a.relayAddrs = append(a.relayAddrs[:0], addrs...)
+}
+
 var p2pCircuitAddr = ma.StringCast("/p2p-circuit")
 
-func (a *addressManager) updateLocalAddrs() {
+func (a *addrsManager) updateLocalAddrs() {
 	localAddrs := a.getLocalAddrs()
+	slices.SortFunc(localAddrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
 
 	a.addrsMx.Lock()
 	a.localAddrs = localAddrs
 	a.addrsMx.Unlock()
 }
 
-func (a *addressManager) getLocalAddrs() []ma.Multiaddr {
+func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	listenAddrs := a.listenAddrs()
 	if len(listenAddrs) == 0 {
 		return nil
@@ -250,6 +262,7 @@ func (a *addressManager) getLocalAddrs() []ma.Multiaddr {
 	finalAddrs := make([]ma.Multiaddr, 0, 8)
 	finalAddrs = a.appendPrimaryInterfaceAddrs(finalAddrs, listenAddrs)
 	finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs, a.interfaceAddrs.All())
+
 	finalAddrs = ma.Unique(finalAddrs)
 
 	// Remove "/p2p-circuit" addresses from the list.
@@ -271,14 +284,8 @@ func (a *addressManager) getLocalAddrs() []ma.Multiaddr {
 	return finalAddrs
 }
 
-func (a *addressManager) updateRelayAddrs(addrs []ma.Multiaddr) {
-	a.addrsMx.Lock()
-	defer a.addrsMx.Unlock()
-	a.relayAddrs = slices.Clone(addrs)
-}
-
 // appendPrimaryInterfaceAddrs appends the primary interface addresses to `dst`.
-func (a *addressManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr) []ma.Multiaddr {
+func (a *addrsManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr) []ma.Multiaddr {
 	// resolving any unspecified listen addressees to use only the primary
 	// interface to avoid advertising too many addresses.
 	if resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, a.interfaceAddrs.Filtered()); err != nil {
@@ -286,7 +293,6 @@ func (a *addressManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenA
 	} else {
 		dst = append(dst, resolved...)
 	}
-	dst = ma.Unique(dst)
 	return dst
 }
 
@@ -295,53 +301,50 @@ func (a *addressManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenA
 // Inferring WebTransport from QUIC depends on the observed address manager.
 //
 // TODO: Merge the natmgr and identify.ObservedAddrManager in to one NatMapper module.
-func (a *addressManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
-	if a.natManager == nil || !a.natManager.HasDiscoveredNAT() {
-		if a.observedAddrsService != nil {
-			dst = append(dst, a.observedAddrsService.OwnObservedAddrs()...)
-		}
-		return dst
-	}
-
+func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
+	var obsAddrs []ma.Multiaddr
 	for _, listenAddr := range listenAddrs {
-		natAddr := a.natManager.GetMapping(listenAddr)
-		// No mapping use observed address
-		if natAddr == nil {
-			dst = append(dst, a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)...)
-			continue
+		var natAddr ma.Multiaddr
+		if a.natManager != nil {
+			natAddr = a.natManager.GetMapping(listenAddr)
 		}
-		// The router gave us an unspecified address as the external address.
-		if manet.IsIPUnspecified(natAddr) {
+
+		// The order of the cases below is important.
+		switch {
+		case natAddr == nil: // no nat mapping
+			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
+		case manet.IsIPUnspecified(natAddr):
 			log.Infof("NAT device reported an unspecified IP as it's external address: %s", natAddr)
-			// Use the port from router and IP from observed address.
-			// TODO(sukunrt): Use both?
 			_, natRest := ma.SplitFirst(natAddr)
-			obsAddrs := make([]ma.Multiaddr, 0, 8)
-			for _, addr := range a.appendObservedAddrs(obsAddrs, listenAddr, ifaceAddrs) {
+			obsAddrs = a.appendObservedAddrs(obsAddrs[:0], listenAddr, ifaceAddrs)
+			for _, addr := range obsAddrs {
 				obsIP, _ := ma.SplitFirst(addr)
 				if obsIP != nil && manet.IsPublicAddr(obsIP) {
 					dst = append(dst, obsIP.Encapsulate(natRest))
 				}
 			}
-			continue
-		}
-
-		// we have a sane address
-		dst = append(dst, natAddr)
-
-		// If it's not a public address, maybe CGNAT, use the observed addresses.
-		if !manet.IsPublicAddr(natAddr) {
+		// This is !Public as opposed to IsPrivate intentionally.
+		// Public is a more restrictive classification in some cases, like IPv6 addresses which only
+		// consider unicast IPv6 addresses allocated so far as public(2000::/3).
+		case !manet.IsPublicAddr(natAddr): // nat reported non public addr(maybe CGNAT?)
+			// use both NAT and observed addr
+			dst = append(dst, natAddr)
 			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
+		default: // public addr
+			dst = append(dst, natAddr)
 		}
 	}
 	return dst
 }
 
-func (a *addressManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
+func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
+	if a.observedAddrsManager == nil {
+		return dst
+	}
 	// Add it for the listenAddr first.
 	// listenAddr maybe unspecified. That's okay as connections on UDP transports
 	// will have the unspecified address as the local address.
-	dst = append(dst, a.observedAddrsService.ObservedAddrsFor(listenAddr)...)
+	dst = append(dst, a.observedAddrsManager.ObservedAddrsFor(listenAddr)...)
 
 	// if it can be resolved into more addresses, add them too
 	resolved, err := manet.ResolveUnspecifiedAddress(listenAddr, ifaceAddrs)
@@ -350,12 +353,16 @@ func (a *addressManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.M
 		return dst
 	}
 	for _, addr := range resolved {
-		dst = append(dst, a.observedAddrsService.ObservedAddrsFor(addr)...)
+		dst = append(dst, a.observedAddrsManager.ObservedAddrsFor(addr)...)
 	}
 	return dst
 }
 
-func (a *addressManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
+func (a *addrsManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
+	if a.transportForListening == nil {
+		return addrs
+	}
+
 	// TODO(sukunrt): Move this to swarm.
 	// There are two parts to determining our external address
 	// 1. From the NAT device, or identify, or other such STUN like mechanism.
@@ -369,16 +376,8 @@ func (a *addressManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	// but that is only convenient if we're using the same port for listening on
 	// all transports which share the same thinwaist protocol. If you listen
 	// on 4001 for tcp, and 4002 for websocket, then it's a terrible API.
-	type transportForListeninger interface {
-		TransportForListening(a ma.Multiaddr) transport.Transport
-	}
-
 	type addCertHasher interface {
 		AddCertHashes(m ma.Multiaddr) (ma.Multiaddr, bool)
-	}
-
-	if a.transportForListening == nil {
-		return addrs
 	}
 
 	for i, addr := range addrs {
@@ -386,6 +385,9 @@ func (a *addressManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 		webrtcOK, webrtcN := libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
 		if (wtOK && wtN == 0) || (webrtcOK && webrtcN == 0) {
 			t := a.transportForListening(addr)
+			if t == nil {
+				continue
+			}
 			tpt, ok := t.(addCertHasher)
 			if !ok {
 				continue
@@ -401,14 +403,15 @@ func (a *addressManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	return addrs
 }
 
-func (a *addressManager) areAddrsDifferent(prev, current []ma.Multiaddr) bool {
+func (a *addrsManager) areAddrsDifferent(prev, current []ma.Multiaddr) bool {
+	// TODO: make the sorted nature of ma.Unique a guarantee in multiaddrs
 	prev = ma.Unique(prev)
 	current = ma.Unique(current)
-	slices.SortFunc(prev, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
-	slices.SortFunc(current, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
 	if len(prev) != len(current) {
 		return true
 	}
+	slices.SortFunc(prev, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
+	slices.SortFunc(current, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
 	for i := range prev {
 		if !prev[i].Equal(current[i]) {
 			return true
@@ -417,7 +420,7 @@ func (a *addressManager) areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	return false
 }
 
-const ifaceAddrsTTL = time.Minute
+const interfaceAddrsCacheTTL = time.Minute
 
 type interfaceAddrsCache struct {
 	mx                     sync.RWMutex
@@ -430,7 +433,7 @@ type interfaceAddrsCache struct {
 
 func (i *interfaceAddrsCache) Filtered() []ma.Multiaddr {
 	i.mx.RLock()
-	if time.Now().After(i.lastUpdated.Add(ifaceAddrsTTL)) {
+	if time.Now().After(i.lastUpdated.Add(interfaceAddrsCacheTTL)) {
 		i.mx.RUnlock()
 		return i.update(true)
 	}
@@ -440,7 +443,7 @@ func (i *interfaceAddrsCache) Filtered() []ma.Multiaddr {
 
 func (i *interfaceAddrsCache) All() []ma.Multiaddr {
 	i.mx.RLock()
-	if time.Now().After(i.lastUpdated.Add(ifaceAddrsTTL)) {
+	if time.Now().After(i.lastUpdated.Add(interfaceAddrsCacheTTL)) {
 		i.mx.RUnlock()
 		return i.update(false)
 	}
@@ -451,7 +454,7 @@ func (i *interfaceAddrsCache) All() []ma.Multiaddr {
 func (i *interfaceAddrsCache) update(filtered bool) []ma.Multiaddr {
 	i.mx.Lock()
 	defer i.mx.Unlock()
-	if !time.Now().After(i.lastUpdated.Add(ifaceAddrsTTL)) {
+	if !time.Now().After(i.lastUpdated.Add(interfaceAddrsCacheTTL)) {
 		if filtered {
 			return i.filtered
 		}
