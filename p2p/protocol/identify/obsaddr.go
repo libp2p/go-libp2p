@@ -104,8 +104,9 @@ func (s *observerSet) cacheMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	if addr == nil {
 		return s.ObservedTWAddr
 	}
+	addrStr := string(addr.Bytes())
 	s.mu.RLock()
-	res, ok := s.cachedMultiaddrs[string(addr.Bytes())]
+	res, ok := s.cachedMultiaddrs[addrStr]
 	s.mu.RUnlock()
 	if ok {
 		return res
@@ -114,7 +115,7 @@ func (s *observerSet) cacheMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Check if some other go routine added this while we were waiting
-	res, ok = s.cachedMultiaddrs[string(addr.Bytes())]
+	res, ok = s.cachedMultiaddrs[addrStr]
 	if ok {
 		return res
 	}
@@ -128,8 +129,8 @@ func (s *observerSet) cacheMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 			break
 		}
 	}
-	s.cachedMultiaddrs[string(addr.Bytes())] = ma.Join(s.ObservedTWAddr, addr)
-	return s.cachedMultiaddrs[string(addr.Bytes())]
+	s.cachedMultiaddrs[addrStr] = ma.Join(s.ObservedTWAddr, addr)
+	return s.cachedMultiaddrs[addrStr]
 }
 
 type observation struct {
@@ -231,11 +232,17 @@ func (o *ObservedAddrManager) appendInferredAddrs(twToObserverSets map[string][]
 		lAddrs = nil
 	}
 	lAddrs = append(lAddrs, o.listenAddrs()...)
+	seenTWs := make(map[string]struct{})
 	for _, a := range lAddrs {
 		if _, ok := o.localAddrs[string(a.Bytes())]; ok {
 			// We already have this address in the list
 			continue
 		}
+		if _, ok := seenTWs[string(a.Bytes())]; ok {
+			// We've already added this
+			continue
+		}
+		seenTWs[string(a.Bytes())] = struct{}{}
 		a = o.normalize(a)
 		t, err := thinWaistForm(a)
 		if err != nil {
@@ -245,7 +252,6 @@ func (o *ObservedAddrManager) appendInferredAddrs(twToObserverSets map[string][]
 			addrs = append(addrs, s.cacheMultiaddr(t.Rest))
 		}
 	}
-	addrs = ma.Unique(addrs)
 	return addrs
 }
 

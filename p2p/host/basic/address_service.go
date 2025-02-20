@@ -219,7 +219,9 @@ func (a *addressManager) GetDirectAddrs() []ma.Multiaddr {
 	addrs = slices.Clone(a.addrsFactory(addrs))
 	// AllAddrs may ignore observed addresses in favour of NAT mappings.
 	// Use both for hole punching.
-	addrs = append(addrs, a.observedAddrsService.OwnObservedAddrs()...)
+	if a.observedAddrsService != nil {
+		addrs = append(addrs, a.observedAddrsService.OwnObservedAddrs()...)
+	}
 	addrs = ma.Unique(addrs)
 	return slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
 }
@@ -338,6 +340,9 @@ func (a *addressManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Mul
 }
 
 func (a *addressManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
+	if a.observedAddrsService == nil {
+		return dst
+	}
 	// Add it for the listenAddr first.
 	// listenAddr maybe unspecified. That's okay as connections on UDP transports
 	// will have the unspecified address as the local address.
@@ -369,10 +374,6 @@ func (a *addressManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	// but that is only convenient if we're using the same port for listening on
 	// all transports which share the same thinwaist protocol. If you listen
 	// on 4001 for tcp, and 4002 for websocket, then it's a terrible API.
-	type transportForListeninger interface {
-		TransportForListening(a ma.Multiaddr) transport.Transport
-	}
-
 	type addCertHasher interface {
 		AddCertHashes(m ma.Multiaddr) (ma.Multiaddr, bool)
 	}
