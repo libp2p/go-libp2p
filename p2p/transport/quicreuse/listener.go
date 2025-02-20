@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
@@ -29,7 +30,7 @@ type protoConf struct {
 }
 
 type quicListener struct {
-	l         *quic.Listener
+	l         QUICListener
 	transport refCountedQuicTransport
 	running   chan struct{}
 	addrs     []ma.Multiaddr
@@ -212,7 +213,7 @@ func (l *listener) Close() error {
 		close(l.queue)
 		// drain the queue
 		for conn := range l.queue {
-			conn.CloseWithError(1, "closing")
+			conn.CloseWithError(quic.ApplicationErrorCode(network.ConnShutdown), "closing")
 		}
 	})
 	return nil

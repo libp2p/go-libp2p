@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"math/rand/v2"
+
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
-	"golang.org/x/exp/rand"
 )
 
 // client implements the client for making dial requests for AutoNAT v2. It verifies successful

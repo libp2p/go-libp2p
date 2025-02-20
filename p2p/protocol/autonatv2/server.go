@@ -67,10 +67,11 @@ func newServer(host, dialer host.Host, s *autoNATSettings) *server {
 		amplificatonAttackPreventionDialWait: s.amplificatonAttackPreventionDialWait,
 		allowPrivateAddrs:                    s.allowPrivateAddrs,
 		limiter: &rateLimiter{
-			RPM:         s.serverRPM,
-			PerPeerRPM:  s.serverPerPeerRPM,
-			DialDataRPM: s.serverDialDataRPM,
-			now:         s.now,
+			RPM:                          s.serverRPM,
+			PerPeerRPM:                   s.serverPerPeerRPM,
+			DialDataRPM:                  s.serverDialDataRPM,
+			MaxConcurrentRequestsPerPeer: s.maxConcurrentRequestsPerPeer,
+			now:                          s.now,
 		},
 		now:           s.now,
 		metricsTracer: s.metricsTracer,
@@ -391,16 +392,17 @@ type rateLimiter struct {
 	RPM int
 	// DialDataRPM is the rate limit for requests that require dial data
 	DialDataRPM int
+	// MaxConcurrentRequestsPerPeer is the maximum number of concurrent requests per peer
+	MaxConcurrentRequestsPerPeer int
 
 	mu           sync.Mutex
 	closed       bool
 	reqs         []entry
 	peerReqs     map[peer.ID][]time.Time
 	dialDataReqs []time.Time
-	// ongoingReqs tracks in progress requests. This is used to disallow multiple concurrent requests by the
-	// same peer
-	// TODO: Should we allow a few concurrent requests per peer?
-	ongoingReqs map[peer.ID]struct{}
+	// inProgressReqs tracks in progress requests. This is used to limit multiple
+	// concurrent requests by the same peer.
+	inProgressReqs map[peer.ID]int
 
 	now func() time.Time // for tests
 }
@@ -410,28 +412,31 @@ type entry struct {
 	Time   time.Time
 }
 
+func (r *rateLimiter) init() {
+	if r.peerReqs == nil {
+		r.peerReqs = make(map[peer.ID][]time.Time)
+		r.inProgressReqs = make(map[peer.ID]int)
+	}
+}
+
 func (r *rateLimiter) Accept(p peer.ID) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
 		return false
 	}
-	if r.peerReqs == nil {
-		r.peerReqs = make(map[peer.ID][]time.Time)
-		r.ongoingReqs = make(map[peer.ID]struct{})
-	}
-
+	r.init()
 	nw := r.now()
 	r.cleanup(nw)
 
-	if _, ok := r.ongoingReqs[p]; ok {
+	if r.inProgressReqs[p] >= r.MaxConcurrentRequestsPerPeer {
 		return false
 	}
 	if len(r.reqs) >= r.RPM || len(r.peerReqs[p]) >= r.PerPeerRPM {
 		return false
 	}
 
-	r.ongoingReqs[p] = struct{}{}
+	r.inProgressReqs[p]++
 	r.reqs = append(r.reqs, entry{PeerID: p, Time: nw})
 	r.peerReqs[p] = append(r.peerReqs[p], nw)
 	return true
@@ -443,10 +448,7 @@ func (r *rateLimiter) AcceptDialDataRequest(p peer.ID) bool {
 	if r.closed {
 		return false
 	}
-	if r.peerReqs == nil {
-		r.peerReqs = make(map[peer.ID][]time.Time)
-		r.ongoingReqs = make(map[peer.ID]struct{})
-	}
+	r.init()
 	nw := r.now()
 	r.cleanup(nw)
 	if len(r.dialDataReqs) >= r.DialDataRPM {
@@ -495,7 +497,13 @@ func (r *rateLimiter) cleanup(now time.Time) {
 func (r *rateLimiter) CompleteRequest(p peer.ID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.ongoingReqs, p)
+	r.inProgressReqs[p]--
+	if r.inProgressReqs[p] <= 0 {
+		delete(r.inProgressReqs, p)
+		if r.inProgressReqs[p] < 0 {
+			log.Errorf("BUG: negative in progress requests for peer %s", p)
+		}
+	}
 }
 
 func (r *rateLimiter) Close() {
@@ -503,7 +511,7 @@ func (r *rateLimiter) Close() {
 	defer r.mu.Unlock()
 	r.closed = true
 	r.peerReqs = nil
-	r.ongoingReqs = nil
+	r.inProgressReqs = nil
 	r.dialDataReqs = nil
 }
 

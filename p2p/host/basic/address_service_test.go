@@ -154,12 +154,13 @@ func TestAddressService(t *testing.T) {
 		h.Start()
 		t.Cleanup(func() { h.Close() })
 
-		rAddrEM, err := h.eventbus.Emitter(new(event.EvtAutoRelayAddrs), eventbus.Stateful)
+		rAddrEM, err := h.eventbus.Emitter(new(event.EvtAutoRelayAddrsUpdated), eventbus.Stateful)
 		require.NoError(t, err)
+
 		rchEM, err := h.eventbus.Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 		require.NoError(t, err)
 		return h.addressService, func(relayAddrs []ma.Multiaddr) {
-				err := rAddrEM.Emit(event.EvtAutoRelayAddrs{RelayAddrs: relayAddrs})
+				err := rAddrEM.Emit(event.EvtAutoRelayAddrsUpdated{RelayAddrs: relayAddrs})
 				require.NoError(t, err)
 			}, func(rch network.Reachability) {
 				err := rchEM.Emit(event.EvtLocalReachabilityChanged{Reachability: rch})

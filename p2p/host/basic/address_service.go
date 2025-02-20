@@ -48,7 +48,7 @@ type addressManager struct {
 	nodeReachability atomic.Pointer[network.Reachability]
 }
 
-func NewAddressManager(
+func newAddressManager(
 	eventbus event.Bus,
 	natmgr NATManager,
 	addrFactory AddrsFactory,
@@ -116,7 +116,7 @@ func (a *addressManager) signalAddressChange() {
 }
 
 func (a *addressManager) background() error {
-	autoRelayAddrsSub, err := a.eventbus.Subscribe(new(event.EvtAutoRelayAddrs))
+	autoRelayAddrsSub, err := a.eventbus.Subscribe(new(event.EvtAutoRelayAddrsUpdated))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
 	}
@@ -125,15 +125,26 @@ func (a *addressManager) background() error {
 	if err != nil {
 		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
 	}
+
 	// ensure that we have the correct address after returning from Start()
+	// update local addrs
 	a.updateLocalAddrs()
+	// update relay addrs in case we're private
 	select {
 	case e := <-autoRelayAddrsSub.Out():
-		if evt, ok := e.(*event.EvtAutoRelayAddrs); ok {
+		if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
 			a.updateRelayAddrs(evt.RelayAddrs)
 		}
 	default:
 	}
+	select {
+	case e := <-autonatReachabilitySub.Out():
+		if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
+			a.nodeReachability.Store(&evt.Reachability)
+		}
+	default:
+	}
+
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
@@ -167,7 +178,7 @@ func (a *addressManager) background() error {
 			case <-ticker.C:
 			case <-a.addrsChangeChan:
 			case e := <-autoRelayAddrsSub.Out():
-				if evt, ok := e.(event.EvtAutoRelayAddrs); ok {
+				if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
 					a.updateRelayAddrs(evt.RelayAddrs)
 				}
 			case e := <-autonatReachabilitySub.Out():

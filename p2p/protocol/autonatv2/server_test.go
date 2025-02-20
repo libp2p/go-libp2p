@@ -149,7 +149,7 @@ func TestServerDataRequest(t *testing.T) {
 			}
 			return false
 		}),
-		WithServerRateLimit(10, 10, 10),
+		WithServerRateLimit(10, 10, 10, 2),
 		withAmplificationAttackPreventionDialWait(0),
 	)
 	defer an.Close()
@@ -187,6 +187,69 @@ func TestServerDataRequest(t *testing.T) {
 	_, err = c.GetReachability(context.Background(), []Request{{Addr: quicAddr, SendDialData: true}, {Addr: tcpAddr}})
 	require.Error(t, err)
 }
+
+func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
+	const concurrentRequests = 5
+
+	// server will skip all tcp addresses
+	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
+
+	doneChan := make(chan struct{})
+	an := newAutoNAT(t, dialer, allowPrivateAddrs, withDataRequestPolicy(
+		// stall all allowed requests
+		func(s network.Stream, dialAddr ma.Multiaddr) bool {
+			<-doneChan
+			return true
+		}),
+		WithServerRateLimit(10, 10, 10, concurrentRequests),
+		withAmplificationAttackPreventionDialWait(0),
+	)
+	defer an.Close()
+	defer an.host.Close()
+
+	c := newAutoNAT(t, nil, allowPrivateAddrs)
+	defer c.Close()
+	defer c.host.Close()
+
+	idAndWait(t, c, an)
+
+	errChan := make(chan error)
+	const N = 10
+	// num concurrentRequests will stall and N will fail
+	for i := 0; i < concurrentRequests+N; i++ {
+		go func() {
+			_, err := c.GetReachability(context.Background(), []Request{{Addr: c.host.Addrs()[0], SendDialData: false}})
+			errChan <- err
+		}()
+	}
+
+	// check N failures
+	for i := 0; i < N; i++ {
+		select {
+		case err := <-errChan:
+			require.Error(t, err)
+		case <-time.After(10 * time.Second):
+			t.Fatalf("expected %d errors: got: %d", N, i)
+		}
+	}
+
+	// check concurrentRequests failures, as we won't send dial data
+	close(doneChan)
+	for i := 0; i < concurrentRequests; i++ {
+		select {
+		case err := <-errChan:
+			require.Error(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("expected %d errors: got: %d", concurrentRequests, i)
+		}
+	}
+	select {
+	case err := <-errChan:
+		t.Fatalf("expected no more errors: got: %v", err)
+	default:
+	}
+}
+
 func TestServerDataRequestJitter(t *testing.T) {
 	// server will skip all tcp addresses
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
@@ -198,7 +261,7 @@ func TestServerDataRequestJitter(t *testing.T) {
 			}
 			return false
 		}),
-		WithServerRateLimit(10, 10, 10),
+		WithServerRateLimit(10, 10, 10, 2),
 		withAmplificationAttackPreventionDialWait(5*time.Second),
 	)
 	defer an.Close()
@@ -238,7 +301,7 @@ func TestServerDataRequestJitter(t *testing.T) {
 }
 
 func TestServerDial(t *testing.T) {
-	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10), allowPrivateAddrs)
+	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10, 2), allowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -295,7 +358,7 @@ func TestServerDial(t *testing.T) {
 
 func TestRateLimiter(t *testing.T) {
 	cl := test.NewMockClock()
-	r := rateLimiter{RPM: 3, PerPeerRPM: 2, DialDataRPM: 1, now: cl.Now}
+	r := rateLimiter{RPM: 3, PerPeerRPM: 2, DialDataRPM: 1, now: cl.Now, MaxConcurrentRequestsPerPeer: 1}
 
 	require.True(t, r.Accept("peer1"))
 
@@ -333,12 +396,37 @@ func TestRateLimiter(t *testing.T) {
 
 	cl.AdvanceBy(10 * time.Second)
 	require.True(t, r.Accept("peer3"))
+
+}
+
+func TestRateLimiterConcurrentRequests(t *testing.T) {
+	const N = 5
+	const Peers = 5
+	for concurrentRequests := 1; concurrentRequests <= N; concurrentRequests++ {
+		cl := test.NewMockClock()
+		r := rateLimiter{RPM: 10 * Peers * N, PerPeerRPM: 10 * Peers * N, DialDataRPM: 10 * Peers * N, now: cl.Now, MaxConcurrentRequestsPerPeer: concurrentRequests}
+		for p := 0; p < Peers; p++ {
+			for i := 0; i < concurrentRequests; i++ {
+				require.True(t, r.Accept(peer.ID(fmt.Sprintf("peer-%d", p))))
+			}
+			require.False(t, r.Accept(peer.ID(fmt.Sprintf("peer-%d", p))))
+			// Now complete the requests
+			for i := 0; i < concurrentRequests; i++ {
+				r.CompleteRequest(peer.ID(fmt.Sprintf("peer-%d", p)))
+			}
+			// Now we should be able to accept new requests
+			for i := 0; i < concurrentRequests; i++ {
+				require.True(t, r.Accept(peer.ID(fmt.Sprintf("peer-%d", p))))
+			}
+			require.False(t, r.Accept(peer.ID(fmt.Sprintf("peer-%d", p))))
+		}
+	}
 }
 
 func TestRateLimiterStress(t *testing.T) {
 	cl := test.NewMockClock()
 	for i := 0; i < 10; i++ {
-		r := rateLimiter{RPM: 20 + i, PerPeerRPM: 10 + i, DialDataRPM: i, now: cl.Now}
+		r := rateLimiter{RPM: 20 + i, PerPeerRPM: 10 + i, DialDataRPM: i, MaxConcurrentRequestsPerPeer: 1, now: cl.Now}
 
 		peers := make([]peer.ID, 10+i)
 		for i := 0; i < len(peers); i++ {
@@ -386,7 +474,7 @@ func TestRateLimiterStress(t *testing.T) {
 		require.Equal(t, len(r.peerReqs), 1)
 		require.Equal(t, len(r.peerReqs[peers[0]]), 1)
 		require.Equal(t, len(r.dialDataReqs), 0)
-		require.Equal(t, len(r.ongoingReqs), 1)
+		require.Equal(t, len(r.inProgressReqs), 1)
 	}
 }
 
@@ -433,7 +521,7 @@ func TestReadDialData(t *testing.T) {
 }
 
 func FuzzServerDialRequest(f *testing.F) {
-	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32))
+	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
 	c := newAutoNAT(f, nil)
 	idAndWait(f, c, a)
 	// reduce the streamTimeout before running this. TODO: fix this

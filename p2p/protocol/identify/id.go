@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	useragent "github.com/libp2p/go-libp2p/p2p/protocol/identify/internal/user-agent"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -53,8 +54,6 @@ const (
 	recentlyConnectedPeerMaxAddrs = 20
 	connectedPeerMaxAddrs         = 500
 )
-
-var defaultUserAgent = "github.com/libp2p/go-libp2p"
 
 type identifySnapshot struct {
 	seq       uint64
@@ -188,7 +187,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		opt(&cfg)
 	}
 
-	userAgent := defaultUserAgent
+	userAgent := useragent.DefaultUserAgent()
 	if cfg.userAgent != "" {
 		userAgent = cfg.userAgent
 	}
@@ -445,10 +444,9 @@ func newStreamAndNegotiate(ctx context.Context, c network.Conn, proto protocol.I
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return nil, err
 	}
-	err = s.SetDeadline(time.Now().Add(Timeout))
-	if err != nil {
-		return nil, err
-	}
+
+	// Ignore the error. Consistent with our previous behavior. (See https://github.com/libp2p/go-libp2p/issues/3109)
+	_ = s.SetDeadline(time.Now().Add(Timeout))
 
 	if err := s.SetProtocol(proto); err != nil {
 		log.Warnf("error setting identify protocol for stream: %s", err)

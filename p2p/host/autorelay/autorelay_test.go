@@ -19,6 +19,7 @@ import (
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -524,13 +525,14 @@ func TestNoBusyLoop0MinInterval(t *testing.T) {
 }
 func TestAutoRelayAddrsEvent(t *testing.T) {
 	cl := newMockClock()
-	r1, r2 := newRelay(t), newRelay(t)
+	relays := []host.Host{newRelay(t), newRelay(t), newRelay(t), newRelay(t), newRelay(t)}
 	t.Cleanup(func() {
-		r1.Close()
-		r2.Close()
+		for _, r := range relays {
+			r.Close()
+		}
 	})
 
-	relayFromP2PAddr := func(a ma.Multiaddr) peer.ID {
+	relayIDFromP2PAddr := func(a ma.Multiaddr) peer.ID {
 		r, c := ma.SplitLast(a)
 		if c.Protocol().Code != ma.P_CIRCUIT {
 			return ""
@@ -541,15 +543,15 @@ func TestAutoRelayAddrsEvent(t *testing.T) {
 		return ""
 	}
 
-	checkPeersExist := func(addrs []ma.Multiaddr, peers ...peer.ID) bool {
+	checkAddrsContainsPeersAsRelay := func(addrs []ma.Multiaddr, peers ...peer.ID) bool {
 		for _, p := range peers {
-			if !slices.ContainsFunc(addrs, func(a ma.Multiaddr) bool { return relayFromP2PAddr(a) == p }) {
+			if !slices.ContainsFunc(addrs, func(a ma.Multiaddr) bool { return relayIDFromP2PAddr(a) == p }) {
 				return false
 			}
 		}
 		return true
 	}
-	peerChan := make(chan peer.AddrInfo, 3)
+	peerChan := make(chan peer.AddrInfo, 5)
 	h := newPrivateNode(t,
 		func(context.Context, int) <-chan peer.AddrInfo {
 			return peerChan
@@ -557,31 +559,45 @@ func TestAutoRelayAddrsEvent(t *testing.T) {
 		autorelay.WithClock(cl),
 		autorelay.WithMinCandidates(1),
 		autorelay.WithMaxCandidates(10),
-		autorelay.WithNumRelays(3),
+		autorelay.WithNumRelays(5),
 		autorelay.WithBootDelay(1*time.Second),
 		autorelay.WithMinInterval(time.Hour),
 	)
 	defer h.Close()
 
-	sub, err := h.EventBus().Subscribe(new(event.EvtAutoRelayAddrs))
+	sub, err := h.EventBus().Subscribe(new(event.EvtAutoRelayAddrsUpdated))
 	require.NoError(t, err)
 
-	peerChan <- peer.AddrInfo{ID: r1.ID(), Addrs: r1.Addrs()}
+	peerChan <- peer.AddrInfo{ID: relays[0].ID(), Addrs: relays[0].Addrs()}
 	cl.AdvanceBy(time.Second)
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		e := <-sub.Out()
-		if !checkPeersExist(e.(event.EvtAutoRelayAddrs).RelayAddrs, r1.ID()) {
-			return false
+		evt := e.(event.EvtAutoRelayAddrsUpdated)
+		if !checkAddrsContainsPeersAsRelay(evt.RelayAddrs, relays[0].ID()) {
+			collect.Errorf("expected %s to be in %v", relays[0].ID(), evt.RelayAddrs)
 		}
-		if checkPeersExist(e.(event.EvtAutoRelayAddrs).RelayAddrs, r2.ID()) {
-			return false
+		if checkAddrsContainsPeersAsRelay(evt.RelayAddrs, relays[1].ID()) {
+			collect.Errorf("expected %s to not be in %v", relays[1].ID(), evt.RelayAddrs)
 		}
-		return true
 	}, 5*time.Second, 50*time.Millisecond)
-	peerChan <- peer.AddrInfo{ID: r2.ID(), Addrs: r2.Addrs()}
-	require.Eventually(t, func() bool {
+	for _, r := range relays[1:] {
+		peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		e := <-sub.Out()
-		return checkPeersExist(e.(event.EvtAutoRelayAddrs).RelayAddrs, r1.ID(), r2.ID())
+		evt := e.(event.EvtAutoRelayAddrsUpdated)
+		relayIds := []peer.ID{}
+		for _, r := range relays[1:] {
+			relayIds = append(relayIds, r.ID())
+		}
+		if !checkAddrsContainsPeersAsRelay(evt.RelayAddrs, relayIds...) {
+			c.Errorf("expected %s to be in %v", relayIds, evt.RelayAddrs)
+		}
 	}, 5*time.Second, 50*time.Millisecond)
+	select {
+	case e := <-sub.Out():
+		t.Fatal("expected no more events after all reservations obtained; got: ", e.(event.EvtAutoRelayAddrsUpdated))
+	case <-time.After(1 * time.Second):
+	}
 }

@@ -137,9 +137,9 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	select {
-	case l.incoming <- NewConn(c, l.isWss):
+	case l.incoming <- nc:
 	case <-l.closed:
-		c.Close()
+		nc.Close()
 	}
 	// The connection has been hijacked, it's safe to return.
 }

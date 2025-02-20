@@ -931,6 +931,9 @@ func TestHostTimeoutNewStream(t *testing.T) {
 	require.NoError(t, err)
 	h1.Start()
 	defer h1.Close()
+	defer func() {
+		fmt.Println("starting close")
+	}()
 
 	const proto = "/testing"
 	h2 := swarmt.GenSwarm(t)

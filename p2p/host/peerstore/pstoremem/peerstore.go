@@ -26,28 +26,26 @@ type Option interface{}
 // It's the caller's responsibility to call RemovePeer to ensure
 // that memory consumption of the peerstore doesn't grow unboundedly.
 func NewPeerstore(opts ...Option) (ps *pstoremem, err error) {
-	ab := NewAddrBook()
-	defer func() {
-		if err != nil {
-			ab.Close()
-		}
-	}()
-
 	var protoBookOpts []ProtoBookOption
+	var addrBookOpts []AddrBookOption
 	for _, opt := range opts {
 		switch o := opt.(type) {
 		case ProtoBookOption:
 			protoBookOpts = append(protoBookOpts, o)
 		case AddrBookOption:
-			o(ab)
+			addrBookOpts = append(addrBookOpts, o)
 		default:
 			return nil, fmt.Errorf("unexpected peer store option: %v", o)
 		}
 	}
+	ab := NewAddrBook(addrBookOpts...)
+
 	pb, err := NewProtoBook(protoBookOpts...)
 	if err != nil {
+		ab.Close()
 		return nil, err
 	}
+
 	return &pstoremem{
 		Metrics:            pstore.NewMetrics(),
 		memoryKeyBook:      NewKeyBook(),

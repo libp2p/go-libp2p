@@ -2,13 +2,58 @@ package network
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
+
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
 	ma "github.com/multiformats/go-multiaddr"
+)
+
+type ConnErrorCode uint32
+
+type ConnError struct {
+	Remote         bool
+	ErrorCode      ConnErrorCode
+	TransportError error
+}
+
+func (c *ConnError) Error() string {
+	side := "local"
+	if c.Remote {
+		side = "remote"
+	}
+	if c.TransportError != nil {
+		return fmt.Sprintf("connection closed (%s): code: 0x%x: transport error: %s", side, c.ErrorCode, c.TransportError)
+	}
+	return fmt.Sprintf("connection closed (%s): code: 0x%x", side, c.ErrorCode)
+}
+
+func (c *ConnError) Is(target error) bool {
+	if tce, ok := target.(*ConnError); ok {
+		return tce.ErrorCode == c.ErrorCode && tce.Remote == c.Remote
+	}
+	return false
+}
+
+func (c *ConnError) Unwrap() []error {
+	return []error{ErrReset, c.TransportError}
+}
+
+const (
+	ConnNoError                   ConnErrorCode = 0
+	ConnProtocolNegotiationFailed ConnErrorCode = 0x1000
+	ConnResourceLimitExceeded     ConnErrorCode = 0x1001
+	ConnRateLimited               ConnErrorCode = 0x1002
+	ConnProtocolViolation         ConnErrorCode = 0x1003
+	ConnSupplanted                ConnErrorCode = 0x1004
+	ConnGarbageCollected          ConnErrorCode = 0x1005
+	ConnShutdown                  ConnErrorCode = 0x1006
+	ConnGated                     ConnErrorCode = 0x1007
+	ConnCodeOutOfRange            ConnErrorCode = 0x1008
 )
 
 // Conn is a connection to a remote peer. It multiplexes streams.
@@ -23,6 +68,11 @@ type Conn interface {
 	ConnMultiaddrs
 	ConnStat
 	ConnScoper
+
+	// CloseWithError closes the connection with errCode. The errCode is sent to the
+	// peer on a best effort basis. For transports that do not support sending error
+	// codes on connection close, the behavior is identical to calling Close.
+	CloseWithError(errCode ConnErrorCode) error
 
 	// ID returns an identifier that uniquely identifies this Conn within this
 	// host, during this run. Connection IDs may repeat across restarts.

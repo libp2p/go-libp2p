@@ -162,7 +162,7 @@ func (l *listener) handleIncoming() {
 				// if we stop accepting connections for some reason,
 				// we'll eventually close all the open ones
 				// instead of hanging onto them.
-				conn.Close()
+				conn.CloseWithError(network.ConnRateLimited)
 			}
 		}()
 	}

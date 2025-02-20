@@ -9,13 +9,13 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"time"
 
-	mrand "golang.org/x/exp/rand"
+	mrand "math/rand/v2"
+
 	"google.golang.org/protobuf/proto"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -35,7 +35,7 @@ import (
 	"github.com/multiformats/go-multihash"
 
 	"github.com/pion/datachannel"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 var webrtcComponent *ma.Component
@@ -420,15 +420,15 @@ func genUfrag() string {
 		uFragLength   = len(uFragPrefix) + uFragIdLength
 	)
 
-	seed := [8]byte{}
+	seed := [32]byte{}
 	rand.Read(seed[:])
-	r := mrand.New(mrand.NewSource(binary.BigEndian.Uint64(seed[:])))
+	r := mrand.New(mrand.New(mrand.NewChaCha8(seed)))
 	b := make([]byte, uFragLength)
 	for i := 0; i < len(uFragPrefix); i++ {
 		b[i] = uFragPrefix[i]
 	}
 	for i := len(uFragPrefix); i < uFragLength; i++ {
-		b[i] = uFragAlphabet[r.Intn(len(uFragAlphabet))]
+		b[i] = uFragAlphabet[r.IntN(len(uFragAlphabet))]
 	}
 	return string(b)
 }

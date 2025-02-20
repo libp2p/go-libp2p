@@ -17,6 +17,6 @@ jobs:
   go-test:
     uses: ./.github/workflows/go-test-template.yml
     with:
-      go-versions: '["1.22.x", "1.23.x"]'
+      go-versions: '["1.23.x", "1.24.x"]'
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

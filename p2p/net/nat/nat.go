@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -55,11 +56,11 @@ func DiscoverNAT(ctx context.Context) (*NAT, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	nat := &NAT{
 		nat:       natInstance,
-		extAddr:   extAddr,
 		mappings:  make(map[entry]int),
 		ctx:       ctx,
 		ctxCancel: cancel,
 	}
+	nat.extAddr.Store(&extAddr)
 	nat.refCount.Add(1)
 	go func() {
 		defer nat.refCount.Done()
@@ -76,7 +77,7 @@ type NAT struct {
 	natmu sync.Mutex
 	nat   nat.NAT
 	// External IP of the NAT. Will be renewed periodically (every CacheTime).
-	extAddr netip.Addr
+	extAddr atomic.Pointer[netip.Addr]
 
 	refCount  sync.WaitGroup
 	ctx       context.Context
@@ -102,14 +103,15 @@ func (nat *NAT) GetMapping(protocol string, port int) (addr netip.AddrPort, foun
 	nat.mappingmu.Lock()
 	defer nat.mappingmu.Unlock()
 
-	if !nat.extAddr.IsValid() {
+	if !nat.extAddr.Load().IsValid() {
 		return netip.AddrPort{}, false
 	}
 	extPort, found := nat.mappings[entry{protocol: protocol, port: port}]
-	if !found {
+	// The mapping may have an invalid port.
+	if !found || extPort == 0 {
 		return netip.AddrPort{}, false
 	}
-	return netip.AddrPortFrom(nat.extAddr, uint16(extPort)), true
+	return netip.AddrPortFrom(*nat.extAddr.Load(), uint16(extPort)), true
 }
 
 // AddMapping attempts to construct a mapping on protocol and internal port.
@@ -134,6 +136,9 @@ func (nat *NAT) AddMapping(ctx context.Context, protocol string, port int) error
 	// do it once synchronously, so first mapping is done right away, and before exiting,
 	// allowing users -- in the optimistic case -- to use results right after.
 	extPort := nat.establishMapping(ctx, protocol, port)
+	// Don't validate the mapping here, we refresh the mappings based on this map.
+	// We can try getting a port again in case it succeeds. In the worst case,
+	// this is one extra LAN request every few minutes.
 	nat.mappings[entry{protocol: protocol, port: port}] = extPort
 	return nil
 }
@@ -201,7 +206,7 @@ func (nat *NAT) background() {
 				if err == nil {
 					extAddr, _ = netip.AddrFromSlice(extIP)
 				}
-				nat.extAddr = extAddr
+				nat.extAddr.Store(&extAddr)
 				nextAddrUpdate = time.Now().Add(CacheTime)
 			}
 			t.Reset(time.Until(minTime(nextAddrUpdate, nextMappingUpdate)))

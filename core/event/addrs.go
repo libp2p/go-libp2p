@@ -83,6 +83,6 @@ type EvtLocalAddressesUpdated struct {
 }
 
 // EvtAutoRelayAddrsUpdated is sent by the autorelay when the node's relay addresses are updated
-type EvtAutoRelayAddrs struct {
+type EvtAutoRelayAddrsUpdated struct {
 	RelayAddrs []ma.Multiaddr
 }
