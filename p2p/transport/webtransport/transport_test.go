@@ -540,6 +540,14 @@ func (s *reportingScope) ReserveMemory(size int, _ uint8) error {
 	return nil
 }
 
+func newUPDConnLocalhost(t testing.TB) *net.UDPConn {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
 func TestFlowControlWindowIncrease(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this test is flaky on Windows")
@@ -573,11 +581,12 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 		str.CloseWrite()
 	}()
 
-	proxy, err := quicproxy.NewQuicProxy("localhost:0", &quicproxy.Opts{
-		RemoteAddr:  ln.Addr().String(),
+	proxy := quicproxy.Proxy{
+		Conn:        newUPDConnLocalhost(t),
+		ServerAddr:  ln.Addr().(*net.UDPAddr),
 		DelayPacket: func(quicproxy.Direction, []byte) time.Duration { return rtt / 2 },
-	})
-	require.NoError(t, err)
+	}
+	require.NoError(t, proxy.Start())
 	defer proxy.Close()
 
 	_, clientKey := newIdentity(t)
@@ -590,7 +599,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	var addr ma.Multiaddr
 	for _, comp := range ma.Split(ln.Multiaddr()) {
 		if _, err := comp.ValueForProtocol(ma.P_UDP); err == nil {
-			addr = addr.Encapsulate(ma.StringCast(fmt.Sprintf("/udp/%d", proxy.LocalPort())))
+			addr = addr.Encapsulate(ma.StringCast(fmt.Sprintf("/udp/%d", proxy.LocalAddr().(*net.UDPAddr).Port)))
 			continue
 		}
 		if addr == nil {

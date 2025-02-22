@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"io"
 	mrand "math/rand"
 	"net"
@@ -564,6 +563,14 @@ func TestStatelessReset(t *testing.T) {
 	}
 }
 
+func newUPDConnLocalhost(t testing.TB) *net.UDPConn {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
 func testStatelessReset(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
@@ -575,12 +582,14 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 
 	var drop uint32
 	dropCallback := func(quicproxy.Direction, []byte) bool { return atomic.LoadUint32(&drop) > 0 }
-	proxy, err := quicproxy.NewQuicProxy("localhost:0", &quicproxy.Opts{
-		RemoteAddr: fmt.Sprintf("localhost:%d", ln.Addr().(*net.UDPAddr).Port),
+	proxyConn := newUPDConnLocalhost(t)
+	proxy := quicproxy.Proxy{
+		Conn:       proxyConn,
+		ServerAddr: ln.Addr().(*net.UDPAddr),
 		DropPacket: dropCallback,
-	})
+	}
+	err = proxy.Start()
 	require.NoError(t, err)
-	proxyLocalAddr := proxy.LocalAddr()
 
 	// establish a connection
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
@@ -622,10 +631,12 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	atomic.StoreUint32(&drop, 0)
 
 	// Recreate the proxy, such that its client-facing port stays constant.
-	proxy, err = quicproxy.NewQuicProxy(proxyLocalAddr.String(), &quicproxy.Opts{
-		RemoteAddr: fmt.Sprintf("localhost:%d", ln.Addr().(*net.UDPAddr).Port),
+	proxy = quicproxy.Proxy{
+		Conn:       proxyConn,
+		ServerAddr: ln.Addr().(*net.UDPAddr),
 		DropPacket: dropCallback,
-	})
+	}
+	err = proxy.Start()
 	require.NoError(t, err)
 	defer proxy.Close()
 
