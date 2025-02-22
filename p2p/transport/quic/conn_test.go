@@ -563,12 +563,11 @@ func TestStatelessReset(t *testing.T) {
 	}
 }
 
-func newUPDConnLocalhost(t testing.TB) *net.UDPConn {
+func newUDPConnLocalhost(t testing.TB, port int) (*net.UDPConn, func()) {
 	t.Helper()
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
 	require.NoError(t, err)
-	t.Cleanup(func() { conn.Close() })
-	return conn
+	return conn, func() { conn.Close() }
 }
 
 func testStatelessReset(t *testing.T, tc *connTestCase) {
@@ -582,7 +581,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 
 	var drop uint32
 	dropCallback := func(quicproxy.Direction, []byte) bool { return atomic.LoadUint32(&drop) > 0 }
-	proxyConn := newUPDConnLocalhost(t)
+	proxyConn, cleanup := newUDPConnLocalhost(t, 0)
 	proxy := quicproxy.Proxy{
 		Conn:       proxyConn,
 		ServerAddr: ln.Addr().(*net.UDPAddr),
@@ -621,7 +620,9 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	atomic.StoreUint32(&drop, 1)
 	ln.Close()
 	(<-connChan).Close()
+	proxyLocalPort := proxy.LocalAddr().(*net.UDPAddr).Port
 	proxy.Close()
+	cleanup()
 
 	// Start another listener (on a different port).
 	ln, err = serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"))
@@ -630,6 +631,8 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	// Now that the new server is up, re-enable packet forwarding.
 	atomic.StoreUint32(&drop, 0)
 
+	proxyConn, cleanup = newUDPConnLocalhost(t, proxyLocalPort)
+	defer cleanup()
 	// Recreate the proxy, such that its client-facing port stays constant.
 	proxy = quicproxy.Proxy{
 		Conn:       proxyConn,

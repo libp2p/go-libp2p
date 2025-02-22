@@ -776,7 +776,7 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 	require.Nil(t, conn)
 }
 
-func newUPDConnLocalhost(t testing.TB) *net.UDPConn {
+func newUDPConnLocalhost(t testing.TB) *net.UDPConn {
 	t.Helper()
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
@@ -797,7 +797,7 @@ func TestConnectionTimeoutOnListener(t *testing.T) {
 
 	var drop atomic.Bool
 	proxy := quicproxy.Proxy{
-		Conn:       newUPDConnLocalhost(t),
+		Conn:       newUDPConnLocalhost(t),
 		ServerAddr: ln.Addr().(*net.UDPAddr),
 		DropPacket: func(quicproxy.Direction, []byte) bool { return drop.Load() },
 	}
