@@ -334,13 +334,15 @@ func (h *BasicHost) Start() {
 		log.Errorf("address service failed to start: %s", err)
 	}
 
-	// Ensure we have the correct peer record after Start returns
-	rec, err := h.makeSignedPeerRecord(h.addressManager.Addrs())
-	if err != nil {
-		log.Errorf("failed to create signed record: %w", err)
-	}
-	if _, err := h.caBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
-		log.Errorf("failed to persist signed record to peerstore: %w", err)
+	if !h.disableSignedPeerRecord {
+		// Ensure we have the correct peer record after Start returns
+		rec, err := h.makeSignedPeerRecord(h.addressManager.Addrs())
+		if err != nil {
+			log.Errorf("failed to create signed record: %w", err)
+		}
+		if _, err := h.caBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
+			log.Errorf("failed to persist signed record to peerstore: %w", err)
+		}
 	}
 
 	h.refCount.Add(1)
