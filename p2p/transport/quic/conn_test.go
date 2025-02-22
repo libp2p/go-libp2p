@@ -634,14 +634,14 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	proxyConn, cleanup = newUDPConnLocalhost(t, proxyLocalPort)
 	defer cleanup()
 	// Recreate the proxy, such that its client-facing port stays constant.
-	proxy = quicproxy.Proxy{
+	proxyBis := quicproxy.Proxy{
 		Conn:       proxyConn,
 		ServerAddr: ln.Addr().(*net.UDPAddr),
 		DropPacket: dropCallback,
 	}
-	err = proxy.Start()
+	err = proxyBis.Start()
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer proxyBis.Close()
 
 	// Trigger something (not too small) to be sent, so that we receive the stateless reset.
 	// The new server doesn't have any state for the previously established connection.
