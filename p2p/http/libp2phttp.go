@@ -820,8 +820,6 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 			}
 
 			serverID, resp, err := h.ClientPeerIDAuth.AuthenticateWithRoundTripper(rt, r)
-			// c := http.Client{Transport: rt}
-			// serverID, resp, err := h.ClientPeerIDAuth.AuthenticatedDo(&c, r)
 			if err != nil {
 				return nil, err
 			}
