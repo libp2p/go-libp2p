@@ -797,7 +797,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	// otherwise use the unsigned addresses.
 	signedPeerRecord, err := signedPeerRecordFromMessage(mes)
 	if err != nil {
-		log.Errorf("error getting peer record from Identify message: %v", err)
+		log.Debugf("error getting peer record from Identify message: %v", err)
 	}
 
 	// Extend the TTLs on the known (probably) good addresses.
