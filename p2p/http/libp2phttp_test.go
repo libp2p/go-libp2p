@@ -863,6 +863,14 @@ func TestRedirects(t *testing.T) {
 		w.Write([]byte("hello"))
 	}))
 
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/bar/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "../baz/")
+		w.WriteHeader(http.StatusMovedPermanently)
+	}))
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/baz/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello"))
+	}))
+
 	clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs, libp2p.Transport(libp2pquic.NewTransport))
 	require.NoError(t, err)
 	client := http.Client{Transport: &libp2phttp.Host{StreamHost: clientStreamHost}}
@@ -879,9 +887,17 @@ func TestRedirects(t *testing.T) {
 			u := fmt.Sprintf("multiaddr:%s/http-path/a%%2f", a)
 			f := fmt.Sprintf("http://127.0.0.1:%s/d/", port)
 			testCases = append(testCases, testCase{u, f})
+
+			u = fmt.Sprintf("multiaddr:%s/http-path/foo%%2Fbar", a)
+			f = fmt.Sprintf("http://127.0.0.1:%s/foo/baz/", port)
+			testCases = append(testCases, testCase{u, f})
 		} else {
 			u := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/a%%2f", a, serverHost.ID())
-			f := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/%%2Fd%%2F", a, serverHost.ID())
+			f := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/d%%2F", a, serverHost.ID())
+			testCases = append(testCases, testCase{u, f})
+
+			u = fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/foo%%2Fbar", a, serverHost.ID())
+			f = fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/foo%%2Fbaz%%2F", a, serverHost.ID())
 			testCases = append(testCases, testCase{u, f})
 		}
 	}

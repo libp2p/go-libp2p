@@ -523,19 +523,18 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 	resp.Body = &streamReadCloser{resp.Body, s}
 
-	locUrl, err := resp.Location()
-	if err == nil {
-		// Location url in response. Is this a multiaddr uri? and is it relative?
-		// If it's relative we want to convert it to an absolute multiaddr uri
-		// so that the next request knows how to reach the endpoint.
-		if locUrl.Scheme == "multiaddr" && resp.Request.URL.Scheme == "multiaddr" {
-			// Check if it's a relative URI and turn it into an absolute one
-			u, err := relativeMultiaddrURIToAbs(resp.Request.URL, locUrl)
-			if err == nil {
-				// It was a relative URI and we were able to convert it to an absolute one
-				// Update the location header to be an absolute multiaddr uri
-				resp.Header.Set("Location", u.String())
+	if resp.Request.URL.Scheme == "multiaddr" {
+		// This was a multiaddr uri, we may need to convert relative URI
+		// references to absolute multiaddr ones so that the next request
+		// knows how to reach the endpoint.
+		locationHeader := resp.Header.Get("Location")
+		if locationHeader != "" {
+			u, err := locationHeaderToMultiaddrURI(resp.Request.URL, locationHeader)
+			if err != nil {
+				return nil, err
 			}
+			// Update the location header to be an absolute multiaddr uri
+			resp.Header.Set("Location", u.String())
 		}
 	}
 
@@ -544,39 +543,68 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	return resp, nil
 }
 
-var errNotRelative = errors.New("not relative")
-
-// relativeMultiaddrURIToAbs takes a relative multiaddr URI and turns it into an
-// absolute one. Useful, for example, when a server gives us a relative URI for a redirect.
-// It allows the following request (the one after redirected) to reach the correct server.
-func relativeMultiaddrURIToAbs(original *url.URL, relative *url.URL) (*url.URL, error) {
-	// Is this a relative uri? We know if it is because non-relative URI's of the form:
-	// "multiaddr:/ip4/1.2.3.4/tcp/9899" when parsed by Go's url package will have url.OmitHost == true
-	// But if it is relative (just a path to an http resource e.g. /here-instead)
-	// a redirect will inherit the multiaddr scheme, but set url.OmitHost == false. It will also stringify as something like
-	// multiaddr://here-instead.
-	if relative.OmitHost {
-		// Not relative (at least we can't tell). Nothing we can do here
-		return nil, errNotRelative
+// locationHeaderToMultiaddrURI takes our original URL and the response's Location header
+// and, if the location header is relative, turns it into an absolute multiaddr uri.
+// Refer to https://www.rfc-editor.org/rfc/rfc3986#section-4.2 for the
+// definition of a Relative Reference.
+func locationHeaderToMultiaddrURI(original *url.URL, locationHeader string) (*url.URL, error) {
+	if locationHeader == "" {
+		return nil, errors.New("location header is empty")
 	}
+	if strings.HasPrefix(locationHeader, "//") {
+		// This is a network path reference. We don't support these.
+		return nil, errors.New("network path reference not supported")
+	}
+
+	firstSegment := strings.SplitN(locationHeader, "/", 2)[0]
+	if strings.Contains(firstSegment, ":") {
+		// This location contains a scheme, so it's an absolute uri.
+		return url.Parse(locationHeader)
+	}
+
+	// It's a relative reference. We need to resolve it against the original URL.
+	if original.Scheme != "multiaddr" {
+		return nil, errors.New("original uri is not a multiaddr")
+	}
+
+	// Parse the original multiaddr
 	originalStr := original.RawPath
 	if originalStr == "" {
 		originalStr = original.Path
 	}
 	originalMa, err := ma.NewMultiaddr(originalStr)
 	if err != nil {
-		return nil, errors.New("original uri is not a multiaddr")
+		return nil, fmt.Errorf("original uri is not a valid multiaddr: %w", err)
 	}
 
-	relativePathComponent, err := ma.NewComponent("http-path", relative.Path)
+	// Get the target http path
+	var targetHTTPPath string
+	for _, c := range originalMa {
+		if c.Protocol().Code == ma.P_HTTP_PATH {
+			targetHTTPPath = string(c.RawValue())
+			break
+		}
+	}
+
+	// Resolve reference from targetURL and relativeURL
+	targetURL := url.URL{Path: targetHTTPPath}
+	relativeURL := url.URL{Path: locationHeader}
+	resolved := targetURL.ResolveReference(&relativeURL)
+
+	resolvedHTTPPath := resolved.Path
+	if len(resolvedHTTPPath) > 0 && resolvedHTTPPath[0] == '/' {
+		resolvedHTTPPath = resolvedHTTPPath[1:] // trim leading slash. It's implied by the http-path component
+	}
+
+	resolvedHTTPPathComponent, err := ma.NewComponent("http-path", resolvedHTTPPath)
 	if err != nil {
-		return nil, errors.New("relative path is not a valid http-path")
+		return nil, fmt.Errorf("relative path is not a valid http-path: %w", err)
 	}
 
 	withoutPath, afterAndIncludingPath := ma.SplitFunc(originalMa, func(c ma.Component) bool {
 		return c.Protocol().Code == ma.P_HTTP_PATH
 	})
-	withNewPath := withoutPath.AppendComponent(relativePathComponent)
+	withNewPath := withoutPath.AppendComponent(resolvedHTTPPathComponent)
 	if len(afterAndIncludingPath) > 1 {
 		// Include after path since it may include other parts
 		withNewPath = append(withNewPath, afterAndIncludingPath[1:]...)
