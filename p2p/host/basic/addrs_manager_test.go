@@ -183,8 +183,9 @@ func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTe
 	if args.AddrsFactory == nil {
 		args.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 	}
+	addrsUpdatedChan := make(chan struct{}, 1)
 	am, err := newAddrsManager(
-		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, nil, args.ObservedAddrsManager,
+		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, nil, args.ObservedAddrsManager, addrsUpdatedChan,
 	)
 	require.NoError(t, err)
 

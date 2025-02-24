@@ -35,9 +35,11 @@ type addrsManager struct {
 	observedAddrsManager  observedAddrsManager
 	interfaceAddrs        *interfaceAddrsCache
 
+	// triggerAddrsUpdateChan is used to trigger an addresses update.
 	triggerAddrsUpdateChan chan struct{}
-	addrsUpdated           chan struct{}
-	hostReachability       atomic.Pointer[network.Reachability]
+	// addrsUpdatedChan is notified when addresses change.
+	addrsUpdatedChan chan struct{}
+	hostReachability atomic.Pointer[network.Reachability]
 
 	addrsMx    sync.RWMutex // protects fields below
 	localAddrs []ma.Multiaddr
@@ -55,6 +57,7 @@ func newAddrsManager(
 	listenAddrs func() []ma.Multiaddr,
 	transportForListening func(ma.Multiaddr) transport.Transport,
 	observedAddrsManager observedAddrsManager,
+	addrsUpdatedChan chan struct{},
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	as := &addrsManager{
@@ -65,7 +68,7 @@ func newAddrsManager(
 		natManager:             natmgr,
 		addrsFactory:           addrsFactory,
 		triggerAddrsUpdateChan: make(chan struct{}, 1),
-		addrsUpdated:           make(chan struct{}, 1),
+		addrsUpdatedChan:       addrsUpdatedChan,
 		interfaceAddrs:         &interfaceAddrsCache{},
 		ctx:                    ctx,
 		ctxCancel:              cancel,
@@ -88,13 +91,6 @@ func (a *addrsManager) Close() {
 		}
 	}
 	a.wg.Wait()
-}
-
-// AddrsUpdated returns a channel that's notified when the addresses change.
-// This is only intended to be used by the basichost for updating the signed
-// peer record.
-func (a *addrsManager) AddrsUpdated() chan struct{} {
-	return a.addrsUpdated
 }
 
 func (a *addrsManager) NetNotifee() network.Notifiee {
@@ -169,7 +165,7 @@ func (a *addrsManager) background() error {
 			if a.areAddrsDifferent(prev, curr) {
 				log.Debugf("host addresses updated: %s", curr)
 				select {
-				case a.addrsUpdated <- struct{}{}:
+				case a.addrsUpdatedChan <- struct{}{}:
 				default:
 				}
 			}

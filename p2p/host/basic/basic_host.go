@@ -94,8 +94,9 @@ type BasicHost struct {
 	autoNATMx sync.RWMutex
 	autoNat   autonat.AutoNAT
 
-	autonatv2      *autonatv2.AutoNAT
-	addressManager *addrsManager
+	autonatv2        *autonatv2.AutoNAT
+	addressManager   *addrsManager
+	addrsUpdatedChan chan struct{}
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -183,6 +184,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
+		addrsUpdatedChan:        make(chan struct{}, 1),
 	}
 
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}, eventbus.Stateful); err != nil {
@@ -234,7 +236,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}); ok {
 		tfl = s.TransportForListening
 	}
-	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids)
+	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, h.addrsUpdatedChan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}
@@ -501,7 +503,7 @@ func (h *BasicHost) background() {
 		lastAddrs = curr
 
 		select {
-		case <-h.addressManager.AddrsUpdated():
+		case <-h.addrsUpdatedChan:
 		case <-h.ctx.Done():
 			return
 		}
