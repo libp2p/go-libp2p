@@ -36,9 +36,6 @@ type SimConn struct {
 	myLocalAddr   net.Addr
 	packetsToRead chan Packet
 
-	// In case we don't fully read the packet in ReadFrom, we need to store the current packet
-	currentPacketToRead *Packet
-
 	readDeadline  time.Time
 	writeDeadline time.Time
 }
@@ -121,10 +118,7 @@ func (c *SimConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 
 	var pkt Packet
-	if c.currentPacketToRead != nil {
-		pkt = *c.currentPacketToRead
-		c.currentPacketToRead = nil
-	} else {
+	if !deadline.IsZero() {
 		if !deadline.IsZero() {
 			select {
 			case pkt = <-c.packetsToRead:
@@ -137,13 +131,9 @@ func (c *SimConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 
 	n = copy(p, pkt.buf)
-	if n < len(pkt.buf) {
-		// Store remaining data for next read
-		c.currentPacketToRead = &Packet{
-			From: pkt.From,
-			buf:  pkt.buf[n:],
-		}
-	}
+	// if the provided buffer is not enough to read the whole packet, we drop
+	// the rest of the data. this is similar to what `recvfrom` does on Linux
+	// and macOS.
 	return n, pkt.From, nil
 }
 
