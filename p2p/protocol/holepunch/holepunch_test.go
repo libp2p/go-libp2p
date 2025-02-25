@@ -625,8 +625,6 @@ func ensureDirectConn(t *testing.T, h1, h2 host.Host) {
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
-var lastPort atomic.Uint32
-
 type MockSourceIPSelector struct {
 	ip atomic.Pointer[net.IP]
 }
@@ -644,9 +642,6 @@ func quicSimConn(isPubliclyReachably bool, router *simconn.SimpleFirewallRouter)
 		}),
 		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
 			m.ip.Store(&address.IP)
-			if address.Port == 0 {
-				address.Port = int(lastPort.Add(1))
-			}
 			c := simconn.NewSimConn(address, router)
 			if isPubliclyReachably {
 				router.AddPubliclyReachableNode(address, c)
