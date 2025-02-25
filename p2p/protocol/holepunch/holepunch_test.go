@@ -635,7 +635,7 @@ func (m *MockSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr)
 	return *m.ip.Load(), nil
 }
 
-func quicSimConn(isPublic bool, router *simconn.SimpleFirewallRouter) libp2p.Option {
+func quicSimConn(isPubliclyReachably bool, router *simconn.SimpleFirewallRouter) libp2p.Option {
 	m := &MockSourceIPSelector{}
 	return libp2p.QUICReuse(
 		quicreuse.NewConnManager,
@@ -648,8 +648,8 @@ func quicSimConn(isPublic bool, router *simconn.SimpleFirewallRouter) libp2p.Opt
 				address.Port = int(lastPort.Add(1))
 			}
 			c := simconn.NewSimConn(address, router)
-			if isPublic {
-				router.AddPublicNode(address, c)
+			if isPubliclyReachably {
+				router.AddPubliclyReachableNode(address, c)
 			} else {
 				router.AddNode(address, c)
 			}

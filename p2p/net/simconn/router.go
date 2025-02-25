@@ -85,6 +85,15 @@ type simpleNodeFirewall struct {
 	node              *SimConn
 }
 
+func (f *simpleNodeFirewall) MarkPacketSentOut(p Packet) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.packetsOutTo == nil {
+		f.packetsOutTo = make(map[string]struct{})
+	}
+	f.packetsOutTo[p.To.String()] = struct{}{}
+}
+
 func (f *simpleNodeFirewall) IsPacketInAllowed(p Packet) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -128,12 +137,7 @@ func (r *SimpleFirewallRouter) SendPacket(deadline time.Time, p Packet) error {
 	if !exists {
 		return errors.New("unknown source")
 	}
-	fromNode.mu.Lock()
-	if fromNode.packetsOutTo == nil {
-		fromNode.packetsOutTo = make(map[string]struct{})
-	}
-	fromNode.packetsOutTo[p.To.String()] = struct{}{}
-	fromNode.mu.Unlock()
+	fromNode.MarkPacketSentOut(p)
 
 	if !toNode.IsPacketInAllowed(p) {
 		return nil // Silently drop blocked packets
@@ -155,7 +159,7 @@ func (r *SimpleFirewallRouter) AddNode(addr net.Addr, conn *SimConn) {
 	}
 }
 
-func (r *SimpleFirewallRouter) AddPublicNode(addr net.Addr, conn *SimConn) {
+func (r *SimpleFirewallRouter) AddPubliclyReachableNode(addr net.Addr, conn *SimConn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.nodes == nil {
