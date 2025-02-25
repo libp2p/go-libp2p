@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,8 +38,8 @@ type ConnManager struct {
 	reuseUDP6       *reuse
 	enableReuseport bool
 
-	overrideListenUDP          listenUDP
-	overrideSourceIPSelectorFn func() (SourceIPSelector, error)
+	listenUDP          listenUDP
+	sourceIPSelectorFn func() (SourceIPSelector, error)
 
 	enableMetrics bool
 	registerer    prometheus.Registerer
@@ -58,6 +59,10 @@ type quicListenerEntry struct {
 	ln       *quicListener
 }
 
+func defaultListenUDP(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+	return net.ListenUDP(network, laddr)
+}
+
 func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
 		enableReuseport: true,
@@ -65,6 +70,11 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 		srk:             statelessResetKey,
 		tokenKey:        tokenKey,
 		registerer:      prometheus.DefaultRegisterer,
+		listenUDP:       defaultListenUDP,
+		sourceIPSelectorFn: func() (SourceIPSelector, error) {
+			r, err := netroute.New()
+			return &netrouteSourceIPSelector{routes: r}, err
+		},
 	}
 	for _, o := range opts {
 		if err := o(cm); err != nil {
@@ -79,17 +89,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey)
-		cm.reuseUDP4.overrideListenUDP = cm.overrideListenUDP
-		if cm.overrideSourceIPSelectorFn != nil {
-			cm.reuseUDP4.sourceIPSelectorFn = cm.overrideSourceIPSelectorFn
-		}
-
-		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey)
-		if cm.overrideSourceIPSelectorFn != nil {
-			cm.reuseUDP6.sourceIPSelectorFn = cm.overrideSourceIPSelectorFn
-		}
-		cm.reuseUDP6.overrideListenUDP = cm.overrideListenUDP
+		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
 	}
 	return cm, nil
 }
@@ -250,13 +251,7 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 		return tr, nil
 	}
 
-	var conn net.PacketConn
-	var err error
-	if c.overrideListenUDP != nil {
-		conn, err = c.overrideListenUDP(network, laddr)
-	} else {
-		conn, err = net.ListenUDP(network, laddr)
-	}
+	conn, err := c.listenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
@@ -338,13 +333,7 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 	case "udp6":
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	var conn net.PacketConn
-	var err error
-	if c.overrideListenUDP != nil {
-		conn, err = c.overrideListenUDP(network, laddr)
-	} else {
-		conn, err = net.ListenUDP(network, laddr)
-	}
+	conn, err := c.listenUDP(network, laddr)
 
 	if err != nil {
 		return nil, err

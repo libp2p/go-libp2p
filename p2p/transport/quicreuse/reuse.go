@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/gopacket/routing"
-	"github.com/libp2p/go-netroute"
 	"github.com/quic-go/quic-go"
 )
 
@@ -168,7 +167,7 @@ type reuse struct {
 	closeChan  chan struct{}
 	gcStopChan chan struct{}
 
-	overrideListenUDP listenUDP
+	listenUDP listenUDP
 
 	sourceIPSelectorFn func() (SourceIPSelector, error)
 
@@ -185,19 +184,17 @@ type reuse struct {
 	tokenGeneratorKey *quic.TokenGeneratorKey
 }
 
-func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey) *reuse {
+func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey, listenUDP listenUDP, sourceIPSelectorFn func() (SourceIPSelector, error)) *reuse {
 	r := &reuse{
-		unicast:         make(map[string]map[int]*refcountedTransport),
-		globalListeners: make(map[int]*refcountedTransport),
-		globalDialers:   make(map[int]*refcountedTransport),
-		closeChan:       make(chan struct{}),
-		gcStopChan:      make(chan struct{}),
-		sourceIPSelectorFn: func() (SourceIPSelector, error) {
-			r, err := netroute.New()
-			return &netrouteSourceIPSelector{routes: r}, err
-		},
-		statelessResetKey: srk,
-		tokenGeneratorKey: tokenKey,
+		unicast:            make(map[string]map[int]*refcountedTransport),
+		globalListeners:    make(map[int]*refcountedTransport),
+		globalDialers:      make(map[int]*refcountedTransport),
+		closeChan:          make(chan struct{}),
+		gcStopChan:         make(chan struct{}),
+		listenUDP:          listenUDP,
+		sourceIPSelectorFn: sourceIPSelectorFn,
+		statelessResetKey:  srk,
+		tokenGeneratorKey:  tokenKey,
 	}
 	go r.gc()
 	return r
@@ -331,13 +328,7 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	case "udp6":
 		addr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	var conn net.PacketConn
-	var err error
-	if r.overrideListenUDP != nil {
-		conn, err = r.overrideListenUDP(network, addr)
-	} else {
-		conn, err = net.ListenUDP(network, addr)
-	}
+	conn, err := r.listenUDP(network, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -403,13 +394,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		}
 	}
 
-	var conn net.PacketConn
-	var err error
-	if r.overrideListenUDP != nil {
-		conn, err = r.overrideListenUDP(network, laddr)
-	} else {
-		conn, err = net.ListenUDP(network, laddr)
-	}
+	conn, err := r.listenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}

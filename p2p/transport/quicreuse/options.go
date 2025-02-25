@@ -12,14 +12,14 @@ type listenUDP func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
 
 func OverrideListenUDP(f listenUDP) Option {
 	return func(m *ConnManager) error {
-		m.overrideListenUDP = f
+		m.listenUDP = f
 		return nil
 	}
 }
 
 func OverrideSourceIPSelector(f func() (SourceIPSelector, error)) Option {
 	return func(m *ConnManager) error {
-		m.overrideSourceIPSelectorFn = f
+		m.sourceIPSelectorFn = f
 		return nil
 	}
 }
