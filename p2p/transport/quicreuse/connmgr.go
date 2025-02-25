@@ -63,18 +63,20 @@ func defaultListenUDP(network string, laddr *net.UDPAddr) (net.PacketConn, error
 	return net.ListenUDP(network, laddr)
 }
 
+func defaultSourceIPSelectorFn() (SourceIPSelector, error) {
+	r, err := netroute.New()
+	return &netrouteSourceIPSelector{routes: r}, err
+}
+
 func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
-		enableReuseport: true,
-		quicListeners:   make(map[string]quicListenerEntry),
-		srk:             statelessResetKey,
-		tokenKey:        tokenKey,
-		registerer:      prometheus.DefaultRegisterer,
-		listenUDP:       defaultListenUDP,
-		sourceIPSelectorFn: func() (SourceIPSelector, error) {
-			r, err := netroute.New()
-			return &netrouteSourceIPSelector{routes: r}, err
-		},
+		enableReuseport:    true,
+		quicListeners:      make(map[string]quicListenerEntry),
+		srk:                statelessResetKey,
+		tokenKey:           tokenKey,
+		registerer:         prometheus.DefaultRegisterer,
+		listenUDP:          defaultListenUDP,
+		sourceIPSelectorFn: defaultSourceIPSelectorFn,
 	}
 	for _, o := range opts {
 		if err := o(cm); err != nil {
