@@ -523,15 +523,15 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 	resp.Body = &streamReadCloser{resp.Body, s}
 
-	if resp.Request.URL.Scheme == "multiaddr" {
+	if r.URL.Scheme == "multiaddr" {
 		// This was a multiaddr uri, we may need to convert relative URI
 		// references to absolute multiaddr ones so that the next request
 		// knows how to reach the endpoint.
 		locationHeader := resp.Header.Get("Location")
 		if locationHeader != "" {
-			u, err := locationHeaderToMultiaddrURI(resp.Request.URL, locationHeader)
+			u, err := locationHeaderToMultiaddrURI(r.URL, locationHeader)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to convert location header (%s) from request (%s) to multiaddr uri: %w", locationHeader, r.URL, err)
 			}
 			// Update the location header to be an absolute multiaddr uri
 			resp.Header.Set("Location", u.String())
