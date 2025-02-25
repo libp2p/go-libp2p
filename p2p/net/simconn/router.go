@@ -59,16 +59,16 @@ func (r *FixedLatencyRouter) SendPacket(deadline time.Time, p Packet) error {
 var _ Router = &FixedLatencyRouter{}
 
 type simpleNodeFirewall struct {
-	mu           sync.Mutex
-	public       bool
-	packetsOutTo map[string]struct{}
-	node         *SimConn
+	mu                sync.Mutex
+	publiclyReachable bool
+	packetsOutTo      map[string]struct{}
+	node              *SimConn
 }
 
 func (f *simpleNodeFirewall) IsPacketInAllowed(p Packet) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.public {
+	if f.publiclyReachable {
 		return true
 	}
 
@@ -77,7 +77,7 @@ func (f *simpleNodeFirewall) IsPacketInAllowed(p Packet) bool {
 }
 
 func (f *simpleNodeFirewall) String() string {
-	return fmt.Sprintf("public: %v, packetsOutTo: %v", f.public, f.packetsOutTo)
+	return fmt.Sprintf("public: %v, packetsOutTo: %v", f.publiclyReachable, f.packetsOutTo)
 }
 
 type SimpleFirewallRouter struct {
@@ -142,8 +142,8 @@ func (r *SimpleFirewallRouter) AddPublicNode(addr net.Addr, conn *SimConn) {
 		r.nodes = make(map[string]*simpleNodeFirewall)
 	}
 	r.nodes[addr.String()] = &simpleNodeFirewall{
-		public: true,
-		node:   conn,
+		publiclyReachable: true,
+		node:              conn,
 	}
 }
 
