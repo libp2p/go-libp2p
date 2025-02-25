@@ -8,11 +8,15 @@ import (
 	"time"
 )
 
+type PacketReciever interface {
+	RecvPacket(p Packet)
+}
+
 // PerfectRouter is a router that has no latency or jitter and can route to
 // every node
 type PerfectRouter struct {
 	mu    sync.Mutex
-	nodes map[net.Addr]*SimConn
+	nodes map[net.Addr]PacketReciever
 }
 
 // SendPacket implements Router.
@@ -28,7 +32,12 @@ func (r *PerfectRouter) SendPacket(deadline time.Time, p Packet) error {
 	return nil
 }
 
-func (r *PerfectRouter) AddNode(addr net.Addr, conn *SimConn) {
+func (r *PerfectRouter) AddNode(addr net.Addr, conn PacketReciever) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.nodes == nil {
+		r.nodes = make(map[net.Addr]PacketReciever)
+	}
 	r.nodes[addr] = conn
 }
 
@@ -38,22 +47,33 @@ func (r *PerfectRouter) RemoveNode(addr net.Addr) {
 
 var _ Router = &PerfectRouter{}
 
+type DelayedPacketReciever struct {
+	inner PacketReciever
+	delay time.Duration
+}
+
+func (r *DelayedPacketReciever) RecvPacket(p Packet) {
+	time.AfterFunc(r.delay, func() { r.inner.RecvPacket(p) })
+}
+
 type FixedLatencyRouter struct {
 	PerfectRouter
 	latency time.Duration
 }
 
 func (r *FixedLatencyRouter) SendPacket(deadline time.Time, p Packet) error {
-	if !deadline.IsZero() {
-		select {
-		case <-time.After(r.latency):
-		case <-time.After(time.Until(deadline)):
-			return ErrDeadlineExceeded
-		}
-	} else {
-		time.Sleep(r.latency)
+	if !deadline.IsZero() && time.Now().After(deadline) {
+		return ErrDeadlineExceeded
 	}
+
 	return r.PerfectRouter.SendPacket(deadline, p)
+}
+
+func (r *FixedLatencyRouter) AddNode(addr net.Addr, conn PacketReciever) {
+	r.PerfectRouter.AddNode(addr, &DelayedPacketReciever{
+		inner: conn,
+		delay: r.latency,
+	})
 }
 
 var _ Router = &FixedLatencyRouter{}

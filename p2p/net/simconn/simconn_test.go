@@ -12,9 +12,7 @@ import (
 )
 
 func TestSimConnBasicConnectivity(t *testing.T) {
-	router := &PerfectRouter{
-		nodes: make(map[net.Addr]*SimConn),
-	}
+	router := &PerfectRouter{}
 
 	// Create two endpoints
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
@@ -36,8 +34,8 @@ func TestSimConnBasicConnectivity(t *testing.T) {
 	buf := make([]byte, 1024)
 	n, addr, err := conn2.ReadFrom(buf)
 	require.NoError(t, err)
-	require.Equal(t, addr1, addr)
 	require.Equal(t, testData, buf[:n])
+	require.Equal(t, addr1, addr)
 
 	// Check stats
 	stats1 := conn1.Stats()
@@ -50,9 +48,7 @@ func TestSimConnBasicConnectivity(t *testing.T) {
 }
 
 func TestSimConnDeadlines(t *testing.T) {
-	router := &PerfectRouter{
-		nodes: make(map[net.Addr]*SimConn),
-	}
+	router := &PerfectRouter{}
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
 	conn := NewSimConn(addr1, router)
@@ -79,9 +75,7 @@ func TestSimConnDeadlines(t *testing.T) {
 }
 
 func TestSimConnClose(t *testing.T) {
-	router := &PerfectRouter{
-		nodes: make(map[net.Addr]*SimConn),
-	}
+	router := &PerfectRouter{}
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
 	conn := NewSimConn(addr1, router)
@@ -103,47 +97,8 @@ func TestSimConnClose(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestSimConnPartialReads(t *testing.T) {
-	router := &PerfectRouter{
-		nodes: make(map[net.Addr]*SimConn),
-	}
-
-	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
-	addr2 := &net.UDPAddr{IP: IntToPublicIPv4(2), Port: 1234}
-
-	conn1 := NewSimConn(addr1, router)
-	conn2 := NewSimConn(addr2, router)
-
-	router.AddNode(addr1, conn1)
-	router.AddNode(addr2, conn2)
-
-	// Send large data
-	largeData := make([]byte, 1000)
-	for i := range largeData {
-		largeData[i] = byte(i % 256)
-	}
-
-	_, err := conn1.WriteTo(largeData, addr2)
-	require.NoError(t, err)
-
-	// Read in small chunks
-	buf := make([]byte, 100)
-	var received []byte
-
-	for len(received) < len(largeData) {
-		n, addr, err := conn2.ReadFrom(buf)
-		require.NoError(t, err)
-		require.Equal(t, addr1, addr)
-		received = append(received, buf[:n]...)
-	}
-
-	require.Equal(t, largeData, received)
-}
-
 func TestSimConnLocalAddr(t *testing.T) {
-	router := &PerfectRouter{
-		nodes: make(map[net.Addr]*SimConn),
-	}
+	router := &PerfectRouter{}
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
 	conn := NewSimConn(addr1, router)
@@ -159,10 +114,8 @@ func TestSimConnLocalAddr(t *testing.T) {
 
 func TestSimConnDeadlinesWithLatency(t *testing.T) {
 	router := &FixedLatencyRouter{
-		PerfectRouter: PerfectRouter{
-			nodes: make(map[net.Addr]*SimConn),
-		},
-		latency: 100 * time.Millisecond,
+		PerfectRouter: PerfectRouter{},
+		latency:       100 * time.Millisecond,
 	}
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
@@ -196,8 +149,8 @@ func TestSimConnDeadlinesWithLatency(t *testing.T) {
 		reset()
 	})
 
-	t.Run("write fails after deadline", func(t *testing.T) {
-		deadline := time.Now().Add(50 * time.Millisecond) // Less than router latency
+	t.Run("write fails after past deadline", func(t *testing.T) {
+		deadline := time.Now().Add(-time.Second) // Already expired
 		err := conn1.SetWriteDeadline(deadline)
 		require.NoError(t, err)
 

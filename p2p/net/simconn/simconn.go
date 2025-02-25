@@ -22,8 +22,9 @@ type Packet struct {
 }
 
 type SimConn struct {
-	mu     sync.Mutex
-	closed bool
+	mu         sync.Mutex
+	closed     bool
+	closedChan chan struct{}
 
 	packetsSent atomic.Uint64
 	packetsRcvd atomic.Uint64
@@ -46,7 +47,7 @@ func NewSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
 		router:        rtr,
 		myAddr:        addr,
 		packetsToRead: make(chan Packet, 512), // buffered channel to prevent blocking
-		closed:        false,
+		closedChan:    make(chan struct{}),
 	}
 }
 
@@ -73,14 +74,14 @@ func (c *SimConn) SetLocalAddr(addr net.Addr) {
 }
 
 func (c *SimConn) RecvPacket(p Packet) {
-	c.packetsRcvd.Add(1)
-	c.bytesRcvd.Add(int64(len(p.buf)))
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
 		return
 	}
 	c.mu.Unlock()
+	c.packetsRcvd.Add(1)
+	c.bytesRcvd.Add(int64(len(p.buf)))
 
 	select {
 	case c.packetsToRead <- p:
@@ -99,7 +100,7 @@ func (c *SimConn) Close() error {
 		return nil
 	}
 	c.closed = true
-	close(c.packetsToRead)
+	close(c.closedChan)
 	return nil
 }
 
@@ -119,15 +120,13 @@ func (c *SimConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 	var pkt Packet
 	if !deadline.IsZero() {
-		if !deadline.IsZero() {
-			select {
-			case pkt = <-c.packetsToRead:
-			case <-time.After(time.Until(deadline)):
-				return 0, nil, ErrDeadlineExceeded
-			}
-		} else {
-			pkt = <-c.packetsToRead
+		select {
+		case pkt = <-c.packetsToRead:
+		case <-time.After(time.Until(deadline)):
+			return 0, nil, ErrDeadlineExceeded
 		}
+	} else {
+		pkt = <-c.packetsToRead
 	}
 
 	n = copy(p, pkt.buf)
