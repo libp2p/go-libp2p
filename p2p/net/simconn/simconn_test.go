@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"testing/quick"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -350,4 +351,12 @@ func TestSimpleHolePunch(t *testing.T) {
 			require.Equal(t, string(testMsg), string(buf[:n]))
 		})
 	})
+}
+
+func TestPublicIP(t *testing.T) {
+	err := quick.Check(func(n int) bool {
+		ip := IntToPublicIPv4(n)
+		return !ip.IsPrivate()
+	}, nil)
+	require.NoError(t, err)
 }

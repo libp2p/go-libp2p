@@ -3,6 +3,7 @@ package simconn
 import (
 	"errors"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -166,7 +167,7 @@ func (c *SimConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	pkt := Packet{
 		From: c.myAddr,
 		To:   addr,
-		buf:  append([]byte(nil), p...),
+		buf:  slices.Clone(p),
 	}
 	return len(p), c.router.SendPacket(deadline, pkt)
 }
@@ -217,12 +218,12 @@ func IntToPublicIPv4(n int) net.IP {
 	b[2] = byte((n >> 8) & 0xFF)
 	b[3] = byte(n & 0xFF)
 
+	ip := net.IPv4(b[0], b[1], b[2], b[3])
+
 	// Check and modify if it's in private ranges
-	if (b[0] == 10) || // 10.0.0.0/8
-		(b[0] == 172 && b[1] >= 16 && b[1] <= 31) || // 172.16.0.0/12
-		(b[0] == 192 && b[1] == 168) { // 192.168.0.0/16
-		b[0] = 203 // Use 203.x.x.x as public range
+	if ip.IsPrivate() {
+		b[0] = 1 // Use 1.x.x.x as public range
 	}
 
-	return net.IPv4(b[0], b[1], b[2], b[3])
+	return ip
 }
