@@ -19,7 +19,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-const defaultDirectDialTimeout = 5 * time.Second
+const defaultDirectDialTimeout = 10 * time.Second
 
 // Protocol is the libp2p protocol for Hole Punching.
 const Protocol protocol.ID = "/libp2p/dcutr"
@@ -137,7 +137,7 @@ func (s *Service) waitForPublicAddr() {
 	defer t.Stop()
 	for {
 		if len(s.listenAddrs()) > 0 {
-			log.Debugf("Host %s now has a public address. Starting holepunch protocol.", s.host.ID())
+			log.Debugf("Host %s now has a public address (%s). Starting holepunch protocol.", s.host.ID(), s.host.Addrs())
 			s.host.SetStreamHandler(Protocol, s.handleNewStream)
 			break
 		}
