@@ -20,7 +20,7 @@ type PerfectRouter struct {
 }
 
 // SendPacket implements Router.
-func (r *PerfectRouter) SendPacket(deadline time.Time, p Packet) error {
+func (r *PerfectRouter) SendPacket(p Packet) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	conn, ok := r.nodes[p.To]
@@ -61,12 +61,8 @@ type FixedLatencyRouter struct {
 	latency time.Duration
 }
 
-func (r *FixedLatencyRouter) SendPacket(deadline time.Time, p Packet) error {
-	if !deadline.IsZero() && time.Now().After(deadline) {
-		return ErrDeadlineExceeded
-	}
-
-	return r.PerfectRouter.SendPacket(deadline, p)
+func (r *FixedLatencyRouter) SendPacket(p Packet) error {
+	return r.PerfectRouter.SendPacket(p)
 }
 
 func (r *FixedLatencyRouter) AddNode(addr net.Addr, conn PacketReciever) {
@@ -124,7 +120,7 @@ func (r *SimpleFirewallRouter) String() string {
 	return fmt.Sprintf("%v", nodes)
 }
 
-func (r *SimpleFirewallRouter) SendPacket(deadline time.Time, p Packet) error {
+func (r *SimpleFirewallRouter) SendPacket(p Packet) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	toNode, exists := r.nodes[p.To.String()]

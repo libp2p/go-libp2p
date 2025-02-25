@@ -12,7 +12,7 @@ import (
 var ErrDeadlineExceeded = errors.New("deadline exceeded")
 
 type Router interface {
-	SendPacket(deadline time.Time, p Packet) error
+	SendPacket(p Packet) error
 }
 
 type Packet struct {
@@ -158,7 +158,7 @@ func (c *SimConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		To:   addr,
 		buf:  slices.Clone(p),
 	}
-	return len(p), c.router.SendPacket(deadline, pkt)
+	return len(p), c.router.SendPacket(pkt)
 }
 
 func (c *SimConn) UnicastAddr() net.Addr {
