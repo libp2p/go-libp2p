@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"math/rand/v2"
@@ -55,6 +56,8 @@ func (ac *client) Start() {
 func (ac *client) Close() {
 	ac.host.RemoveStreamHandler(DialBackProtocol)
 }
+
+var errCnt atomic.Int64
 
 // GetReachability verifies address reachability with a AutoNAT v2 server p.
 func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
@@ -111,7 +114,7 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	case msg.GetDialDataRequest() != nil:
 		if err := ac.validateDialDataRequest(reqs, &msg); err != nil {
 			s.Reset()
-			return Result{}, fmt.Errorf("invalid dial data request: %w", err)
+			return Result{}, fmt.Errorf("invalid dial data request: %s %w", s.Conn().RemoteMultiaddr(), err)
 		}
 		// dial data request is valid and we want to send data
 		if err := sendDialData(ac.dialData, int(msg.GetDialDataRequest().GetNumBytes()), w, &msg); err != nil {
@@ -132,22 +135,22 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	}
 
 	resp := msg.GetDialResponse()
+	if int(resp.AddrIdx) >= len(reqs) {
+		return Result{}, fmt.Errorf("invalid response: addr index out of range: %d [0-%d)", resp.AddrIdx, len(reqs))
+	}
 	if resp.GetStatus() != pb.DialResponse_OK {
 		// E_DIAL_REFUSED has implication for deciding future address verificiation priorities
 		// wrap a distinct error for convenient errors.Is usage
 		if resp.GetStatus() == pb.DialResponse_E_DIAL_REFUSED {
 			return Result{}, fmt.Errorf("dial request failed: %w", ErrDialRefused)
 		}
+		fmt.Println("failed", p, reqs[0].Addr, resp.GetStatus(), errCnt.Add(1))
 		return Result{}, fmt.Errorf("dial request failed: response status %d %s", resp.GetStatus(),
 			pb.DialResponse_ResponseStatus_name[int32(resp.GetStatus())])
 	}
 	if resp.GetDialStatus() == pb.DialStatus_UNUSED {
 		return Result{}, fmt.Errorf("invalid response: invalid dial status UNUSED")
 	}
-	if int(resp.AddrIdx) >= len(reqs) {
-		return Result{}, fmt.Errorf("invalid response: addr index out of range: %d [0-%d)", resp.AddrIdx, len(reqs))
-	}
-
 	// wait for nonce from the server
 	var dialBackAddr ma.Multiaddr
 	if resp.GetDialStatus() == pb.DialStatus_OK {

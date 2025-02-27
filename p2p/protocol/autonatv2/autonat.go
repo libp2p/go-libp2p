@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"math/rand/v2"
-
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -35,6 +33,8 @@ const (
 	// maxPeerAddresses is the number of addresses in a dial request the server
 	// will inspect, rest are ignored.
 	maxPeerAddresses = 50
+
+	defaultThrottlePeerDuration = 2 * time.Minute
 )
 
 var (
@@ -76,8 +76,10 @@ type AutoNAT struct {
 	srv *server
 	cli *client
 
-	mx    sync.Mutex
-	peers *peersMap
+	mx                   sync.Mutex
+	peers                map[peer.ID]struct{}
+	throttlePeer         map[peer.ID]time.Time
+	throttlePeerDuration time.Duration
 	// allowPrivateAddrs enables using private and localhost addresses for reachability checks.
 	// This is only useful for testing.
 	allowPrivateAddrs bool
@@ -96,18 +98,21 @@ func New(host host.Host, dialerHost host.Host, opts ...AutoNATOption) (*AutoNAT,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	an := &AutoNAT{
-		host:              host,
-		ctx:               ctx,
-		cancel:            cancel,
-		srv:               newServer(host, dialerHost, s),
-		cli:               newClient(host),
-		allowPrivateAddrs: s.allowPrivateAddrs,
-		peers:             newPeersMap(),
+		host:                 host,
+		ctx:                  ctx,
+		cancel:               cancel,
+		srv:                  newServer(host, dialerHost, s),
+		cli:                  newClient(host),
+		allowPrivateAddrs:    s.allowPrivateAddrs,
+		peers:                make(map[peer.ID]struct{}),
+		throttlePeer:         make(map[peer.ID]time.Time),
+		throttlePeerDuration: s.throttlePeerDuration,
 	}
 	return an, nil
 }
 
 func (an *AutoNAT) background(sub event.Subscription) {
+	ticker := time.NewTicker(10 * time.Minute)
 	for {
 		select {
 		case <-an.ctx.Done():
@@ -123,6 +128,15 @@ func (an *AutoNAT) background(sub event.Subscription) {
 			case event.EvtPeerIdentificationCompleted:
 				an.updatePeer(evt.Peer)
 			}
+		case <-ticker.C:
+			now := time.Now()
+			an.mx.Lock()
+			for p, t := range an.throttlePeer {
+				if t.Before(now) {
+					delete(an.throttlePeer, p)
+				}
+			}
+			an.mx.Unlock()
 		}
 	}
 }
@@ -163,17 +177,25 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 			}
 		}
 	}
+	now := time.Now()
 	an.mx.Lock()
-	p := an.peers.GetRand()
+	var p peer.ID
+	for pr := range an.peers {
+		if t := an.throttlePeer[pr]; t.After(now) {
+			continue
+		}
+		p = pr
+		an.throttlePeer[p] = time.Now().Add(an.throttlePeerDuration)
+		break
+	}
 	an.mx.Unlock()
 	if p == "" {
 		return Result{}, ErrNoValidPeers
 	}
-
 	res, err := an.cli.GetReachability(ctx, p, reqs)
 	if err != nil {
 		log.Debugf("reachability check with %s failed, err: %s", p, err)
-		return Result{}, fmt.Errorf("reachability check with %s failed: %w", p, err)
+		return res, fmt.Errorf("reachability check with %s failed: %w", p, err)
 	}
 	log.Debugf("reachability check with %s successful", p)
 	return res, nil
@@ -187,49 +209,9 @@ func (an *AutoNAT) updatePeer(p peer.ID) {
 	// and swarm for the current state
 	protos, err := an.host.Peerstore().SupportsProtocols(p, DialProtocol)
 	connectedness := an.host.Network().Connectedness(p)
-	if err == nil && slices.Contains(protos, DialProtocol) && connectedness == network.Connected {
-		an.peers.Put(p)
+	if err == nil && connectedness == network.Connected && slices.Contains(protos, DialProtocol) {
+		an.peers[p] = struct{}{}
 	} else {
-		an.peers.Delete(p)
+		delete(an.peers, p)
 	}
-}
-
-// peersMap provides random access to a set of peers. This is useful when the map iteration order is
-// not sufficiently random.
-type peersMap struct {
-	peerIdx map[peer.ID]int
-	peers   []peer.ID
-}
-
-func newPeersMap() *peersMap {
-	return &peersMap{
-		peerIdx: make(map[peer.ID]int),
-		peers:   make([]peer.ID, 0),
-	}
-}
-
-func (p *peersMap) GetRand() peer.ID {
-	if len(p.peers) == 0 {
-		return ""
-	}
-	return p.peers[rand.IntN(len(p.peers))]
-}
-
-func (p *peersMap) Put(pid peer.ID) {
-	if _, ok := p.peerIdx[pid]; ok {
-		return
-	}
-	p.peers = append(p.peers, pid)
-	p.peerIdx[pid] = len(p.peers) - 1
-}
-
-func (p *peersMap) Delete(pid peer.ID) {
-	idx, ok := p.peerIdx[pid]
-	if !ok {
-		return
-	}
-	p.peers[idx] = p.peers[len(p.peers)-1]
-	p.peerIdx[p.peers[idx]] = idx
-	p.peers = p.peers[:len(p.peers)-1]
-	delete(p.peerIdx, pid)
 }

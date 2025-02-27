@@ -522,6 +522,6 @@ func amplificationAttackPrevention(s network.Stream, dialAddr ma.Multiaddr) bool
 	if err != nil {
 		return true
 	}
-	dialIP, _ := manet.ToIP(s.Conn().LocalMultiaddr()) // must be an IP multiaddr
+	dialIP, _ := manet.ToIP(dialAddr) // must be an IP multiaddr
 	return !connIP.Equal(dialIP)
 }

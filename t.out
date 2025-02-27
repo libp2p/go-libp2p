@@ -1,0 +1,448 @@
+=== RUN   TestGetPeerID
+2025/03/11 22:47:25 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+--- PASS: TestGetPeerID (0.01s)
+=== RUN   TestGetEventBus
+--- PASS: TestGetEventBus (0.00s)
+=== RUN   TestGetHost
+--- PASS: TestGetHost (0.00s)
+=== RUN   TestGetIDService
+--- PASS: TestGetIDService (0.00s)
+=== RUN   TestNewHost
+--- PASS: TestNewHost (0.02s)
+=== RUN   TestTransportConstructor
+--- PASS: TestTransportConstructor (0.00s)
+=== RUN   TestNoListenAddrs
+--- PASS: TestNoListenAddrs (0.00s)
+=== RUN   TestNoTransports
+--- PASS: TestNoTransports (0.00s)
+=== RUN   TestInsecure
+--- PASS: TestInsecure (0.00s)
+=== RUN   TestDefaultListenAddrs
+--- PASS: TestDefaultListenAddrs (0.01s)
+=== RUN   TestChainOptions
+--- PASS: TestChainOptions (0.00s)
+=== RUN   TestTransportConstructorTCP
+--- PASS: TestTransportConstructorTCP (0.00s)
+=== RUN   TestTransportConstructorQUIC
+--- PASS: TestTransportConstructorQUIC (0.00s)
+=== RUN   TestTransportConstructorWithoutOpts
+=== RUN   TestTransportConstructorWithoutOpts/successful
+=== RUN   TestTransportConstructorWithoutOpts/with_options
+--- PASS: TestTransportConstructorWithoutOpts (0.00s)
+    --- PASS: TestTransportConstructorWithoutOpts/successful (0.00s)
+    --- PASS: TestTransportConstructorWithoutOpts/with_options (0.00s)
+=== RUN   TestTransportConstructorWithWrongOpts
+--- PASS: TestTransportConstructorWithWrongOpts (0.00s)
+=== RUN   TestSecurityConstructor
+--- PASS: TestSecurityConstructor (0.01s)
+=== RUN   TestTransportConstructorWebTransport
+--- PASS: TestTransportConstructorWebTransport (0.00s)
+=== RUN   TestTransportCustomAddressWebTransport
+--- PASS: TestTransportCustomAddressWebTransport (0.00s)
+=== RUN   TestTransportCustomAddressWebTransportDoesNotStall
+--- PASS: TestTransportCustomAddressWebTransportDoesNotStall (0.00s)
+=== RUN   TestRoutedHost
+--- PASS: TestRoutedHost (0.00s)
+=== RUN   TestAutoNATService
+--- PASS: TestAutoNATService (0.00s)
+=== RUN   TestInsecureConstructor
+--- PASS: TestInsecureConstructor (0.01s)
+=== RUN   TestAutoNATv2Service
+client is not nil *autonatv2.AutoNAT--- PASS: TestAutoNATv2Service (0.01s)
+=== RUN   TestDisableIdentifyAddressDiscovery
+--- PASS: TestDisableIdentifyAddressDiscovery (0.00s)
+=== RUN   TestDialCircuitAddrWithWrappedResourceManager
+--- PASS: TestDialCircuitAddrWithWrappedResourceManager (0.07s)
+=== RUN   TestHostAddrsFactoryAddsCerthashes
+--- PASS: TestHostAddrsFactoryAddsCerthashes (0.05s)
+=== RUN   TestWebRTCReuseAddrWithQUIC
+=== RUN   TestWebRTCReuseAddrWithQUIC/Order_0
+=== RUN   TestWebRTCReuseAddrWithQUIC/Order_0/quic_client_can_connect
+=== RUN   TestWebRTCReuseAddrWithQUIC/Order_0/webrtc_client_can_connect
+=== RUN   TestWebRTCReuseAddrWithQUIC/Order_1
+=== RUN   TestWebRTCReuseAddrWithQUIC/Order_1/quic_client_can_connect
+=== RUN   TestWebRTCReuseAddrWithQUIC/Order_1/webrtc_client_can_connect
+=== RUN   TestWebRTCReuseAddrWithQUIC/setup_with_no_reuseport._Should_fail
+=== RUN   TestWebRTCReuseAddrWithQUIC/setup_with_autonat
+client is not nil *autonatv2.AutoNAT--- PASS: TestWebRTCReuseAddrWithQUIC (0.03s)
+    --- PASS: TestWebRTCReuseAddrWithQUIC/Order_0 (0.01s)
+        --- PASS: TestWebRTCReuseAddrWithQUIC/Order_0/quic_client_can_connect (0.00s)
+        --- PASS: TestWebRTCReuseAddrWithQUIC/Order_0/webrtc_client_can_connect (0.00s)
+    --- PASS: TestWebRTCReuseAddrWithQUIC/Order_1 (0.01s)
+        --- PASS: TestWebRTCReuseAddrWithQUIC/Order_1/quic_client_can_connect (0.00s)
+        --- PASS: TestWebRTCReuseAddrWithQUIC/Order_1/webrtc_client_can_connect (0.00s)
+    --- PASS: TestWebRTCReuseAddrWithQUIC/setup_with_no_reuseport._Should_fail (0.00s)
+    --- PASS: TestWebRTCReuseAddrWithQUIC/setup_with_autonat (0.00s)
+=== RUN   TestUseCorrectTransportForDialOut
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1,/ip4/127.0.0.1/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/46284/quic-v1
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/48594/quic-v1 /ip4/127.0.0.1/udp/54541/quic-v1/webtransport/certhash/uEiCd9goUOpfusrQ_PnRS36XCWyybMdf-RdV8lrx0NRhzUw/certhash/uEiCCNhhwMVE5ut_QMooitiYT7tqEHp7aoj5jFnYrK2dIgw /ip4/192.168.8.184/udp/48594/quic-v1 /ip4/192.168.8.184/udp/54541/quic-v1/webtransport/certhash/uEiCd9goUOpfusrQ_PnRS36XCWyybMdf-RdV8lrx0NRhzUw/certhash/uEiCCNhhwMVE5ut_QMooitiYT7tqEHp7aoj5jFnYrK2dIgw]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1,/ip4/127.0.0.1/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/46335/quic-v1/webtransport/certhash/uEiAB9BXuck0onO4_pAEPDQwfthzp2obiaO-0V_RIu_8qzQ/certhash/uEiBPU_t4jKGOWp5VvwPtxUaidHrdQNJ0ckh9Uu11hmgeLA
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/44189/quic-v1 /ip4/127.0.0.1/udp/53864/quic-v1/webtransport/certhash/uEiACjnU2h0u_7s4eQpOD3d2gzpw1ZGT-feeaMTkW0VH31Q/certhash/uEiC1lmke2rarP2fRww1iAW2olpkF8QMiZUPlywl31Ka2-g /ip4/192.168.8.184/udp/44189/quic-v1 /ip4/192.168.8.184/udp/53864/quic-v1/webtransport/certhash/uEiACjnU2h0u_7s4eQpOD3d2gzpw1ZGT-feeaMTkW0VH31Q/certhash/uEiC1lmke2rarP2fRww1iAW2olpkF8QMiZUPlywl31Ka2-g]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1/webtransport,/ip4/127.0.0.1/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/43599/quic-v1
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/35222/quic-v1/webtransport/certhash/uEiCCklCfbUvGglmlkmr0uS3qVFYN0jF0k5C4g83SHSIMoQ/certhash/uEiCIRUQErxQ8ba46hnZNZtsTtaEVRdNaRb_ZokvZzaGIzQ /ip4/127.0.0.1/udp/35366/quic-v1 /ip4/192.168.8.184/udp/35222/quic-v1/webtransport/certhash/uEiCCklCfbUvGglmlkmr0uS3qVFYN0jF0k5C4g83SHSIMoQ/certhash/uEiCIRUQErxQ8ba46hnZNZtsTtaEVRdNaRb_ZokvZzaGIzQ /ip4/192.168.8.184/udp/35366/quic-v1]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1/webtransport,/ip4/127.0.0.1/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/46316/quic-v1/webtransport/certhash/uEiAsIoJjSNGJQCmEKOeiBxojFHsAC5xvLtW8FfW3M_vLOw/certhash/uEiBfuGn2l6mWNKSePXjSlkTK16cULWsMof452D0mDii9lQ
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/34502/quic-v1/webtransport/certhash/uEiAsioO9U1k1EsMwERrYbiAng8qC9DNjwO4Jt-scmMfSLQ/certhash/uEiART9ImJ0Y3m_onJgIHXuO4ZsvcUJcd-3USDcmdShppug /ip4/127.0.0.1/udp/59095/quic-v1 /ip4/192.168.8.184/udp/34502/quic-v1/webtransport/certhash/uEiAsioO9U1k1EsMwERrYbiAng8qC9DNjwO4Jt-scmMfSLQ/certhash/uEiART9ImJ0Y3m_onJgIHXuO4ZsvcUJcd-3USDcmdShppug /ip4/192.168.8.184/udp/59095/quic-v1]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/35514/quic-v1
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/45071/quic-v1/webtransport/certhash/uEiDp7aabAJ-d_kjNnDBeINis4qqIEHfHUWMsx48qsXCU6w/certhash/uEiDnM0BT6hDa3QTFKtokslS-CCaIgPcYAE_McpDVGaDWlQ /ip4/127.0.0.1/udp/49708/quic-v1 /ip4/192.168.8.184/udp/45071/quic-v1/webtransport/certhash/uEiDp7aabAJ-d_kjNnDBeINis4qqIEHfHUWMsx48qsXCU6w/certhash/uEiDnM0BT6hDa3QTFKtokslS-CCaIgPcYAE_McpDVGaDWlQ /ip4/192.168.8.184/udp/49708/quic-v1]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/50973/quic-v1/webtransport/certhash/uEiApXefHfIiBzC1NHwT8Vs0pjPDTbebQhwalyxxB6EONzA/certhash/uEiAZoBQHd4BU6GlniXCkTMUiDHa8vgce5OkwNG9xkYXLzQ
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/50942/quic-v1 /ip4/127.0.0.1/udp/54528/quic-v1/webtransport/certhash/uEiBZ9eQZMXv0zJPZ2vTcaM9kogxxPmaRM6-JqqDG3aD92A/certhash/uEiDPidHXUvxltTchm9u53GnOO8WxjUJqTsW2mJM3Qd42zQ /ip4/192.168.8.184/udp/50942/quic-v1 /ip4/192.168.8.184/udp/54528/quic-v1/webtransport/certhash/uEiBZ9eQZMXv0zJPZ2vTcaM9kogxxPmaRM6-JqqDG3aD92A/certhash/uEiDPidHXUvxltTchm9u53GnOO8WxjUJqTsW2mJM3Qd42zQ]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/192.168.8.184/udp/35514/quic-v1
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/57548/quic-v1 /ip4/127.0.0.1/udp/59058/quic-v1/webtransport/certhash/uEiCx_qwnKRw1NG56mlVqdwhsnBct0Su673SkMD0EdgU3mg/certhash/uEiC1qzf9uOQ67ReCNGwZEDg6r29Y4vQ1fmfcJJz91a56iw /ip4/192.168.8.184/udp/57548/quic-v1 /ip4/192.168.8.184/udp/59058/quic-v1/webtransport/certhash/uEiCx_qwnKRw1NG56mlVqdwhsnBct0Su673SkMD0EdgU3mg/certhash/uEiC1qzf9uOQ67ReCNGwZEDg6r29Y4vQ1fmfcJJz91a56iw]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/192.168.8.184/udp/50973/quic-v1/webtransport/certhash/uEiApXefHfIiBzC1NHwT8Vs0pjPDTbebQhwalyxxB6EONzA/certhash/uEiAZoBQHd4BU6GlniXCkTMUiDHa8vgce5OkwNG9xkYXLzQ
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/41292/quic-v1/webtransport/certhash/uEiAKIP5F9C1xoINcrYN6s0kQhsSfV8fKa4b__KAQbE8-wA/certhash/uEiCLu_yX5WCPgpiLD4h7Shj4TDdZgFKm7M5Os2Dr-8V58Q /ip4/127.0.0.1/udp/54338/quic-v1 /ip4/192.168.8.184/udp/41292/quic-v1/webtransport/certhash/uEiAKIP5F9C1xoINcrYN6s0kQhsSfV8fKa4b__KAQbE8-wA/certhash/uEiCLu_yX5WCPgpiLD4h7Shj4TDdZgFKm7M5Os2Dr-8V58Q /ip4/192.168.8.184/udp/54338/quic-v1]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/36190/quic-v1/webtransport/certhash/uEiBWM4HIv2Xoso6sLXu7hDAy8osFELyjjKW8ghHu01COBA/certhash/uEiAOl8A0LPYAQJnijKtBcEzRRAfQl_2i5reWJuPlCr6ckg
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/43696/quic-v1/webtransport/certhash/uEiDyzsyhKIf5rjayoUr0KZ48eWlxBwk0ujcfv6egB3L-_w/certhash/uEiDuf_vH_YaiU-mWoaE9HKBXFoTSP4kzlyF1Txzb6RWJZQ /ip4/127.0.0.1/udp/48889/quic-v1 /ip4/192.168.8.184/udp/43696/quic-v1/webtransport/certhash/uEiDyzsyhKIf5rjayoUr0KZ48eWlxBwk0ujcfv6egB3L-_w/certhash/uEiDuf_vH_YaiU-mWoaE9HKBXFoTSP4kzlyF1Txzb6RWJZQ /ip4/192.168.8.184/udp/48889/quic-v1]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/55309/quic-v1
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/53953/quic-v1 /ip4/127.0.0.1/udp/54043/quic-v1/webtransport/certhash/uEiAiFpfC4saDXz_KMvYAF1cFG8EBg2UQ9gRBJBEhsbW5Kg/certhash/uEiAiWY4s3dR78Y0BljfHMgNSaBAermY3SnnO5Kg94OERyQ /ip4/192.168.8.184/udp/53953/quic-v1 /ip4/192.168.8.184/udp/54043/quic-v1/webtransport/certhash/uEiAiFpfC4saDXz_KMvYAF1cFG8EBg2UQ9gRBJBEhsbW5Kg/certhash/uEiAiWY4s3dR78Y0BljfHMgNSaBAermY3SnnO5Kg94OERyQ]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/192.168.8.184/udp/36190/quic-v1/webtransport/certhash/uEiBWM4HIv2Xoso6sLXu7hDAy8osFELyjjKW8ghHu01COBA/certhash/uEiAOl8A0LPYAQJnijKtBcEzRRAfQl_2i5reWJuPlCr6ckg
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/35152/quic-v1 /ip4/127.0.0.1/udp/41122/quic-v1/webtransport/certhash/uEiAFyI8ckvlilfKpayBHdRXB2ayYSpnq7Kw8kDHZDU-9Gg/certhash/uEiAFD40CgVscEKBEGL1LTLk4WTUpQzK6l6-oTsxgpFS_TA /ip4/192.168.8.184/udp/35152/quic-v1 /ip4/192.168.8.184/udp/41122/quic-v1/webtransport/certhash/uEiAFyI8ckvlilfKpayBHdRXB2ayYSpnq7Kw8kDHZDU-9Gg/certhash/uEiAFD40CgVscEKBEGL1LTLk4WTUpQzK6l6-oTsxgpFS_TA]
+=== RUN   TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/192.168.8.184/udp/55309/quic-v1
+    libp2p_test.go:634: H2 Addrs [/ip4/127.0.0.1/udp/37975/quic-v1/webtransport/certhash/uEiDfYcDQB_cXwbRYLRlNb8gRqdn3MpqDnTv400QXfS8eww/certhash/uEiD16mt2LNdGQQpYNVqu5e5ECHZN09Gk4okOGJ8h_Ru6Ww /ip4/127.0.0.1/udp/44125/quic-v1 /ip4/192.168.8.184/udp/37975/quic-v1/webtransport/certhash/uEiDfYcDQB_cXwbRYLRlNb8gRqdn3MpqDnTv400QXfS8eww/certhash/uEiD16mt2LNdGQQpYNVqu5e5ECHZN09Gk4okOGJ8h_Ru6Ww /ip4/192.168.8.184/udp/44125/quic-v1]
+--- PASS: TestUseCorrectTransportForDialOut (0.07s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1,/ip4/127.0.0.1/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/46284/quic-v1 (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1,/ip4/127.0.0.1/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/46335/quic-v1/webtransport/certhash/uEiAB9BXuck0onO4_pAEPDQwfthzp2obiaO-0V_RIu_8qzQ/certhash/uEiBPU_t4jKGOWp5VvwPtxUaidHrdQNJ0ckh9Uu11hmgeLA (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1/webtransport,/ip4/127.0.0.1/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/43599/quic-v1 (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/127.0.0.1/udp/0/quic-v1/webtransport,/ip4/127.0.0.1/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/46316/quic-v1/webtransport/certhash/uEiAsIoJjSNGJQCmEKOeiBxojFHsAC5xvLtW8FfW3M_vLOw/certhash/uEiBfuGn2l6mWNKSePXjSlkTK16cULWsMof452D0mDii9lQ (0.01s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/35514/quic-v1 (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/127.0.0.1/udp/50973/quic-v1/webtransport/certhash/uEiApXefHfIiBzC1NHwT8Vs0pjPDTbebQhwalyxxB6EONzA/certhash/uEiAZoBQHd4BU6GlniXCkTMUiDHa8vgce5OkwNG9xkYXLzQ (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/192.168.8.184/udp/35514/quic-v1 (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1,/ip4/0.0.0.0/udp/0/quic-v1/webtransport_Dial_to_/ip4/192.168.8.184/udp/50973/quic-v1/webtransport/certhash/uEiApXefHfIiBzC1NHwT8Vs0pjPDTbebQhwalyxxB6EONzA/certhash/uEiAZoBQHd4BU6GlniXCkTMUiDHa8vgce5OkwNG9xkYXLzQ (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/36190/quic-v1/webtransport/certhash/uEiBWM4HIv2Xoso6sLXu7hDAy8osFELyjjKW8ghHu01COBA/certhash/uEiAOl8A0LPYAQJnijKtBcEzRRAfQl_2i5reWJuPlCr6ckg (0.01s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/127.0.0.1/udp/55309/quic-v1 (0.00s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/192.168.8.184/udp/36190/quic-v1/webtransport/certhash/uEiBWM4HIv2Xoso6sLXu7hDAy8osFELyjjKW8ghHu01COBA/certhash/uEiAOl8A0LPYAQJnijKtBcEzRRAfQl_2i5reWJuPlCr6ckg (0.01s)
+    --- PASS: TestUseCorrectTransportForDialOut/order_/ip4/0.0.0.0/udp/0/quic-v1/webtransport,/ip4/0.0.0.0/udp/0/quic-v1_Dial_to_/ip4/192.168.8.184/udp/55309/quic-v1 (0.00s)
+=== RUN   TestCircuitBehindWSS
+--- PASS: TestCircuitBehindWSS (0.01s)
+=== RUN   TestSharedTCPAddr
+--- PASS: TestSharedTCPAddr (0.00s)
+=== RUN   TestCustomTCPDialer
+--- PASS: TestCustomTCPDialer (0.00s)
+=== RUN   TestProtoImportsAndPathsAreConsistent
+--- PASS: TestProtoImportsAndPathsAreConsistent (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p	0.324s
+=== RUN   TestNilOption
+--- PASS: TestNilOption (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/config	0.004s
+?   	github.com/libp2p/go-libp2p/core	[no test files]
+=== RUN   TestLogs
+2025-03-11T22:35:12.989+0530	WARN	canonical-log	canonicallog/canonicallog_test.go:20	CANONICAL_MISBEHAVING_PEER: peer=QmehKeD3YCV9GbmbJBTkTbEFx7MWZprmekhZvf9XkLZDQ9 addr=/ip4/1.2.3.4 component=somecomponent err="something" msg="hi"
+2025-03-11T22:35:12.989+0530	WARN	canonical-log	canonicallog/canonicallog.go:35	CANONICAL_MISBEHAVING_PEER: peer=Qmf5wTtWu1BPAB5SrzZ6nCEJNnDxgNA7z9wTQM5ytPwo79 addr=/ip4/127.0.0.1/tcp/80 component=somecomponent err="something" msg="hello \"world\""
+2025-03-11T22:35:12.989+0530	INFO	canonical-log	canonicallog/canonicallog_test.go:25	CANONICAL_PEER_STATUS: peer=QmSyEDRMTVKoA4qpZwZN63eE7qXG9uKkEZV99ujSrrg9qF addr=/ip4/1.2.3.4 sample_rate=1 extra="info"
+--- PASS: TestLogs (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/canonicallog	(cached)
+?   	github.com/libp2p/go-libp2p/core/connmgr	[no test files]
+?   	github.com/libp2p/go-libp2p/core/control	[no test files]
+=== RUN   TestECDSABasicSignAndVerify
+--- PASS: TestECDSABasicSignAndVerify (0.00s)
+=== RUN   TestECDSASignZero
+--- PASS: TestECDSASignZero (0.00s)
+=== RUN   TestECDSAMarshalLoop
+--- PASS: TestECDSAMarshalLoop (0.00s)
+=== RUN   TestECDSAPublicKeyFromPubKey
+--- PASS: TestECDSAPublicKeyFromPubKey (0.00s)
+=== RUN   TestBasicSignAndVerify
+--- PASS: TestBasicSignAndVerify (0.00s)
+=== RUN   TestSignZero
+--- PASS: TestSignZero (0.00s)
+=== RUN   TestMarshalLoop
+=== RUN   TestMarshalLoop/PrivateKey
+=== RUN   TestMarshalLoop/PrivateKey/Redundant
+=== RUN   TestMarshalLoop/PrivateKey/Marshal
+=== RUN   TestMarshalLoop/PublicKey
+=== RUN   TestMarshalLoop/PublicKey/Marshal
+--- PASS: TestMarshalLoop (0.00s)
+    --- PASS: TestMarshalLoop/PrivateKey (0.00s)
+        --- PASS: TestMarshalLoop/PrivateKey/Redundant (0.00s)
+        --- PASS: TestMarshalLoop/PrivateKey/Marshal (0.00s)
+    --- PASS: TestMarshalLoop/PublicKey (0.00s)
+        --- PASS: TestMarshalLoop/PublicKey/Marshal (0.00s)
+=== RUN   TestUnmarshalErrors
+=== RUN   TestUnmarshalErrors/PublicKey
+=== RUN   TestUnmarshalErrors/PublicKey/Invalid_data_length
+=== RUN   TestUnmarshalErrors/PrivateKey
+=== RUN   TestUnmarshalErrors/PrivateKey/Redundant_public_key_mismatch
+=== RUN   TestUnmarshalErrors/PrivateKey/Invalid_data_length
+--- PASS: TestUnmarshalErrors (0.00s)
+    --- PASS: TestUnmarshalErrors/PublicKey (0.00s)
+        --- PASS: TestUnmarshalErrors/PublicKey/Invalid_data_length (0.00s)
+    --- PASS: TestUnmarshalErrors/PrivateKey (0.00s)
+        --- PASS: TestUnmarshalErrors/PrivateKey/Redundant_public_key_mismatch (0.00s)
+        --- PASS: TestUnmarshalErrors/PrivateKey/Invalid_data_length (0.00s)
+=== RUN   TestRSABasicSignAndVerify
+--- PASS: TestRSABasicSignAndVerify (0.26s)
+=== RUN   TestRSASmallKey
+--- PASS: TestRSASmallKey (0.01s)
+=== RUN   TestRSABigKeyFailsToGenerate
+--- PASS: TestRSABigKeyFailsToGenerate (0.00s)
+=== RUN   TestRSABigKey
+--- PASS: TestRSABigKey (3.69s)
+=== RUN   TestRSASignZero
+--- PASS: TestRSASignZero (0.34s)
+=== RUN   TestRSAMarshalLoop
+--- PASS: TestRSAMarshalLoop (0.14s)
+=== RUN   TestSecp256k1BasicSignAndVerify
+--- PASS: TestSecp256k1BasicSignAndVerify (0.01s)
+=== RUN   TestSecp256k1SignZero
+--- PASS: TestSecp256k1SignZero (0.00s)
+=== RUN   TestSecp256k1MarshalLoop
+--- PASS: TestSecp256k1MarshalLoop (0.00s)
+=== RUN   TestFixtures
+=== RUN   TestFixtures/ECDSA
+=== RUN   TestFixtures/Secp256k1
+=== RUN   TestFixtures/RSA
+--- PASS: TestFixtures (0.00s)
+    --- PASS: TestFixtures/ECDSA (0.00s)
+    --- PASS: TestFixtures/Secp256k1 (0.00s)
+    --- PASS: TestFixtures/RSA (0.00s)
+=== RUN   TestKeys
+--- PASS: TestKeys (1.39s)
+=== RUN   TestKeyPairFromKey
+=== RUN   TestKeyPairFromKey/0
+=== RUN   TestKeyPairFromKey/1
+=== RUN   TestKeyPairFromKey/2
+=== RUN   TestKeyPairFromKey/3
+--- PASS: TestKeyPairFromKey (0.27s)
+    --- PASS: TestKeyPairFromKey/0 (0.00s)
+    --- PASS: TestKeyPairFromKey/1 (0.00s)
+    --- PASS: TestKeyPairFromKey/2 (0.00s)
+    --- PASS: TestKeyPairFromKey/3 (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/crypto	(cached)
+?   	github.com/libp2p/go-libp2p/core/crypto/pb	[no test files]
+?   	github.com/libp2p/go-libp2p/core/discovery	[no test files]
+?   	github.com/libp2p/go-libp2p/core/event	[no test files]
+?   	github.com/libp2p/go-libp2p/core/host	[no test files]
+=== RUN   TestCatch
+--- PASS: TestCatch (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/internal/catch	(cached)
+=== RUN   TestBandwidthCounter
+--- PASS: TestBandwidthCounter (0.05s)
+=== RUN   TestResetBandwidthCounter
+--- PASS: TestResetBandwidthCounter (0.20s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/metrics	(cached)
+=== RUN   TestDefaultTimeout
+--- PASS: TestDefaultTimeout (0.00s)
+=== RUN   TestNonDefaultTimeout
+--- PASS: TestNonDefaultTimeout (0.00s)
+=== RUN   TestSettingTimeout
+--- PASS: TestSettingTimeout (0.00s)
+=== RUN   TestSimultaneousConnect
+=== RUN   TestSimultaneousConnect/for_the_server
+=== RUN   TestSimultaneousConnect/for_the_client
+--- PASS: TestSimultaneousConnect (0.00s)
+    --- PASS: TestSimultaneousConnect/for_the_server (0.00s)
+    --- PASS: TestSimultaneousConnect/for_the_client (0.00s)
+=== RUN   TestListen
+--- PASS: TestListen (0.00s)
+=== RUN   TestListenClose
+--- PASS: TestListenClose (0.00s)
+=== RUN   TestConnected
+--- PASS: TestConnected (0.00s)
+=== RUN   TestDisconnected
+--- PASS: TestDisconnected (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/network	(cached)
+?   	github.com/libp2p/go-libp2p/core/network/mocks	[no test files]
+=== RUN   TestSplitAddr
+--- PASS: TestSplitAddr (0.00s)
+=== RUN   TestIDFromP2PAddr
+--- PASS: TestIDFromP2PAddr (0.00s)
+=== RUN   TestAddrInfoFromP2pAddr
+--- PASS: TestAddrInfoFromP2pAddr (0.00s)
+=== RUN   TestAddrInfosFromP2pAddrs
+--- PASS: TestAddrInfosFromP2pAddrs (0.00s)
+=== RUN   TestAddrInfoJSON
+--- PASS: TestAddrInfoJSON (0.00s)
+=== RUN   TestPeerSerdePB
+--- PASS: TestPeerSerdePB (0.00s)
+=== RUN   TestPeerSerdeJSON
+--- PASS: TestPeerSerdeJSON (0.00s)
+=== RUN   TestBinaryMarshaler
+--- PASS: TestBinaryMarshaler (0.00s)
+=== RUN   TestTextMarshaler
+--- PASS: TestTextMarshaler (0.00s)
+=== RUN   TestIDMatchesPublicKey
+--- PASS: TestIDMatchesPublicKey (0.00s)
+=== RUN   TestIDMatchesPrivateKey
+--- PASS: TestIDMatchesPrivateKey (0.00s)
+=== RUN   TestIDEncoding
+--- PASS: TestIDEncoding (0.00s)
+=== RUN   TestPublicKeyExtraction
+    peer_test.go:201: disabled until libp2p/go-libp2p-crypto#51 is fixed
+--- SKIP: TestPublicKeyExtraction (0.00s)
+=== RUN   TestValidate
+--- PASS: TestValidate (0.00s)
+=== RUN   TestPeerRecordConstants
+--- PASS: TestPeerRecordConstants (0.00s)
+=== RUN   TestSignedPeerRecordFromEnvelope
+=== RUN   TestSignedPeerRecordFromEnvelope/is_unaltered_after_round-trip_serde
+--- PASS: TestSignedPeerRecordFromEnvelope (0.00s)
+    --- PASS: TestSignedPeerRecordFromEnvelope/is_unaltered_after_round-trip_serde (0.00s)
+=== RUN   TestTimestampSeq
+--- PASS: TestTimestampSeq (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/peer	(cached)
+?   	github.com/libp2p/go-libp2p/core/peer/pb	[no test files]
+?   	github.com/libp2p/go-libp2p/core/peerstore	[no test files]
+=== RUN   TestDecodeHex
+--- PASS: TestDecodeHex (0.00s)
+=== RUN   TestDecodeBad
+--- PASS: TestDecodeBad (0.00s)
+=== RUN   TestDecodeB64
+--- PASS: TestDecodeB64 (0.00s)
+=== RUN   TestDecodeBin
+--- PASS: TestDecodeBin (0.00s)
+=== RUN   TestIsPnetErr
+--- PASS: TestIsPnetErr (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/pnet	(cached)
+?   	github.com/libp2p/go-libp2p/core/protocol	[no test files]
+=== RUN   TestUnmarshalPayload
+=== RUN   TestUnmarshalPayload/fails_if_payload_type_is_unregistered
+=== RUN   TestUnmarshalPayload/calls_UnmarshalRecord_on_concrete_Record_type
+--- PASS: TestUnmarshalPayload (0.00s)
+    --- PASS: TestUnmarshalPayload/fails_if_payload_type_is_unregistered (0.00s)
+    --- PASS: TestUnmarshalPayload/calls_UnmarshalRecord_on_concrete_Record_type (0.00s)
+=== RUN   TestEnvelopeHappyPath
+--- PASS: TestEnvelopeHappyPath (0.00s)
+=== RUN   TestConsumeTypedEnvelope
+--- PASS: TestConsumeTypedEnvelope (0.00s)
+=== RUN   TestMakeEnvelopeFailsWithEmptyDomain
+--- PASS: TestMakeEnvelopeFailsWithEmptyDomain (0.00s)
+=== RUN   TestMakeEnvelopeFailsWithEmptyPayloadType
+--- PASS: TestMakeEnvelopeFailsWithEmptyPayloadType (0.00s)
+=== RUN   TestSealFailsIfRecordMarshalFails
+--- PASS: TestSealFailsIfRecordMarshalFails (0.00s)
+=== RUN   TestConsumeEnvelopeFailsIfEnvelopeUnmarshalFails
+--- PASS: TestConsumeEnvelopeFailsIfEnvelopeUnmarshalFails (0.00s)
+=== RUN   TestConsumeEnvelopeFailsIfRecordUnmarshalFails
+--- PASS: TestConsumeEnvelopeFailsIfRecordUnmarshalFails (0.00s)
+=== RUN   TestConsumeTypedEnvelopeFailsIfRecordUnmarshalFails
+--- PASS: TestConsumeTypedEnvelopeFailsIfRecordUnmarshalFails (0.00s)
+=== RUN   TestEnvelopeValidateFailsForDifferentDomain
+--- PASS: TestEnvelopeValidateFailsForDifferentDomain (0.00s)
+=== RUN   TestEnvelopeValidateFailsIfPayloadTypeIsAltered
+--- PASS: TestEnvelopeValidateFailsIfPayloadTypeIsAltered (0.00s)
+=== RUN   TestEnvelopeValidateFailsIfContentsAreAltered
+--- PASS: TestEnvelopeValidateFailsIfContentsAreAltered (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/record	(cached)
+?   	github.com/libp2p/go-libp2p/core/record/pb	[no test files]
+=== RUN   TestEventsCancel
+--- PASS: TestEventsCancel (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/routing	(cached)
+?   	github.com/libp2p/go-libp2p/core/sec	[no test files]
+=== RUN   TestConnections
+--- PASS: TestConnections (0.23s)
+=== RUN   TestPeerIdMatchInbound
+--- PASS: TestPeerIdMatchInbound (0.07s)
+=== RUN   TestPeerIDMismatchInbound
+--- PASS: TestPeerIDMismatchInbound (0.19s)
+=== RUN   TestPeerIDMismatchOutbound
+--- PASS: TestPeerIDMismatchOutbound (0.15s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/sec/insecure	(cached)
+?   	github.com/libp2p/go-libp2p/core/sec/insecure/pb	[no test files]
+=== RUN   TestMockClock
+--- PASS: TestMockClock (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/core/test	(cached)
+?   	github.com/libp2p/go-libp2p/core/transport	[no test files]
+=== RUN   TestBadTransportConstructor
+--- PASS: TestBadTransportConstructor (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/leaky_tests	0.007s
+=== RUN   TestFixedBackoff
+--- PASS: TestFixedBackoff (0.00s)
+=== RUN   TestPolynomialBackoff
+--- PASS: TestPolynomialBackoff (0.00s)
+=== RUN   TestExponentialBackoff
+--- PASS: TestExponentialBackoff (0.00s)
+=== RUN   TestNoJitter
+--- PASS: TestNoJitter (0.00s)
+=== RUN   TestFullJitter
+--- PASS: TestFullJitter (0.00s)
+=== RUN   TestManyBackoffFactory
+=== RUN   TestManyBackoffFactory/Exponential
+=== RUN   TestManyBackoffFactory/Polynomial
+=== RUN   TestManyBackoffFactory/Fixed
+--- PASS: TestManyBackoffFactory (0.00s)
+    --- PASS: TestManyBackoffFactory/Exponential (0.00s)
+    --- PASS: TestManyBackoffFactory/Polynomial (0.00s)
+    --- PASS: TestManyBackoffFactory/Fixed (0.00s)
+=== RUN   TestBackoffDiscoverySingleBackoff
+2025/03/11 22:35:13 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+--- PASS: TestBackoffDiscoverySingleBackoff (0.01s)
+=== RUN   TestBackoffDiscoveryMultipleBackoff
+--- PASS: TestBackoffDiscoveryMultipleBackoff (0.01s)
+=== RUN   TestBackoffDiscoverySimultaneousQuery
+--- PASS: TestBackoffDiscoverySimultaneousQuery (0.13s)
+=== RUN   TestBackoffDiscoveryCacheCapacity
+--- PASS: TestBackoffDiscoveryCacheCapacity (0.08s)
+=== RUN   TestBackoffConnector
+--- PASS: TestBackoffConnector (0.74s)
+PASS
+ok  	github.com/libp2p/go-libp2p/p2p/discovery/backoff	(cached)
+=== RUN   TestOtherDiscovery
+--- PASS: TestOtherDiscovery (0.03s)
+PASS
+ok  	github.com/libp2p/go-libp2p/p2p/discovery/mdns	0.035s
+?   	github.com/libp2p/go-libp2p/p2p/discovery/mocks	[no test files]
+=== RUN   TestRoutingDiscovery
+2025/03/11 22:35:14 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+--- PASS: TestRoutingDiscovery (0.00s)
+=== RUN   TestDiscoveryRouting
+--- PASS: TestDiscoveryRouting (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/p2p/discovery/routing	(cached)
+?   	github.com/libp2p/go-libp2p/p2p/discovery/util	[no test files]
+=== RUN   TestAutoNATPrivate
+2025/03/11 22:35:14 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+--- PASS: TestAutoNATPrivate (0.11s)
+=== RUN   TestAutoNATPublic
+--- PASS: TestAutoNATPublic (0.10s)
+=== RUN   TestAutoNATPublictoPrivate
+--- PASS: TestAutoNATPublictoPrivate (0.20s)
+=== RUN   TestAutoNATIncomingEvents
+--- PASS: TestAutoNATIncomingEvents (2.11s)
+=== RUN   TestAutoNATDialRefused
+--- PASS: TestAutoNATDialRefused (3.12s)
+=== RUN   TestAutoNATObservationRecording
+--- PASS: TestAutoNATObservationRecording (0.80s)
+=== RUN   TestStaticNat
+--- PASS: TestStaticNat (0.00s)
+=== RUN   TestSkipDial
+2025-03-11T22:35:20.531+0530	ERROR	swarm2	swarm/swarm_listen.go:164	swarm listener for /ip4/8.8.8.8 accept error: expected in mocked test
+--- PASS: TestSkipDial (0.00s)
+=== RUN   TestSkipPeer
+2025-03-11T22:35:20.532+0530	ERROR	swarm2	swarm/swarm_listen.go:164	swarm listener for /ip4/8.8.8.8 accept error: expected in mocked test
+--- PASS: TestSkipPeer (0.00s)
+=== RUN   TestSkipLocalPeer
+2025-03-11T22:35:20.534+0530	ERROR	swarm2	swarm/swarm_listen.go:164	swarm listener for /ip4/192.168.0.1 accept error: expected in mocked test
+--- PASS: TestSkipLocalPeer (0.00s)
+=== RUN   TestAutoNATServiceDialRefused
+--- PASS: TestAutoNATServiceDialRefused (0.00s)
+=== RUN   TestAutoNATServiceDialSuccess
+--- PASS: TestAutoNATServiceDialSuccess (0.01s)
+=== RUN   TestAutoNATServiceDialRateLimiter
+--- PASS: TestAutoNATServiceDialRateLimiter (0.41s)
+=== RUN   TestAutoNATServiceGlobalLimiter
+--- PASS: TestAutoNATServiceGlobalLimiter (0.03s)
+=== RUN   TestAutoNATServiceRateLimitJitter
+--- PASS: TestAutoNATServiceRateLimitJitter (0.11s)
+=== RUN   TestAutoNATServiceStartup
+--- PASS: TestAutoNATServiceStartup (0.01s)
+PASS
+ok  	github.com/libp2p/go-libp2p/p2p/host/autonat	(cached)
+?   	github.com/libp2p/go-libp2p/p2p/host/autonat/pb	[no test files]
+=== RUN   TestAutonatRoundtrip
+    autonat_test.go:19: this test doesn't work
+--- SKIP: TestAutonatRoundtrip (0.00s)
+PASS
+ok  	github.com/libp2p/go-libp2p/p2p/host/autonat/test	0.006s
