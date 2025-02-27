@@ -36,6 +36,7 @@ func newAutoNAT(t testing.TB, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 					swarm.WithUDPBlackHoleSuccessCounter(nil),
 					swarm.WithIPv6BlackHoleSuccessCounter(nil))))
 	}
+	opts = append([]AutoNATOption{withThrottlePeerDuration(0)}, opts...)
 	an, err := New(h, dialer, opts...)
 	if err != nil {
 		t.Error(err)
@@ -74,7 +75,7 @@ func waitForPeer(t testing.TB, a *AutoNAT) {
 	require.Eventually(t, func() bool {
 		a.mx.Lock()
 		defer a.mx.Unlock()
-		return a.peers.GetRand() != ""
+		return len(a.peers) != 0
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
@@ -526,69 +527,29 @@ func TestEventSubscription(t *testing.T) {
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers.peers) == 1
+		return len(an.peers) == 1
 	}, 5*time.Second, 100*time.Millisecond)
 
 	idAndConnect(t, an.host, c)
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers.peers) == 2
+		return len(an.peers) == 2
 	}, 5*time.Second, 100*time.Millisecond)
 
 	an.host.Network().ClosePeer(b.ID())
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers.peers) == 1
+		return len(an.peers) == 1
 	}, 5*time.Second, 100*time.Millisecond)
 
 	an.host.Network().ClosePeer(c.ID())
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers.peers) == 0
+		return len(an.peers) == 0
 	}, 5*time.Second, 100*time.Millisecond)
-}
-
-func TestPeersMap(t *testing.T) {
-	emptyPeerID := peer.ID("")
-
-	t.Run("single_item", func(t *testing.T) {
-		p := newPeersMap()
-		p.Put("peer1")
-		p.Delete("peer1")
-		p.Put("peer1")
-		require.Equal(t, peer.ID("peer1"), p.GetRand())
-		p.Delete("peer1")
-		require.Equal(t, emptyPeerID, p.GetRand())
-	})
-
-	t.Run("multiple_items", func(t *testing.T) {
-		p := newPeersMap()
-		require.Equal(t, emptyPeerID, p.GetRand())
-
-		allPeers := make(map[peer.ID]bool)
-		for i := 0; i < 20; i++ {
-			pid := peer.ID(fmt.Sprintf("peer-%d", i))
-			allPeers[pid] = true
-			p.Put(pid)
-		}
-		foundPeers := make(map[peer.ID]bool)
-		for i := 0; i < 1000; i++ {
-			pid := p.GetRand()
-			require.NotEqual(t, emptyPeerID, p)
-			require.True(t, allPeers[pid])
-			foundPeers[pid] = true
-			if len(foundPeers) == len(allPeers) {
-				break
-			}
-		}
-		for pid := range allPeers {
-			p.Delete(pid)
-		}
-		require.Equal(t, emptyPeerID, p.GetRand())
-	})
 }
 
 func TestAreAddrsConsistency(t *testing.T) {

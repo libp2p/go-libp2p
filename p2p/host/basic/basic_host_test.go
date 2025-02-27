@@ -47,6 +47,7 @@ func TestHostSimple(t *testing.T) {
 	h1.Start()
 	h2, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+
 	defer h2.Close()
 	h2.Start()
 
@@ -211,6 +212,7 @@ func TestAllAddrs(t *testing.T) {
 	// no listen addrs
 	h, err := NewHost(swarmt.GenSwarm(t, swarmt.OptDialOnly), nil)
 	require.NoError(t, err)
+	h.Start()
 	defer h.Close()
 	require.Nil(t, h.AllAddrs())
 

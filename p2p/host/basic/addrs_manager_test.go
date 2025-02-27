@@ -1,6 +1,8 @@
 package basichost
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -8,6 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/assert"
@@ -170,6 +174,8 @@ type addrsManagerArgs struct {
 	AddrsFactory         AddrsFactory
 	ObservedAddrsManager observedAddrsManager
 	ListenAddrs          func() []ma.Multiaddr
+	AutoNATClient        autonatv2Client
+	Bus                  event.Bus
 }
 
 type addrsManagerTestCase struct {
@@ -179,13 +185,16 @@ type addrsManagerTestCase struct {
 }
 
 func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTestCase {
-	eb := eventbus.NewBus()
+	eb := args.Bus
+	if eb == nil {
+		eb = eventbus.NewBus()
+	}
 	if args.AddrsFactory == nil {
 		args.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 	}
 	addrsUpdatedChan := make(chan struct{}, 1)
 	am, err := newAddrsManager(
-		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, nil, args.ObservedAddrsManager, addrsUpdatedChan,
+		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, nil, args.ObservedAddrsManager, addrsUpdatedChan, args.AutoNATClient,
 	)
 	require.NoError(t, err)
 
@@ -196,6 +205,7 @@ func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTe
 	rchEm, err := eb.Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 	require.NoError(t, err)
 
+	t.Cleanup(am.Close)
 	return addrsManagerTestCase{
 		addrsManager: am,
 		PushRelay: func(relayAddrs []ma.Multiaddr) {
@@ -425,17 +435,62 @@ func TestAddrsManager(t *testing.T) {
 	})
 }
 
+func TestAddrsManagerReachabilityEvent(t *testing.T) {
+	// Setup test addresses
+	publicQUIC, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1")
+	publicTCP, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
+
+	// Create a new event bus
+	bus := eventbus.NewBus()
+
+	// Subscribe to EvtHostReachableAddrsChanged events
+	sub, err := bus.Subscribe(new(event.EvtHostReachableAddrsChanged))
+	require.NoError(t, err)
+	defer sub.Close()
+
+	am := newAddrsManagerTestCase(t, addrsManagerArgs{
+		Bus: bus,
+		// currently they aren't being passed to the reachability tracker
+		ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{publicQUIC, publicTCP} },
+		AutoNATClient: mockAutoNATClient{
+			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				if reqs[0].Addr.Equal(publicQUIC) {
+					return autonatv2.Result{Addr: reqs[0].Addr, Status: pb.DialStatus_OK}, nil
+				} else if reqs[0].Addr.Equal(publicTCP) {
+					return autonatv2.Result{Addr: reqs[0].Addr, Status: pb.DialStatus_E_DIAL_ERROR}, nil
+				}
+				t.Errorf("received invalid request for addr: %+v", reqs[0])
+				return autonatv2.Result{}, errors.New("invalid")
+			},
+		},
+	})
+
+	reachableAddrs := []ma.Multiaddr{publicQUIC}
+	unreachableAddrs := []ma.Multiaddr{publicTCP}
+
+	// No new event should be received
+	select {
+	case e := <-sub.Out():
+		evt := e.(event.EvtHostReachableAddrsChanged)
+		// Verify the event contains the expected addresses
+		require.ElementsMatch(t, reachableAddrs, evt.Reachable)
+		require.ElementsMatch(t, unreachableAddrs, evt.Unreachable)
+		require.ElementsMatch(t, reachableAddrs, am.ReachableAddrs())
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected event for reachability change")
+	}
+}
+
 func BenchmarkAreAddrsDifferent(b *testing.B) {
 	var addrs [10]ma.Multiaddr
 	for i := 0; i < len(addrs); i++ {
 		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
 	}
-	am := &addrsManager{}
 	b.Run("areAddrsDifferent", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			am.areAddrsDifferent(addrs[:], addrs[:])
+			areAddrsDifferent(addrs[:], addrs[:])
 		}
 	})
 }

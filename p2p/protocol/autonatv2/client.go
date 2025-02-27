@@ -111,7 +111,7 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	case msg.GetDialDataRequest() != nil:
 		if err := ac.validateDialDataRequest(reqs, &msg); err != nil {
 			s.Reset()
-			return Result{}, fmt.Errorf("invalid dial data request: %w", err)
+			return Result{}, fmt.Errorf("invalid dial data request: %s %w", s.Conn().RemoteMultiaddr(), err)
 		}
 		// dial data request is valid and we want to send data
 		if err := sendDialData(ac.dialData, int(msg.GetDialDataRequest().GetNumBytes()), w, &msg); err != nil {
@@ -147,7 +147,6 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	if int(resp.AddrIdx) >= len(reqs) {
 		return Result{}, fmt.Errorf("invalid response: addr index out of range: %d [0-%d)", resp.AddrIdx, len(reqs))
 	}
-
 	// wait for nonce from the server
 	var dialBackAddr ma.Multiaddr
 	if resp.GetDialStatus() == pb.DialStatus_OK {
