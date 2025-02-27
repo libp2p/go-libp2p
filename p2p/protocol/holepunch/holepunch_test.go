@@ -2,28 +2,30 @@ package holepunch_test
 
 import (
 	"context"
+	"fmt"
 	"net"
-	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
+	"github.com/libp2p/go-libp2p/p2p/net/simconn"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	holepunch_pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+	"go.uber.org/fx"
 
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,90 +83,239 @@ func (s *mockIDService) OwnObservedAddrs() []ma.Multiaddr {
 }
 
 func TestNoHolePunchIfDirectConnExists(t *testing.T) {
-	tr := &mockEventTracer{}
-	h1, hps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
-	defer h1.Close()
-	h2, _ := mkHostWithHolePunchSvc(t)
-	defer h2.Close()
-	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{
-		ID:    h2.ID(),
-		Addrs: h2.Addrs(),
-	}))
-	time.Sleep(50 * time.Millisecond)
-	nc1 := len(h1.Network().ConnsToPeer(h2.ID()))
-	require.GreaterOrEqual(t, nc1, 1)
-	nc2 := len(h2.Network().ConnsToPeer(h1.ID()))
-	require.GreaterOrEqual(t, nc2, 1)
-	require.NoError(t, hps.DirectConnect(h2.ID()))
-	require.Len(t, h1.Network().ConnsToPeer(h2.ID()), nc1)
-	require.Len(t, h2.Network().ConnsToPeer(h1.ID()), nc2)
-	require.Empty(t, tr.getEvents())
-}
-
-func TestDirectDialWorks(t *testing.T) {
-	if race.WithRace() {
-		t.Skip("modifying manet.Private4 is racy")
-	}
-
-	// mark all addresses as public
-	cpy := manet.Private4
-	manet.Private4 = []*net.IPNet{}
-	defer func() { manet.Private4 = cpy }()
+	router := &simconn.SimpleFirewallRouter{}
+	relay := MustNewHost(t,
+		quicSimConn(true, router),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
+		libp2p.DisableRelay(),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
+			// Setup relay service
+			_, err := relayv2.New(h)
+			require.NoError(t, err)
+		})),
+	)
 
 	tr := &mockEventTracer{}
-	h1, h1ps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
-	defer h1.Close()
-	h2, _ := mkHostWithHolePunchSvc(t)
-	defer h2.Close()
-	h2.RemoveStreamHandler(holepunch.Protocol)
-	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
+	h1 := MustNewHost(t,
+		quicSimConn(false, router),
+		libp2p.EnableHolePunching(holepunch.DirectDialTimeout(100*time.Millisecond)),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+	)
 
-	// try to hole punch without any connection and streams, if it works -> it's a direct connection
-	require.Empty(t, h1.Network().ConnsToPeer(h2.ID()))
-	require.NoError(t, h1ps.DirectConnect(h2.ID()))
-	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
-	require.GreaterOrEqual(t, len(h2.Network().ConnsToPeer(h1.ID())), 1)
-	events := tr.getEvents()
-	require.Len(t, events, 1)
-	require.Equal(t, holepunch.DirectDialEvtT, events[0].Type)
-}
+	h2 := MustNewHost(t,
+		quicSimConn(true, router),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		libp2p.ForceReachabilityPublic(),
+		connectToRelay(&relay),
+		libp2p.EnableHolePunching(holepunch.WithTracer(tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
+	)
 
-func TestEndToEndSimConnect(t *testing.T) {
-	h1tr := &mockEventTracer{}
-	h2tr := &mockEventTracer{}
-	h1, h2, relay, _ := makeRelayedHosts(t, []holepunch.Option{holepunch.WithTracer(h1tr)}, []holepunch.Option{holepunch.WithTracer(h2tr)}, true)
 	defer h1.Close()
 	defer h2.Close()
 	defer relay.Close()
 
-	// wait till a direct connection is complete
-	ensureDirectConn(t, h1, h2)
-	// ensure no hole-punching streams are open on either side
-	ensureNoHolePunchingStream(t, h1, h2)
-	var h2Events []*holepunch.Event
-	require.Eventually(t,
-		func() bool {
-			h2Events = h2tr.getEvents()
-			return len(h2Events) == 3
-		},
-		time.Second,
-		10*time.Millisecond,
-	)
-	require.Equal(t, holepunch.StartHolePunchEvtT, h2Events[0].Type)
-	require.Equal(t, holepunch.HolePunchAttemptEvtT, h2Events[1].Type)
-	require.Equal(t, holepunch.EndHolePunchEvtT, h2Events[2].Type)
+	waitForHolePunchingSvcActive(t, h1)
+	waitForHolePunchingSvcActive(t, h2)
 
-	h1Events := h1tr.getEvents()
-	// We don't really expect a hole-punched connection to be established in this test,
-	// as we probably don't get the timing right for the TCP simultaneous open.
-	// From time to time, it still happens occasionally, and then we get a EndHolePunchEvtT here.
-	if len(h1Events) != 2 && len(h1Events) != 3 {
-		t.Fatal("expected either 2 or 3 events")
+	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
+	// try to hole punch without any connection and streams, if it works -> it's a direct connection
+	require.Empty(t, h1.Network().ConnsToPeer(h2.ID()))
+	pingAtoB(t, h1, h2)
+
+	nc1 := len(h1.Network().ConnsToPeer(h2.ID()))
+	require.Equal(t, nc1, 1)
+	nc2 := len(h2.Network().ConnsToPeer(h1.ID()))
+	require.Equal(t, nc2, 1)
+	assert.Never(t, func() bool {
+		return (len(h1.Network().ConnsToPeer(h2.ID())) != nc1 ||
+			len(h2.Network().ConnsToPeer(h1.ID())) != nc2 ||
+			len(tr.getEvents()) != 0)
+	}, time.Second, 100*time.Millisecond)
+}
+
+func TestDirectDialWorks(t *testing.T) {
+	router := &simconn.SimpleFirewallRouter{}
+	relay := MustNewHost(t,
+		quicSimConn(true, router),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
+		libp2p.DisableRelay(),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
+			// Setup relay service
+			_, err := relayv2.New(h)
+			require.NoError(t, err)
+		})),
+	)
+
+	tr := &mockEventTracer{}
+	// h1 is public
+	h1 := MustNewHost(t,
+		quicSimConn(true, router),
+		libp2p.ForceReachabilityPublic(),
+		libp2p.EnableHolePunching(holepunch.DirectDialTimeout(100*time.Millisecond)),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+	)
+
+	h2 := MustNewHost(t,
+		quicSimConn(false, router),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		connectToRelay(&relay),
+		libp2p.EnableHolePunching(holepunch.WithTracer(tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
+		libp2p.ForceReachabilityPrivate(),
+	)
+
+	defer h1.Close()
+	defer h2.Close()
+	defer relay.Close()
+
+	// wait for dcutr to be available
+	waitForHolePunchingSvcActive(t, h2)
+
+	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
+	// try to hole punch without any connection and streams, if it works -> it's a direct connection
+	require.Empty(t, h1.Network().ConnsToPeer(h2.ID()))
+	pingAtoB(t, h1, h2)
+
+	// require.NoError(t, h1ps.DirectConnect(h2.ID()))
+	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
+	require.GreaterOrEqual(t, len(h2.Network().ConnsToPeer(h1.ID())), 1)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		events := tr.getEvents()
+		fmt.Println("events:", events)
+		if !assert.Len(collect, events, 1) {
+			return
+		}
+		assert.Equal(t, holepunch.DirectDialEvtT, events[0].Type)
+	}, 2*time.Second, 100*time.Millisecond)
+}
+
+func connectToRelay(relayPtr *host.Host) libp2p.Option {
+	return func(cfg *libp2p.Config) error {
+		if relayPtr == nil {
+			return nil
+		}
+		relay := *relayPtr
+		pi := peer.AddrInfo{
+			ID:    relay.ID(),
+			Addrs: relay.Addrs(),
+		}
+
+		return cfg.Apply(
+			libp2p.EnableRelay(),
+			libp2p.EnableAutoRelayWithStaticRelays([]peer.AddrInfo{pi}),
+		)
 	}
-	require.Equal(t, holepunch.StartHolePunchEvtT, h1Events[0].Type)
-	require.Equal(t, holepunch.HolePunchAttemptEvtT, h1Events[1].Type)
-	if len(h1Events) == 3 {
-		require.Equal(t, holepunch.EndHolePunchEvtT, h1Events[2].Type)
+}
+
+func learnAddrs(h1, h2 host.Host) {
+	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
+	h2.Peerstore().AddAddrs(h1.ID(), h1.Addrs(), peerstore.ConnectedAddrTTL)
+}
+
+func pingAtoB(t *testing.T, a, b host.Host) {
+	t.Helper()
+	p1 := ping.NewPingService(a)
+	require.NoError(t, a.Connect(context.Background(), peer.AddrInfo{
+		ID:    b.ID(),
+		Addrs: b.Addrs(),
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	res := p1.Ping(ctx, b.ID())
+	result := <-res
+	require.NoError(t, result.Error)
+}
+
+func MustNewHost(t *testing.T, opts ...libp2p.Option) host.Host {
+	t.Helper()
+	h, err := libp2p.New(opts...)
+	require.NoError(t, err)
+	return h
+}
+
+func TestEndToEndSimConnect(t *testing.T) {
+	for _, useLegacyHolePunchingBehavior := range []bool{true, false} {
+		t.Run(fmt.Sprintf("legacy=%t", useLegacyHolePunchingBehavior), func(t *testing.T) {
+			h1tr := &mockEventTracer{}
+			h2tr := &mockEventTracer{}
+
+			router := &simconn.SimpleFirewallRouter{}
+			relay := MustNewHost(t,
+				quicSimConn(true, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
+				libp2p.DisableRelay(),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
+					// Setup relay service
+					_, err := relayv2.New(h)
+					require.NoError(t, err)
+				})),
+			)
+
+			h1 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				libp2p.ForceReachabilityPrivate(),
+			)
+
+			h2 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				connectToRelay(&relay),
+				libp2p.EnableHolePunching(holepunch.WithTracer(h2tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
+				libp2p.ForceReachabilityPrivate(),
+			)
+
+			defer h1.Close()
+			defer h2.Close()
+			defer relay.Close()
+
+			// Wait for holepunch service to start
+			waitForHolePunchingSvcActive(t, h1)
+			waitForHolePunchingSvcActive(t, h2)
+
+			learnAddrs(h1, h2)
+			pingAtoB(t, h1, h2)
+
+			// wait till a direct connection is complete
+			ensureDirectConn(t, h1, h2)
+			// ensure no hole-punching streams are open on either side
+			ensureNoHolePunchingStream(t, h1, h2)
+			var h2Events []*holepunch.Event
+			require.Eventually(t,
+				func() bool {
+					h2Events = h2tr.getEvents()
+					return len(h2Events) == 4
+				},
+				time.Second,
+				100*time.Millisecond,
+			)
+			require.Equal(t, holepunch.DirectDialEvtT, h2Events[0].Type)
+			require.Equal(t, holepunch.StartHolePunchEvtT, h2Events[1].Type)
+			require.Equal(t, holepunch.HolePunchAttemptEvtT, h2Events[2].Type)
+			require.Equal(t, holepunch.EndHolePunchEvtT, h2Events[3].Type)
+
+			h1Events := h1tr.getEvents()
+			// We don't really expect a hole-punched connection to be established in this test,
+			// as we probably don't get the timing right for the TCP simultaneous open.
+			// From time to time, it still happens occasionally, and then we get a EndHolePunchEvtT here.
+			if len(h1Events) != 2 && len(h1Events) != 3 {
+				t.Fatal("expected either 2 or 3 events")
+			}
+			require.Equal(t, holepunch.StartHolePunchEvtT, h1Events[0].Type)
+			require.Equal(t, holepunch.HolePunchAttemptEvtT, h1Events[1].Type)
+			if len(h1Events) == 3 {
+				require.Equal(t, holepunch.EndHolePunchEvtT, h1Events[2].Type)
+			}
+		})
 	}
 }
 
@@ -192,7 +343,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 			errMsg: "failed to read CONNECT message",
 		},
 		"responder does NOT reply within hole punch deadline": {
-			holePunchTimeout: 10 * time.Millisecond,
+			holePunchTimeout: 200 * time.Millisecond,
 			rhandler:         func(s network.Stream) { time.Sleep(5 * time.Second) },
 			errMsg:           "i/o deadline reached",
 		},
@@ -213,13 +364,43 @@ func TestFailuresOnInitiator(t *testing.T) {
 				defer func() { holepunch.StreamTimeout = cpy }()
 			}
 
-			tr := &mockEventTracer{}
-			h1, h2, relay, _ := makeRelayedHosts(t, nil, nil, false)
+			router := &simconn.SimpleFirewallRouter{}
+			relay := MustNewHost(t,
+				quicSimConn(true, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
+				libp2p.DisableRelay(),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
+					// Setup relay service
+					_, err := relayv2.New(h)
+					require.NoError(t, err)
+				})),
+			)
+
+			// h1 does not have a holepunching service because we'll mock the holepunching stream handler below.
+			h1 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.ForceReachabilityPrivate(),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				connectToRelay(&relay),
+			)
+
+			h2 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				connectToRelay(&relay),
+			)
+
 			defer h1.Close()
 			defer h2.Close()
 			defer relay.Close()
 
-			opts := []holepunch.Option{holepunch.WithTracer(tr)}
+			time.Sleep(100 * time.Millisecond)
+
+			tr := &mockEventTracer{}
+			opts := []holepunch.Option{holepunch.WithTracer(tr), holepunch.DirectDialTimeout(100 * time.Millisecond)}
 			if tc.filter != nil {
 				f := mockMaddrFilter{
 					filterLocal:  tc.filter,
@@ -228,18 +409,17 @@ func TestFailuresOnInitiator(t *testing.T) {
 				opts = append(opts, holepunch.WithAddrFilter(f))
 			}
 
-			hps := addHolePunchService(t, h2, opts...)
-			// wait until the hole punching protocol has actually started
-			require.Eventually(t, func() bool {
-				protos, _ := h2.Peerstore().SupportsProtocols(h1.ID(), holepunch.Protocol)
-				return len(protos) > 0
-			}, 200*time.Millisecond, 10*time.Millisecond)
-
+			hps := addHolePunchService(t, h2, []ma.Multiaddr{ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")}, opts...)
+			// We are only holepunching from h2 to h1. Remove h2's holepunching stream handler to avoid confusion.
+			h2.RemoveStreamHandler(holepunch.Protocol)
 			if tc.rhandler != nil {
 				h1.SetStreamHandler(holepunch.Protocol, tc.rhandler)
-			} else {
-				h1.RemoveStreamHandler(holepunch.Protocol)
 			}
+
+			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
+				ID:    h1.ID(),
+				Addrs: h1.Addrs(),
+			}))
 
 			err := hps.DirectConnect(h1.ID())
 			require.Error(t, err)
@@ -325,7 +505,7 @@ func TestFailuresOnResponder(t *testing.T) {
 			}
 			tr := &mockEventTracer{}
 
-			opts := []holepunch.Option{holepunch.WithTracer(tr)}
+			opts := []holepunch.Option{holepunch.WithTracer(tr), holepunch.DirectDialTimeout(100 * time.Millisecond)}
 			if tc.filter != nil {
 				f := mockMaddrFilter{
 					filterLocal:  tc.filter,
@@ -334,10 +514,48 @@ func TestFailuresOnResponder(t *testing.T) {
 				opts = append(opts, holepunch.WithAddrFilter(f))
 			}
 
-			h1, h2, relay, _ := makeRelayedHosts(t, opts, nil, false)
+			router := &simconn.SimpleFirewallRouter{}
+			relay := MustNewHost(t,
+				quicSimConn(true, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
+				libp2p.DisableRelay(),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
+					// Setup relay service
+					_, err := relayv2.New(h)
+					require.NoError(t, err)
+				})),
+			)
+			h1 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.EnableHolePunching(opts...),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				connectToRelay(&relay),
+				libp2p.ForceReachabilityPrivate(),
+			)
+
+			h2 := MustNewHost(t,
+				quicSimConn(false, router),
+				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+				connectToRelay(&relay),
+				libp2p.ForceReachabilityPrivate(),
+			)
+
 			defer h1.Close()
 			defer h2.Close()
 			defer relay.Close()
+
+			time.Sleep(100 * time.Millisecond)
+
+			require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{
+				ID:    h2.ID(),
+				Addrs: h2.Addrs(),
+			}))
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Contains(c, h1.Mux().Protocols(), holepunch.Protocol)
+			}, time.Second, 100*time.Millisecond)
 
 			s, err := h2.NewStream(network.WithAllowLimitedConn(context.Background(), "holepunch"), h1.ID(), holepunch.Protocol)
 			require.NoError(t, err)
@@ -407,108 +625,60 @@ func ensureDirectConn(t *testing.T, h1, h2 host.Host) {
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
-func mkHostWithStaticAutoRelay(t *testing.T, relay host.Host) host.Host {
-	if race.WithRace() {
-		t.Skip("modifying manet.Private4 is racy")
-	}
-	pi := peer.AddrInfo{
-		ID:    relay.ID(),
-		Addrs: relay.Addrs(),
-	}
+type MockSourceIPSelector struct {
+	ip atomic.Pointer[net.IP]
+}
 
-	cpy := manet.Private4
-	manet.Private4 = []*net.IPNet{}
-	defer func() { manet.Private4 = cpy }()
+func (m *MockSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr) (net.IP, error) {
+	return *m.ip.Load(), nil
+}
 
-	h, err := libp2p.New(
-		libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/tcp/0")),
-		libp2p.EnableRelay(),
-		libp2p.EnableAutoRelayWithStaticRelays([]peer.AddrInfo{pi}),
-		libp2p.ForceReachabilityPrivate(),
-		libp2p.ResourceManager(&network.NullResourceManager{}),
-	)
-	require.NoError(t, err)
-
-	// wait till we have a relay addr
-	require.Eventually(t, func() bool {
-		for _, a := range h.Addrs() {
-			if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-				return true
+func quicSimConn(isPubliclyReachably bool, router *simconn.SimpleFirewallRouter) libp2p.Option {
+	m := &MockSourceIPSelector{}
+	return libp2p.QUICReuse(
+		quicreuse.NewConnManager,
+		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
+			return m, nil
+		}),
+		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
+			m.ip.Store(&address.IP)
+			c := simconn.NewSimConn(address, router)
+			if isPubliclyReachably {
+				router.AddPubliclyReachableNode(address, c)
+			} else {
+				router.AddNode(address, c)
 			}
-		}
-		return false
-	}, 5*time.Second, 50*time.Millisecond)
-	return h
+			return c, nil
+		}))
 }
 
-func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePuncher bool) (h1, h2, relay host.Host, hps *holepunch.Service) {
-	t.Helper()
-	h1, _ = mkHostWithHolePunchSvc(t, h1opt...)
-	var err error
-	relay, err = libp2p.New(
-		libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/tcp/0")),
-		libp2p.DisableRelay(),
-		libp2p.ResourceManager(&network.NullResourceManager{}),
-	)
-	require.NoError(t, err)
-	_, err = relayv2.New(relay)
-	require.NoError(t, err)
-
-	// make sure the relay service is started and advertised by Identify
-	h, err := libp2p.New(
-		libp2p.NoListenAddrs,
-		libp2p.Transport(tcp.NewTCPTransport),
-		libp2p.DisableRelay(),
-	)
-	require.NoError(t, err)
-	defer h.Close()
-	require.NoError(t, h.Connect(context.Background(), peer.AddrInfo{ID: relay.ID(), Addrs: relay.Addrs()}))
-	require.Eventually(t, func() bool {
-		supported, err := h.Peerstore().SupportsProtocols(relay.ID(), proto.ProtoIDv2Hop)
-		return err == nil && len(supported) > 0
-	}, 3*time.Second, 100*time.Millisecond)
-
-	h2 = mkHostWithStaticAutoRelay(t, relay)
-	if addHolePuncher {
-		hps = addHolePunchService(t, h2, h2opt...)
-	}
-
-	// h2 has a relay addr
-	var raddr ma.Multiaddr
-	for _, a := range h2.Addrs() {
-		if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-			raddr = a
-			break
-		}
-	}
-	require.NotEmpty(t, raddr)
-	// h1 should connect to the relay addr
-	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{
-		ID:    h2.ID(),
-		Addrs: []ma.Multiaddr{raddr},
-	}))
-	return
-}
-
-func addHolePunchService(t *testing.T, h host.Host, opts ...holepunch.Option) *holepunch.Service {
+func addHolePunchService(t *testing.T, h host.Host, extraAddrs []ma.Multiaddr, opts ...holepunch.Option) *holepunch.Service {
 	t.Helper()
 	hps, err := holepunch.NewService(h, newMockIDService(t, h), func() []ma.Multiaddr {
 		addrs := h.Addrs()
-		addrs = slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
-		return append(addrs, ma.StringCast("/ip4/1.2.3.4/tcp/1234"))
+		addrs = append(addrs, extraAddrs...)
+		return addrs
 	}, opts...)
 	require.NoError(t, err)
 	return hps
 }
 
-func mkHostWithHolePunchSvc(t *testing.T, opts ...holepunch.Option) (host.Host, *holepunch.Service) {
-	t.Helper()
-	h, err := libp2p.New(
-		libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/tcp/0"), ma.StringCast("/ip6/::1/tcp/0")),
-		libp2p.ForceReachabilityPrivate(),
-		libp2p.ResourceManager(&network.NullResourceManager{}),
-	)
-	require.NoError(t, err)
-	hps := addHolePunchService(t, h, opts...)
-	return h, hps
+func waitForHolePunchingSvcActive(t *testing.T, h host.Host) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Contains(c, h.Mux().Protocols(), holepunch.Protocol)
+	}, time.Second, 100*time.Millisecond)
+}
+
+// setLegacyBehavior is an option that controls the isClient behavior of the hole punching service.
+// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
+// pick the opposite roles for client/server a hole punch. Setting this to
+// true preserves that behavior.
+//
+// Currently, only exposed for testing purposes.
+// Do not set this unless you know what you are doing.
+func SetLegacyBehavior(legacyBehavior bool) holepunch.Option {
+	return func(s *holepunch.Service) error {
+		s.SetLegacyBehavior(legacyBehavior)
+		return nil
+	}
 }

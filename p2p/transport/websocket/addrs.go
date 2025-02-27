@@ -141,13 +141,13 @@ type parsedWebsocketMultiaddr struct {
 func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
 	out := parsedWebsocketMultiaddr{}
 	// First check if we have a WSS component. If so we'll canonicalize it into a /tls/ws
-	withoutWss := a.Decapsulate(wssComponent)
+	withoutWss := a.Decapsulate(wssComponent.Multiaddr())
 	if !withoutWss.Equal(a) {
-		a = withoutWss.Encapsulate(tlsWsComponent)
+		a = withoutWss.Encapsulate(tlsWsAddr)
 	}
 
 	// Remove the ws component
-	withoutWs := a.Decapsulate(wsComponent)
+	withoutWs := a.Decapsulate(wsComponent.Multiaddr())
 	if withoutWs.Equal(a) {
 		return out, fmt.Errorf("not a websocket multiaddr")
 	}
@@ -158,7 +158,7 @@ func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
 	for {
 		var head *ma.Component
 		rest, head = ma.SplitLast(rest)
-		if head == nil || rest == nil {
+		if head == nil || len(rest) == 0 {
 			break
 		}
 

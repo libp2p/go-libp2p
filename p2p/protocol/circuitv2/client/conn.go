@@ -83,9 +83,10 @@ func (c *Conn) RemoteMultiaddr() ma.Multiaddr {
 		c.stream.Conn().RemotePeer().String(),
 	)
 	if err != nil {
-		panic(err)
+		log.Error(err)
+		return ma.Join(c.stream.Conn().RemoteMultiaddr(), circuitAddr)
 	}
-	return ma.Join(c.stream.Conn().RemoteMultiaddr(), relayAddr, circuitAddr)
+	return ma.Join(c.stream.Conn().RemoteMultiaddr(), relayAddr.Multiaddr(), circuitAddr)
 }
 
 func (c *Conn) LocalMultiaddr() ma.Multiaddr {

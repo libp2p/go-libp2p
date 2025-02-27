@@ -167,8 +167,8 @@ func (as *autoNATService) handleDial(p peer.ID, obsaddr ma.Multiaddr, mpi *pb.Me
 			default:
 				continue
 			}
-			addr = hostIP
-			if rest != nil {
+			addr = hostIP.Multiaddr()
+			if len(rest) > 0 {
 				addr = addr.Encapsulate(rest)
 			}
 		}

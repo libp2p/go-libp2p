@@ -34,13 +34,13 @@ import (
 	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/stretchr/testify/assert"
+	matest "github.com/multiformats/go-multiaddr/matest"
 	"github.com/stretchr/testify/require"
 )
 
 func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
 	t.Helper()
-	require.True(t, assert.ElementsMatchf(t, expected, h.Peerstore().Addrs(p), fmt.Sprintf("%s did not have addr for %s", h.ID(), p)))
+	require.True(t, matest.AssertMultiaddrsMatch(t, expected, h.Peerstore().Addrs(p)), fmt.Sprintf("%s did not have addr for %s", h.ID(), p))
 }
 
 func testHasAgentVersion(t *testing.T, h host.Host, p peer.ID) {
@@ -257,7 +257,7 @@ func assertCorrectEvtPeerIdentificationCompleted(t *testing.T, evtAny interface{
 	var peerRecord peer.PeerRecord
 	evt.SignedPeerRecord.TypedRecord(&peerRecord)
 	require.Equal(t, other.ID(), peerRecord.PeerID)
-	require.Equal(t, other.Addrs(), peerRecord.Addrs)
+	matest.AssertMultiaddrsMatch(t, other.Addrs(), peerRecord.Addrs)
 }
 
 func TestProtoMatching(t *testing.T) {
@@ -486,7 +486,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// change addr on host 1 and ensure host2 gets a push
 	lad := ma.StringCast("/ip4/127.0.0.1/tcp/1234")
 	require.NoError(t, h1.Network().Listen(lad))
-	require.Contains(t, h1.Addrs(), lad)
+	matest.AssertMultiaddrsContain(t, h1.Addrs(), lad)
 
 	h2AddrStream := h2.Peerstore().AddrStream(ctx, h1p)
 
@@ -500,7 +500,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// change addr on host2 and ensure host 1 gets a pus
 	lad = ma.StringCast("/ip4/127.0.0.1/tcp/1235")
 	require.NoError(t, h2.Network().Listen(lad))
-	require.Contains(t, h2.Addrs(), lad)
+	matest.AssertMultiaddrsContain(t, h2.Addrs(), lad)
 	h1AddrStream := h1.Peerstore().AddrStream(ctx, h2p)
 	emitAddrChangeEvt(t, h2)
 
@@ -512,7 +512,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// change addr on host2 again
 	lad2 := ma.StringCast("/ip4/127.0.0.1/tcp/1236")
 	require.NoError(t, h2.Network().Listen(lad2))
-	require.Contains(t, h2.Addrs(), lad2)
+	matest.AssertMultiaddrsContain(t, h2.Addrs(), lad2)
 	emitAddrChangeEvt(t, h2)
 
 	// Wait for h1 to process the new addr
@@ -788,7 +788,7 @@ func TestLargePushMessage(t *testing.T) {
 	// change addr on host 1 and ensure host2 gets a push
 	lad := ma.StringCast("/ip4/127.0.0.1/tcp/1234")
 	require.NoError(t, h1.Network().Listen(lad))
-	require.Contains(t, h1.Addrs(), lad)
+	matest.AssertMultiaddrsContain(t, h1.Addrs(), lad)
 	emitAddrChangeEvt(t, h1)
 
 	require.Eventually(t, func() bool {
@@ -798,7 +798,7 @@ func TestLargePushMessage(t *testing.T) {
 	// change addr on host2 and ensure host 1 gets a pus
 	lad = ma.StringCast("/ip4/127.0.0.1/tcp/1235")
 	require.NoError(t, h2.Network().Listen(lad))
-	require.Contains(t, h2.Addrs(), lad)
+	matest.AssertMultiaddrsContain(t, h2.Addrs(), lad)
 	emitAddrChangeEvt(t, h2)
 
 	require.Eventually(t, func() bool {
@@ -808,7 +808,7 @@ func TestLargePushMessage(t *testing.T) {
 	// change addr on host2 again
 	lad2 := ma.StringCast("/ip4/127.0.0.1/tcp/1236")
 	require.NoError(t, h2.Network().Listen(lad2))
-	require.Contains(t, h2.Addrs(), lad2)
+	matest.AssertMultiaddrsContain(t, h2.Addrs(), lad2)
 	emitAddrChangeEvt(t, h2)
 
 	require.Eventually(t, func() bool {

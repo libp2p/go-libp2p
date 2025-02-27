@@ -19,6 +19,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+const defaultDirectDialTimeout = 10 * time.Second
+
 // Protocol is the libp2p protocol for Hole Punching.
 const Protocol protocol.ID = "/libp2p/dcutr"
 
@@ -38,6 +40,13 @@ var ErrClosed = errors.New("hole punching service closing")
 
 type Option func(*Service) error
 
+func DirectDialTimeout(timeout time.Duration) Option {
+	return func(s *Service) error {
+		s.directDialTimeout = timeout
+		return nil
+	}
+}
+
 // The Service runs on every node that supports the DCUtR protocol.
 type Service struct {
 	ctx       context.Context
@@ -52,8 +61,9 @@ type Service struct {
 	// publicly reachable relay addresses.
 	listenAddrs func() []ma.Multiaddr
 
-	holePuncherMx sync.Mutex
-	holePuncher   *holePuncher
+	directDialTimeout time.Duration
+	holePuncherMx     sync.Mutex
+	holePuncher       *holePuncher
 
 	hasPublicAddrsChan chan struct{}
 
@@ -61,6 +71,17 @@ type Service struct {
 	filter AddrFilter
 
 	refCount sync.WaitGroup
+
+	// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
+	// pick the opposite roles for client/server a hole punch. Setting this to
+	// true preserves that behavior
+	legacyBehavior bool
+}
+
+// SetLegacyBehavior is only exposed for testing purposes.
+// Do not set this unless you know what you are doing.
+func (s *Service) SetLegacyBehavior(legacyBehavior bool) {
+	s.legacyBehavior = legacyBehavior
 }
 
 // NewService creates a new service that can be used for hole punching
@@ -83,6 +104,8 @@ func NewService(h host.Host, ids identify.IDService, listenAddrs func() []ma.Mul
 		ids:                ids,
 		listenAddrs:        listenAddrs,
 		hasPublicAddrsChan: make(chan struct{}),
+		directDialTimeout:  defaultDirectDialTimeout,
+		legacyBehavior:     true,
 	}
 
 	for _, opt := range opts {
@@ -102,7 +125,7 @@ func NewService(h host.Host, ids identify.IDService, listenAddrs func() []ma.Mul
 func (s *Service) waitForPublicAddr() {
 	defer s.refCount.Done()
 
-	log.Debug("waiting until we have at least one public address", "peer", s.host.ID())
+	log.Debugw("waiting until we have at least one public address", "peer", s.host.ID())
 
 	// TODO: We should have an event here that fires when identify discovers a new
 	// address.
@@ -114,7 +137,7 @@ func (s *Service) waitForPublicAddr() {
 	defer t.Stop()
 	for {
 		if len(s.listenAddrs()) > 0 {
-			log.Debug("Host now has a public address. Starting holepunch protocol.")
+			log.Debugf("Host %s now has a public address (%s). Starting holepunch protocol.", s.host.ID(), s.host.Addrs())
 			s.host.SetStreamHandler(Protocol, s.handleNewStream)
 			break
 		}
@@ -137,6 +160,8 @@ func (s *Service) waitForPublicAddr() {
 		return
 	}
 	s.holePuncher = newHolePuncher(s.host, s.ids, s.listenAddrs, s.tracer, s.filter)
+	s.holePuncher.directDialTimeout = s.directDialTimeout
+	s.holePuncher.legacyBehavior = s.legacyBehavior
 	s.holePuncherMx.Unlock()
 	close(s.hasPublicAddrsChan)
 }
@@ -258,7 +283,13 @@ func (s *Service) handleNewStream(str network.Stream) {
 	log.Debugw("starting hole punch", "peer", rp)
 	start := time.Now()
 	s.tracer.HolePunchAttempt(pi.ID)
-	err = holePunchConnect(s.ctx, s.host, pi, false)
+	ctx, cancel := context.WithTimeout(s.ctx, s.directDialTimeout)
+	isClient := false
+	if s.legacyBehavior {
+		isClient = true
+	}
+	err = holePunchConnect(ctx, s.host, pi, isClient)
+	cancel()
 	dt := time.Since(start)
 	s.tracer.EndHolePunch(rp, dt, err)
 	s.tracer.HolePunchFinished("receiver", 1, addrs, ownAddrs, getDirectConnection(s.host, rp))

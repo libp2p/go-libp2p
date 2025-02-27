@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/matest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -168,9 +169,9 @@ func TestThinWaistForm(t *testing.T) {
 			if tt.rest != "" {
 				restTW = ma.StringCast(tt.rest)
 			}
-			require.Equal(t, tw.Addr, inputAddr, "%s %s", tw.Addr, inputAddr)
-			require.Equal(t, wantTW, tw.TW, "%s %s", tw.TW, wantTW)
-			require.Equal(t, restTW, tw.Rest, "%s %s", restTW, tw.Rest)
+			matest.AssertEqualMultiaddr(t, inputAddr, tw.Addr)
+			matest.AssertEqualMultiaddr(t, wantTW, tw.TW)
+			matest.AssertEqualMultiaddr(t, restTW, tw.Rest)
 		})
 	}
 

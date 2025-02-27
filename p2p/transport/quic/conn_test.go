@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"io"
 	mrand "math/rand"
 	"net"
@@ -564,6 +563,13 @@ func TestStatelessReset(t *testing.T) {
 	}
 }
 
+func newUDPConnLocalhost(t testing.TB, port int) (*net.UDPConn, func()) {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
+	require.NoError(t, err)
+	return conn, func() { conn.Close() }
+}
+
 func testStatelessReset(t *testing.T, tc *connTestCase) {
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
@@ -575,12 +581,14 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 
 	var drop uint32
 	dropCallback := func(quicproxy.Direction, []byte) bool { return atomic.LoadUint32(&drop) > 0 }
-	proxy, err := quicproxy.NewQuicProxy("localhost:0", &quicproxy.Opts{
-		RemoteAddr: fmt.Sprintf("localhost:%d", ln.Addr().(*net.UDPAddr).Port),
+	proxyConn, cleanup := newUDPConnLocalhost(t, 0)
+	proxy := quicproxy.Proxy{
+		Conn:       proxyConn,
+		ServerAddr: ln.Addr().(*net.UDPAddr),
 		DropPacket: dropCallback,
-	})
+	}
+	err = proxy.Start()
 	require.NoError(t, err)
-	proxyLocalAddr := proxy.LocalAddr()
 
 	// establish a connection
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
@@ -612,7 +620,9 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	atomic.StoreUint32(&drop, 1)
 	ln.Close()
 	(<-connChan).Close()
+	proxyLocalPort := proxy.LocalAddr().(*net.UDPAddr).Port
 	proxy.Close()
+	cleanup()
 
 	// Start another listener (on a different port).
 	ln, err = serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"))
@@ -621,13 +631,17 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	// Now that the new server is up, re-enable packet forwarding.
 	atomic.StoreUint32(&drop, 0)
 
+	proxyConn, cleanup = newUDPConnLocalhost(t, proxyLocalPort)
+	defer cleanup()
 	// Recreate the proxy, such that its client-facing port stays constant.
-	proxy, err = quicproxy.NewQuicProxy(proxyLocalAddr.String(), &quicproxy.Opts{
-		RemoteAddr: fmt.Sprintf("localhost:%d", ln.Addr().(*net.UDPAddr).Port),
+	proxyBis := quicproxy.Proxy{
+		Conn:       proxyConn,
+		ServerAddr: ln.Addr().(*net.UDPAddr),
 		DropPacket: dropCallback,
-	})
+	}
+	err = proxyBis.Start()
 	require.NoError(t, err)
-	defer proxy.Close()
+	defer proxyBis.Close()
 
 	// Trigger something (not too small) to be sent, so that we receive the stateless reset.
 	// The new server doesn't have any state for the previously established connection.

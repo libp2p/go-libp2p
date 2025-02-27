@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,6 +38,9 @@ type ConnManager struct {
 	reuseUDP6       *reuse
 	enableReuseport bool
 
+	listenUDP          listenUDP
+	sourceIPSelectorFn func() (SourceIPSelector, error)
+
 	enableMetrics bool
 	registerer    prometheus.Registerer
 
@@ -55,13 +59,24 @@ type quicListenerEntry struct {
 	ln       *quicListener
 }
 
+func defaultListenUDP(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+	return net.ListenUDP(network, laddr)
+}
+
+func defaultSourceIPSelectorFn() (SourceIPSelector, error) {
+	r, err := netroute.New()
+	return &netrouteSourceIPSelector{routes: r}, err
+}
+
 func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
-		enableReuseport: true,
-		quicListeners:   make(map[string]quicListenerEntry),
-		srk:             statelessResetKey,
-		tokenKey:        tokenKey,
-		registerer:      prometheus.DefaultRegisterer,
+		enableReuseport:    true,
+		quicListeners:      make(map[string]quicListenerEntry),
+		srk:                statelessResetKey,
+		tokenKey:           tokenKey,
+		registerer:         prometheus.DefaultRegisterer,
+		listenUDP:          defaultListenUDP,
+		sourceIPSelectorFn: defaultSourceIPSelectorFn,
 	}
 	for _, o := range opts {
 		if err := o(cm); err != nil {
@@ -76,8 +91,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey)
-		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
 	}
 	return cm, nil
 }
@@ -238,7 +253,7 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 		return tr, nil
 	}
 
-	conn, err := net.ListenUDP(network, laddr)
+	conn, err := c.listenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +335,8 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 	case "udp6":
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	conn, err := net.ListenUDP(network, laddr)
+	conn, err := c.listenUDP(network, laddr)
+
 	if err != nil {
 		return nil, err
 	}

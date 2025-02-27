@@ -20,10 +20,7 @@ import (
 // ErrHolePunchActive is returned from DirectConnect when another hole punching attempt is currently running
 var ErrHolePunchActive = errors.New("another hole punching attempt to this peer is active")
 
-const (
-	dialTimeout = 5 * time.Second
-	maxRetries  = 3
-)
+const maxRetries = 3
 
 // The holePuncher is run on the peer that's behind a NAT / Firewall.
 // It observes new incoming connections via a relay that it has a reservation with,
@@ -40,6 +37,8 @@ type holePuncher struct {
 	ids         identify.IDService
 	listenAddrs func() []ma.Multiaddr
 
+	directDialTimeout time.Duration
+
 	// active hole punches for deduplicating
 	activeMx sync.Mutex
 	active   map[peer.ID]struct{}
@@ -49,6 +48,11 @@ type holePuncher struct {
 
 	tracer *tracer
 	filter AddrFilter
+
+	// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
+	// pick the opposite roles for client/server a hole punch. Setting this to
+	// true preserves that behavior
+	legacyBehavior bool
 }
 
 func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma.Multiaddr, tracer *tracer, filter AddrFilter) *holePuncher {
@@ -59,6 +63,8 @@ func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma
 		tracer:      tracer,
 		filter:      filter,
 		listenAddrs: listenAddrs,
+
+		legacyBehavior: true,
 	}
 	hp.ctx, hp.ctxCancel = context.WithCancel(context.Background())
 	h.Network().Notify((*netNotifiee)(hp))
@@ -86,6 +92,7 @@ func (hp *holePuncher) beginDirectConnect(p peer.ID) error {
 // It first attempts a direct dial (if we have a public address of that peer), and then
 // coordinates a hole punch over the given relay connection.
 func (hp *holePuncher) DirectConnect(p peer.ID) error {
+	log.Debugw("beginDirectConnect", "host", hp.host.ID(), "peer", p)
 	if err := hp.beginDirectConnect(p); err != nil {
 		return err
 	}
@@ -102,14 +109,17 @@ func (hp *holePuncher) DirectConnect(p peer.ID) error {
 func (hp *holePuncher) directConnect(rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
 	if getDirectConnection(hp.host, rp) != nil {
+		log.Debugw("already connected", "host", hp.host.ID(), "peer", rp)
 		return nil
 	}
+
+	log.Debugw("attempting direct dial", "host", hp.host.ID(), "peer", rp, "addrs", hp.host.Peerstore().Addrs(rp))
 	// short-circuit hole punching if a direct dial works.
 	// attempt a direct connection ONLY if we have a public address for the remote peer
 	for _, a := range hp.host.Peerstore().Addrs(rp) {
 		if !isRelayAddress(a) && manet.IsPublicAddr(a) {
 			forceDirectConnCtx := network.WithForceDirectDial(hp.ctx, "hole-punching")
-			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
+			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, hp.directDialTimeout)
 
 			tstart := time.Now()
 			// This dials *all* addresses, public and private, from the peerstore.
@@ -150,7 +160,13 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			}
 			hp.tracer.StartHolePunch(rp, addrs, rtt)
 			hp.tracer.HolePunchAttempt(pi.ID)
-			err := holePunchConnect(hp.ctx, hp.host, pi, true)
+			ctx, cancel := context.WithTimeout(hp.ctx, hp.directDialTimeout)
+			isClient := true
+			if hp.legacyBehavior {
+				isClient = false
+			}
+			err := holePunchConnect(ctx, hp.host, pi, isClient)
+			cancel()
 			dt := time.Since(start)
 			hp.tracer.EndHolePunch(rp, dt, err)
 			if err == nil {
@@ -180,6 +196,7 @@ func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multi
 		return nil, nil, 0, fmt.Errorf("failed to open hole-punching stream: %w", err)
 	}
 	defer str.Close()
+	log.Debugf("initiateHolePunch: %s, %s", str.Conn().RemotePeer(), str.Conn().RemoteMultiaddr())
 
 	addr, obsAddr, rtt, err := hp.initiateHolePunchImpl(str)
 	if err != nil {
@@ -212,6 +229,7 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	if len(obsAddrs) == 0 {
 		return nil, nil, 0, errors.New("aborting hole punch initiation as we have no public address")
 	}
+	log.Debugf("initiating hole punch with %s", obsAddrs)
 
 	start := time.Now()
 	if err := w.WriteMsg(&pb.HolePunch{

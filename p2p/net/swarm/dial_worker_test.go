@@ -578,11 +578,11 @@ func checkDialWorkerLoopScheduling(t *testing.T, s1, s2 *Swarm, tc schedulingTes
 	// failDials is used to track dials which should fail in the future
 	// at appropriate moment a message is sent to dialState.ch to trigger
 	// failure
-	failDials := make(map[ma.Multiaddr]dialState)
+	failDials := make(map[*ma.Multiaddr]dialState)
 	// recvCh is used to receive dial notifications for dials that will fail
 	recvCh := make(chan struct{}, 100)
 	// allDials tracks all pending dials
-	allDials := make(map[ma.Multiaddr]dialState)
+	allDials := make(map[*ma.Multiaddr]dialState)
 	// addrs are the peer addresses the swarm will use for dialing
 	addrs := make([]ma.Multiaddr, 0)
 	// create pending dials
@@ -610,7 +610,7 @@ func checkDialWorkerLoopScheduling(t *testing.T, s1, s2 *Swarm, tc schedulingTes
 		}
 		addrs = append(addrs, inp.addr)
 		// add to pending dials
-		allDials[inp.addr] = dialState{
+		allDials[&inp.addr] = dialState{
 			ch:        failCh,
 			addr:      inp.addr,
 			delay:     inp.delay,
@@ -695,7 +695,7 @@ loop:
 					failDials[a] = dialState{
 						ch:     ds.ch,
 						failAt: cl.Now().Add(ds.failAfter),
-						addr:   a,
+						addr:   *a,
 						delay:  ds.delay,
 					}
 				}
