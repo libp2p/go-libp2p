@@ -1,7 +1,6 @@
 package basichost
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -20,6 +19,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
+
+const maxObservedAddrsPerListenAddr = 5
 
 type observedAddrsManager interface {
 	OwnObservedAddrs() []ma.Multiaddr
@@ -208,7 +209,7 @@ func (a *addrsManager) Addrs() []ma.Multiaddr {
 	addrs = slices.Clone(a.addrsFactory(addrs))
 	// Add certhashes for the addresses provided by the user via address factory.
 	addrs = a.addCertHashes(ma.Unique(addrs))
-	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 	return addrs
 }
 
@@ -242,7 +243,7 @@ var p2pCircuitAddr = ma.StringCast("/p2p-circuit")
 
 func (a *addrsManager) updateLocalAddrs() {
 	localAddrs := a.getLocalAddrs()
-	slices.SortFunc(localAddrs, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
+	slices.SortFunc(localAddrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 
 	a.addrsMx.Lock()
 	a.localAddrs = localAddrs
@@ -315,7 +316,7 @@ func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multi
 			obsAddrs = a.appendObservedAddrs(obsAddrs[:0], listenAddr, ifaceAddrs)
 			for _, addr := range obsAddrs {
 				obsIP, _ := ma.SplitFirst(addr)
-				if obsIP != nil && manet.IsPublicAddr(obsIP) {
+				if obsIP != nil && manet.IsPublicAddr(obsIP.Multiaddr()) {
 					dst = append(dst, obsIP.Encapsulate(natRest))
 				}
 			}
@@ -340,7 +341,11 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Mul
 	// Add it for the listenAddr first.
 	// listenAddr maybe unspecified. That's okay as connections on UDP transports
 	// will have the unspecified address as the local address.
-	dst = append(dst, a.observedAddrsManager.ObservedAddrsFor(listenAddr)...)
+	obsAddrs := a.observedAddrsManager.ObservedAddrsFor(listenAddr)
+	if len(obsAddrs) > maxObservedAddrsPerListenAddr {
+		obsAddrs = obsAddrs[:maxObservedAddrsPerListenAddr]
+	}
+	dst = append(dst, obsAddrs...)
 
 	// if it can be resolved into more addresses, add them too
 	resolved, err := manet.ResolveUnspecifiedAddress(listenAddr, ifaceAddrs)
@@ -349,7 +354,11 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Mul
 		return dst
 	}
 	for _, addr := range resolved {
-		dst = append(dst, a.observedAddrsManager.ObservedAddrsFor(addr)...)
+		obsAddrs = a.observedAddrsManager.ObservedAddrsFor(addr)
+		if len(obsAddrs) > maxObservedAddrsPerListenAddr {
+			obsAddrs = obsAddrs[:maxObservedAddrsPerListenAddr]
+		}
+		dst = append(dst, obsAddrs...)
 	}
 	return dst
 }
@@ -406,8 +415,8 @@ func (a *addrsManager) areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	if len(prev) != len(current) {
 		return true
 	}
-	slices.SortFunc(prev, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
-	slices.SortFunc(current, func(a, b ma.Multiaddr) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
+	slices.SortFunc(prev, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	slices.SortFunc(current, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 	for i := range prev {
 		if !prev[i].Equal(current[i]) {
 			return true

@@ -41,7 +41,8 @@ func TestAppendNATAddrs(t *testing.T) {
 			Listen: ma.StringCast("/ip4/0.0.0.0/tcp/1"),
 			Nat:    nil,
 			ObsAddrFunc: func(a ma.Multiaddr) []ma.Multiaddr {
-				ip, _ := ma.SplitFirst(a)
+				ipC, _ := ma.SplitFirst(a)
+				ip := ipC.Multiaddr()
 				switch {
 				case ip.Equal(if1):
 					return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/tcp/100")}
@@ -59,7 +60,8 @@ func TestAppendNATAddrs(t *testing.T) {
 			Listen: ma.StringCast("/ip4/192.168.1.1/tcp/1"),
 			Nat:    nil,
 			ObsAddrFunc: func(a ma.Multiaddr) []ma.Multiaddr {
-				ip, _ := ma.SplitFirst(a)
+				ipC, _ := ma.SplitFirst(a)
+				ip := ipC.Multiaddr()
 				switch {
 				case ip.Equal(if1):
 					return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/tcp/100")}
@@ -79,10 +81,8 @@ func TestAppendNATAddrs(t *testing.T) {
 			Listen: tcpListenAddr,
 			Nat:    ma.StringCast("/ip4/100.100.1.1/tcp/100"),
 			ObsAddrFunc: func(a ma.Multiaddr) []ma.Multiaddr {
-				ip, _ := ma.SplitFirst(a)
-				if ip == nil {
-					return nil
-				}
+				ipC, _ := ma.SplitFirst(a)
+				ip := ipC.Multiaddr()
 				if ip.Equal(if1) {
 					return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/tcp/20")}
 				}
@@ -306,6 +306,35 @@ func TestAddrsManager(t *testing.T) {
 		})
 		am.triggerAddrsUpdate()
 		expected := []ma.Multiaddr{lhquic, lhtcp, publicTCP, publicQUIC}
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
+		}, 5*time.Second, 50*time.Millisecond)
+	})
+
+	t.Run("observed addrs limit", func(t *testing.T) {
+		quicAddrs := []ma.Multiaddr{
+			ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/3/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/4/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/5/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/6/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/7/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/8/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/9/quic-v1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/10/quic-v1"),
+		}
+		am := newAddrsManagerTestCase(t, addrsManagerArgs{
+			ObservedAddrsManager: &mockObservedAddrs{
+				ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
+					return quicAddrs
+				},
+			},
+			ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{lhquic} },
+		})
+		am.triggerAddrsUpdate()
+		expected := []ma.Multiaddr{lhquic}
+		expected = append(expected, quicAddrs[:maxObservedAddrsPerListenAddr]...)
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
 		}, 5*time.Second, 50*time.Millisecond)

@@ -242,13 +242,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}
 	// register to be notified when the network's listen addrs change,
 	// so we can update our address set and push events if needed
-	listenHandler := func(network.Network, ma.Multiaddr) {
-		h.addressManager.triggerAddrsUpdate()
-	}
-	n.Notify(&network.NotifyBundle{
-		ListenF:      listenHandler,
-		ListenCloseF: listenHandler,
-	})
+	h.Network().Notify(h.addressManager.NetNotifee())
 
 	if opts.EnableHolePunching {
 		if opts.EnableMetrics {
@@ -325,7 +319,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 // TODO: Return error and handle it in the caller?
 func (h *BasicHost) Start() {
 	h.psManager.Start()
-	h.ids.Start()
 	if h.autonatv2 != nil {
 		err := h.autonatv2.Start()
 		if err != nil {
@@ -346,6 +339,8 @@ func (h *BasicHost) Start() {
 			log.Errorf("failed to persist signed record to peerstore: %w", err)
 		}
 	}
+
+	h.ids.Start()
 
 	h.refCount.Add(1)
 	go h.background()
