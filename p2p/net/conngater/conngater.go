@@ -72,7 +72,7 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 	for r := range res.Next() {
 		if r.Error != nil {
 			log.Errorf("query result error: %s", r.Error)
-			return err
+			return r.Error
 		}
 
 		p := peer.ID(r.Entry.Value)
@@ -89,7 +89,7 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 	for r := range res.Next() {
 		if r.Error != nil {
 			log.Errorf("query result error: %s", r.Error)
-			return err
+			return r.Error
 		}
 
 		ip := net.IP(r.Entry.Value)
@@ -106,7 +106,7 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 	for r := range res.Next() {
 		if r.Error != nil {
 			log.Errorf("query result error: %s", r.Error)
-			return err
+			return r.Error
 		}
 
 		ipnetStr := string(r.Entry.Value)
