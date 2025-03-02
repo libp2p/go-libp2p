@@ -30,7 +30,7 @@ func createListener(t *testing.T, u transport.Upgrader) transport.Listener {
 	require.NoError(t, err)
 	ln, err := manet.Listen(addr)
 	require.NoError(t, err)
-	return u.UpgradeListener(nil, ln)
+	return u.UpgradeGatedMaListener(nil, u.GateMaListener(ln))
 }
 
 func TestAcceptSingleConn(t *testing.T) {

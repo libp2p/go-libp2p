@@ -101,7 +101,7 @@ func (c *Client) Listen(addr ma.Multiaddr) (transport.Listener, error) {
 		return nil, err
 	}
 
-	return c.upgrader.UpgradeListener(c, c.Listener()), nil
+	return c.upgrader.UpgradeGatedMaListener(c, c.upgrader.GateMaListener(c.Listener())), nil
 }
 
 func (c *Client) Protocols() []int {
