@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -190,6 +191,15 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
+	} else if c.enableReuseport && association != nil {
+		reuse, err := c.getReuse(netw)
+		if err != nil {
+			return nil, fmt.Errorf("reuse error: %w", err)
+		}
+		err = reuse.AssociateListenTransport(association, entry.ln.transport)
+		if err != nil {
+			return nil, fmt.Errorf("reuse associate failed: %w", err)
+		}
 	}
 	l, err := entry.ln.Add(tlsConf, allowWindowIncrease, func() { c.onListenerClosed(key) })
 	if err != nil {
