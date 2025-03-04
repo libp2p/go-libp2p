@@ -152,7 +152,7 @@ type Config struct {
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
 	if cfg.Peerstore == nil {
-		return nil, fmt.Errorf("no peerstore specified")
+		return nil, errors.New("no peerstore specified")
 	}
 
 	// Check this early. Prevents us from even *starting* without verifying this.
@@ -166,7 +166,7 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	}
 
 	if cfg.PeerKey == nil {
-		return nil, fmt.Errorf("no peer key specified")
+		return nil, errors.New("no peer key specified")
 	}
 
 	// Obtain Peer ID from public key
@@ -448,7 +448,7 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 
 func (cfg *Config) validate() error {
 	if cfg.EnableAutoRelay && !cfg.Relay {
-		return fmt.Errorf("cannot enable autorelay; relay is not enabled")
+		return errors.New("cannot enable autorelay; relay is not enabled")
 	}
 	// If possible check that the resource manager conn limit is higher than the
 	// limit set in the conn manager.

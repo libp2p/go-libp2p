@@ -240,7 +240,7 @@ func (u *upgrader) negotiateMuxer(nc net.Conn, isServer bool) (*StreamMuxer, err
 	if m := u.getMuxerByID(proto); m != nil {
 		return m, nil
 	}
-	return nil, fmt.Errorf("selected protocol we don't have a transport for")
+	return nil, errors.New("selected protocol we don't have a transport for")
 }
 
 func (u *upgrader) getMuxerByID(id protocol.ID) *StreamMuxer {

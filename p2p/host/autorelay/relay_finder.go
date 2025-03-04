@@ -490,7 +490,7 @@ func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) (add
 	supportsV2, err := rf.tryNode(ctx, pi)
 	if err != nil {
 		log.Debugf("node %s not accepted as a candidate: %s", pi.ID, err)
-		if err == errProtocolNotSupported {
+		if errors.Is(err, errProtocolNotSupported) {
 			rf.metricsTracer.CandidateChecked(false)
 		}
 		return false

@@ -2,7 +2,7 @@ package nat
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net"
 	"net/url"
 	"strings"
@@ -109,7 +109,7 @@ func serviceVisitor(ctx context.Context, rootDevice *goupnp.RootDevice, outNats 
 
 		case internetgateway2.URN_WANIPConnection_2:
 			if rootDevice.Device.DeviceType == internetgateway2.URN_WANConnectionDevice_1 {
-				*outErrs = append(*outErrs, fmt.Errorf("found V2 service on V1 device"))
+				*outErrs = append(*outErrs, errors.New("found V2 service on V1 device"))
 				return
 			}
 			client := &internetgateway2.WANIPConnection2{ServiceClient: goupnp.ServiceClient{

@@ -933,7 +933,7 @@ func (r ResolverFromMaDNS) ResolveDNSAddr(ctx context.Context, expectedPeerID pe
 	if expectedPeerID != "" {
 		removeMismatchPeerID := func(a ma.Multiaddr) bool {
 			id, err := peer.IDFromP2PAddr(a)
-			if err == peer.ErrInvalidAddr {
+			if errors.Is(err, peer.ErrInvalidAddr) {
 				// This multiaddr didn't contain a peer id, assume it's for this peer.
 				// Handshake will fail later if it's not.
 				return false

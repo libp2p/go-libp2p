@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sync"
 	"time"
@@ -414,7 +415,7 @@ func (w *dialWorker) dispatchError(ad *addrDial, err error) {
 	// this is necessary to support active listen scenarios, where a new dial comes in while
 	// another dial is in progress, and needs to do a direct connection without inhibitions from
 	// dial backoff.
-	if err == ErrDialBackoff {
+	if errors.Is(err, ErrDialBackoff) {
 		delete(w.trackedDials, string(ad.addr.Bytes()))
 	}
 }

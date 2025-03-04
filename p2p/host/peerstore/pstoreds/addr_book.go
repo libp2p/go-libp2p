@@ -3,6 +3,7 @@ package pstoreds
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -290,10 +291,10 @@ func (ab *dsAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl tim
 	}
 	rec, ok := r.(*peer.PeerRecord)
 	if !ok {
-		return false, fmt.Errorf("envelope did not contain PeerRecord")
+		return false, errors.New("envelope did not contain PeerRecord")
 	}
 	if !rec.PeerID.MatchesPublicKey(recordEnvelope.PublicKey) {
-		return false, fmt.Errorf("signing key does not match PeerID in PeerRecord")
+		return false, errors.New("signing key does not match PeerID in PeerRecord")
 	}
 
 	// ensure that the seq number from envelope is >= any previously received seq no

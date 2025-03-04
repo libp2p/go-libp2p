@@ -40,7 +40,7 @@ func (kb *dsKeyBook) PubKey(p peer.ID) ic.PubKey {
 		if err != nil {
 			log.Errorf("error when unmarshalling pubkey from datastore for peer %s: %s\n", p, err)
 		}
-	} else if err == ds.ErrNotFound {
+	} else if errors.Is(err, ds.ErrNotFound) {
 		pk, err = p.ExtractPublicKey()
 		switch err {
 		case nil:

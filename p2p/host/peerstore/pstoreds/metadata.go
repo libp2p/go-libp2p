@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"errors"
 
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -45,7 +46,7 @@ func (pm *dsPeerMetadata) Get(p peer.ID, key string) (interface{}, error) {
 	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(p))).ChildString(key)
 	value, err := pm.ds.Get(context.TODO(), k)
 	if err != nil {
-		if err == ds.ErrNotFound {
+		if errors.Is(err, ds.ErrNotFound) {
 			err = pstore.ErrNotFound
 		}
 		return nil, err

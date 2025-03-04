@@ -81,7 +81,7 @@ func (p *params) parsePeerIDAuthSchemeParams(headerVal []byte) error {
 			p.sigB64 = v
 		}
 	}
-	if err == bufio.ErrFinalToken {
+	if errors.Is(err, bufio.ErrFinalToken) {
 		err = nil
 	}
 	return err
@@ -169,7 +169,7 @@ type sigParam struct {
 
 func verifySig(publicKey crypto.PubKey, prefix string, signedParts []sigParam, sig []byte) error {
 	if publicKey == nil {
-		return fmt.Errorf("no public key to verify signature")
+		return errors.New("no public key to verify signature")
 	}
 
 	b := pool.Get(4096)
@@ -183,7 +183,7 @@ func verifySig(publicKey crypto.PubKey, prefix string, signedParts []sigParam, s
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("signature verification failed")
+		return errors.New("signature verification failed")
 	}
 
 	return nil
