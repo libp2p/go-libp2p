@@ -13,13 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createLogDir(t *testing.T) string {
-	dir, err := os.MkdirTemp("", "libp2p-quic-transport-test")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	return dir
-}
-
 func getFile(t *testing.T, dir string) os.FileInfo {
 	files, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -30,7 +23,7 @@ func getFile(t *testing.T, dir string) os.FileInfo {
 }
 
 func TestSaveQlog(t *testing.T) {
-	qlogDir := createLogDir(t)
+	qlogDir := t.TempDir()
 	logger := newQlogger(qlogDir, logging.PerspectiveServer, quic.ConnectionIDFromBytes([]byte{0xde, 0xad, 0xbe, 0xef}))
 	file := getFile(t, qlogDir)
 	require.Equal(t, ".", string(file.Name()[0]))
@@ -45,7 +38,7 @@ func TestSaveQlog(t *testing.T) {
 }
 
 func TestQlogBuffering(t *testing.T) {
-	qlogDir := createLogDir(t)
+	qlogDir := t.TempDir()
 	logger := newQlogger(qlogDir, logging.PerspectiveServer, quic.ConnectionIDFromBytes([]byte("connid")))
 	initialSize := getFile(t, qlogDir).Size()
 	// Do a small write.
@@ -60,7 +53,7 @@ func TestQlogBuffering(t *testing.T) {
 }
 
 func TestQlogCompression(t *testing.T) {
-	qlogDir := createLogDir(t)
+	qlogDir := t.TempDir()
 	logger := newQlogger(qlogDir, logging.PerspectiveServer, quic.ConnectionIDFromBytes([]byte("connid")))
 	logger.Write([]byte("foobar"))
 	require.NoError(t, logger.Close())
