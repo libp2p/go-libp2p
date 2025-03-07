@@ -25,6 +25,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	gostream "github.com/libp2p/go-libp2p/p2p/net/gostream"
 	ma "github.com/multiformats/go-multiaddr"
@@ -496,7 +497,16 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		})
 	}
 
-	s, err := rt.h.NewStream(r.Context(), rt.server, ProtocolIDForMultistreamSelect)
+	// If r.Context() timeout is greater than bhost.DefaultNegotiationTimeout
+	// use bhost.DefaultNegotiationTimeout for new stream negotiation.
+	newStreamCtx := r.Context()
+	if deadline, ok := newStreamCtx.Deadline(); !ok || deadline.After(time.Now().Add(bhost.DefaultNegotiationTimeout)) {
+		var cancel context.CancelFunc
+		newStreamCtx, cancel = context.WithTimeout(context.Background(), bhost.DefaultNegotiationTimeout)
+		defer cancel()
+	}
+
+	s, err := rt.h.NewStream(newStreamCtx, rt.server, ProtocolIDForMultistreamSelect)
 	if err != nil {
 		return nil, err
 	}
