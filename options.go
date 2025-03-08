@@ -355,7 +355,7 @@ func ForceReachabilityPublic() Option {
 }
 
 // ForceReachabilityPrivate overrides automatic reachability detection in the AutoNAT subsystem,
-// forceing the local node to believe it is behind a NAT and not reachable externally.
+// forcing the local node to believe it is behind a NAT and not reachable externally.
 func ForceReachabilityPrivate() Option {
 	return func(cfg *Config) error {
 		private := network.ReachabilityPrivate
