@@ -2,7 +2,6 @@ package pstoreds
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -104,17 +103,13 @@ func BenchmarkDsPeerstore(b *testing.B) {
 //
 //lint:ignore U1000 disabled for now
 func badgerStore(tb testing.TB) (ds.Batching, func()) {
-	dataPath, err := os.MkdirTemp(os.TempDir(), "badger")
-	if err != nil {
-		tb.Fatal(err)
-	}
+	dataPath := tb.TempDir()
 	store, err := badger.NewDatastore(dataPath, nil)
 	if err != nil {
 		tb.Fatal(err)
 	}
 	closer := func() {
 		store.Close()
-		os.RemoveAll(dataPath)
 	}
 	return store, closer
 }
