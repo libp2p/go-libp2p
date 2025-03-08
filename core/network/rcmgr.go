@@ -91,7 +91,7 @@ type ResourceManager interface {
 	// An unnegotiated stream will be initially unattached to any protocol scope
 	// and constrained by the transient scope.
 	// The caller owns the returned scope and is responsible for calling Done in order to signify
-	// the end of th scope's span.
+	// the end of the scope's span.
 	OpenStream(p peer.ID, dir Direction) (StreamManagementScope, error)
 
 	// Close closes the resource manager
