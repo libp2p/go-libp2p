@@ -140,7 +140,7 @@ func (bh *BlankHost) Connect(ctx context.Context, ai peer.AddrInfo) error {
 	if err != nil {
 		return fmt.Errorf("failed to dial: %w", err)
 	}
-	return err
+	return nil
 }
 
 func (bh *BlankHost) Peerstore() peerstore.Peerstore {
