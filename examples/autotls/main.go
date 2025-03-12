@@ -58,6 +58,9 @@ func main() {
 		// User-Agent to use during DNS-01 ACME challenge
 		p2pforge.WithUserAgent(userAgent),
 
+		// Optional extra delay before the initial registration
+		p2pforge.WithRegistrationDelay(10*time.Second),
+
 		// Optional hook called once certificate is ready
 		p2pforge.WithOnCertLoaded(func() {
 			certLoaded <- true
