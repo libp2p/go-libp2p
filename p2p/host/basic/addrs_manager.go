@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/libp2p/go-netroute"
@@ -28,16 +29,23 @@ type observedAddrsManager interface {
 }
 
 type addrsManager struct {
-	eventbus              event.Bus
-	natManager            NATManager
-	addrsFactory          AddrsFactory
-	listenAddrs           func() []ma.Multiaddr
-	transportForListening func(ma.Multiaddr) transport.Transport
-	observedAddrsManager  observedAddrsManager
-	interfaceAddrs        *interfaceAddrsCache
+	bus                      event.Bus
+	natManager               NATManager
+	addrsFactory             AddrsFactory
+	listenAddrs              func() []ma.Multiaddr
+	transportForListening    func(ma.Multiaddr) transport.Transport
+	observedAddrsManager     observedAddrsManager
+	interfaceAddrs           *interfaceAddrsCache
+	addrsReachabilityTracker *addrsReachabilityTracker
 
 	// triggerAddrsUpdateChan is used to trigger an addresses update.
 	triggerAddrsUpdateChan chan struct{}
+	// triggerReachabilityUpdate is notified when reachable addrs are updated.
+	triggerReachabilityUpdate chan reachabilityUpdate
+	// triggerHostReachabilityUpdate is notified when host's reachability from autonat v1 changes.
+	triggerHostReachabilityUpdate chan struct{}
+	localAddrsChangedCh           chan struct{}
+	addrsChangedCh                chan struct{}
 	// addrsUpdatedChan is notified when addresses change.
 	addrsUpdatedChan chan struct{}
 	hostReachability atomic.Pointer[network.Reachability]
@@ -52,34 +60,50 @@ type addrsManager struct {
 }
 
 func newAddrsManager(
-	eventbus event.Bus,
+	bus event.Bus,
 	natmgr NATManager,
 	addrsFactory AddrsFactory,
 	listenAddrs func() []ma.Multiaddr,
 	transportForListening func(ma.Multiaddr) transport.Transport,
 	observedAddrsManager observedAddrsManager,
 	addrsUpdatedChan chan struct{},
+	client autonatv2Client,
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	as := &addrsManager{
-		eventbus:               eventbus,
-		listenAddrs:            listenAddrs,
-		transportForListening:  transportForListening,
-		observedAddrsManager:   observedAddrsManager,
-		natManager:             natmgr,
-		addrsFactory:           addrsFactory,
-		triggerAddrsUpdateChan: make(chan struct{}, 1),
-		addrsUpdatedChan:       addrsUpdatedChan,
-		interfaceAddrs:         &interfaceAddrsCache{},
-		ctx:                    ctx,
-		ctxCancel:              cancel,
+		bus:                           bus,
+		listenAddrs:                   listenAddrs,
+		transportForListening:         transportForListening,
+		observedAddrsManager:          observedAddrsManager,
+		natManager:                    natmgr,
+		addrsFactory:                  addrsFactory,
+		triggerAddrsUpdateChan:        make(chan struct{}, 1),
+		triggerHostReachabilityUpdate: make(chan struct{}, 1),
+		triggerReachabilityUpdate:     make(chan reachabilityUpdate),
+		localAddrsChangedCh:           make(chan struct{}),
+		addrsChangedCh:                make(chan struct{}),
+		addrsUpdatedChan:              addrsUpdatedChan,
+		interfaceAddrs:                &interfaceAddrsCache{},
+		ctx:                           ctx,
+		ctxCancel:                     cancel,
 	}
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
+
+	if client != nil {
+		as.addrsReachabilityTracker = newAddrsReachabilityTracker(client, as.triggerReachabilityUpdate, nil)
+	}
 	return as, nil
 }
 
 func (a *addrsManager) Start() error {
+	// TODO: add Start method to NATMgr
+	if a.addrsReachabilityTracker != nil {
+		err := a.addrsReachabilityTracker.Start()
+		if err != nil {
+			return fmt.Errorf("error starting addrs reachability tracker: %s", err)
+		}
+	}
 	return a.background()
 }
 
@@ -89,6 +113,12 @@ func (a *addrsManager) Close() {
 		err := a.natManager.Close()
 		if err != nil {
 			log.Warnf("error closing natmgr: %s", err)
+		}
+	}
+	if a.addrsReachabilityTracker != nil {
+		err := a.addrsReachabilityTracker.Close()
+		if err != nil {
+			log.Warnf("error closing addrs reachability tracker: %s", err)
 		}
 	}
 	a.wg.Wait()
@@ -112,14 +142,9 @@ func (a *addrsManager) triggerAddrsUpdate() {
 }
 
 func (a *addrsManager) background() error {
-	autoRelayAddrsSub, err := a.eventbus.Subscribe(new(event.EvtAutoRelayAddrsUpdated))
+	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
-	}
-
-	autonatReachabilitySub, err := a.eventbus.Subscribe(new(event.EvtLocalReachabilityChanged))
-	if err != nil {
-		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
 	}
 
 	// ensure that we have the correct address after returning from Start()
@@ -133,6 +158,74 @@ func (a *addrsManager) background() error {
 		}
 	default:
 	}
+
+	eventLoopCtx, eventLoopCancel := context.WithCancel(context.Background())
+	err = a.eventbusLoop(eventLoopCtx)
+	if err != nil {
+		return fmt.Errorf("error starting event loop: %w", err)
+	}
+
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		defer func() {
+			err := autoRelayAddrsSub.Close()
+			if err != nil {
+				log.Warnf("error closing auto relay addrs sub: %s", err)
+			}
+		}()
+
+		ticker := time.NewTicker(addrChangeTickrInterval)
+		defer ticker.Stop()
+		var prevLocalAddrs, prevAddrs []ma.Multiaddr
+		for {
+			a.updateLocalAddrs()
+			currLocalAddrs := a.DirectAddrs()
+			if areAddrsDifferent(prevLocalAddrs, currLocalAddrs) {
+				log.Debugf("host addresses updated: %s", currLocalAddrs)
+				a.localAddrsChangedCh <- struct{}{}
+				if a.addrsReachabilityTracker != nil {
+					a.addrsReachabilityTracker.UpdateAddrs(currLocalAddrs)
+				}
+			}
+			prevLocalAddrs = currLocalAddrs
+			for i, a := range prevLocalAddrs {
+				if len(a.Bytes()) == 0 {
+					panic(fmt.Sprintf("invalid addr %d: %s", i, a))
+				}
+			}
+
+			currAddrs := a.Addrs()
+			if areAddrsDifferent(prevAddrs, currAddrs) {
+				a.addrsChangedCh <- struct{}{}
+			}
+			prevAddrs = currAddrs
+			select {
+			case <-ticker.C:
+			case <-a.triggerAddrsUpdateChan:
+			case e := <-autoRelayAddrsSub.Out():
+				if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
+					a.updateRelayAddrs(evt.RelayAddrs)
+				}
+			case <-a.ctx.Done():
+				eventLoopCancel()
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+func (a *addrsManager) eventbusLoop(ctx context.Context) error {
+	autonatReachabilitySub, err := a.bus.Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("addrs-manager"))
+	if err != nil {
+		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
+	}
+
+	emitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
+	if err != nil {
+		return fmt.Errorf("error creating host reachable addrs emitter: %w", err)
+	}
 	select {
 	case e := <-autonatReachabilitySub.Out():
 		if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
@@ -145,44 +238,57 @@ func (a *addrsManager) background() error {
 	go func() {
 		defer a.wg.Done()
 		defer func() {
-			err := autoRelayAddrsSub.Close()
-			if err != nil {
-				log.Warnf("error closing auto relay addrs sub: %s", err)
-			}
-		}()
-		defer func() {
 			err := autonatReachabilitySub.Close()
 			if err != nil {
 				log.Warnf("error closing autonat reachability sub: %s", err)
 			}
 		}()
-
-		ticker := time.NewTicker(addrChangeTickrInterval)
-		defer ticker.Stop()
-		var prev []ma.Multiaddr
+		var previousAddrs []ma.Multiaddr
+		var previousReachabilityUpdate reachabilityUpdate
+		localAddrs := make(map[string]struct{})
 		for {
-			a.updateLocalAddrs()
-			curr := a.Addrs()
-			if a.areAddrsDifferent(prev, curr) {
-				log.Debugf("host addresses updated: %s", curr)
-				select {
-				case a.addrsUpdatedChan <- struct{}{}:
-				default:
-				}
-			}
-			prev = curr
 			select {
-			case <-ticker.C:
-			case <-a.triggerAddrsUpdateChan:
-			case e := <-autoRelayAddrsSub.Out():
-				if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
-					a.updateRelayAddrs(evt.RelayAddrs)
+			case <-a.addrsChangedCh:
+				newAddrs := a.Addrs()
+				if areAddrsDifferent(previousAddrs, newAddrs) {
+					select {
+					case a.addrsUpdatedChan <- struct{}{}:
+					default:
+					}
+				}
+				previousAddrs = newAddrs
+			case <-a.localAddrsChangedCh:
+				la := a.getLocalAddrs()
+				clear(localAddrs)
+				for _, a := range la {
+					localAddrs[string(a.Bytes())] = struct{}{}
+				}
+			case ru := <-a.triggerReachabilityUpdate:
+				// Only include relevant host addresses as the reachability manager may have
+				// a stale view of host's addresses.
+				ru.Reachable = slices.DeleteFunc(ru.Reachable, func(a ma.Multiaddr) bool {
+					_, ok := localAddrs[string(a.Bytes())]
+					return !ok
+				})
+				ru.Unreachable = slices.DeleteFunc(ru.Unreachable, func(a ma.Multiaddr) bool {
+					_, ok := localAddrs[string(a.Bytes())]
+					return !ok
+				})
+				if areAddrsDifferent(previousReachabilityUpdate.Reachable, ru.Reachable) ||
+					areAddrsDifferent(previousReachabilityUpdate.Unreachable, ru.Unreachable) {
+					previousReachabilityUpdate = ru
+					if err := emitter.Emit(event.EvtHostReachableAddrsChanged{
+						Reachable:   ru.Reachable,
+						Unreachable: ru.Unreachable,
+					}); err != nil {
+						log.Errorf("error sending host reachable addrs changed event: %s", err)
+					}
 				}
 			case e := <-autonatReachabilitySub.Out():
 				if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
 					a.hostReachability.Store(&evt.Reachability)
 				}
-			case <-a.ctx.Done():
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -261,7 +367,6 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs, a.interfaceAddrs.All())
 
 	finalAddrs = ma.Unique(finalAddrs)
-
 	// Remove "/p2p-circuit" addresses from the list.
 	// The p2p-circuit listener reports its address as just /p2p-circuit. This is
 	// useless for dialing. Users need to manage their circuit addresses themselves,
@@ -275,10 +380,17 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 		return manet.IsIPUnspecified(a)
 	})
 
+	for i, a := range finalAddrs {
+		if len(a.Bytes()) == 0 {
+			panic(fmt.Sprintf("invalid addr %d: %s", i, a))
+		}
+	}
+
 	// Add certhashes for /webrtc-direct, /webtransport, etc addresses discovered
 	// using identify.
 	finalAddrs = a.addCertHashes(finalAddrs)
-	return finalAddrs
+
+	return ma.Unique(finalAddrs)
 }
 
 // appendPrimaryInterfaceAddrs appends the primary interface addresses to `dst`.
@@ -408,7 +520,7 @@ func (a *addrsManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	return addrs
 }
 
-func (a *addrsManager) areAddrsDifferent(prev, current []ma.Multiaddr) bool {
+func areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	// TODO: make the sorted nature of ma.Unique a guarantee in multiaddrs
 	prev = ma.Unique(prev)
 	current = ma.Unique(current)

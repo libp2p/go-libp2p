@@ -236,7 +236,25 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}); ok {
 		tfl = s.TransportForListening
 	}
-	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, h.addrsUpdatedChan)
+
+	if opts.EnableAutoNATv2 {
+		var mt autonatv2.MetricsTracer
+		if opts.EnableMetrics {
+			mt = autonatv2.NewMetricsTracer(opts.PrometheusRegisterer)
+		}
+		// keep this on host as it has the server as well as the client
+		h.autonatv2, err = autonatv2.New(h, opts.AutoNATv2Dialer, autonatv2.WithMetricsTracer(mt))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create autonatv2: %w", err)
+		}
+	}
+
+	// avoid typed nil errors
+	var autonatv2Client autonatv2Client
+	if h.autonatv2 != nil {
+		autonatv2Client = h.autonatv2
+	}
+	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, h.addrsUpdatedChan, autonatv2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}
@@ -281,17 +299,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	if opts.EnablePing {
 		h.pings = ping.NewPingService(h)
-	}
-
-	if opts.EnableAutoNATv2 {
-		var mt autonatv2.MetricsTracer
-		if opts.EnableMetrics {
-			mt = autonatv2.NewMetricsTracer(opts.PrometheusRegisterer)
-		}
-		h.autonatv2, err = autonatv2.New(h, opts.AutoNATv2Dialer, autonatv2.WithMetricsTracer(mt))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create autonatv2: %w", err)
-		}
 	}
 
 	if !h.disableSignedPeerRecord {
@@ -836,7 +843,6 @@ func (h *BasicHost) Close() error {
 		if h.cmgr != nil {
 			h.cmgr.Close()
 		}
-
 		h.addressManager.Close()
 
 		if h.ids != nil {

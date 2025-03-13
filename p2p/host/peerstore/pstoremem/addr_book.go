@@ -306,7 +306,6 @@ func (mab *memoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, tt
 
 	mab.mu.Lock()
 	defer mab.mu.Unlock()
-
 	// ensure seq is greater than or equal to the last received
 	lastState, found := mab.signedPeerRecords[rec.PeerID]
 	if found && lastState.Seq > rec.Seq {
@@ -320,6 +319,7 @@ func (mab *memoryAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, tt
 		Envelope: recordEnvelope,
 		Seq:      rec.Seq,
 	}
+
 	mab.addAddrsUnlocked(rec.PeerID, rec.Addrs, ttl)
 	return true, nil
 }

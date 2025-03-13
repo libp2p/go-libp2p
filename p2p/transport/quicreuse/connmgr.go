@@ -176,7 +176,6 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
-
 	key := laddr.String()
 	entry, ok := c.quicListeners[key]
 	if !ok {
@@ -190,6 +189,9 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
+	}
+	if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
+		tr.associate(association)
 	}
 	l, err := entry.ln.Add(tlsConf, allowWindowIncrease, func() { c.onListenerClosed(key) })
 	if err != nil {
@@ -251,6 +253,7 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 		}
 		tr.associate(association)
 		return tr, nil
+	} else {
 	}
 
 	conn, err := c.listenUDP(network, laddr)

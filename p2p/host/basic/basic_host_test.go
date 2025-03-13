@@ -47,6 +47,7 @@ func TestHostSimple(t *testing.T) {
 	h1.Start()
 	h2, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+
 	defer h2.Close()
 	h2.Start()
 
