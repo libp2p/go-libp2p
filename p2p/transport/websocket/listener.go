@@ -30,6 +30,7 @@ type listener struct {
 	isWss bool
 
 	allowForwardedHeader bool
+	trustedProxies       []*net.IPNet
 
 	laddr ma.Multiaddr
 
@@ -54,7 +55,7 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, allowForwardedHeader bool) (*listener, error) {
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, allowForwardedHeader bool, trustedProxies []*net.IPNet) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -108,8 +109,9 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		laddr:    parsed.toMultiaddr(),
 		incoming: make(chan *Conn),
 		closed:   make(chan struct{}),
-		
+
 		allowForwardedHeader: allowForwardedHeader,
+		trustedProxies:       trustedProxies,
 	}
 	ln.server = http.Server{Handler: ln, ErrorLog: stdLog}
 	if parsed.isWSS {
@@ -128,6 +130,33 @@ func (l *listener) serve() {
 	}
 }
 
+// isProxyTrusted checks if the given IP address belongs to a trusted proxy
+func (l *listener) isProxyTrusted(remoteAddr string) bool {
+	if len(l.trustedProxies) == 0 {
+		// allow any
+		return true
+	}
+
+	// Extract IP from remoteAddr (format: "IP:port")
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return false
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+
+	// Check if IP is in any of the trusted CIDR ranges
+	for _, cidr := range l.trustedProxies {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -136,7 +165,7 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var overrideRemoteAddr string
-	if l.allowForwardedHeader {
+	if l.allowForwardedHeader && l.isProxyTrusted(c.RemoteAddr().String()) {
 		overrideRemoteAddr = GetRealIP(c.RemoteAddr(), r.Header)
 	}
 

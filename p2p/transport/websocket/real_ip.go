@@ -14,14 +14,11 @@ func GetRealIP(addr net.Addr, h http.Header) string {
 	if remoteIp != nil {
 		remoteTcpAddr, ok := addr.(*net.TCPAddr)
 		if ok {
-			remoteAddr = IpPort(remoteIp, remoteTcpAddr.Port)
+			remoteAddr = IpPort(remoteIp, strconv.Itoa(remoteTcpAddr.Port))
 		} else {
-			p := strings.LastIndex(remoteAddr, ":")
-			if p > 0 {
-				port, err := strconv.ParseInt(remoteAddr[p+1:], 10, 16)
-				if err == nil {
-					remoteAddr = IpPort(remoteIp, int(port))
-				}
+			_, port, err := net.SplitHostPort(remoteAddr)
+			if err == nil {
+				remoteAddr = IpPort(remoteIp, port)
 			}
 		}
 	}
@@ -74,9 +71,9 @@ func validateIp(ip string) net.IP {
 	return net.ParseIP(ip)
 }
 
-func IpPort(ip net.IP, port int) string {
+func IpPort(ip net.IP, port string) string {
 	if ip.To4() == nil {
-		return fmt.Sprintf("[%s]:%d", ip.String(), port)
+		return fmt.Sprintf("[%s]:%s", ip.String(), port)
 	}
-	return fmt.Sprintf("%s:%d", ip.String(), port)
+	return fmt.Sprintf("%s:%s", ip.String(), port)
 }

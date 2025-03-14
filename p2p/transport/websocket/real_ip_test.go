@@ -179,19 +179,19 @@ func TestIpPort(t *testing.T) {
 	tests := []struct {
 		name     string
 		ip       string
-		port     int
+		port     string
 		expected string
 	}{
 		{
 			name:     "IPv4 address",
 			ip:       "192.168.1.1",
-			port:     8080,
+			port:     "8080",
 			expected: "192.168.1.1:8080",
 		},
 		{
 			name:     "IPv6 address",
 			ip:       "2001:db8::1",
-			port:     8080,
+			port:     "8080",
 			expected: "[2001:db8::1]:8080",
 		},
 	}
