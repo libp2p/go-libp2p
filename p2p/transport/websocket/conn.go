@@ -39,7 +39,7 @@ var _ manet.Conn = (*Conn)(nil)
 // NewConn creates a Conn given a regular gorilla/websocket Conn.
 //
 // Deprecated: There's no reason to use this method externally. It'll be unexported in a future release.
-func NewConn(raw *ws.Conn, secure bool) *Conn {
+func NewConn(raw *ws.Conn, secure bool, remoteAddr string) *Conn {
 	lna := NewAddrWithScheme(raw.LocalAddr().String(), secure)
 	laddr, err := manet.FromNetAddr(lna)
 	if err != nil {
@@ -47,7 +47,10 @@ func NewConn(raw *ws.Conn, secure bool) *Conn {
 		return nil
 	}
 
-	rna := NewAddrWithScheme(raw.RemoteAddr().String(), secure)
+	if remoteAddr == "" {
+		remoteAddr = raw.RemoteAddr().String()
+	}
+	rna := NewAddrWithScheme(remoteAddr, secure)
 	raddr, err := manet.FromNetAddr(rna)
 	if err != nil {
 		log.Errorf("BUG: invalid remoteaddr on websocket conn", raw.RemoteAddr())
