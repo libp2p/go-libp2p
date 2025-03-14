@@ -29,6 +29,8 @@ type listener struct {
 	// so we can't rely on checking if server.TLSConfig is set.
 	isWss bool
 
+	allowForwardedHeader bool
+
 	laddr ma.Multiaddr
 
 	incoming chan *Conn
@@ -52,7 +54,7 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr) (*listener, error) {
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, allowForwardedHeader bool) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -106,6 +108,8 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		laddr:    parsed.toMultiaddr(),
 		incoming: make(chan *Conn),
 		closed:   make(chan struct{}),
+		
+		allowForwardedHeader: allowForwardedHeader,
 	}
 	ln.server = http.Server{Handler: ln, ErrorLog: stdLog}
 	if parsed.isWSS {
@@ -130,7 +134,13 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The upgrader writes a response for us.
 		return
 	}
-	nc := NewConn(c, l.isWss)
+
+	var overrideRemoteAddr string
+	if l.allowForwardedHeader {
+		overrideRemoteAddr = GetRealIP(c.RemoteAddr(), r.Header)
+	}
+
+	nc := NewConn(c, l.isWss, overrideRemoteAddr)
 	if nc == nil {
 		c.Close()
 		w.WriteHeader(500)
