@@ -13,6 +13,18 @@ const (
 	reset webtransport.StreamErrorCode = 0
 )
 
+type StreamResetError struct {
+	underlying webtransport.StreamError
+}
+
+func (e *StreamResetError) Error() string {
+	return "stream reset: " + e.underlying.Error()
+}
+
+func (e *StreamResetError) Unwrap() []error {
+	return []error{network.ErrReset, &e.underlying}
+}
+
 type webtransportStream struct {
 	webtransport.Stream
 	wsess *webtransport.Session
@@ -37,7 +49,10 @@ var _ network.MuxedStream = &stream{}
 func (s *stream) Read(b []byte) (n int, err error) {
 	n, err = s.Stream.Read(b)
 	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
-		err = network.ErrReset
+		var streamErr *webtransport.StreamError
+		if errors.As(err, &streamErr) {
+			err = &StreamResetError{underlying: *streamErr}
+		}
 	}
 	return n, err
 }
@@ -45,7 +60,10 @@ func (s *stream) Read(b []byte) (n int, err error) {
 func (s *stream) Write(b []byte) (n int, err error) {
 	n, err = s.Stream.Write(b)
 	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
-		err = network.ErrReset
+		var streamErr *webtransport.StreamError
+		if errors.As(err, &streamErr) {
+			err = &StreamResetError{underlying: *streamErr}
+		}
 	}
 	return n, err
 }
