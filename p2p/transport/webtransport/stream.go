@@ -41,7 +41,7 @@ func (s *stream) Read(b []byte) (n int, err error) {
 		if errors.As(err, &streamErr) {
 			err = &network.StreamError{
 				ErrorCode:      0,
-				Remote:         true,
+				Remote:         streamErr.Remote,
 				TransportError: streamErr,
 			}
 		}
@@ -56,7 +56,7 @@ func (s *stream) Write(b []byte) (n int, err error) {
 		if errors.As(err, &streamErr) {
 			err = &network.StreamError{
 				ErrorCode:      0,
-				Remote:         false,
+				Remote:         streamErr.Remote,
 				TransportError: streamErr,
 			}
 		}
