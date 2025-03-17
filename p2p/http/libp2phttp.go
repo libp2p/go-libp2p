@@ -25,7 +25,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	gostream "github.com/libp2p/go-libp2p/p2p/net/gostream"
 	ma "github.com/multiformats/go-multiaddr"
@@ -45,6 +44,10 @@ const LegacyWellKnownProtocols = "/.well-known/libp2p"
 
 const peerMetadataLimit = 8 << 10 // 8KB
 const peerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
+
+// DefaultNewStreamTimeout is the default value for new stream establishing timeout.
+// It is the same value as basic_host.DefaultNegotiationTimeout
+var DefaultNewStreamTimeout = 10 * time.Second
 
 type clientPeerIDContextKey struct{}
 type serverPeerIDContextKey struct{}
@@ -497,12 +500,12 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		})
 	}
 
-	// If r.Context() timeout is greater than bhost.DefaultNegotiationTimeout
-	// use bhost.DefaultNegotiationTimeout for new stream negotiation.
+	// If r.Context() timeout is greater than DefaultNewStreamTimeout
+	// use DefaultNewStreamTimeout for new stream negotiation.
 	newStreamCtx := r.Context()
-	if deadline, ok := newStreamCtx.Deadline(); !ok || deadline.After(time.Now().Add(bhost.DefaultNegotiationTimeout)) {
+	if deadline, ok := newStreamCtx.Deadline(); !ok || deadline.After(time.Now().Add(DefaultNewStreamTimeout)) {
 		var cancel context.CancelFunc
-		newStreamCtx, cancel = context.WithTimeout(context.Background(), bhost.DefaultNegotiationTimeout)
+		newStreamCtx, cancel = context.WithTimeout(context.Background(), DefaultNewStreamTimeout)
 		defer cancel()
 	}
 
