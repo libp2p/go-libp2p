@@ -13,18 +13,6 @@ const (
 	reset webtransport.StreamErrorCode = 0
 )
 
-type StreamResetError struct {
-	underlying webtransport.StreamError
-}
-
-func (e *StreamResetError) Error() string {
-	return "stream reset: " + e.underlying.Error()
-}
-
-func (e *StreamResetError) Unwrap() []error {
-	return []error{network.ErrReset, &e.underlying}
-}
-
 type webtransportStream struct {
 	webtransport.Stream
 	wsess *webtransport.Session
@@ -51,7 +39,11 @@ func (s *stream) Read(b []byte) (n int, err error) {
 	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
 		var streamErr *webtransport.StreamError
 		if errors.As(err, &streamErr) {
-			err = &StreamResetError{underlying: *streamErr}
+			err = &network.StreamError{
+				ErrorCode:      0,
+				Remote:         true,
+				TransportError: streamErr,
+			}
 		}
 	}
 	return n, err
@@ -62,7 +54,11 @@ func (s *stream) Write(b []byte) (n int, err error) {
 	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
 		var streamErr *webtransport.StreamError
 		if errors.As(err, &streamErr) {
-			err = &StreamResetError{underlying: *streamErr}
+			err = &network.StreamError{
+				ErrorCode:      0,
+				Remote:         false,
+				TransportError: streamErr,
+			}
 		}
 	}
 	return n, err
