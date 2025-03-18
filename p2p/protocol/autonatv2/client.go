@@ -106,7 +106,6 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 
 	switch {
 	case msg.GetDialResponse() != nil:
-		break
 	// provide dial data if appropriate
 	case msg.GetDialDataRequest() != nil:
 		if err := ac.validateDialDataRequest(reqs, &msg); err != nil {
