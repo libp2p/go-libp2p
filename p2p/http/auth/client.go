@@ -54,7 +54,6 @@ func (a *ClientPeerIDAuth) AuthenticateWithRoundTripper(rt http.RoundTripper, re
 			return peer, resp, nil
 		case errors.Is(err, errTokenRejected):
 			// Token was rejected, we need to re-authenticate
-			break
 		default:
 			return "", nil, err
 		}
