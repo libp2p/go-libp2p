@@ -686,7 +686,6 @@ func (rf *relayFinder) refreshReservations(ctx context.Context, now time.Time) b
 			continue
 		}
 
-		p := p
 		g.Go(func() error {
 			err := rf.refreshRelayReservation(ctx, p)
 			rf.metricsTracer.ReservationRequestFinished(true, err)

@@ -93,7 +93,6 @@ func TestCertificateVerification(t *testing.T) {
 			errStr: "cert not valid",
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("rejecting invalid certificates: %s", tc.name), func(t *testing.T) {
 			err := verifyRawCerts([][]byte{tc.cert.Raw}, []multihash.DecodedMultihash{sha256Multihash(t, tc.cert.Raw)})
 			require.Error(t, err)
@@ -125,7 +124,6 @@ func TestCertificateVerification(t *testing.T) {
 			errStr: "cert hash not found",
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("rejecting invalid certificates: %s", tc.name), func(t *testing.T) {
 			err := verifyRawCerts(tc.certs, tc.hashes)
 			require.Error(t, err)

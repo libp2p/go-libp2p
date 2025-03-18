@@ -54,8 +54,6 @@ func TestSecurityNegotiation(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, tc := range testcases {
-		tc := tc
-
 		t.Run(tc.Name, func(t *testing.T) {
 			server, err := libp2p.New(
 				libp2p.Identity(serverID),
