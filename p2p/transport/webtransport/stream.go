@@ -36,13 +36,13 @@ var _ network.MuxedStream = &stream{}
 
 func (s *stream) Read(b []byte) (n int, err error) {
 	n, err = s.Stream.Read(b)
-	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
+	if err != nil {
 		var streamErr *webtransport.StreamError
 		if errors.As(err, &streamErr) {
 			err = &network.StreamError{
 				ErrorCode:      0,
 				Remote:         streamErr.Remote,
-				TransportError: streamErr,
+				TransportError: err,
 			}
 		}
 	}
@@ -51,13 +51,13 @@ func (s *stream) Read(b []byte) (n int, err error) {
 
 func (s *stream) Write(b []byte) (n int, err error) {
 	n, err = s.Stream.Write(b)
-	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
+	if err != nil {
 		var streamErr *webtransport.StreamError
 		if errors.As(err, &streamErr) {
 			err = &network.StreamError{
 				ErrorCode:      0,
 				Remote:         streamErr.Remote,
-				TransportError: streamErr,
+				TransportError: err,
 			}
 		}
 	}
