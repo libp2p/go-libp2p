@@ -206,9 +206,9 @@ func isProxyTrusted(trustedProxies []netip.Prefix, remoteAddr net.Addr) bool {
 }
 
 // extractRemoteAddrForProxy extract real ip if the given IP address belongs to a trusted proxy
-func extractRemoteAddrForProxy(trustedProxies []netip.Prefix, realIpExtractor RemoteAddrExtractor, remoteAddr net.Addr, header http.Header) string {
+func extractRemoteAddrForProxy(trustedProxies []netip.Prefix, realAddrExtractor RemoteAddrExtractor, remoteAddr net.Addr, header http.Header) string {
 	if isProxyTrusted(trustedProxies, remoteAddr) {
-		return realIpExtractor(remoteAddr, header)
+		return realAddrExtractor(remoteAddr, header)
 	}
 	return remoteAddr.String()
 }
