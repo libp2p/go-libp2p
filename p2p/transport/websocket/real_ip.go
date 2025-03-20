@@ -8,7 +8,8 @@ import (
 	"strings"
 )
 
-func GetRealIP(addr net.Addr, h http.Header) string {
+// DefaultGetRealAddr implements RFC 7239 Forwarded header parsing
+func DefaultGetRealAddr(addr net.Addr, h http.Header) string {
 	remoteAddr := addr.String()
 	remoteIp := GetRealIPFromHeader(h)
 	if remoteIp != nil {
@@ -23,44 +24,57 @@ func GetRealIP(addr net.Addr, h http.Header) string {
 		}
 	}
 	return remoteAddr
+
 }
 
 // GetRealIPFromHeader extracts the client's real IP address from HTTP request header.
-// It checks various proxy header to find the actual IP.
+// implements RFC 7239 Forwarded header parsing
 func GetRealIPFromHeader(h http.Header) net.IP {
-	// Check X-Real-IP header (used by Nginx and others)
-	ipStr := h.Get("X-Real-IP")
-	if ip := validateIp(ipStr); ip != nil {
-		return ip
-	}
-
-	// Check X-Forwarded-For header (used by most proxies)
-	// Format: client, proxy1, proxy2, ...
-	ipStr = h.Get("X-Forwarded-For")
-	if ipStr != "" {
-		// Extract the first IP from the comma-separated list
-		ips := strings.Split(ipStr, ",")
-		for _, ipItem := range ips {
-			ipItem = strings.TrimSpace(ipItem)
-			if ip := validateIp(ipItem); ip != nil {
+	// RFC 7239 Forwarded header
+	if forwarded := h.Get("Forwarded"); forwarded != "" {
+		if host := parseForwardedHeader(forwarded); host != "" {
+			if ip := validateIp(host); ip != nil {
 				return ip
 			}
 		}
 	}
 
-	// Check CF-Connecting-IP header (used by Cloudflare)
-	ipStr = h.Get("CF-Connecting-IP")
-	if ip := validateIp(ipStr); ip != nil {
-		return ip
-	}
-
-	// Check True-Client-IP header (used by Akamai, Cloudflare, etc.)
-	ipStr = h.Get("True-Client-IP")
-	if ip := validateIp(ipStr); ip != nil {
-		return ip
+	// Fallback to X-Forwarded-For
+	if xff := h.Get("X-Forwarded-For"); xff != "" {
+		if host := parseXForwardedFor(xff); host != "" {
+			if ip := validateIp(host); ip != nil {
+				return ip
+			}
+		}
 	}
 
 	return nil
+}
+
+func parseForwardedHeader(value string) string {
+	parts := strings.Split(value, ",")
+	if len(parts) == 0 {
+		return ""
+	}
+
+	pair := strings.TrimSpace(parts[0])
+	for _, elem := range strings.Split(pair, ";") {
+		if kv := strings.Split(strings.TrimSpace(elem), "="); len(kv) == 2 {
+			if strings.ToLower(kv[0]) == "for" {
+				host := strings.Trim(kv[1], "\"[]")
+				return host
+			}
+		}
+	}
+	return ""
+}
+
+func parseXForwardedFor(value string) string {
+	ips := strings.Split(value, ",")
+	if len(ips) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(ips[0])
 }
 
 // validateIp checks if a string is a valid IP address

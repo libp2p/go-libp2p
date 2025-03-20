@@ -4,10 +4,9 @@ package websocket
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	"net/http"
-	"strings"
+	"net/netip"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -83,41 +82,24 @@ func WithTLSConfig(conf *tls.Config) Option {
 	}
 }
 
+type RemoteAddrExtractor func(remoteAddr net.Addr, header http.Header) string
+
 // WithAllowForwardedHeader configures whether to allow the usage of
-// Forwarded and X-Forwarded-For headers to determine the real client
+// Forwarded and X-Forwarded-For header to determine the real client
 // IP address when behind a proxy or load balancer.
 // configurable a list of trusted proxy IP addresses or CIDR ranges.
-// Only when a connection is from a trusted proxy, Forwarded headers will be used.
-// If trustedProxies is empty, everything is trusted.
-func WithAllowForwardedHeader(trustedProxies []string) Option {
+// Only when a connection is from a trusted proxy, Forwarded header will be used.
+// If remoteAddrExtractor is null, the RFC 7239 extractor is used by default.
+func WithAllowForwardedHeader(trustedProxies []netip.Prefix, remoteAddrExtractor RemoteAddrExtractor) Option {
 	return func(t *WebsocketTransport) error {
-		t.allowForwardedHeader = true
-
-		cidrs := make([]*net.IPNet, 0, len(trustedProxies))
-		for _, proxy := range trustedProxies {
-			if strings.Contains(proxy, "/") {
-				_, cidr, err := net.ParseCIDR(proxy)
-				if err != nil {
-					return fmt.Errorf("invalid CIDR range %q: %v", proxy, err)
-				}
-				cidrs = append(cidrs, cidr)
-			} else {
-				ip := net.ParseIP(proxy)
-				if ip == nil {
-					return fmt.Errorf("invalid IP address %q", proxy)
-				}
-				// Convert IP to CIDR with full mask
-				bits := 32
-				if ip.To4() == nil { // IPv6
-					bits = 128
-				}
-				cidrs = append(cidrs, &net.IPNet{
-					IP:   ip,
-					Mask: net.CIDRMask(bits, bits),
-				})
-			}
+		if remoteAddrExtractor == nil {
+			t.remoteAddrExtractor = DefaultGetRealAddr
+		} else {
+			t.remoteAddrExtractor = remoteAddrExtractor
 		}
-		t.trustedProxies = cidrs
+
+		t.trustedProxies = trustedProxies
+
 		return nil
 	}
 }
@@ -130,9 +112,9 @@ type WebsocketTransport struct {
 	tlsClientConf *tls.Config
 	tlsConf       *tls.Config
 
-	sharedTcp            *tcpreuse.ConnMgr
-	allowForwardedHeader bool
-	trustedProxies       []*net.IPNet
+	sharedTcp           *tcpreuse.ConnMgr
+	trustedProxies      []netip.Prefix
+	remoteAddrExtractor RemoteAddrExtractor
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -292,7 +274,7 @@ func (t *WebsocketTransport) maListen(a ma.Multiaddr) (manet.Listener, error) {
 	if t.tlsConf != nil {
 		tlsConf = t.tlsConf.Clone()
 	}
-	l, err := newListener(a, tlsConf, t.sharedTcp, t.allowForwardedHeader, t.trustedProxies)
+	l, err := newListener(a, tlsConf, t.sharedTcp, t.trustedProxies, t.remoteAddrExtractor)
 	if err != nil {
 		return nil, err
 	}

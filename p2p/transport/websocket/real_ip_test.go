@@ -1,133 +1,63 @@
 package websocket
 
 import (
+	"github.com/stretchr/testify/require"
 	"net"
 	"net/http"
 	"testing"
 )
 
-func TestGetRealIP(t *testing.T) {
+func TestDefaultGetRealAddr(t *testing.T) {
 	tests := []struct {
-		name     string
-		addr     net.Addr
-		header   map[string]string
-		expected string
+		name       string
+		remoteAddr string
+		header     http.Header
+		want       string
 	}{
 		{
-			name:     "No header, simple IP",
-			addr:     &net.TCPAddr{IP: net.IPv4(192, 168, 1, 1), Port: 8080},
-			header:   map[string]string{},
-			expected: "192.168.1.1:8080",
+			name:       "basic remote addr without header",
+			remoteAddr: "192.168.1.1:1234",
+			header:     http.Header{},
+			want:       "192.168.1.1:1234",
 		},
 		{
-			name: "With X-Real-IP header",
-			addr: &net.TCPAddr{IP: net.IPv4(192, 168, 1, 1), Port: 8080},
-			header: map[string]string{
-				"X-Real-IP": "203.0.113.1",
+			name:       "with Forwarded header",
+			remoteAddr: "10.0.0.1:1234",
+			header: http.Header{
+				"Forwarded": []string{"for=192.168.1.2"},
 			},
-			expected: "203.0.113.1:8080",
+			want: "192.168.1.2:1234",
+		},
+		{
+			name:       "with Forwarded header and IPv6",
+			remoteAddr: "[::1]:1234",
+			header: http.Header{
+				"Forwarded": []string{`for="[2001:db8:cafe::17]"`},
+			},
+			want: "[2001:db8:cafe::17]:1234",
+		},
+		{
+			name:       "with X-Forwarded-For header",
+			remoteAddr: "10.0.0.1:1234",
+			header: http.Header{
+				"X-Forwarded-For": []string{"192.168.1.2, 10.0.0.1"},
+			},
+			want: "192.168.1.2:1234",
+		},
+		{
+			name:       "with multiple Forwarded values",
+			remoteAddr: "10.0.0.1:1234",
+			header: http.Header{
+				"Forwarded": []string{"for=192.168.1.2;by=proxy1, for=192.168.1.3"},
+			},
+			want: "192.168.1.2:1234",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			header := http.Header{}
-			for key, value := range tt.header {
-				header.Set(key, value)
-			}
-
-			result := GetRealIP(tt.addr, header)
-			if result != tt.expected {
-				t.Errorf("GetRealIP() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestGetRealIPFromHeader(t *testing.T) {
-	tests := []struct {
-		name     string
-		header   map[string]string
-		expected string
-	}{
-		{
-			name: "X-Real-IP header",
-			header: map[string]string{
-				"X-Real-IP": "192.168.1.1",
-			},
-			expected: "192.168.1.1",
-		},
-		{
-			name: "X-Forwarded-For header single IP",
-			header: map[string]string{
-				"X-Forwarded-For": "203.0.113.1",
-			},
-			expected: "203.0.113.1",
-		},
-		{
-			name: "X-Forwarded-For header multiple IPs",
-			header: map[string]string{
-				"X-Forwarded-For": "203.0.113.1,192.168.1.1,10.0.0.1",
-			},
-			expected: "203.0.113.1",
-		},
-		{
-			name: "CF-Connecting-IP header",
-			header: map[string]string{
-				"CF-Connecting-IP": "2001:db8::1",
-			},
-			expected: "2001:db8::1",
-		},
-		{
-			name: "True-Client-IP header",
-			header: map[string]string{
-				"True-Client-IP": "192.0.2.1",
-			},
-			expected: "192.0.2.1",
-		},
-		{
-			name: "Invalid IP in X-Real-IP",
-			header: map[string]string{
-				"X-Real-IP": "invalid-ip",
-			},
-			expected: "",
-		},
-		{
-			name:     "Empty header",
-			header:   map[string]string{},
-			expected: "",
-		},
-		{
-			name: "Multiple header with priority",
-			header: map[string]string{
-				"X-Real-IP":        "192.168.1.1",
-				"X-Forwarded-For":  "203.0.113.1",
-				"CF-Connecting-IP": "2001:db8::1",
-			},
-			expected: "192.168.1.1", // X-Real-IP should take precedence
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			header := http.Header{}
-			for key, value := range tt.header {
-				header.Set(key, value)
-			}
-
-			got := GetRealIPFromHeader(header)
-
-			if tt.expected == "" {
-				if got != nil {
-					t.Errorf("GetRealIPFromHeader() = %v, want nil", got)
-				}
-				return
-			}
-
-			expected := net.ParseIP(tt.expected)
-			if !got.Equal(expected) {
-				t.Errorf("GetRealIPFromHeader() = %v, want %v", got, expected)
-			}
+			got := DefaultGetRealAddr(&fakeAddr{tt.remoteAddr}, tt.header)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -205,4 +135,16 @@ func TestIpPort(t *testing.T) {
 			}
 		})
 	}
+}
+
+type fakeAddr struct {
+	addr string
+}
+
+func (f fakeAddr) Network() string {
+	return "tcp"
+}
+
+func (f fakeAddr) String() string {
+	return f.addr
 }

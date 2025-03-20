@@ -16,7 +16,9 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -620,6 +622,89 @@ func TestSocksProxy(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+		})
+	}
+}
+
+func TestWithAllowForwardedHeader(t *testing.T) {
+	tests := []struct {
+		name           string
+		trustedProxies []netip.Prefix
+		remoteAddr     string
+		headers        http.Header
+		expectedAddr   string
+	}{
+		{
+			name: "trusted proxy with forwarded header",
+			trustedProxies: []netip.Prefix{
+				netip.MustParsePrefix("127.0.0.1/32"),
+			},
+			remoteAddr: "127.0.0.1:1234",
+			headers: http.Header{
+				"X-Forwarded-For": []string{"192.168.1.2"},
+			},
+			expectedAddr: "192.168.1.2:1234",
+		},
+		{
+			name: "untrusted proxy ignores forwarded header",
+			trustedProxies: []netip.Prefix{
+				netip.MustParsePrefix("10.0.0.0/8"),
+			},
+			remoteAddr: "192.168.1.1:1234",
+			headers: http.Header{
+				"X-Forwarded-For": []string{"192.168.1.2"},
+			},
+			expectedAddr: "192.168.1.1:1234",
+		},
+		{
+			name:           "no trusted proxies configured",
+			trustedProxies: []netip.Prefix{},
+			remoteAddr:     "192.168.1.1:1234",
+			headers: http.Header{
+				"X-Forwarded-For": []string{"192.168.1.2"},
+			},
+			expectedAddr: "192.168.1.1:1234",
+		},
+		{
+			name:           "no apply configured",
+			trustedProxies: nil,
+			remoteAddr:     "192.168.1.1:1234",
+			headers: http.Header{
+				"X-Forwarded-For": []string{"192.168.1.2"},
+			},
+			expectedAddr: "192.168.1.1:1234",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := &WebsocketTransport{}
+
+			// Configure transport with test proxy settings
+			if tt.trustedProxies != nil {
+				err := WithAllowForwardedHeader(tt.trustedProxies, nil)(transport)
+				require.NoError(t, err)
+			}
+
+			// Create listener
+			l, err := newListener(ma.StringCast("/dns/localhost/tcp/0/ws"), nil, nil, tt.trustedProxies, transport.remoteAddrExtractor)
+			require.NoError(t, err)
+			_ = l.nl.Close()
+
+			// Test remote IP extraction
+			host, portStr, _ := net.SplitHostPort(tt.remoteAddr)
+			port, _ := strconv.ParseInt(portStr, 10, 16)
+			remoteAddr := &net.TCPAddr{
+				IP:   net.ParseIP(host),
+				Port: int(port),
+			}
+
+			extractedAddr := extractRemoteAddrForProxy(tt.trustedProxies,
+				DefaultGetRealAddr,
+				remoteAddr,
+				tt.headers)
+
+			require.Equal(t, tt.expectedAddr, extractedAddr)
 		})
 	}
 }
