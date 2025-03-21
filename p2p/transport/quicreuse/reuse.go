@@ -303,6 +303,10 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 					return tr, nil
 				}
 			}
+			// We don't have a transport with the association, use any one
+			for _, tr := range trs {
+				return tr, nil
+			}
 		}
 	}
 
@@ -312,6 +316,10 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 		if tr.hasAssociation(association) {
 			return tr, nil
 		}
+	}
+	// We don't have a transport with the association, use any one
+	for _, tr := range r.globalListeners {
+		return tr, nil
 	}
 
 	// Use a transport we've previously dialed from
@@ -358,6 +366,33 @@ func (r *reuse) AddTransport(tr *refcountedTransport, laddr *net.UDPAddr) error 
 	}
 	r.globalDialers[laddr.Port] = tr
 	return nil
+}
+
+func (r *reuse) AssertTransportExists(tr refCountedQuicTransport) error {
+	t, ok := tr.(*refcountedTransport)
+	if !ok {
+		return fmt.Errorf("invalid transport type: expected: *refcountedTransport, got: %T", tr)
+	}
+	laddr := t.LocalAddr().(*net.UDPAddr)
+	if laddr.IP.IsUnspecified() {
+		if lt, ok := r.globalListeners[laddr.Port]; ok {
+			if lt == t {
+				return nil
+			}
+			return errors.New("two global listeners on the same port")
+		}
+		return errors.New("transport not found")
+	}
+	if m, ok := r.unicast[laddr.IP.String()]; ok {
+		if lt, ok := m[laddr.Port]; ok {
+			if lt == t {
+				return nil
+			}
+			return errors.New("two unicast listeners on same ip:port")
+		}
+		return errors.New("transport not found")
+	}
+	return errors.New("transport not found")
 }
 
 func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcountedTransport, error) {
