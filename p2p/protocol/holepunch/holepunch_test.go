@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -681,4 +682,99 @@ func SetLegacyBehavior(legacyBehavior bool) holepunch.Option {
 		s.SetLegacyBehavior(legacyBehavior)
 		return nil
 	}
+}
+
+// TestEndToEndSimConnectQUICReuse tests that hole punching works if we are
+// reusing the same port for QUIC and WebTransport, and when we have multiple
+// QUIC listeners on different ports.
+//
+// If this tests fails or is flaky it may be because:
+// - The quicreuse logic (and association logic) is not returning the appropriate transport for holepunching.
+// - The ordering of listeners is unexpected (remember the swarm will sort the listeners with `.ListenOrder()`).
+func TestEndToEndSimConnectQUICReuse(t *testing.T) {
+	h1tr := &mockEventTracer{}
+	h2tr := &mockEventTracer{}
+
+	router := &simconn.SimpleFirewallRouter{}
+	relay := MustNewHost(t,
+		quicSimConn(true, router),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/1.2.0.1/udp/8000/quic-v1")),
+		libp2p.DisableRelay(),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		libp2p.WithFxOption(fx.Invoke(func(h host.Host) {
+			// Setup relay service
+			_, err := relayv2.New(h)
+			require.NoError(t, err)
+		})),
+	)
+
+	// We return addrs of quic on port 8001 and circuit.
+	// This lets us listen on other ports for QUIC in order to confuse the quicreuse logic during hole punching.
+	onlyQuicOnPort8001AndCircuit := func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		return slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool {
+			_, err := a.ValueForProtocol(ma.P_CIRCUIT)
+			isCircuit := err == nil
+			if isCircuit {
+				return false
+			}
+			_, err = a.ValueForProtocol(ma.P_QUIC_V1)
+			isQuic := err == nil
+			if !isQuic {
+				return true
+			}
+			port, err := a.ValueForProtocol(ma.P_UDP)
+			if err != nil {
+				return true
+			}
+			isPort8001 := port == "8001"
+			return !isPort8001
+		})
+	}
+
+	h1 := MustNewHost(t,
+		quicSimConn(false, router),
+		libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
+		libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8001/quic-v1/webtransport")),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		libp2p.AddrsFactory(onlyQuicOnPort8001AndCircuit),
+		libp2p.ForceReachabilityPrivate(),
+	)
+	// Listen on quic *after* listening on webtransport.
+	// This is to test that the quicreuse logic is not returning the wrong transport.
+	// See: https://github.com/libp2p/go-libp2p/issues/3165#issuecomment-2700126706 for details.
+	h1.Network().Listen(
+		ma.StringCast("/ip4/2.2.0.1/udp/8001/quic-v1"),
+		ma.StringCast("/ip4/2.2.0.1/udp/9001/quic-v1"),
+	)
+
+	h2 := MustNewHost(t,
+		quicSimConn(false, router),
+		libp2p.ListenAddrs(
+			ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1/webtransport"),
+		),
+		libp2p.ResourceManager(&network.NullResourceManager{}),
+		connectToRelay(&relay),
+		libp2p.EnableHolePunching(holepunch.WithTracer(h2tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
+		libp2p.AddrsFactory(onlyQuicOnPort8001AndCircuit),
+		libp2p.ForceReachabilityPrivate(),
+	)
+	// Listen on quic after listening on webtransport.
+	h2.Network().Listen(
+		ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1"),
+		ma.StringCast("/ip4/2.2.0.2/udp/9001/quic-v1"),
+	)
+
+	defer h1.Close()
+	defer h2.Close()
+	defer relay.Close()
+
+	// Wait for holepunch service to start
+	waitForHolePunchingSvcActive(t, h1)
+	waitForHolePunchingSvcActive(t, h2)
+
+	learnAddrs(h1, h2)
+	pingAtoB(t, h1, h2)
+
+	// wait till a direct connection is complete
+	ensureDirectConn(t, h1, h2)
 }

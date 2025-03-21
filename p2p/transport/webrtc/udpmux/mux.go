@@ -271,12 +271,13 @@ func (mux *UDPMux) RemoveConnByUfrag(ufrag string) {
 
 	for _, isIPv6 := range [...]bool{true, false} {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-		if _, ok := mux.ufragMap[key]; ok {
+		if conn, ok := mux.ufragMap[key]; ok {
 			delete(mux.ufragMap, key)
 			for _, addr := range mux.ufragAddrMap[key] {
 				delete(mux.addrMap, addr.String())
 			}
 			delete(mux.ufragAddrMap, key)
+			conn.close()
 		}
 	}
 }
@@ -293,7 +294,7 @@ func (mux *UDPMux) getOrCreateConn(ufrag string, isIPv6 bool, _ *UDPMux, addr ne
 		return false, conn
 	}
 
-	conn := newMuxedConnection(mux, func() { mux.RemoveConnByUfrag(ufrag) })
+	conn := newMuxedConnection(mux, ufrag)
 	mux.ufragMap[key] = conn
 	mux.addrMap[addr.String()] = conn
 	mux.ufragAddrMap[key] = append(mux.ufragAddrMap[key], addr)

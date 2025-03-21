@@ -48,14 +48,14 @@ require (
 	github.com/multiformats/go-varint v0.0.7
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pion/datachannel v1.5.10
-	github.com/pion/ice/v4 v4.0.6
+	github.com/pion/ice/v4 v4.0.8
 	github.com/pion/logging v0.2.3
-	github.com/pion/sctp v1.8.36
+	github.com/pion/sctp v1.8.37
 	github.com/pion/stun v0.6.1
 	github.com/pion/webrtc/v4 v4.0.10
-	github.com/prometheus/client_golang v1.21.0
+	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/client_model v0.6.1
-	github.com/quic-go/quic-go v0.50.0
+	github.com/quic-go/quic-go v0.50.1
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66
 	github.com/raulk/go-watchdog v1.3.0
 	github.com/stretchr/testify v1.10.0

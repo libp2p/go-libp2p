@@ -315,3 +315,59 @@ func TestExternalTransport(t *testing.T) {
 		t.Fatal("doneWithTr not closed")
 	}
 }
+
+func TestAssociate(t *testing.T) {
+	testAssociate := func(lnAddr1, lnAddr2 ma.Multiaddr, dialAddr *net.UDPAddr) {
+		cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+		require.NoError(t, err)
+		defer cm.Close()
+
+		lp2pTLS := &tls.Config{NextProtos: []string{"libp2p"}}
+		assoc1 := "test-1"
+		ln1, err := cm.ListenQUICAndAssociate(assoc1, lnAddr1, lp2pTLS, nil)
+		require.NoError(t, err)
+		defer ln1.Close()
+		addrs := ln1.Multiaddrs()
+		require.Len(t, addrs, 1)
+
+		addr := addrs[0]
+		assoc2 := "test-2"
+		h3TLS := &tls.Config{NextProtos: []string{"h3"}}
+		ln2, err := cm.ListenQUICAndAssociate(assoc2, addr, h3TLS, nil)
+		require.NoError(t, err)
+		defer ln2.Close()
+
+		tr1, err := cm.TransportWithAssociationForDial(assoc1, "udp4", dialAddr)
+		require.NoError(t, err)
+		defer tr1.Close()
+		require.Equal(t, tr1.LocalAddr().String(), ln1.Addr().String())
+
+		tr2, err := cm.TransportWithAssociationForDial(assoc2, "udp4", dialAddr)
+		require.NoError(t, err)
+		defer tr2.Close()
+		require.Equal(t, tr2.LocalAddr().String(), ln2.Addr().String())
+
+		ln3, err := cm.ListenQUICAndAssociate(assoc1, lnAddr2, lp2pTLS, nil)
+		require.NoError(t, err)
+		defer ln3.Close()
+
+		// an unused association should also return the same transport
+		// association is only a preference for a specific transport, not an exclusion criteria
+		tr3, err := cm.TransportWithAssociationForDial("unused", "udp4", dialAddr)
+		require.NoError(t, err)
+		defer tr3.Close()
+		require.Contains(t, []string{ln2.Addr().String(), ln3.Addr().String()}, tr3.LocalAddr().String())
+	}
+
+	t.Run("MultipleUnspecifiedListeners", func(t *testing.T) {
+		testAssociate(ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
+			ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
+			&net.UDPAddr{IP: net.IPv4(1, 1, 1, 1), Port: 1})
+	})
+	t.Run("MultipleSpecificListeners", func(t *testing.T) {
+		testAssociate(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+			ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+			&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},
+		)
+	})
+}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pion/stun"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -245,4 +246,29 @@ func TestMuxedConnection(t *testing.T) {
 		require.Len(t, addrPacketCount, connCount)
 	}
 	require.Empty(t, addrUfragMap)
+}
+
+func TestRemovingUfragClosesConn(t *testing.T) {
+	c := newPacketConn(t)
+	m := NewUDPMux(c)
+	m.Start()
+	defer m.Close()
+	remoteAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1234}
+	conn, err := m.GetConn("a", remoteAddr)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	connClosed := make(chan bool)
+	go func() {
+		_, _, err := conn.ReadFrom(make([]byte, 100))
+		assert.ErrorIs(t, err, context.Canceled)
+		close(connClosed)
+	}()
+	require.NoError(t, err)
+	m.RemoveConnByUfrag("a")
+	select {
+	case <-connClosed:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("expected the connection to be closed")
+	}
 }
