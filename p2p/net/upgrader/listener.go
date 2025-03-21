@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
 
@@ -17,7 +18,7 @@ import (
 var log = logging.Logger("upgrader")
 
 type listener struct {
-	manet.Listener
+	transport.GatedMaListener
 
 	transport transport.Transport
 	upgrader  *upgrader
@@ -35,10 +36,12 @@ type listener struct {
 	cancel func()
 }
 
+var _ transport.Listener = (*listener)(nil)
+
 // Close closes the listener.
 func (l *listener) Close() error {
 	// Do this first to try to get any relevant errors.
-	err := l.Listener.Close()
+	err := l.GatedMaListener.Close()
 
 	l.cancel()
 	// Drain and wait.
@@ -61,7 +64,7 @@ func (l *listener) handleIncoming() {
 	var wg sync.WaitGroup
 	defer func() {
 		// make sure we're closed
-		l.Listener.Close()
+		l.GatedMaListener.Close()
 		if l.err == nil {
 			l.err = fmt.Errorf("listener closed")
 		}
@@ -72,7 +75,7 @@ func (l *listener) handleIncoming() {
 
 	var catcher tec.TempErrCatcher
 	for l.ctx.Err() == nil {
-		maconn, err := l.Listener.Accept()
+		maconn, connScope, err := l.GatedMaListener.Accept()
 		if err != nil {
 			// Note: function may pause the accept loop.
 			if catcher.IsTemporary(err) {
@@ -84,33 +87,10 @@ func (l *listener) handleIncoming() {
 		}
 		catcher.Reset()
 
-		// Check if we already have a connection scope. See the comment in tcpreuse/listener.go for an explanation.
-		var connScope network.ConnManagementScope
-		if sc, ok := maconn.(interface {
-			Scope() network.ConnManagementScope
-		}); ok {
-			connScope = sc.Scope()
-		}
 		if connScope == nil {
-			// gate the connection if applicable
-			if l.upgrader.connGater != nil && !l.upgrader.connGater.InterceptAccept(maconn) {
-				log.Debugf("gater blocked incoming connection on local addr %s from %s",
-					maconn.LocalMultiaddr(), maconn.RemoteMultiaddr())
-				if err := maconn.Close(); err != nil {
-					log.Warnf("failed to close incoming connection rejected by gater: %s", err)
-				}
-				continue
-			}
-
-			var err error
-			connScope, err = l.rcmgr.OpenConnection(network.DirInbound, true, maconn.RemoteMultiaddr())
-			if err != nil {
-				log.Debugw("resource manager blocked accept of new connection", "error", err)
-				if err := maconn.Close(); err != nil {
-					log.Warnf("failed to open incoming connection. Rejected by resource manager: %s", err)
-				}
-				continue
-			}
+			log.Errorf("BUG: got nil connScope for incoming connection from %s", maconn.RemoteMultiaddr())
+			maconn.Close()
+			continue
 		}
 
 		// The go routine below calls Release when the context is
@@ -154,14 +134,10 @@ func (l *listener) handleIncoming() {
 			select {
 			case l.incoming <- conn:
 			case <-ctx.Done():
+				// Listener not closed but the accept timeout expired.
 				if l.ctx.Err() == nil {
-					// Listener *not* closed but the accept timeout expired.
-					log.Warn("listener dropped connection due to slow accept")
+					log.Warnf("listener dropped connection due to slow accept. remote addr: %s peer: %s", maconn.RemoteMultiaddr(), conn.RemotePeer())
 				}
-				// Wait on the context with a timeout. This way,
-				// if we stop accepting connections for some reason,
-				// we'll eventually close all the open ones
-				// instead of hanging onto them.
 				conn.CloseWithError(network.ConnRateLimited)
 			}
 		}()
@@ -189,4 +165,38 @@ func (l *listener) String() string {
 	return fmt.Sprintf("<stream.Listener %s>", l.Multiaddr())
 }
 
-var _ transport.Listener = (*listener)(nil)
+type gatedMaListener struct {
+	manet.Listener
+	rcmgr     network.ResourceManager
+	connGater connmgr.ConnectionGater
+}
+
+var _ transport.GatedMaListener = &gatedMaListener{}
+
+func (l *gatedMaListener) Accept() (manet.Conn, network.ConnManagementScope, error) {
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, nil, err
+		}
+		// gate the connection if applicable
+		if l.connGater != nil && !l.connGater.InterceptAccept(conn) {
+			log.Debugf("gater blocked incoming connection on local addr %s from %s",
+				conn.LocalMultiaddr(), conn.RemoteMultiaddr())
+			if err := conn.Close(); err != nil {
+				log.Warnf("failed to close incoming connection rejected by gater: %s", err)
+			}
+			continue
+		}
+
+		connScope, err := l.rcmgr.OpenConnection(network.DirInbound, true, conn.RemoteMultiaddr())
+		if err != nil {
+			log.Debugw("resource manager blocked accept of new connection", "error", err)
+			if err := conn.Close(); err != nil {
+				log.Warnf("failed to open incoming connection. Rejected by resource manager: %s", err)
+			}
+			continue
+		}
+		return conn, connScope, nil
+	}
+}

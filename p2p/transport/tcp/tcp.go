@@ -41,7 +41,7 @@ var ReuseportIsAvailable = tcpreuse.ReuseportIsAvailable
 func tryKeepAlive(conn net.Conn, keepAlive bool) {
 	keepAliveConn, ok := conn.(canKeepAlive)
 	if !ok {
-		log.Errorf("Can't set TCP keepalives.")
+		log.Errorf("can't set TCP keepalives. net.Conn of type %T doesn't support SetKeepAlive", conn)
 		return
 	}
 	if err := keepAliveConn.SetKeepAlive(keepAlive); err != nil {
@@ -76,23 +76,23 @@ func tryLinger(conn net.Conn, sec int) {
 	}
 }
 
-type tcpListener struct {
-	manet.Listener
+type tcpGatedMaListener struct {
+	transport.GatedMaListener
 	sec int
 }
 
-func (ll *tcpListener) Accept() (manet.Conn, error) {
-	c, err := ll.Listener.Accept()
+func (ll *tcpGatedMaListener) Accept() (manet.Conn, network.ConnManagementScope, error) {
+	c, scope, err := ll.GatedMaListener.Accept()
 	if err != nil {
-		return nil, err
+		if scope != nil {
+			log.Errorf("BUG: got non-nil scope but also an error: %s", err)
+			scope.Done()
+		}
+		return nil, nil, err
 	}
 	tryLinger(c, ll.sec)
 	tryKeepAlive(c, true)
-	// We're not calling OpenConnection in the resource manager here,
-	// since the manet.Conn doesn't allow us to save the scope.
-	// It's the caller's (usually the p2p/net/upgrader) responsibility
-	// to call the resource manager.
-	return c, nil
+	return c, scope, nil
 }
 
 type Option func(*TcpTransport) error
@@ -316,22 +316,26 @@ func (t *TcpTransport) unsharedMAListen(laddr ma.Multiaddr) (manet.Listener, err
 
 // Listen listens on the given multiaddr.
 func (t *TcpTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
-	var list manet.Listener
+	var list transport.GatedMaListener
 	var err error
-
-	if t.sharedTcp == nil {
-		list, err = t.unsharedMAListen(laddr)
-	} else {
+	if t.sharedTcp != nil {
 		list, err = t.sharedTcp.DemultiplexedListen(laddr, tcpreuse.DemultiplexedConnType_MultistreamSelect)
-	}
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		mal, err := t.unsharedMAListen(laddr)
+		if err != nil {
+			return nil, err
+		}
+		list = t.upgrader.GateMaListener(mal)
 	}
 
 	if t.enableMetrics {
-		list = newTracingListener(&tcpListener{list, 0}, t.metricsCollector)
+		// TODO: Fix this: The tcpListener wrapping should happen on both enableMetrics and disabledMetrics path
+		list = newTracingListener(&tcpGatedMaListener{list, 0}, t.metricsCollector)
 	}
-	return t.upgrader.UpgradeListener(t, list), nil
+	return t.upgrader.UpgradeGatedMaListener(t, list), nil
 }
 
 // Protocols returns the list of terminal protocols this transport can dial.
