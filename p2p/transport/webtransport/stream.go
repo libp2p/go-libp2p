@@ -1,7 +1,6 @@
 package libp2pwebtransport
 
 import (
-	"errors"
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -36,18 +35,12 @@ var _ network.MuxedStream = &stream{}
 
 func (s *stream) Read(b []byte) (n int, err error) {
 	n, err = s.Stream.Read(b)
-	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
-		err = network.ErrReset
-	}
-	return n, err
+	return n, parseStreamError(err)
 }
 
 func (s *stream) Write(b []byte) (n int, err error) {
 	n, err = s.Stream.Write(b)
-	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
-		err = network.ErrReset
-	}
-	return n, err
+	return n, parseStreamError(err)
 }
 
 func (s *stream) Reset() error {
