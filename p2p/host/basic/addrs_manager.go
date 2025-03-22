@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/libp2p/go-netroute"
@@ -27,24 +28,38 @@ type observedAddrsManager interface {
 	ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr
 }
 
+type hostAddrs struct {
+	addrs            []ma.Multiaddr
+	localAddrs       []ma.Multiaddr
+	reachableAddrs   []ma.Multiaddr
+	unreachableAddrs []ma.Multiaddr
+}
+
 type addrsManager struct {
-	eventbus              event.Bus
-	natManager            NATManager
-	addrsFactory          AddrsFactory
-	listenAddrs           func() []ma.Multiaddr
-	transportForListening func(ma.Multiaddr) transport.Transport
-	observedAddrsManager  observedAddrsManager
-	interfaceAddrs        *interfaceAddrsCache
+	bus                      event.Bus
+	natManager               NATManager
+	addrsFactory             AddrsFactory
+	listenAddrs              func() []ma.Multiaddr
+	transportForListening    func(ma.Multiaddr) transport.Transport
+	observedAddrsManager     observedAddrsManager
+	interfaceAddrs           *interfaceAddrsCache
+	addrsReachabilityTracker *addrsReachabilityTracker
+
+	// addrsUpdatedChan is notified when addrs change. This is provided by the caller.
+	addrsUpdatedChan chan struct{}
 
 	// triggerAddrsUpdateChan is used to trigger an addresses update.
 	triggerAddrsUpdateChan chan struct{}
-	// addrsUpdatedChan is notified when addresses change.
-	addrsUpdatedChan chan struct{}
+	// triggerReachabilityUpdate is notified when reachable addrs are updated.
+	triggerReachabilityUpdate chan struct{}
+	// triggerHostReachabilityUpdate is notified when host's reachability from autonat v1 changes.
+	triggerHostReachabilityUpdate chan struct{}
+
 	hostReachability atomic.Pointer[network.Reachability]
 
-	addrsMx    sync.RWMutex // protects fields below
-	localAddrs []ma.Multiaddr
-	relayAddrs []ma.Multiaddr
+	addrsMx      sync.RWMutex // protects fields below
+	currentAddrs hostAddrs
+	relayAddrs   []ma.Multiaddr
 
 	wg        sync.WaitGroup
 	ctx       context.Context
@@ -52,35 +67,54 @@ type addrsManager struct {
 }
 
 func newAddrsManager(
-	eventbus event.Bus,
+	bus event.Bus,
 	natmgr NATManager,
 	addrsFactory AddrsFactory,
 	listenAddrs func() []ma.Multiaddr,
 	transportForListening func(ma.Multiaddr) transport.Transport,
 	observedAddrsManager observedAddrsManager,
 	addrsUpdatedChan chan struct{},
+	client autonatv2Client,
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	as := &addrsManager{
-		eventbus:               eventbus,
-		listenAddrs:            listenAddrs,
-		transportForListening:  transportForListening,
-		observedAddrsManager:   observedAddrsManager,
-		natManager:             natmgr,
-		addrsFactory:           addrsFactory,
-		triggerAddrsUpdateChan: make(chan struct{}, 1),
-		addrsUpdatedChan:       addrsUpdatedChan,
-		interfaceAddrs:         &interfaceAddrsCache{},
-		ctx:                    ctx,
-		ctxCancel:              cancel,
+		bus:                           bus,
+		listenAddrs:                   listenAddrs,
+		transportForListening:         transportForListening,
+		observedAddrsManager:          observedAddrsManager,
+		natManager:                    natmgr,
+		addrsFactory:                  addrsFactory,
+		triggerAddrsUpdateChan:        make(chan struct{}, 1),
+		triggerHostReachabilityUpdate: make(chan struct{}, 1),
+		triggerReachabilityUpdate:     make(chan struct{}, 1),
+		addrsUpdatedChan:              addrsUpdatedChan,
+		interfaceAddrs:                &interfaceAddrsCache{},
+		ctx:                           ctx,
+		ctxCancel:                     cancel,
 	}
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
+
+	if client != nil {
+		as.addrsReachabilityTracker = newAddrsReachabilityTracker(client, as.triggerReachabilityUpdate, nil)
+	}
 	return as, nil
 }
 
 func (a *addrsManager) Start() error {
-	return a.background()
+	// TODO: add Start method to NATMgr
+	if a.addrsReachabilityTracker != nil {
+		err := a.addrsReachabilityTracker.Start()
+		if err != nil {
+			return fmt.Errorf("error starting addrs reachability tracker: %s", err)
+		}
+	}
+
+	err := a.background()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *addrsManager) Close() {
@@ -91,10 +125,18 @@ func (a *addrsManager) Close() {
 			log.Warnf("error closing natmgr: %s", err)
 		}
 	}
+	if a.addrsReachabilityTracker != nil {
+		err := a.addrsReachabilityTracker.Close()
+		if err != nil {
+			log.Warnf("error closing addrs reachability tracker: %s", err)
+		}
+	}
 	a.wg.Wait()
 }
 
 func (a *addrsManager) NetNotifee() network.Notifiee {
+	// Updating addrs in sync provides the nice property that
+	// host.Addrs() just after host.Network().Listen(x) will return x
 	return &network.NotifyBundle{
 		ListenF:      func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
 		ListenCloseF: func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
@@ -102,9 +144,7 @@ func (a *addrsManager) NetNotifee() network.Notifiee {
 }
 
 func (a *addrsManager) triggerAddrsUpdate() {
-	// This is ugly, we update here *and* in the background loop, but this ensures the nice property
-	// that host.Addrs after host.Network().Listen(...) will return the recently added listen address.
-	a.updateLocalAddrs()
+	a.updateAddrs()
 	select {
 	case a.triggerAddrsUpdateChan <- struct{}{}:
 	default:
@@ -112,19 +152,21 @@ func (a *addrsManager) triggerAddrsUpdate() {
 }
 
 func (a *addrsManager) background() error {
-	autoRelayAddrsSub, err := a.eventbus.Subscribe(new(event.EvtAutoRelayAddrsUpdated))
+	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("addrs-manager"))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
 	}
 
-	autonatReachabilitySub, err := a.eventbus.Subscribe(new(event.EvtLocalReachabilityChanged))
+	autonatReachabilitySub, err := a.bus.Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("addrs-manager"))
 	if err != nil {
 		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
 	}
 
-	// ensure that we have the correct address after returning from Start()
-	// update local addrs
-	a.updateLocalAddrs()
+	emitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
+	if err != nil {
+		return fmt.Errorf("error creating host reachable addrs emitter: %w", err)
+	}
+
 	// update relay addrs in case we're private
 	select {
 	case e := <-autoRelayAddrsSub.Out():
@@ -133,6 +175,7 @@ func (a *addrsManager) background() error {
 		}
 	default:
 	}
+
 	select {
 	case e := <-autonatReachabilitySub.Out():
 		if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
@@ -140,6 +183,7 @@ func (a *addrsManager) background() error {
 		}
 	default:
 	}
+	a.updateAddrs()
 
 	a.wg.Add(1)
 	go func() {
@@ -159,18 +203,11 @@ func (a *addrsManager) background() error {
 
 		ticker := time.NewTicker(addrChangeTickrInterval)
 		defer ticker.Stop()
-		var prev []ma.Multiaddr
+		var previousAddrs hostAddrs
 		for {
-			a.updateLocalAddrs()
-			curr := a.Addrs()
-			if a.areAddrsDifferent(prev, curr) {
-				log.Debugf("host addresses updated: %s", curr)
-				select {
-				case a.addrsUpdatedChan <- struct{}{}:
-				default:
-				}
-			}
-			prev = curr
+			currAddrs := a.updateAddrs()
+			a.notifyAddrsChanged(emitter, previousAddrs, currAddrs)
+			previousAddrs = currAddrs
 			select {
 			case <-ticker.C:
 			case <-a.triggerAddrsUpdateChan:
@@ -178,6 +215,7 @@ func (a *addrsManager) background() error {
 				if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
 					a.updateRelayAddrs(evt.RelayAddrs)
 				}
+			case <-a.triggerReachabilityUpdate:
 			case e := <-autonatReachabilitySub.Out():
 				if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
 					a.hostReachability.Store(&evt.Reachability)
@@ -190,20 +228,72 @@ func (a *addrsManager) background() error {
 	return nil
 }
 
+func (a *addrsManager) updateAddrs() hostAddrs {
+	localAddrs := a.getLocalAddrs()
+	var currReachableAddrs, currUnreachableAddrs []ma.Multiaddr
+	if a.addrsReachabilityTracker != nil {
+		currReachableAddrs, currUnreachableAddrs = a.getConfirmedAddrs(localAddrs)
+	}
+	currAddrs := a.getAddrs(slices.Clone(localAddrs), a.RelayAddrs())
+
+	// maybe we can avoid this clone?
+	a.addrsMx.Lock()
+	a.currentAddrs.addrs = append(a.currentAddrs.addrs[:0], currAddrs...)
+	a.currentAddrs.localAddrs = append(a.currentAddrs.localAddrs[:0], localAddrs...)
+	a.currentAddrs.reachableAddrs = append(a.currentAddrs.reachableAddrs[:0], currReachableAddrs...)
+	a.currentAddrs.unreachableAddrs = append(a.currentAddrs.unreachableAddrs[:0], currUnreachableAddrs...)
+	a.addrsMx.Unlock()
+
+	return hostAddrs{
+		localAddrs:       localAddrs,
+		addrs:            currAddrs,
+		reachableAddrs:   currReachableAddrs,
+		unreachableAddrs: currUnreachableAddrs,
+	}
+}
+
+func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, current hostAddrs) {
+	if areAddrsDifferent(previous.localAddrs, current.localAddrs) {
+		log.Debugf("host addresses updated: %s", current.localAddrs)
+		if a.addrsReachabilityTracker != nil {
+			a.addrsReachabilityTracker.UpdateAddrs(current.localAddrs)
+		}
+	}
+	if areAddrsDifferent(previous.addrs, current.addrs) {
+		select {
+		case a.addrsUpdatedChan <- struct{}{}:
+		default:
+		}
+	}
+
+	if areAddrsDifferent(previous.reachableAddrs, current.reachableAddrs) ||
+		areAddrsDifferent(previous.unreachableAddrs, current.unreachableAddrs) {
+		if err := emitter.Emit(event.EvtHostReachableAddrsChanged{
+			Reachable:   slices.Clone(current.reachableAddrs),
+			Unreachable: slices.Clone(current.unreachableAddrs),
+		}); err != nil {
+			log.Errorf("error sending host reachable addrs changed event: %s", err)
+		}
+	}
+}
+
 // Addrs returns the node's dialable addresses both public and private.
 // If autorelay is enabled and node reachability is private, it returns
 // the node's relay addresses and private network addresses.
 func (a *addrsManager) Addrs() []ma.Multiaddr {
-	addrs := a.DirectAddrs()
+	return a.getAddrs(a.DirectAddrs(), a.RelayAddrs())
+}
+
+// mutates localAddrs
+func (a *addrsManager) getAddrs(localAddrs []ma.Multiaddr, relayAddrs []ma.Multiaddr) []ma.Multiaddr {
+	addrs := localAddrs
 	rch := a.hostReachability.Load()
 	if rch != nil && *rch == network.ReachabilityPrivate {
-		a.addrsMx.RLock()
 		// Delete public addresses if the node's reachability is private, and we have relay addresses
-		if len(a.relayAddrs) > 0 {
+		if len(relayAddrs) > 0 {
 			addrs = slices.DeleteFunc(addrs, manet.IsPublicAddr)
-			addrs = append(addrs, a.relayAddrs...)
+			addrs = append(addrs, relayAddrs...)
 		}
-		a.addrsMx.RUnlock()
 	}
 	// Make a copy. Consumers can modify the slice elements
 	addrs = slices.Clone(a.addrsFactory(addrs))
@@ -212,8 +302,6 @@ func (a *addrsManager) Addrs() []ma.Multiaddr {
 	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 	return addrs
 }
-
-// HolePunchAddrs returns the node's public direct listen addresses for hole punching.
 func (a *addrsManager) HolePunchAddrs() []ma.Multiaddr {
 	addrs := a.DirectAddrs()
 	addrs = slices.Clone(a.addrsFactory(addrs))
@@ -230,7 +318,20 @@ func (a *addrsManager) HolePunchAddrs() []ma.Multiaddr {
 func (a *addrsManager) DirectAddrs() []ma.Multiaddr {
 	a.addrsMx.RLock()
 	defer a.addrsMx.RUnlock()
-	return slices.Clone(a.localAddrs)
+	return slices.Clone(a.currentAddrs.localAddrs)
+}
+
+// ReachableAddrs returns all addresses of the host that are reachable from the internet
+func (a *addrsManager) ReachableAddrs() []ma.Multiaddr {
+	a.addrsMx.RLock()
+	defer a.addrsMx.RUnlock()
+	return slices.Clone(a.currentAddrs.reachableAddrs)
+}
+
+func (a *addrsManager) RelayAddrs() []ma.Multiaddr {
+	a.addrsMx.RLock()
+	defer a.addrsMx.RUnlock()
+	return slices.Clone(a.relayAddrs)
 }
 
 func (a *addrsManager) updateRelayAddrs(addrs []ma.Multiaddr) {
@@ -239,16 +340,20 @@ func (a *addrsManager) updateRelayAddrs(addrs []ma.Multiaddr) {
 	a.relayAddrs = append(a.relayAddrs[:0], addrs...)
 }
 
-var p2pCircuitAddr = ma.StringCast("/p2p-circuit")
-
-func (a *addrsManager) updateLocalAddrs() {
-	localAddrs := a.getLocalAddrs()
-	slices.SortFunc(localAddrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
-
-	a.addrsMx.Lock()
-	a.localAddrs = localAddrs
-	a.addrsMx.Unlock()
+func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
+	reachableAddrs, unreachableAddrs = a.addrsReachabilityTracker.ConfirmedAddrs()
+	// Only include relevant host addresses as the reachability manager may have
+	// a stale view of host's addresses.
+	reachableAddrs = slices.DeleteFunc(reachableAddrs, func(a ma.Multiaddr) bool {
+		return !contains(localAddrs, a)
+	})
+	unreachableAddrs = slices.DeleteFunc(unreachableAddrs, func(a ma.Multiaddr) bool {
+		return !contains(localAddrs, a)
+	})
+	return reachableAddrs, unreachableAddrs
 }
+
+var p2pCircuitAddr = ma.StringCast("/p2p-circuit")
 
 func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	listenAddrs := a.listenAddrs()
@@ -259,8 +364,6 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	finalAddrs := make([]ma.Multiaddr, 0, 8)
 	finalAddrs = a.appendPrimaryInterfaceAddrs(finalAddrs, listenAddrs)
 	finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs, a.interfaceAddrs.All())
-
-	finalAddrs = ma.Unique(finalAddrs)
 
 	// Remove "/p2p-circuit" addresses from the list.
 	// The p2p-circuit listener reports its address as just /p2p-circuit. This is
@@ -278,6 +381,8 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	// Add certhashes for /webrtc-direct, /webtransport, etc addresses discovered
 	// using identify.
 	finalAddrs = a.addCertHashes(finalAddrs)
+	finalAddrs = ma.Unique(finalAddrs)
+	slices.SortFunc(finalAddrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 	return finalAddrs
 }
 
@@ -408,7 +513,7 @@ func (a *addrsManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
 	return addrs
 }
 
-func (a *addrsManager) areAddrsDifferent(prev, current []ma.Multiaddr) bool {
+func areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	// TODO: make the sorted nature of ma.Unique a guarantee in multiaddrs
 	prev = ma.Unique(prev)
 	current = ma.Unique(current)
@@ -419,6 +524,15 @@ func (a *addrsManager) areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	slices.SortFunc(current, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 	for i := range prev {
 		if !prev[i].Equal(current[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func contains(addrs []ma.Multiaddr, addr ma.Multiaddr) bool {
+	for _, a := range addrs {
+		if a.Equal(addr) {
 			return true
 		}
 	}
