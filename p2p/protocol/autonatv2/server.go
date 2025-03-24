@@ -522,6 +522,9 @@ func amplificationAttackPrevention(observedAddr, dialAddr ma.Multiaddr) bool {
 	if err != nil {
 		return true
 	}
-	dialIP, _ := manet.ToIP(dialAddr) // must be an IP multiaddr
+	dialIP, err := manet.ToIP(dialAddr) // can be dns addr
+	if err != nil {
+		return true
+	}
 	return !observedIP.Equal(dialIP)
 }
