@@ -148,7 +148,6 @@ func (c *Conn) closeOnceFn() error {
 		time.Now().Add(GracefulCloseTimeout),
 	)
 	err2 := c.Conn.Close()
-	c.Scope.Done()
 	return errors.Join(err1, err2)
 }
 

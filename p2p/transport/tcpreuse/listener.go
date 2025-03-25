@@ -85,7 +85,6 @@ func getTCPAddr(listenAddr ma.Multiaddr) (ma.Multiaddr, error) {
 // NOTE: All listeners for port 0 share the same underlying socket, so they have the same specific port.
 func (t *ConnMgr) DemultiplexedListen(laddr ma.Multiaddr, connType DemultiplexedConnType) (transport.GatedMaListener, error) {
 	if !connType.IsKnown() {
-		fmt.Println("connType", connType)
 		return nil, fmt.Errorf("unknown connection type: %s", connType)
 	}
 	laddr, err := getTCPAddr(laddr)

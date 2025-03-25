@@ -285,10 +285,9 @@ func (l *tracingListener) Accept() (manet.Conn, network.ConnManagementScope, err
 		return nil, nil, err
 	}
 
-	// TODO(sukunrt): Should we log and ignore this error? We can proceed. We just won't have metrics for this connection.
 	tc, err := newTracingConn(conn, l.collector, false)
 	if err != nil {
-		log.Errorf("failed to create tracingConn: %s", err)
+		log.Errorf("failed to create tracingConn from %T: %s", conn, err)
 		conn.Close()
 		scope.Done()
 		return nil, nil, err

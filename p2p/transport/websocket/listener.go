@@ -151,7 +151,7 @@ func (l *listener) ConnContext(ctx context.Context, c net.Conn) context.Context 
 	if nc, ok := c.(*negotiatingConn); ok {
 		return context.WithValue(ctx, connKey{}, nc)
 	}
-	log.Errorf("BUG: expected *websocket.negotiatingConn in context: got %T", c)
+	log.Errorf("BUG: expected net.Conn of type *websocket.negotiatingConn: got %T", c)
 	// might as well close the connection as there's no way to proceed now.
 	c.Close()
 	return ctx
