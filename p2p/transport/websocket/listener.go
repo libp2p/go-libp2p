@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"sync"
 
 	"go.uber.org/zap"
@@ -28,6 +29,8 @@ type listener struct {
 	// The Go standard library sets the http.Server.TLSConfig no matter if this is a WS or WSS,
 	// so we can't rely on checking if server.TLSConfig is set.
 	isWss bool
+
+	remoteIpExtractor RemoteAddrExtractor
 
 	laddr ma.Multiaddr
 
@@ -52,7 +55,7 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr) (*listener, error) {
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, trustedProxies []netip.Prefix, realAddrExtractor RemoteAddrExtractor) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -60,6 +63,16 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 
 	if parsed.isWSS && tlsConf == nil {
 		return nil, fmt.Errorf("cannot listen on wss address %s without a tls.Config", a)
+	}
+
+	var remoteAddrExtractor RemoteAddrExtractor = func(remoteAddr net.Addr, header http.Header) string {
+		return remoteAddr.String()
+	}
+
+	if realAddrExtractor != nil && len(trustedProxies) > 0 {
+		remoteAddrExtractor = func(remoteAddr net.Addr, header http.Header) string {
+			return extractRemoteAddrForProxy(trustedProxies, realAddrExtractor, remoteAddr, header)
+		}
 	}
 
 	var nl net.Listener
@@ -106,6 +119,8 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		laddr:    parsed.toMultiaddr(),
 		incoming: make(chan *Conn),
 		closed:   make(chan struct{}),
+
+		remoteIpExtractor: remoteAddrExtractor,
 	}
 	ln.server = http.Server{Handler: ln, ErrorLog: stdLog}
 	if parsed.isWSS {
@@ -130,7 +145,8 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The upgrader writes a response for us.
 		return
 	}
-	nc := NewConn(c, l.isWss)
+
+	nc := NewConn(c, l.isWss, l.remoteIpExtractor(c.RemoteAddr(), r.Header))
 	if nc == nil {
 		c.Close()
 		w.WriteHeader(500)
@@ -172,6 +188,29 @@ func (l *listener) Close() error {
 
 func (l *listener) Multiaddr() ma.Multiaddr {
 	return l.laddr
+}
+
+func isProxyTrusted(trustedProxies []netip.Prefix, remoteAddr net.Addr) bool {
+	remoteAddrPort, err := netip.ParseAddrPort(remoteAddr.String())
+	if err != nil {
+		return false
+	}
+
+	for _, prefix := range trustedProxies {
+		if prefix.Contains(remoteAddrPort.Addr()) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// extractRemoteAddrForProxy extract real ip if the given IP address belongs to a trusted proxy
+func extractRemoteAddrForProxy(trustedProxies []netip.Prefix, realAddrExtractor RemoteAddrExtractor, remoteAddr net.Addr, header http.Header) string {
+	if isProxyTrusted(trustedProxies, remoteAddr) {
+		return realAddrExtractor(remoteAddr, header)
+	}
+	return remoteAddr.String()
 }
 
 type transportListener struct {

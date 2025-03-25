@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -81,6 +82,28 @@ func WithTLSConfig(conf *tls.Config) Option {
 	}
 }
 
+type RemoteAddrExtractor func(remoteAddr net.Addr, header http.Header) string
+
+// WithAllowForwardedHeader configures whether to allow the usage of
+// Forwarded and X-Forwarded-For header to determine the real client
+// IP address when behind a proxy or load balancer.
+// configurable a list of trusted proxy IP addresses or CIDR ranges.
+// Only when a connection is from a trusted proxy, Forwarded header will be used.
+// If remoteAddrExtractor is null, the RFC 7239 extractor is used by default.
+func WithAllowForwardedHeader(trustedProxies []netip.Prefix, remoteAddrExtractor RemoteAddrExtractor) Option {
+	return func(t *WebsocketTransport) error {
+		if remoteAddrExtractor == nil {
+			t.remoteAddrExtractor = DefaultGetRealAddr
+		} else {
+			t.remoteAddrExtractor = remoteAddrExtractor
+		}
+
+		t.trustedProxies = trustedProxies
+
+		return nil
+	}
+}
+
 // WebsocketTransport is the actual go-libp2p transport
 type WebsocketTransport struct {
 	upgrader transport.Upgrader
@@ -89,7 +112,9 @@ type WebsocketTransport struct {
 	tlsClientConf *tls.Config
 	tlsConf       *tls.Config
 
-	sharedTcp *tcpreuse.ConnMgr
+	sharedTcp           *tcpreuse.ConnMgr
+	trustedProxies      []netip.Prefix
+	remoteAddrExtractor RemoteAddrExtractor
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -236,7 +261,7 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 		return nil, err
 	}
 
-	mnc, err := manet.WrapNetConn(NewConn(wscon, isWss))
+	mnc, err := manet.WrapNetConn(NewConn(wscon, isWss, ""))
 	if err != nil {
 		wscon.Close()
 		return nil, err
@@ -249,7 +274,7 @@ func (t *WebsocketTransport) maListen(a ma.Multiaddr) (manet.Listener, error) {
 	if t.tlsConf != nil {
 		tlsConf = t.tlsConf.Clone()
 	}
-	l, err := newListener(a, tlsConf, t.sharedTcp)
+	l, err := newListener(a, tlsConf, t.sharedTcp, t.trustedProxies, t.remoteAddrExtractor)
 	if err != nil {
 		return nil, err
 	}
