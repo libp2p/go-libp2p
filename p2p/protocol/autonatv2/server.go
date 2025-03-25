@@ -30,7 +30,7 @@ var (
 	errDialDataRefused       = errors.New("dial data refused")
 )
 
-type dataRequestPolicyFunc = func(s network.Stream, dialAddr ma.Multiaddr) bool
+type dataRequestPolicyFunc = func(observedAddr, dialAddr ma.Multiaddr) bool
 
 type EventDialRequestCompleted struct {
 	Error            error
@@ -212,7 +212,7 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 
 	nonce := msg.GetDialRequest().Nonce
 
-	isDialDataRequired := as.dialDataRequestPolicy(s, dialAddr)
+	isDialDataRequired := as.dialDataRequestPolicy(s.Conn().RemoteMultiaddr(), dialAddr)
 	if isDialDataRequired && !as.limiter.AcceptDialDataRequest(p) {
 		msg = pb.Message{
 			Msg: &pb.Message_DialResponse{
@@ -517,11 +517,14 @@ func (r *rateLimiter) Close() {
 
 // amplificationAttackPrevention is a dialDataRequestPolicy which requests data when the peer's observed
 // IP address is different from the dial back IP address
-func amplificationAttackPrevention(s network.Stream, dialAddr ma.Multiaddr) bool {
-	connIP, err := manet.ToIP(s.Conn().RemoteMultiaddr())
+func amplificationAttackPrevention(observedAddr, dialAddr ma.Multiaddr) bool {
+	observedIP, err := manet.ToIP(observedAddr)
 	if err != nil {
 		return true
 	}
-	dialIP, _ := manet.ToIP(s.Conn().LocalMultiaddr()) // must be an IP multiaddr
-	return !connIP.Equal(dialIP)
+	dialIP, err := manet.ToIP(dialAddr) // can be dns addr
+	if err != nil {
+		return true
+	}
+	return !observedIP.Equal(dialIP)
 }

@@ -292,11 +292,11 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),
-		fx.Provide(func(gater connmgr.ConnectionGater, rcmgr network.ResourceManager) *tcpreuse.ConnMgr {
+		fx.Provide(func(upgrader transport.Upgrader) *tcpreuse.ConnMgr {
 			if !cfg.ShareTCPListener {
 				return nil
 			}
-			return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, gater, rcmgr)
+			return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, upgrader)
 		}),
 		fx.Provide(func(cm *quicreuse.ConnManager, sw *swarm.Swarm) libp2pwebrtc.ListenUDPFn {
 			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {

@@ -143,7 +143,7 @@ func TestServerDataRequest(t *testing.T) {
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
 	// ask for dial data for quic address
 	an := newAutoNAT(t, dialer, allowPrivateAddrs, withDataRequestPolicy(
-		func(s network.Stream, dialAddr ma.Multiaddr) bool {
+		func(_, dialAddr ma.Multiaddr) bool {
 			if _, err := dialAddr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 				return true
 			}
@@ -197,7 +197,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 	doneChan := make(chan struct{})
 	an := newAutoNAT(t, dialer, allowPrivateAddrs, withDataRequestPolicy(
 		// stall all allowed requests
-		func(s network.Stream, dialAddr ma.Multiaddr) bool {
+		func(_, dialAddr ma.Multiaddr) bool {
 			<-doneChan
 			return true
 		}),
@@ -255,7 +255,7 @@ func TestServerDataRequestJitter(t *testing.T) {
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
 	// ask for dial data for quic address
 	an := newAutoNAT(t, dialer, allowPrivateAddrs, withDataRequestPolicy(
-		func(s network.Stream, dialAddr ma.Multiaddr) bool {
+		func(_, dialAddr ma.Multiaddr) bool {
 			if _, err := dialAddr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 				return true
 			}
@@ -518,6 +518,83 @@ func TestReadDialData(t *testing.T) {
 			wg.Wait()
 		}
 	}
+}
+
+func TestServerDataRequestWithAmplificationAttackPrevention(t *testing.T) {
+	// server will skip all tcp addresses
+	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
+	// ask for dial data for quic address
+	an := newAutoNAT(t, dialer, allowPrivateAddrs,
+		WithServerRateLimit(10, 10, 10, 2),
+		withAmplificationAttackPreventionDialWait(0),
+	)
+	defer an.Close()
+	defer an.host.Close()
+
+	c := newAutoNAT(t, nil, allowPrivateAddrs)
+	defer c.Close()
+	defer c.host.Close()
+
+	idAndWait(t, c, an)
+
+	err := c.host.Network().Listen(ma.StringCast("/ip6/::1/udp/0/quic-v1"))
+	if err != nil {
+		// machine doesn't have ipv6
+		t.Skip("skipping test because machine doesn't have ipv6")
+	}
+
+	var quicv4Addr ma.Multiaddr
+	var quicv6Addr ma.Multiaddr
+	for _, a := range c.host.Addrs() {
+		if _, err := a.ValueForProtocol(ma.P_QUIC_V1); err == nil {
+			if _, err := a.ValueForProtocol(ma.P_IP4); err == nil {
+				quicv4Addr = a
+			} else {
+				quicv6Addr = a
+			}
+		}
+	}
+	res, err := c.GetReachability(context.Background(), []Request{{Addr: quicv4Addr, SendDialData: false}})
+	require.NoError(t, err)
+	require.Equal(t, Result{
+		Addr:         quicv4Addr,
+		Reachability: network.ReachabilityPublic,
+		Status:       pb.DialStatus_OK,
+	}, res)
+
+	// ipv6 address should require dial data
+	_, err = c.GetReachability(context.Background(), []Request{{Addr: quicv6Addr, SendDialData: false}})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "invalid dial data request: low priority addr")
+
+	// ipv6 address should work fine with dial data
+	res, err = c.GetReachability(context.Background(), []Request{{Addr: quicv6Addr, SendDialData: true}})
+	require.NoError(t, err)
+	require.Equal(t, Result{
+		Addr:         quicv6Addr,
+		Reachability: network.ReachabilityPublic,
+		Status:       pb.DialStatus_OK,
+	}, res)
+}
+
+func TestDefaultAmplificationAttackPrevention(t *testing.T) {
+	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
+	q2 := ma.StringCast("/ip4/1.2.3.4/udp/1235/quic-v1")
+	t1 := ma.StringCast("/ip4/1.2.3.4/tcp/1234")
+
+	require.False(t, amplificationAttackPrevention(q1, q1))
+	require.False(t, amplificationAttackPrevention(q1, q2))
+	require.False(t, amplificationAttackPrevention(q1, t1))
+
+	t2 := ma.StringCast("/ip4/1.1.1.1/tcp/1235") // different IP
+	require.True(t, amplificationAttackPrevention(q2, t2))
+
+	// always ask dial data for dns addrs
+	d1 := ma.StringCast("/dns/localhost/udp/1/quic-v1")
+	d2 := ma.StringCast("/dnsaddr/libp2p.io/tcp/1")
+	require.True(t, amplificationAttackPrevention(d1, t1))
+	require.True(t, amplificationAttackPrevention(d2, t1))
+
 }
 
 func FuzzServerDialRequest(f *testing.F) {

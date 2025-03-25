@@ -1,7 +1,6 @@
 package websocket
 
 import (
-	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 
@@ -23,6 +21,7 @@ var GracefulCloseTimeout = 100 * time.Millisecond
 // Conn implements net.Conn interface for gorilla/websocket.
 type Conn struct {
 	*ws.Conn
+	Scope              network.ConnManagementScope
 	secure             bool
 	DefaultMessageType int
 	reader             io.Reader
@@ -36,10 +35,8 @@ type Conn struct {
 var _ net.Conn = (*Conn)(nil)
 var _ manet.Conn = (*Conn)(nil)
 
-// NewConn creates a Conn given a regular gorilla/websocket Conn.
-//
-// Deprecated: There's no reason to use this method externally. It'll be unexported in a future release.
-func NewConn(raw *ws.Conn, secure bool) *Conn {
+// newConn creates a Conn given a regular gorilla/websocket Conn.
+func newConn(raw *ws.Conn, secure bool, scope network.ConnManagementScope) *Conn {
 	lna := NewAddrWithScheme(raw.LocalAddr().String(), secure)
 	laddr, err := manet.FromNetAddr(lna)
 	if err != nil {
@@ -56,6 +53,7 @@ func NewConn(raw *ws.Conn, secure bool) *Conn {
 
 	c := &Conn{
 		Conn:               raw,
+		Scope:              scope,
 		secure:             secure,
 		DefaultMessageType: ws.BinaryMessage,
 		laddr:              laddr,
@@ -136,23 +134,6 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	return len(b), nil
 }
 
-func (c *Conn) Scope() network.ConnManagementScope {
-	nc := c.NetConn()
-	if sc, ok := nc.(interface {
-		Scope() network.ConnManagementScope
-	}); ok {
-		return sc.Scope()
-	}
-	if nc, ok := nc.(*tls.Conn); ok {
-		if sc, ok := nc.NetConn().(interface {
-			Scope() network.ConnManagementScope
-		}); ok {
-			return sc.Scope()
-		}
-	}
-	return nil
-}
-
 // Close closes the connection.
 // subsequent and concurrent calls will return the same error value.
 // This method is thread-safe.
@@ -200,14 +181,4 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	defer c.writeLock.Unlock()
 
 	return c.Conn.SetWriteDeadline(t)
-}
-
-type capableConn struct {
-	transport.CapableConn
-}
-
-func (c *capableConn) ConnState() network.ConnectionState {
-	cs := c.CapableConn.ConnState()
-	cs.Transport = "websocket"
-	return cs
 }
