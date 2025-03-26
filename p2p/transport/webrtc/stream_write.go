@@ -84,7 +84,7 @@ func (s *stream) Write(b []byte) (int, error) {
 			s.mx.Lock()
 			continue
 		}
-		end := maxMessageSize
+		end := s.maxSendMessageSize
 		if end > availableSpace {
 			end = availableSpace
 		}
@@ -110,11 +110,19 @@ func (s *stream) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+func (s *stream) sendBufferSize() int {
+	return 2 * s.maxSendMessageSize
+}
+
+func (s *stream) sendBufferLowThreshold() int {
+	return s.sendBufferSize() - s.maxSendMessageSize
+}
+
 func (s *stream) availableSendSpace() int {
 	buffered := int(s.dataChannel.BufferedAmount())
-	availableSpace := maxSendBuffer - buffered
+	availableSpace := s.sendBufferSize() - buffered
 	if availableSpace+maxTotalControlMessagesSize < 0 { // this should never happen, but better check
-		log.Errorw("data channel buffered more data than the maximum amount", "max", maxSendBuffer, "buffered", buffered)
+		log.Errorw("data channel buffered more data than the maximum amount", "max", s.sendBufferSize(), "buffered", buffered)
 	}
 	return availableSpace
 }
