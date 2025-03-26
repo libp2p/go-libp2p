@@ -300,10 +300,7 @@ func (o *ObservedAddrManager) getTopExternalAddrs(localTWStr string) []*observer
 		}
 
 	})
-	n := len(observerSets)
-	if n > maxExternalThinWaistAddrsPerLocalAddr {
-		n = maxExternalThinWaistAddrsPerLocalAddr
-	}
+	n := min(len(observerSets), maxExternalThinWaistAddrsPerLocalAddr)
 	return observerSets[:n]
 }
 

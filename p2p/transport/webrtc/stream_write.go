@@ -84,10 +84,7 @@ func (s *stream) Write(b []byte) (int, error) {
 			s.mx.Lock()
 			continue
 		}
-		end := maxMessageSize
-		if end > availableSpace {
-			end = availableSpace
-		}
+		end := min(maxMessageSize, availableSpace)
 		end -= protoOverhead + varintOverhead
 		if end > len(b) {
 			end = len(b)

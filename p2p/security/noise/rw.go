@@ -107,10 +107,7 @@ func (s *secureSession) Write(data []byte) (int, error) {
 	defer pool.Put(cbuf)
 
 	for written < total {
-		end := written + MaxPlaintextLength
-		if end > total {
-			end = total
-		}
+		end := min(written+MaxPlaintextLength, total)
 
 		b, err := s.encrypt(cbuf[:LengthPrefixLength], data[written:end])
 		if err != nil {
