@@ -68,7 +68,13 @@ const (
 	DefaultFailedTimeout       = 30 * time.Second
 	DefaultKeepaliveTimeout    = 15 * time.Second
 
-	sctpReceiveBufferSize = 100_000
+	// sctpReceiveBufferSize is the size of the buffer for incoming messages.
+	//
+	// This is enough space for enqueuing 10 full sized messages.
+	// Besides throughput, this only matters if an application is using multiple dependent
+	// streams, say streams 1 & 2. It reads from stream 1 only after receiving message from
+	// stream 2. A buffer of 10 messages should serve all such situations.
+	sctpReceiveBufferSize = 10 * maxReceiveMessageSize
 )
 
 type WebRTCTransport struct {
@@ -367,7 +373,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	if err != nil {
 		return nil, err
 	}
-	channel := newStream(w.HandshakeDataChannel, detached, func() {})
+	channel := newStream(w.HandshakeDataChannel, detached, maxSendMessageSize, nil)
 
 	remotePubKey, err := t.noiseHandshake(ctx, w.PeerConnection, channel, p, remoteHashFunction, false)
 	if err != nil {

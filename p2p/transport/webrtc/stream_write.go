@@ -84,7 +84,7 @@ func (s *stream) Write(b []byte) (int, error) {
 			s.mx.Lock()
 			continue
 		}
-		end := maxMessageSize
+		end := s.maxSendMessageSize
 		if end > availableSpace {
 			end = availableSpace
 		}
@@ -110,11 +110,24 @@ func (s *stream) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+// sendBufferSize() is the maximum data we enqueue on the underlying data channel for writes.
+// The underlying SCTP layer has an unbounded buffer for writes. We limit the amount enqueued
+// per stream is limited to avoid a single stream monopolizing the entire connection.
+func (s *stream) sendBufferSize() int {
+	return 2 * s.maxSendMessageSize
+}
+
+// sendBufferLowThreshold() is the threshold below which we write more data on the underlying
+// data channel. We want a notification as soon as we can write 1 full sized message.
+func (s *stream) sendBufferLowThreshold() int {
+	return s.sendBufferSize() - s.maxSendMessageSize
+}
+
 func (s *stream) availableSendSpace() int {
 	buffered := int(s.dataChannel.BufferedAmount())
-	availableSpace := maxSendBuffer - buffered
+	availableSpace := s.sendBufferSize() - buffered
 	if availableSpace+maxTotalControlMessagesSize < 0 { // this should never happen, but better check
-		log.Errorw("data channel buffered more data than the maximum amount", "max", maxSendBuffer, "buffered", buffered)
+		log.Errorw("data channel buffered more data than the maximum amount", "max", s.sendBufferSize(), "buffered", buffered)
 	}
 	return availableSpace
 }
