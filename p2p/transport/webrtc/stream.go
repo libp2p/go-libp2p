@@ -15,22 +15,9 @@ import (
 )
 
 const (
-	// maxMessageSize is the maximum message size of the Protobuf message we send / receive.
-	maxMessageSize = 16384
-	// maxSendBuffer is the maximum data we enqueue on the underlying data channel for writes.
-	// The underlying SCTP layer has an unbounded buffer for writes. We limit the amount enqueued
-	// per stream is limited to avoid a single stream monopolizing the entire connection.
-	maxSendBuffer = 2 * maxMessageSize
-	// sendBufferLowThreshold is the threshold below which we write more data on the underlying
-	// data channel. We want a notification as soon as we can write 1 full sized message.
-	sendBufferLowThreshold = maxSendBuffer - maxMessageSize
-	// maxTotalControlMessagesSize is the maximum total size of all control messages we will
-	// write on this stream.
-	// 4 control messages of size 10 bytes + 10 bytes buffer. This number doesn't need to be
-	// exact. In the worst case, we enqueue these many bytes more in the webrtc peer connection
-	// send queue.
-	maxTotalControlMessagesSize = 50
-
+	// maxSendMessageSize is the maximum message size of the Protobuf message we send / receive.
+	// NOTE: Change `varintOverhead` if you change this.
+	maxSendMessageSize = 16384
 	// Proto overhead assumption is 5 bytes
 	protoOverhead = 5
 	// Varint overhead is assumed to be 2 bytes. This is safe since
@@ -40,9 +27,20 @@ const (
 	// is less than or equal to 2 ^ 14, the varint will not be more than
 	// 2 bytes in length.
 	varintOverhead = 2
+
+	// maxTotalControlMessagesSize is the maximum total size of all control messages we will
+	// write on this stream.
+	// 4 control messages of size 10 bytes + 10 bytes buffer. This number doesn't need to be
+	// exact. In the worst case, we enqueue these many bytes more in the webrtc peer connection
+	// send queue.
+	maxTotalControlMessagesSize = 50
+
 	// maxFINACKWait is the maximum amount of time a stream will wait to read
 	// FIN_ACK before closing the data channel
 	maxFINACKWait = 10 * time.Second
+
+	// maxReceiveMessageSize is the maximum message size of the Protobuf message we receive.
+	maxReceiveMessageSize = 256<<10 + 1<<10 // 1kB buffer
 )
 
 type receiveState uint8
@@ -79,11 +77,12 @@ type stream struct {
 	nextMessage  *pb.Message
 	receiveState receiveState
 
-	writer            pbio.Writer // concurrent writes prevented by mx
-	writeStateChanged chan struct{}
-	sendState         sendState
-	writeDeadline     time.Time
-	writeError        error
+	writer             pbio.Writer // concurrent writes prevented by mx
+	writeStateChanged  chan struct{}
+	sendState          sendState
+	writeDeadline      time.Time
+	writeError         error
+	maxSendMessageSize int
 
 	controlMessageReaderOnce sync.Once
 	// controlMessageReaderEndTime is the end time for reading FIN_ACK from the control
@@ -105,20 +104,21 @@ var _ network.MuxedStream = &stream{}
 func newStream(
 	channel *webrtc.DataChannel,
 	rwc datachannel.ReadWriteCloser,
+	maxSendMessageSize int,
 	onDone func(),
 ) *stream {
 	s := &stream{
-		reader:            pbio.NewDelimitedReader(rwc, maxMessageSize),
-		writer:            pbio.NewDelimitedWriter(rwc),
-		writeStateChanged: make(chan struct{}, 1),
-		id:                *channel.ID(),
-		dataChannel:       rwc.(*datachannel.DataChannel),
-		onDone:            onDone,
+		reader:             pbio.NewDelimitedReader(rwc, maxReceiveMessageSize),
+		writer:             pbio.NewDelimitedWriter(rwc),
+		writeStateChanged:  make(chan struct{}, 1),
+		id:                 *channel.ID(),
+		dataChannel:        rwc.(*datachannel.DataChannel),
+		onDone:             onDone,
+		maxSendMessageSize: maxSendMessageSize,
 	}
-	s.dataChannel.SetBufferedAmountLowThreshold(sendBufferLowThreshold)
+	s.dataChannel.SetBufferedAmountLowThreshold(uint64(s.sendBufferLowThreshold()))
 	s.dataChannel.OnBufferedAmountLow(func() {
 		s.notifyWriteStateChanged()
-
 	})
 	return s
 }

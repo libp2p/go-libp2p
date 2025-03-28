@@ -68,7 +68,7 @@ const (
 	DefaultFailedTimeout       = 30 * time.Second
 	DefaultKeepaliveTimeout    = 15 * time.Second
 
-	sctpReceiveBufferSize = 100_000
+	sctpReceiveBufferSize = 10 * maxReceiveMessageSize
 )
 
 type WebRTCTransport struct {
@@ -367,7 +367,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	if err != nil {
 		return nil, err
 	}
-	channel := newStream(w.HandshakeDataChannel, detached, func() {})
+	channel := newStream(w.HandshakeDataChannel, detached, maxSendMessageSize, nil)
 
 	remotePubKey, err := t.noiseHandshake(ctx, w.PeerConnection, channel, p, remoteHashFunction, false)
 	if err != nil {
