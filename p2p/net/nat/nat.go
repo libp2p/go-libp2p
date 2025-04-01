@@ -240,9 +240,9 @@ func (nat *NAT) establishMapping(ctx context.Context, protocol string, internalP
 
 	if err != nil || externalPort == 0 {
 		if err != nil {
-			log.Errorf("NAT port mapping failed: protocol=%s internal_port=%d error=%q", protocol, internalPort, err)
+			log.Warnf("NAT port mapping failed: protocol=%s internal_port=%d error=%q", protocol, internalPort, err)
 		} else {
-			log.Errorf("NAT port mapping failed: protocol=%s internal_port=%d external_port=0", protocol, internalPort)
+			log.Warnf("NAT port mapping failed: protocol=%s internal_port=%d external_port=0", protocol, internalPort)
 		}
 		// we do not close if the mapping failed,
 		// because it may work again next time.
