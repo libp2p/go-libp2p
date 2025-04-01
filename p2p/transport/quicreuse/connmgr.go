@@ -68,6 +68,8 @@ type ConnManager struct {
 	connContext connContextFunc
 
 	verifySourceAddress func(addr net.Addr) bool
+
+	qlogTracerDir string
 }
 
 type quicListenerEntry struct {
@@ -148,8 +150,14 @@ func (c *ConnManager) getTracer() func(context.Context, quiclogging.Perspective,
 			}
 		}
 		var tracer *quiclogging.ConnectionTracer
-		if qlogTracerDir != "" {
-			tracer = qloggerForDir(qlogTracerDir, p, ci)
+		var tracerDir = c.qlogTracerDir
+		if tracerDir == "" {
+			// Fallback to the global qlogTracerDir
+			tracerDir = qlogTracerDir
+		}
+
+		if tracerDir != "" {
+			tracer = qloggerForDir(tracerDir, p, ci)
 			if promTracer != nil {
 				tracer = quiclogging.NewMultiplexedConnectionTracer(promTracer,
 					tracer)
