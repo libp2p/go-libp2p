@@ -3,6 +3,7 @@ package identify
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
+	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/stretchr/testify/assert"
@@ -204,5 +206,134 @@ func TestIncomingAddrFilter(t *testing.T) {
 			got := filterAddrs(input, tc.remote)
 			require.ElementsMatch(t, tc.output, got, "%s\n%s", tc.output, got)
 		})
+	}
+}
+
+const rateLimitErrorTolerance = 0.05
+
+func getSleepDurationAndRequestCount(rps rate.Limit) (time.Duration, int) {
+	sleepDuration := 100 * time.Millisecond
+	requestCount := int(sleepDuration.Seconds() * float64(rps))
+	if requestCount < 1 {
+		sleepDuration = time.Duration((1/rps)*rate.Limit(time.Second)) + 1*time.Millisecond
+		requestCount = 1
+	}
+	return sleepDuration, requestCount
+}
+
+func TestRateLimiterSubnet(t *testing.T) {
+	limits := []rateLimit{
+		{PerSecond: 0.8, Burst: 1},
+		{PerSecond: 10, Burst: 20},
+		{PerSecond: 100, Burst: 200},
+	}
+
+	i := byte(0)
+	nextIPv4Addr := func() ma.Multiaddr {
+		i++
+		return ma.StringCast(fmt.Sprintf("/ip4/127.0.0.%d/udp/123/quic-v1", i))
+	}
+	nextIPv6Addr := func() ma.Multiaddr {
+		i++
+		return ma.StringCast(fmt.Sprintf("/ip6/2001::%d/udp/123/quic-v1", i))
+	}
+
+	outIPv4Addr := ma.StringCast("/ip4/1.1.1.1/udp/1/quic-v1")
+	outIPv6Addr := ma.StringCast("/ip6/2002::1/udp/1/quic-v1")
+
+	for _, limit := range limits {
+		t.Run(fmt.Sprintf("limit %0.1f", limit.PerSecond), func(t *testing.T) {
+			rl := &rateLimiter{
+				IPv4SubnetLimits: []subnetRateLimit{
+					{PrefixLength: 24, rateLimit: limit},
+				},
+				IPv6SubnetLimits: []subnetRateLimit{
+					{PrefixLength: 64, rateLimit: limit},
+				},
+			}
+			for range limit.Burst {
+				require.True(t, rl.allow(nextIPv4Addr()))
+				require.True(t, rl.allow(nextIPv6Addr()))
+			}
+			for range int(limit.PerSecond * rateLimitErrorTolerance) {
+				rl.allow(nextIPv4Addr()) // don't care what happens in this error margin
+				rl.allow(nextIPv6Addr())
+			}
+			require.False(t, rl.allow(nextIPv4Addr()))
+			require.False(t, rl.allow(nextIPv6Addr()))
+			require.True(t, rl.allow(outIPv4Addr))
+			require.True(t, rl.allow(outIPv6Addr))
+
+			sleepDuration, requestCount := getSleepDurationAndRequestCount(limit.PerSecond)
+			time.Sleep(sleepDuration)
+			for range requestCount {
+				require.True(t, rl.allow(nextIPv4Addr()))
+				require.True(t, rl.allow(nextIPv6Addr()))
+			}
+			for range int(float64(requestCount) * rateLimitErrorTolerance) {
+				rl.allow(nextIPv4Addr())
+				rl.allow(nextIPv6Addr())
+			}
+			require.False(t, rl.allow(nextIPv4Addr()))
+			require.False(t, rl.allow(nextIPv6Addr()))
+			require.True(t, rl.allow(outIPv4Addr))
+			require.True(t, rl.allow(outIPv6Addr))
+		})
+	}
+}
+
+func assertRateLimiter(t *testing.T, rl *rateLimiter, addr ma.Multiaddr, allowed, errorMargin int) {
+	t.Helper()
+	for i := 0; i < allowed; i++ {
+		require.True(t, rl.allow(addr))
+	}
+	for i := 0; i < errorMargin; i++ {
+		rl.allow(addr)
+	}
+	require.False(t, rl.allow(addr))
+}
+
+func TestRateLimiterGlobal(t *testing.T) {
+	addr := ma.StringCast("/ip4/127.0.0.1/udp/123/quic-v1")
+	limits := []rateLimit{
+		{PerSecond: 0.8, Burst: 1},
+		{PerSecond: 10, Burst: 20},
+		{PerSecond: 100, Burst: 200},
+		{PerSecond: 1000, Burst: 2000},
+	}
+	for _, limit := range limits {
+		t.Run(fmt.Sprintf("limit %0.1f", limit.PerSecond), func(t *testing.T) {
+			rl := &rateLimiter{
+				GlobalLimit: limit,
+			}
+			assertRateLimiter(t, rl, addr, limit.Burst, int(limit.PerSecond*rateLimitErrorTolerance))
+			sleepDuration, requestCount := getSleepDurationAndRequestCount(limit.PerSecond)
+			time.Sleep(sleepDuration)
+			assertRateLimiter(t, rl, addr, requestCount, int(float64(requestCount)*rateLimitErrorTolerance))
+		})
+	}
+}
+
+func TestRateLimiterNetworkPrefix(t *testing.T) {
+	local := ma.StringCast("/ip4/127.0.0.1/udp/123/quic-v1")
+	public := ma.StringCast("/ip4/1.1.1.1/udp/123/quic-v1")
+	rl := &rateLimiter{
+		NetworkPrefixLimits: []networkPrefixRateLimit{
+			{Prefix: netip.MustParsePrefix("127.0.0.0/24"), rateLimit: rateLimit{}},
+		},
+		GlobalLimit: rateLimit{PerSecond: 10, Burst: 10},
+	}
+	// element within prefix is allowed even over the limit
+	for range rl.GlobalLimit.Burst + 100 {
+		require.True(t, rl.allow(local))
+	}
+	// rate limit public ips
+	assertRateLimiter(t, rl, public, rl.GlobalLimit.Burst, int(rl.GlobalLimit.PerSecond*rateLimitErrorTolerance))
+
+	// public ip rejected
+	require.False(t, rl.allow(public))
+	// local ip accepted
+	for range 100 {
+		require.True(t, rl.allow(local))
 	}
 }
