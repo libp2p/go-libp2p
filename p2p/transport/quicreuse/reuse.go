@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/gopacket/routing"
@@ -340,12 +341,17 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	if err != nil {
 		return nil, err
 	}
+	var connCount atomic.Int64
 	tr := &refcountedTransport{
 		QUICTransport: &wrappedQUICTransport{
 			Transport: &quic.Transport{
 				Conn:              conn,
 				StatelessResetKey: r.statelessResetKey,
 				TokenGeneratorKey: r.tokenGeneratorKey,
+				ConnContext: func(ctx context.Context) context.Context {
+					id := connCount.Add(1)
+					return context.WithValue(ctx, "libp2p-conn-id", id)
+				},
 			},
 		},
 		packetConn: conn,

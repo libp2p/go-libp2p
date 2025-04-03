@@ -160,12 +160,12 @@ func (c *ConnManager) LendTransport(network string, tr QUICTransport, conn net.P
 	return refCountedTr.borrowDoneSignal, reuse.AddTransport(refCountedTr, localAddr)
 }
 
-func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
-	return c.ListenQUICAndAssociate(nil, addr, tlsConf, allowWindowIncrease)
+func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, allowConn func(info *quic.ClientHelloInfo) bool) (Listener, error) {
+	return c.ListenQUICAndAssociate(nil, addr, tlsConf, allowWindowIncrease, allowConn)
 }
 
 // ListenQUICAndAssociate returns a QUIC listener and associates the underlying transport with the given association.
-func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
+func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, allowConn func(info *quic.ClientHelloInfo) bool) (Listener, error) {
 	netw, host, err := manet.DialArgs(addr)
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		if err != nil {
 			return nil, err
 		}
-		ln, err := newQuicListener(tr, c.serverConfig)
+		ln, err := newQuicListener(tr, c.serverConfig, allowConn)
 		if err != nil {
 			return nil, err
 		}

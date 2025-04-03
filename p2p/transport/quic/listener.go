@@ -50,7 +50,22 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		if err != nil {
 			return nil, err
 		}
-		c, err := l.wrapConn(qconn)
+		id := qconn.Context().Value("libp2p-conn-id").(int64)
+		l.transport.pendingScopesMx.Lock()
+		scope, ok := l.transport.pendingScopes[id]
+		if !ok {
+			l.transport.pendingScopesMx.Unlock()
+			continue
+		}
+		delete(l.transport.pendingScopes, id)
+		l.transport.pendingScopesMx.Unlock()
+		addr, err := quicreuse.ToQuicMultiaddr(qconn.RemoteAddr(), qconn.ConnectionState().Version)
+		if err != nil {
+			log.Debugf("failed to convert remote address to multiaddr: %s", err)
+			qconn.CloseWithError(quic.ApplicationErrorCode(network.ConnResourceLimitExceeded), "")
+			continue
+		}
+		c, err := l.wrapConnWithScope(qconn, scope, addr)
 		if err != nil {
 			log.Debugf("failed to setup connection: %s", err)
 			qconn.CloseWithError(quic.ApplicationErrorCode(network.ConnResourceLimitExceeded), "")

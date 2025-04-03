@@ -55,6 +55,9 @@ type transport struct {
 	listenersMu sync.Mutex
 	// map of UDPAddr as string to a virtualListeners
 	listeners map[string][]*virtualListener
+
+	pendingScopesMx sync.Mutex
+	pendingScopes   map[int64]network.ConnManagementScope
 }
 
 var _ tpt.Transport = &transport{}
@@ -312,7 +315,28 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 			return nil, fmt.Errorf("can't listen on quic version %v, underlying listener doesn't support it", version)
 		}
 	} else {
-		ln, err := t.connManager.ListenQUICAndAssociate(t, addr, &tlsConf, t.allowWindowIncrease)
+		allowConn := func(info *quic.ClientHelloInfo) bool {
+			addr, err := manet.FromNetAddr(info.RemoteAddr)
+			if err != nil {
+				return false
+			}
+			addr = addr.Encapsulate(ma.StringCast("/quic-v1"))
+			scope, err := t.rcmgr.OpenConnection(network.DirInbound, false, addr)
+			if err != nil {
+				return false
+			}
+			// If I can modify the context, I'd store the scope on the context and then extract it
+			// when Accepting the connection
+			context.AfterFunc(info.Context, func() {
+				scope.Done()
+				id := info.Context.Value("libp2p-conn-id").(int64)
+				t.pendingScopesMx.Lock()
+				delete(t.pendingScopes, id)
+				t.pendingScopesMx.Unlock()
+			})
+			return true
+		}
+		ln, err := t.connManager.ListenQUICAndAssociate(t, addr, &tlsConf, t.allowWindowIncrease, allowConn)
 		if err != nil {
 			return nil, err
 		}

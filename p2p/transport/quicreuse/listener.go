@@ -39,7 +39,7 @@ type quicListener struct {
 	protocols   map[string]protoConf
 }
 
-func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quicListener, error) {
+func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config, allowConn func(info *quic.ClientHelloInfo) bool) (*quicListener, error) {
 	localMultiaddrs := make([]ma.Multiaddr, 0, 2)
 	a, err := ToQuicMultiaddr(tr.LocalAddr(), quic.Version1)
 	if err != nil {
@@ -71,6 +71,14 @@ func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quic
 	}
 	quicConf := quicConfig.Clone()
 	quicConf.AllowConnectionWindowIncrease = cl.allowWindowIncrease
+	if allowConn != nil {
+		quicConf.GetConfigForClient = func(info *quic.ClientHelloInfo) (*quic.Config, error) {
+			if allowConn(info) {
+				return quicConfig, nil
+			}
+			return nil, fmt.Errorf("rate limited")
+		}
+	}
 	ln, err := tr.Listen(tlsConf, quicConf)
 	if err != nil {
 		return nil, err
