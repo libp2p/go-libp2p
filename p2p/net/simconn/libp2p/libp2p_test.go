@@ -37,10 +37,11 @@ func TestSimpleSimNetPing(t *testing.T) {
 		QUICSimConnSimpleNet(router, linkSettings),
 	)
 
-	router.Start()
+	err := router.Start()
+	require.NoError(t, err)
 	defer router.Close()
 
-	err := hostA.Connect(context.Background(), peer.AddrInfo{
+	err = hostA.Connect(context.Background(), peer.AddrInfo{
 		ID:    hostB.ID(),
 		Addrs: hostB.Addrs(),
 	})
