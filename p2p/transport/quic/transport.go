@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -55,6 +56,10 @@ type transport struct {
 	listenersMu sync.Mutex
 	// map of UDPAddr as string to a virtualListeners
 	listeners map[string][]*virtualListener
+
+	// Add new field for pending scopes
+	pendingScopesMx sync.Mutex
+	pendingScopes   map[string][]scopeWithTime
 }
 
 var _ tpt.Transport = &transport{}
@@ -67,6 +72,11 @@ type holePunchKey struct {
 type activeHolePunch struct {
 	connCh    chan tpt.CapableConn
 	fulfilled bool
+}
+
+type scopeWithTime struct {
+	Scope network.ConnManagementScope
+	Time  time.Time
 }
 
 // NewTransport creates a new QUIC transport
@@ -88,7 +98,7 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		rcmgr = &network.NullResourceManager{}
 	}
 
-	return &transport{
+	t := &transport{
 		privKey:      key,
 		localPeer:    localPeer,
 		identity:     identity,
@@ -98,9 +108,36 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		conns:        make(map[quic.Connection]*conn),
 		holePunching: make(map[holePunchKey]*activeHolePunch),
 		rnd:          *rand.New(rand.NewSource(time.Now().UnixNano())),
+		listeners:    make(map[string][]*virtualListener),
+		// Initialize the pending scopes map
+		pendingScopes: make(map[string][]scopeWithTime),
+	}
 
-		listeners: make(map[string][]*virtualListener),
-	}, nil
+	// Start the cleanup goroutine
+	go t.cleanupPendingScopes()
+	return t, nil
+}
+
+func (t *transport) cleanupPendingScopes() {
+	for {
+		time.Sleep(1 * time.Minute)
+		t.pendingScopesMx.Lock()
+		expiry := time.Now().Add(-1 * time.Minute)
+		for addr, scopes := range t.pendingScopes {
+			for _, scope := range scopes {
+				if scope.Time.Before(expiry) {
+					scope.Scope.Done()
+					t.pendingScopes[addr] = slices.DeleteFunc(t.pendingScopes[addr], func(s scopeWithTime) bool {
+						return s.Scope == scope.Scope
+					})
+				}
+			}
+			if len(t.pendingScopes[addr]) == 0 {
+				delete(t.pendingScopes, addr)
+			}
+		}
+		t.pendingScopesMx.Unlock()
+	}
 }
 
 func (t *transport) ListenOrder() int {
@@ -312,7 +349,28 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 			return nil, fmt.Errorf("can't listen on quic version %v, underlying listener doesn't support it", version)
 		}
 	} else {
-		ln, err := t.connManager.ListenQUICAndAssociate(t, addr, &tlsConf, t.allowWindowIncrease)
+		allowConn := func(info *quic.ClientHelloInfo) bool {
+			addr, err := manet.FromNetAddr(info.RemoteAddr)
+			if err != nil {
+				return false
+			}
+			addr = addr.Encapsulate(ma.StringCast("/quic-v1"))
+			scope, err := t.rcmgr.OpenConnection(network.DirInbound, false, addr)
+			if err != nil {
+				return false
+			}
+
+			// Store the scope in pending scopes
+			t.pendingScopesMx.Lock()
+			t.pendingScopes[string(addr.Bytes())] = append(t.pendingScopes[string(addr.Bytes())], scopeWithTime{
+				Scope: scope,
+				Time:  time.Now(),
+			})
+			t.pendingScopesMx.Unlock()
+			return true
+		}
+
+		ln, err := t.connManager.ListenQUICAndAssociate(t, addr, &tlsConf, t.allowWindowIncrease, allowConn)
 		if err != nil {
 			return nil, err
 		}
@@ -373,6 +431,14 @@ func (t *transport) String() string {
 }
 
 func (t *transport) Close() error {
+	t.pendingScopesMx.Lock()
+	for _, scopes := range t.pendingScopes {
+		for _, scope := range scopes {
+			scope.Scope.Done()
+		}
+	}
+	t.pendingScopes = nil
+	t.pendingScopesMx.Unlock()
 	return nil
 }
 

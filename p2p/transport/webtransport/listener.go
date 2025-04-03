@@ -15,6 +15,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/net"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -125,6 +127,20 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 				log.Debugw("serving failed", "addr", ln.Addr(), "error", err)
 				return
 			}
+
+			// Extract the scope for this connection
+			addr, err := manet.FromNetAddr(conn.RemoteAddr())
+			if err != nil {
+				conn.CloseWithError(1, "")
+				continue
+			}
+			addr = addr.Encapsulate(ma.StringCast("/quic-v1/webtransport"))
+			scope := ln.transport.extractScope(addr)
+			if scope == nil {
+				conn.CloseWithError(1, "")
+				continue
+			}
+			// use scope here
 			wrapped := wrapConn(ln.ctx, conn, t.handshakeTimeout)
 			go ln.server.ServeQUICConn(wrapped)
 		}
