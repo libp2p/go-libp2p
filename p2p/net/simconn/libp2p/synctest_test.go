@@ -92,16 +92,21 @@ func TestSimpleSimNetPing_synctest(t *testing.T) {
 
 		hostA := simlibp2p.MustNewHost(t,
 			libp2p.ListenAddrStrings("/ip4/1.0.0.1/udp/8000/quic-v1"),
+			libp2p.DisableIdentifyAddressDiscovery(),
 			simlibp2p.QUICSimConnSimpleNet(router, linkSettings),
 		)
 		hostB := simlibp2p.MustNewHost(t,
 			libp2p.ListenAddrStrings("/ip4/1.0.0.2/udp/8000/quic-v1"),
+			libp2p.DisableIdentifyAddressDiscovery(),
 			simlibp2p.QUICSimConnSimpleNet(router, linkSettings),
 		)
 
 		err := router.Start()
 		require.NoError(t, err)
 		defer router.Close()
+
+		defer hostA.Close()
+		defer hostB.Close()
 
 		err = hostA.Connect(context.Background(), peer.AddrInfo{
 			ID:    hostB.ID(),
