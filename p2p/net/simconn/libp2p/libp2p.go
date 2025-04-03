@@ -47,8 +47,18 @@ func (m *MockSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr)
 
 const OneMbps = 1_000_000
 
-func QUICSimConnSimpleNet(router *simconn.SimpleSimNet, linkSettings simconn.NodeBiDiLinkSettings) libp2p.Option {
+func QUICSimConnSimpleNet(router *simconn.SimpleSimNet, linkSettings simconn.NodeBiDiLinkSettings, quicReuseOpts ...quicreuse.Option) libp2p.Option {
 	m := &MockSourceIPSelector{}
+	quicReuseOpts = append(quicReuseOpts,
+		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
+			return m, nil
+		}),
+		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
+			m.ip.Store(&address.IP)
+			c := simconn.NewSimConn(address, router)
+			router.AddNode(address, c, linkSettings)
+			return c, nil
+		}))
 	return libp2p.QUICReuse(
 		func(l fx.Lifecycle, statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey, opts ...quicreuse.Option) (*quicreuse.ConnManager, error) {
 			cm, err := quicreuse.NewConnManager(statelessResetKey, tokenKey, opts...)
@@ -61,16 +71,7 @@ func QUICSimConnSimpleNet(router *simconn.SimpleSimNet, linkSettings simconn.Nod
 				return cm.Close()
 			}))
 			return cm, nil
-		},
-		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
-			return m, nil
-		}),
-		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
-			m.ip.Store(&address.IP)
-			c := simconn.NewSimConn(address, router)
-			router.AddNode(address, c, linkSettings)
-			return c, nil
-		}))
+		}, quicReuseOpts...)
 }
 
 type wrappedHost struct {
@@ -202,8 +203,8 @@ type SimpleLibp2pNetworkMeta struct {
 }
 
 type NetworkSettings struct {
-	QUICReuseOptsForHostIdx func(idx int) []quicreuse.Option
 	UseBlankHost            bool
+	QUICReuseOptsForHostIdx func(idx int) []quicreuse.Option
 	BlankHostOptsForHostIdx func(idx int) BlankHostOpts
 }
 
@@ -240,7 +241,7 @@ func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSetting
 			} else {
 				h, err = libp2p.New(
 					libp2p.ListenAddrStrings(addr),
-					QUICSimConnSimpleNet(nw, l.LinkSettings),
+					QUICSimConnSimpleNet(nw, l.LinkSettings, quicReuseOpts...),
 					libp2p.DisableIdentifyAddressDiscovery(),
 					libp2p.ResourceManager(&network.NullResourceManager{}),
 				)
