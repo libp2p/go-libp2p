@@ -224,6 +224,9 @@ func (c *ConnManager) onListenerClosed(key string) {
 	entry.refCount = entry.refCount - 1
 	if entry.refCount <= 0 {
 		delete(c.quicListeners, key)
+		if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
+			tr.disassociate()
+		}
 		entry.ln.Close()
 	} else {
 		c.quicListeners[key] = entry
