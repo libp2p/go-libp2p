@@ -51,6 +51,8 @@ type ConnManager struct {
 	quicListenersMu sync.Mutex
 	quicListeners   map[string]quicListenerEntry
 
+	qlogTracerDir string
+
 	srk      quic.StatelessResetKey
 	tokenKey quic.TokenGeneratorKey
 }
@@ -112,8 +114,14 @@ func (c *ConnManager) getTracer() func(context.Context, quiclogging.Perspective,
 			}
 		}
 		var tracer *quiclogging.ConnectionTracer
-		if qlogTracerDir != "" {
-			tracer = qloggerForDir(qlogTracerDir, p, ci)
+		var tracerDir = c.qlogTracerDir
+		if tracerDir == "" {
+			// Fallback to the global qlogTracerDir
+			tracerDir = qlogTracerDir
+		}
+
+		if tracerDir != "" {
+			tracer = qloggerForDir(tracerDir, p, ci)
 			if promTracer != nil {
 				tracer = quiclogging.NewMultiplexedConnectionTracer(promTracer,
 					tracer)
