@@ -12,6 +12,8 @@ import (
 	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/net"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
 )
 
@@ -50,9 +52,34 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		if err != nil {
 			return nil, err
 		}
-		c, err := l.wrapConn(qconn)
+
+		addr, err := manet.FromNetAddr(qconn.RemoteAddr())
+		if err != nil {
+			return nil, err
+		}
+
+		addr = addr.Encapsulate(ma.StringCast("/quic-v1"))
+		addrKey := string(addr.Bytes())
+
+		l.transport.pendingScopesMx.Lock()
+		scopes, ok := l.transport.pendingScopes[addrKey]
+		if !ok || len(scopes) == 0 {
+			l.transport.pendingScopesMx.Unlock()
+			continue
+		}
+		scope := scopes[0].Scope
+		scopes = scopes[1:]
+		if len(scopes) == 0 {
+			delete(l.transport.pendingScopes, addrKey)
+		} else {
+			l.transport.pendingScopes[addrKey] = scopes
+		}
+		l.transport.pendingScopesMx.Unlock()
+
+		c, err := l.wrapConnWithScope(qconn, scope, addr)
 		if err != nil {
 			log.Debugf("failed to setup connection: %s", err)
+			scope.Done()
 			qconn.CloseWithError(quic.ApplicationErrorCode(network.ConnResourceLimitExceeded), "")
 			continue
 		}
@@ -78,29 +105,6 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		}
 		return c, nil
 	}
-}
-
-// wrapConn wraps a QUIC connection into a libp2p [tpt.CapableConn].
-// If wrapping fails. The caller is responsible for cleaning up the
-// connection.
-func (l *listener) wrapConn(qconn quic.Connection) (*conn, error) {
-	remoteMultiaddr, err := quicreuse.ToQuicMultiaddr(qconn.RemoteAddr(), qconn.ConnectionState().Version)
-	if err != nil {
-		return nil, err
-	}
-
-	connScope, err := l.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
-	if err != nil {
-		log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
-		return nil, err
-	}
-	c, err := l.wrapConnWithScope(qconn, connScope, remoteMultiaddr)
-	if err != nil {
-		connScope.Done()
-		return nil, err
-	}
-
-	return c, nil
 }
 
 func (l *listener) wrapConnWithScope(qconn quic.Connection, connScope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr) (*conn, error) {

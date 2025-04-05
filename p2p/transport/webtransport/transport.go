@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -67,6 +68,11 @@ func WithHandshakeTimeout(d time.Duration) Option {
 	}
 }
 
+type scopeWithTime struct {
+	Scope network.ConnManagementScope
+	Time  time.Time
+}
+
 type transport struct {
 	privKey ic.PrivKey
 	pid     peer.ID
@@ -88,6 +94,9 @@ type transport struct {
 	connMx           sync.Mutex
 	conns            map[quic.ConnectionTracingID]*conn // using quic-go's ConnectionTracingKey as map key
 	handshakeTimeout time.Duration
+
+	pendingScopesMx sync.Mutex
+	pendingScopes   map[string][]scopeWithTime
 }
 
 var _ tpt.Transport = &transport{}
@@ -115,6 +124,7 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 		connManager:      connManager,
 		conns:            map[quic.ConnectionTracingID]*conn{},
 		handshakeTimeout: handshakeTimeout,
+		pendingScopes:    make(map[string][]scopeWithTime),
 	}
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
@@ -126,6 +136,8 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 		return nil, err
 	}
 	t.noise = n
+
+	go t.cleanupPendingScopes()
 	return t, nil
 }
 
@@ -334,7 +346,27 @@ func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 	}
 	tlsConf.NextProtos = append(tlsConf.NextProtos, http3.NextProtoH3)
 
-	ln, err := t.connManager.ListenQUICAndAssociate(t, laddr, tlsConf, t.allowWindowIncrease)
+	allowConn := func(info *quic.ClientHelloInfo) bool {
+		addr, err := manet.FromNetAddr(info.RemoteAddr)
+		if err != nil {
+			return false
+		}
+		addr = addr.Encapsulate(ma.StringCast("/quic-v1/webtransport"))
+		scope, err := t.rcmgr.OpenConnection(network.DirInbound, false, addr)
+		if err != nil {
+			return false
+		}
+
+		t.pendingScopesMx.Lock()
+		t.pendingScopes[string(addr.Bytes())] = append(t.pendingScopes[string(addr.Bytes())], scopeWithTime{
+			Scope: scope,
+			Time:  time.Now(),
+		})
+		t.pendingScopesMx.Unlock()
+
+		return true
+	}
+	ln, err := t.connManager.ListenQUICAndAssociate(t, laddr, tlsConf, t.allowWindowIncrease, allowConn)
 	if err != nil {
 		return nil, err
 	}
@@ -438,4 +470,50 @@ func (t *transport) AddCertHashes(m ma.Multiaddr) (ma.Multiaddr, bool) {
 		return m, false
 	}
 	return m.Encapsulate(t.certManager.AddrComponent()), true
+}
+
+func (t *transport) cleanupPendingScopes() {
+	for {
+		time.Sleep(1 * time.Minute)
+		expiry := time.Now().Add(-1 * time.Minute)
+
+		t.pendingScopesMx.Lock()
+		for s, scopes := range t.pendingScopes {
+			for _, scope := range scopes {
+				if scope.Time.Before(expiry) {
+					scope.Scope.Done()
+					t.pendingScopes[s] = slices.DeleteFunc(t.pendingScopes[s], func(s scopeWithTime) bool {
+						return s.Scope == scope.Scope
+					})
+				}
+			}
+			if len(t.pendingScopes[s]) == 0 {
+				delete(t.pendingScopes, s)
+			}
+		}
+		t.pendingScopesMx.Unlock()
+	}
+}
+
+func (t *transport) extractScope(addr ma.Multiaddr) network.ConnManagementScope {
+	addrKey := string(addr.Bytes())
+	
+	t.pendingScopesMx.Lock()
+	defer t.pendingScopesMx.Unlock()
+
+	scopes := t.pendingScopes[addrKey]
+	if len(scopes) == 0 {
+		return nil
+	}
+
+	// Get the first scope and remove it from the slice
+	scope := scopes[0].Scope
+	t.pendingScopes[addrKey] = scopes[1:]
+	
+	// Clean up the map entry if there are no more scopes
+	if len(t.pendingScopes[addrKey]) == 0 {
+		delete(t.pendingScopes, addrKey)
+	}
+
+	return scope
 }
