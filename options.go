@@ -132,15 +132,12 @@ func QUICReuse(constructor interface{}, opts ...quicreuse.Option) Option {
 // The transport can be a constructed transport.Transport or a function taking
 // any subset of this libp2p node's:
 // * Transport Upgrader (*tptu.Upgrader)
-// * Host
 // * Stream muxer (muxer.Transport)
-// * Security transport (security.Transport)
+// * Connection Gater (connmgr.ConnectionGater)
 // * Private network protector (pnet.Protector)
-// * Peer ID
-// * Private Key
-// * Public Key
-// * Address filter (filter.Filter)
-// * Peerstore
+// * Resource Manager (network.ResourceManager)
+// * TCP reuse Connection Manager (tcpreuse.ConnMgr)
+// * WebRTC listener (libp2pwebrtc.ListenUDPFn)
 func Transport(constructor interface{}, opts ...interface{}) Option {
 	return func(cfg *Config) error {
 		// generate a random identifier, so that fx can associate the constructor with its options
