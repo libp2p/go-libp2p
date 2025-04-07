@@ -445,7 +445,7 @@ func TestRateLimiterStress(t *testing.T) {
 							success.Add(1)
 							peerSuccesses[j].Add(1)
 						}
-						if r.AcceptDialDataRequest(p) {
+						if r.AcceptDialDataRequest() {
 							dialDataSuccesses.Add(1)
 						}
 						r.CompleteRequest(p)

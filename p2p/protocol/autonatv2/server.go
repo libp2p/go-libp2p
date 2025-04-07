@@ -213,7 +213,7 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 	nonce := msg.GetDialRequest().Nonce
 
 	isDialDataRequired := as.dialDataRequestPolicy(s.Conn().RemoteMultiaddr(), dialAddr)
-	if isDialDataRequired && !as.limiter.AcceptDialDataRequest(p) {
+	if isDialDataRequired && !as.limiter.AcceptDialDataRequest() {
 		msg = pb.Message{
 			Msg: &pb.Message_DialResponse{
 				DialResponse: &pb.DialResponse{
@@ -442,7 +442,7 @@ func (r *rateLimiter) Accept(p peer.ID) bool {
 	return true
 }
 
-func (r *rateLimiter) AcceptDialDataRequest(p peer.ID) bool {
+func (r *rateLimiter) AcceptDialDataRequest() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
