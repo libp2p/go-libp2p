@@ -118,6 +118,13 @@ func (c *refcountedTransport) hasAssociation(a any) bool {
 	return ok
 }
 
+// disassociate removes all associations from this transport.
+func (c *refcountedTransport) disassociate() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.assocations = nil
+}
+
 func (c *refcountedTransport) IncreaseCount() {
 	c.mutex.Lock()
 	c.refCount++
