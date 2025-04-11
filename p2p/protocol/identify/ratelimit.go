@@ -1,7 +1,9 @@
 package identify
 
 import (
+	"container/heap"
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -11,17 +13,18 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// events will be (time_in_seconds * PerSecond) + Burst.
-// Set PerSecond to 0 for no rate limiting
+// rateLimit is the configuration for a token bucket rate limiter.
+// The bucket has a capacity of Burst, and is refilled at a rate of RPS tokens per second.
+// In any given time interval T seconds, maximum events allowed will be `T*RPS + Burst`
 type rateLimit struct {
-	// PerSecond is the number of tokens added to the bucket per second.
-	PerSecond rate.Limit
+	// RPS is the number of tokens added to the bucket per second.
+	RPS float64
 	// Burst is the maximum number of tokens in the bucket at any time.
 	Burst int
 }
 
-// networkPrefixRateLimit is a rate limit configuration that applies to a specific network prefix.
-type networkPrefixRateLimit struct {
+// prefixRateLimit is a rate limit configuration that applies to a specific network prefix.
+type prefixRateLimit struct {
 	Prefix netip.Prefix
 	rateLimit
 }
@@ -32,11 +35,6 @@ type subnetRateLimit struct {
 	rateLimit
 }
 
-type limiterWithLastSeen struct {
-	*rate.Limiter
-	lastSeen time.Time
-}
-
 // rateLimiter rate limits new streams for a service. It allows setting NetworkPrefix specific,
 // global, and subnet specific limits. Use 0 for no rate limiting.
 // The ratelimiter maintains state that must be periodically cleaned up using Cleanup
@@ -44,46 +42,32 @@ type rateLimiter struct {
 	// NetworkPrefixLimits are limits for streams where the peer IP falls within a specific
 	// network prefix. It can be used to increase the limit for trusted networks and decrease the
 	// limit for specific networks.
-	NetworkPrefixLimits []networkPrefixRateLimit
+	NetworkPrefixLimits []prefixRateLimit
 	// GlobalLimit is the limit for all streams where the peer IP doesn't fall within any
 	// of the `NetworkPrefixLimits`
 	GlobalLimit rateLimit
-	// IPv4SubnetLimits are the per subnet limits for streams with IPv4 Peers.
-	IPv4SubnetLimits []subnetRateLimit
-	// IPv6SubnetLimits are the per subnet limits for streams with IPv6 Peers.
-	IPv6SubnetLimits []subnetRateLimit
+	// SubnetRateLimiter is a rate limiter for subnets.
+	SubnetRateLimiter subnetRateLimiter
 
 	initOnce             sync.Once
 	globalBucket         *rate.Limiter
 	networkPrefixBuckets []*rate.Limiter // ith element ratelimits ith NetworkPrefixLimits
-	mx                   sync.Mutex
-	ipv4SubnetBuckets    []map[netip.Prefix]limiterWithLastSeen // ith element ratelimits ith IPv4SubnetLimits
-	ipv6SubnetBuckets    []map[netip.Prefix]limiterWithLastSeen // ith element ratelimits ith IPv6SubnetLimits
 }
 
 func (r *rateLimiter) init() {
 	r.initOnce.Do(func() {
-		if r.GlobalLimit.PerSecond == 0 {
+		if r.GlobalLimit.RPS == 0 {
 			r.globalBucket = rate.NewLimiter(rate.Inf, 0)
 		} else {
-			r.globalBucket = rate.NewLimiter(r.GlobalLimit.PerSecond, r.GlobalLimit.Burst)
-		}
-
-		r.ipv4SubnetBuckets = make([]map[netip.Prefix]limiterWithLastSeen, len(r.IPv4SubnetLimits))
-		for i := range r.IPv4SubnetLimits {
-			r.ipv4SubnetBuckets[i] = make(map[netip.Prefix]limiterWithLastSeen)
-		}
-		r.ipv6SubnetBuckets = make([]map[netip.Prefix]limiterWithLastSeen, len(r.IPv6SubnetLimits))
-		for i := range r.IPv6SubnetLimits {
-			r.ipv6SubnetBuckets[i] = make(map[netip.Prefix]limiterWithLastSeen)
+			r.globalBucket = rate.NewLimiter(rate.Limit(r.GlobalLimit.RPS), r.GlobalLimit.Burst)
 		}
 
 		r.networkPrefixBuckets = make([]*rate.Limiter, 0, len(r.NetworkPrefixLimits))
 		for _, limit := range r.NetworkPrefixLimits {
-			if limit.PerSecond == 0 {
+			if limit.RPS == 0 {
 				r.networkPrefixBuckets = append(r.networkPrefixBuckets, rate.NewLimiter(rate.Inf, 0))
 			} else {
-				r.networkPrefixBuckets = append(r.networkPrefixBuckets, rate.NewLimiter(limit.PerSecond, limit.Burst))
+				r.networkPrefixBuckets = append(r.networkPrefixBuckets, rate.NewLimiter(rate.Limit(limit.RPS), limit.Burst))
 			}
 		}
 	})
@@ -105,11 +89,11 @@ func (r *rateLimiter) allow(addr ma.Multiaddr) bool {
 	// Check buckets from the most specific to the least.
 	//
 	// This ensures that a single peer cannot take up all the tokens in the global
-	// rate limiting bucket. We *MUST* do this, because the rate limiter implementation
-	// doesn't have a `ReturnToken` method. If we checked the global bucket before
-	// the specific bucket, and the specific bucket rejected the request, there's no
-	// way to return the token to the global bucket. So all rejected requests from the
-	// specific bucket would take up tokens from the global bucket.
+	// rate limiting bucket. We *MUST* follow this order because the rate limiter
+	// implementation doesn't have a `ReturnToken` method. If we checked the global
+	// bucket before the specific bucket, and the specific bucket rejected the
+	// request, there's no way to return the token to the global bucket. So all
+	// rejected requests from the specific bucket would take up tokens from the global bucket.
 	ip, err := manet.ToIP(addr)
 	if err != nil {
 		return r.globalBucket.Allow()
@@ -132,71 +116,201 @@ func (r *rateLimiter) allow(addr ma.Multiaddr) bool {
 		return true
 	}
 
-	if !r.allowSubnet(ipAddr) {
+	if !r.SubnetRateLimiter.Allow(ipAddr, time.Now()) {
 		return false
 	}
 	return r.globalBucket.Allow()
 }
 
-func (r *rateLimiter) allowSubnet(ipAddr netip.Addr) bool {
-	r.mx.Lock()
-	defer r.mx.Unlock()
-	var subNetLimits []subnetRateLimit
-	var subNetBuckets []map[netip.Prefix]limiterWithLastSeen
-	if ipAddr.Is4() {
-		subNetLimits = r.IPv4SubnetLimits
-		subNetBuckets = r.ipv4SubnetBuckets
-	} else {
-		subNetLimits = r.IPv6SubnetLimits
-		subNetBuckets = r.ipv6SubnetBuckets
+// tokenBucket is a *rate.Limiter with a `FullAfter` method.
+type tokenBucket struct {
+	*rate.Limiter
+}
+
+// FullAfter returns the duration from now after which the tokens will be full.
+func (b *tokenBucket) FullAfter(now time.Time) time.Duration {
+	tokensNeeded := float64(b.Limiter.Burst()) - b.Limiter.TokensAt(now)
+	refillRate := float64(b.Limiter.Limit())
+	eta := time.Duration((tokensNeeded / refillRate) * float64(time.Second))
+	return eta
+}
+
+// prefixBucketWithExpiry is a token bucket with a prefix and Expiry. The expiry is when the bucket
+// will be full with tokens.
+type prefixBucketWithExpiry struct {
+	tokenBucket
+	Prefix netip.Prefix
+	Expiry time.Time
+}
+
+// bucketHeap is a heap of buckets ordered by their Expiry. At expiry, the bucket
+// is removed from the heap as a full bucket is indistinguishable from a new bucket.
+type bucketHeap struct {
+	prefixBucket  []prefixBucketWithExpiry
+	prefixToIndex map[netip.Prefix]int
+}
+
+// Methods for the heap interface
+
+// Len returns the length of the heap
+func (h *bucketHeap) Len() int {
+	return len(h.prefixBucket)
+}
+
+// Less compares two elements in the heap
+func (h *bucketHeap) Less(i, j int) bool {
+	return h.prefixBucket[i].Expiry.Before(h.prefixBucket[j].Expiry)
+}
+
+// Swap swaps two elements in the heap
+func (h *bucketHeap) Swap(i, j int) {
+	h.prefixBucket[i], h.prefixBucket[j] = h.prefixBucket[j], h.prefixBucket[i]
+	h.prefixToIndex[h.prefixBucket[i].Prefix] = i
+	h.prefixToIndex[h.prefixBucket[j].Prefix] = j
+}
+
+// Push adds a new element to the heap
+func (h *bucketHeap) Push(x any) {
+	item := x.(prefixBucketWithExpiry)
+	h.prefixBucket = append(h.prefixBucket, item)
+	h.prefixToIndex[item.Prefix] = len(h.prefixBucket) - 1
+}
+
+// Pop removes and returns the top element from the heap
+func (h *bucketHeap) Pop() any {
+	old := h.prefixBucket
+	n := len(old)
+	item := old[n-1]
+	h.prefixBucket = old[0 : n-1]
+	delete(h.prefixToIndex, item.Prefix)
+	return item
+}
+
+// Upsert updates or inserts the prefix's bucket with bucket.
+func (h *bucketHeap) Top() prefixBucketWithExpiry {
+	if h.Len() == 0 {
+		return prefixBucketWithExpiry{}
 	}
+	return h.prefixBucket[0]
+}
+
+// Upsert updates or inserts the prefix's bucket with bucket.
+func (h *bucketHeap) Upsert(prefix netip.Prefix, bucket prefixBucketWithExpiry) {
+	if i, ok := h.prefixToIndex[prefix]; ok {
+		h.prefixBucket[i] = bucket
+		heap.Fix(h, i)
+		return
+	}
+	heap.Push(h, bucket)
+}
+
+// Get returns the limiter for a prefix
+func (h *bucketHeap) Get(prefix netip.Prefix) prefixBucketWithExpiry {
+	if i, ok := h.prefixToIndex[prefix]; ok {
+		return h.prefixBucket[i]
+	}
+	return prefixBucketWithExpiry{}
+}
+
+type subnetRateLimiter struct {
+	// IPv4SubnetLimits are the per subnet limits for streams with IPv4 Peers.
+	IPv4SubnetLimits []subnetRateLimit
+	// IPv6SubnetLimits are the per subnet limits for streams with IPv6 Peers.
+	IPv6SubnetLimits []subnetRateLimit
+	// GracePeriod is the time to wait to remove a full capacity bucket.
+	// Keeping a bucket around helps prevent allocations
+	GracePeriod time.Duration
+
+	initOnce  sync.Once
+	mx        sync.Mutex
+	ipv4Heaps []*bucketHeap
+	ipv6Heaps []*bucketHeap
+}
+
+func (s *subnetRateLimiter) init() {
+	s.initOnce.Do(func() {
+		slices.SortFunc(s.IPv4SubnetLimits, func(a, b subnetRateLimit) int { return b.PrefixLength - a.PrefixLength }) // smaller prefix length last
+		slices.SortFunc(s.IPv6SubnetLimits, func(a, b subnetRateLimit) int { return b.PrefixLength - a.PrefixLength })
+		s.ipv4Heaps = make([]*bucketHeap, len(s.IPv4SubnetLimits))
+		for i := range s.IPv4SubnetLimits {
+			s.ipv4Heaps[i] = &bucketHeap{
+				prefixBucket:  make([]prefixBucketWithExpiry, 0),
+				prefixToIndex: make(map[netip.Prefix]int),
+			}
+			heap.Init(s.ipv4Heaps[i])
+		}
+
+		s.ipv6Heaps = make([]*bucketHeap, len(s.IPv6SubnetLimits))
+		for i := range s.IPv6SubnetLimits {
+			s.ipv6Heaps[i] = &bucketHeap{
+				prefixBucket:  make([]prefixBucketWithExpiry, 0),
+				prefixToIndex: make(map[netip.Prefix]int),
+			}
+			heap.Init(s.ipv6Heaps[i])
+		}
+	})
+}
+
+func (s *subnetRateLimiter) Allow(ipAddr netip.Addr, now time.Time) bool {
+	s.init()
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	s.cleanUp(now)
+
+	var subNetLimits []subnetRateLimit
+	var heaps []*bucketHeap
+	if ipAddr.Is4() {
+		subNetLimits = s.IPv4SubnetLimits
+		heaps = s.ipv4Heaps
+	} else {
+		subNetLimits = s.IPv6SubnetLimits
+		heaps = s.ipv6Heaps
+	}
+
 	for i, limit := range subNetLimits {
 		prefix, err := ipAddr.Prefix(limit.PrefixLength)
 		if err != nil {
-			// no need to check r.global here. If we have an ip address we'll have a prefix
-			return false
+			return false // we have a ipaddr this shouldn't happen
 		}
-		if subNetBuckets[i][prefix].Limiter == nil {
-			// Note: It doesn't make sense to have this be inf with 0 limits.
-			// A subnetBucket with infinite limit might as well be removed from the list
-			subNetBuckets[i][prefix] = limiterWithLastSeen{
-				Limiter:  rate.NewLimiter(limit.PerSecond, limit.Burst),
-				lastSeen: time.Now(),
-			}
-		} else {
-			subNetBuckets[i][prefix] = limiterWithLastSeen{
-				Limiter:  subNetBuckets[i][prefix].Limiter,
-				lastSeen: time.Now(),
+
+		bucket := heaps[i].Get(prefix)
+		if bucket == (prefixBucketWithExpiry{}) {
+			bucket = prefixBucketWithExpiry{
+				Prefix:      prefix,
+				tokenBucket: tokenBucket{rate.NewLimiter(rate.Limit(limit.RPS), limit.Burst)},
 			}
 		}
-		if !subNetBuckets[i][prefix].Limiter.Allow() {
-			// This is slightly wrong for the same reason that `allow` must check from most to least specific.
-			// We should ideally put the tokens back to the previous rate limiting buckets(0-(i-1))
-			// before returning false
+
+		if !bucket.Limiter.Allow() {
+			// bucket is empty, its expiry would have been set correctly last time
 			return false
 		}
+		bucket.Expiry = now.Add(bucket.FullAfter(now)).Add(s.GracePeriod)
+		heaps[i].Upsert(prefix, bucket)
 	}
 	return true
 }
 
-func (r *rateLimiter) Cleanup() {
-	r.init()
-	now := time.Now()
-
-	r.mx.Lock()
-	defer r.mx.Unlock()
-	for i := range r.ipv4SubnetBuckets {
-		for prefix, limiter := range r.ipv4SubnetBuckets[i] {
-			if limiter.TokensAt(now) >= float64(limiter.Burst()) {
-				delete(r.ipv4SubnetBuckets[i], prefix)
+// cleanUp removes limiters that have expired by now.
+func (s *subnetRateLimiter) cleanUp(now time.Time) {
+	for _, h := range s.ipv4Heaps {
+		for h.Len() > 0 {
+			oldest := h.Top()
+			if oldest.Expiry.After(now) {
+				break
 			}
+			heap.Pop(h)
 		}
 	}
-	for i := range r.ipv6SubnetBuckets {
-		for prefix, limiter := range r.ipv6SubnetBuckets[i] {
-			if limiter.TokensAt(now) >= float64(limiter.Burst()) {
-				delete(r.ipv6SubnetBuckets[i], prefix)
+
+	for _, h := range s.ipv6Heaps {
+		for h.Len() > 0 {
+			oldest := h.Top()
+			if oldest.Expiry.After(now) {
+				break
 			}
+			heap.Pop(h)
 		}
 	}
 }

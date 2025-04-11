@@ -57,17 +57,17 @@ const (
 )
 
 var (
-	defaultNetworkPrefixRateLimits = []networkPrefixRateLimit{
+	defaultNetworkPrefixRateLimits = []prefixRateLimit{
 		{Prefix: netip.MustParsePrefix("127.0.0.0/8"), rateLimit: rateLimit{}}, // inf
 		{Prefix: netip.MustParsePrefix("::1/128"), rateLimit: rateLimit{}},     // inf
 	}
-	defaultGlobalRateLimit      = rateLimit{PerSecond: 2000, Burst: 3000}
+	defaultGlobalRateLimit      = rateLimit{RPS: 2000, Burst: 3000}
 	defaultIPv4SubnetRateLimits = []subnetRateLimit{
-		{PrefixLength: 24, rateLimit: rateLimit{PerSecond: 0.2, Burst: 10}}, // 1 every 5 seconds
+		{PrefixLength: 24, rateLimit: rateLimit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
 	}
 	defaultIPv6SubnetRateLimits = []subnetRateLimit{
-		{PrefixLength: 56, rateLimit: rateLimit{PerSecond: 0.2, Burst: 10}}, // 1 every 5 seconds
-		{PrefixLength: 48, rateLimit: rateLimit{PerSecond: 0.5, Burst: 20}}, // 1 every 2 seconds
+		{PrefixLength: 56, rateLimit: rateLimit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
+		{PrefixLength: 48, rateLimit: rateLimit{RPS: 0.5, Burst: 20}}, // 1 every 2 seconds
 	}
 )
 
@@ -228,8 +228,10 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		rateLimiter: &rateLimiter{
 			GlobalLimit:         defaultGlobalRateLimit,
 			NetworkPrefixLimits: defaultNetworkPrefixRateLimits,
-			IPv4SubnetLimits:    defaultIPv4SubnetRateLimits,
-			IPv6SubnetLimits:    defaultIPv6SubnetRateLimits,
+			SubnetRateLimiter: subnetRateLimiter{
+				IPv4SubnetLimits: defaultIPv4SubnetRateLimits,
+				IPv6SubnetLimits: defaultIPv6SubnetRateLimits,
+			},
 		},
 	}
 
@@ -314,8 +316,6 @@ func (ids *idService) loop(ctx context.Context) {
 		}
 	}()
 
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
 	for {
 		select {
 		case e, ok := <-sub.Out():
@@ -332,8 +332,6 @@ func (ids *idService) loop(ctx context.Context) {
 			case triggerPush <- struct{}{}:
 			default: // we already have one more push queued, no need to queue another one
 			}
-		case <-ticker.C:
-			ids.rateLimiter.Cleanup()
 		case <-ctx.Done():
 			return
 		}
