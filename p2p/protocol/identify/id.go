@@ -20,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/internal/rate"
 	useragent "github.com/libp2p/go-libp2p/p2p/protocol/identify/internal/user-agent"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
@@ -57,17 +58,17 @@ const (
 )
 
 var (
-	defaultNetworkPrefixRateLimits = []networkPrefixRateLimit{
-		{Prefix: netip.MustParsePrefix("127.0.0.0/8"), rateLimit: rateLimit{}}, // inf
-		{Prefix: netip.MustParsePrefix("::1/128"), rateLimit: rateLimit{}},     // inf
+	defaultNetworkPrefixRateLimits = []rate.PrefixLimit{
+		{Prefix: netip.MustParsePrefix("127.0.0.0/8"), Limit: rate.Limit{}}, // inf
+		{Prefix: netip.MustParsePrefix("::1/128"), Limit: rate.Limit{}},     // inf
 	}
-	defaultGlobalRateLimit      = rateLimit{PerSecond: 2000, Burst: 3000}
-	defaultIPv4SubnetRateLimits = []subnetRateLimit{
-		{PrefixLength: 24, rateLimit: rateLimit{PerSecond: 0.2, Burst: 10}}, // 1 every 5 seconds
+	defaultGlobalRateLimit      = rate.Limit{RPS: 2000, Burst: 3000}
+	defaultIPv4SubnetRateLimits = []rate.SubnetLimit{
+		{PrefixLength: 24, Limit: rate.Limit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
 	}
-	defaultIPv6SubnetRateLimits = []subnetRateLimit{
-		{PrefixLength: 56, rateLimit: rateLimit{PerSecond: 0.2, Burst: 10}}, // 1 every 5 seconds
-		{PrefixLength: 48, rateLimit: rateLimit{PerSecond: 0.5, Burst: 20}}, // 1 every 2 seconds
+	defaultIPv6SubnetRateLimits = []rate.SubnetLimit{
+		{PrefixLength: 56, Limit: rate.Limit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
+		{PrefixLength: 48, Limit: rate.Limit{RPS: 0.5, Burst: 20}}, // 1 every 2 seconds
 	}
 )
 
@@ -191,7 +192,7 @@ type idService struct {
 
 	natEmitter *natEmitter
 
-	rateLimiter *rateLimiter
+	rateLimiter *rate.Limiter
 }
 
 type normalizer interface {
@@ -225,11 +226,14 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		setupCompleted:          make(chan struct{}),
 		metricsTracer:           cfg.metricsTracer,
 		timeout:                 cfg.timeout,
-		rateLimiter: &rateLimiter{
+		rateLimiter: &rate.Limiter{
 			GlobalLimit:         defaultGlobalRateLimit,
 			NetworkPrefixLimits: defaultNetworkPrefixRateLimits,
-			IPv4SubnetLimits:    defaultIPv4SubnetRateLimits,
-			IPv6SubnetLimits:    defaultIPv6SubnetRateLimits,
+			SubnetRateLimiter: rate.SubnetLimiter{
+				IPv4SubnetLimits: defaultIPv4SubnetRateLimits,
+				IPv6SubnetLimits: defaultIPv6SubnetRateLimits,
+				GracePeriod:      1 * time.Minute,
+			},
 		},
 	}
 
@@ -314,8 +318,6 @@ func (ids *idService) loop(ctx context.Context) {
 		}
 	}()
 
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
 	for {
 		select {
 		case e, ok := <-sub.Out():
@@ -332,8 +334,6 @@ func (ids *idService) loop(ctx context.Context) {
 			case triggerPush <- struct{}{}:
 			default: // we already have one more push queued, no need to queue another one
 			}
-		case <-ticker.C:
-			ids.rateLimiter.Cleanup()
 		case <-ctx.Done():
 			return
 		}
