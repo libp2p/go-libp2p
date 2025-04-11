@@ -1,0 +1,21 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - revive
+    - unused
+    - prealloc
+
+  settings:
+    revive:
+      severity: warning
+      rules:
+        - name: unused-parameter
+          severity: warning
+
+severity:
+    default: warning
+
