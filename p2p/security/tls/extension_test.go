@@ -1,6 +1,7 @@
 package libp2ptls
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,8 +12,8 @@ func TestExtensionGenerating(t *testing.T) {
 }
 
 func TestExtensionComparison(t *testing.T) {
-	require.True(t, extensionIDEqual([]int{1, 2, 3, 4}, []int{1, 2, 3, 4}))
-	require.False(t, extensionIDEqual([]int{1, 2, 3, 4}, []int{1, 2, 3}))
-	require.False(t, extensionIDEqual([]int{1, 2, 3}, []int{1, 2, 3, 4}))
-	require.False(t, extensionIDEqual([]int{1, 2, 3, 4}, []int{4, 3, 2, 1}))
+	require.True(t, slices.Equal([]int{1, 2, 3, 4}, []int{1, 2, 3, 4}))
+	require.False(t, slices.Equal([]int{1, 2, 3, 4}, []int{1, 2, 3}))
+	require.False(t, slices.Equal([]int{1, 2, 3}, []int{1, 2, 3, 4}))
+	require.False(t, slices.Equal([]int{1, 2, 3, 4}, []int{4, 3, 2, 1}))
 }

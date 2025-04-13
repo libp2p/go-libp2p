@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"runtime/debug"
+	"slices"
 	"time"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -165,7 +166,7 @@ func PubKeyFromCertChain(chain []*x509.Certificate) (ic.PubKey, error) {
 	var keyExt pkix.Extension
 	// find the libp2p key extension, skipping all unknown extensions
 	for _, ext := range cert.Extensions {
-		if extensionIDEqual(ext.Id, extensionID) {
+		if slices.Equal(ext.Id, extensionID) {
 			keyExt = ext
 			found = true
 			for i, oident := range cert.UnhandledCriticalExtensions {
