@@ -267,7 +267,7 @@ For a concrete example, consider pubsub with the gossipsub router: the
 service also understands the floodsub protocol for backwards
 compatibility and support for unsophisticated clients that are lagging
 in the implementation effort. By specifying a lower limit for the
-floodsub protocol, we can can constrain the service level for legacy
+floodsub protocol, we can constrain the service level for legacy
 clients using an inefficient protocol.
 
 ### Peer Scopes
