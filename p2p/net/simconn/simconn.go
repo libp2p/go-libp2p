@@ -2,6 +2,7 @@ package simconn
 
 import (
 	"errors"
+	"io"
 	"net"
 	"slices"
 	"sync"
@@ -22,9 +23,10 @@ type Packet struct {
 }
 
 type SimConn struct {
-	mu         sync.Mutex
-	closed     bool
-	closedChan chan struct{}
+	mu              sync.Mutex
+	closed          bool
+	closedChan      chan struct{}
+	deadlineUpdated chan struct{}
 
 	packetsSent atomic.Uint64
 	packetsRcvd atomic.Uint64
@@ -44,10 +46,11 @@ type SimConn struct {
 // NewSimConn creates a new simulated connection with the specified parameters
 func NewSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
 	return &SimConn{
-		router:        rtr,
-		myAddr:        addr,
-		packetsToRead: make(chan Packet, 512), // buffered channel to prevent blocking
-		closedChan:    make(chan struct{}),
+		router:          rtr,
+		myAddr:          addr,
+		packetsToRead:   make(chan Packet, 512), // buffered channel to prevent blocking
+		closedChan:      make(chan struct{}),
+		deadlineUpdated: make(chan struct{}, 1),
 	}
 }
 
@@ -73,6 +76,16 @@ func (c *SimConn) SetLocalAddr(addr net.Addr) {
 	c.myLocalAddr = addr
 }
 
+// SetReadBuffer only exists to quell the warning message from quic-go
+func (c *SimConn) SetReadBuffer(n int) error {
+	return nil
+}
+
+// SetReadBuffer only exists to quell the warning message from quic-go
+func (c *SimConn) SetWriteBuffer(n int) error {
+	return nil
+}
+
 func (c *SimConn) RecvPacket(p Packet) {
 	c.mu.Lock()
 	if c.closed {
@@ -87,6 +100,24 @@ func (c *SimConn) RecvPacket(p Packet) {
 	case c.packetsToRead <- p:
 	default:
 		// drop the packet if the channel is full
+	}
+}
+
+func (c *SimConn) RecvPacketBlocking(p Packet) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.mu.Unlock()
+	c.packetsRcvd.Add(1)
+	c.bytesRcvd.Add(int64(len(p.buf)))
+
+	select {
+	case c.packetsToRead <- p:
+	case <-c.closedChan:
+		// if the connection is closed, drop the packet
+		return
 	}
 }
 
@@ -114,7 +145,7 @@ func (c *SimConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	deadline := c.readDeadline
 	c.mu.Unlock()
 
-	if !deadline.IsZero() && time.Now().After(deadline) {
+	if !deadline.IsZero() && !time.Now().Before(deadline) {
 		return 0, nil, ErrDeadlineExceeded
 	}
 
@@ -122,11 +153,23 @@ func (c *SimConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	if !deadline.IsZero() {
 		select {
 		case pkt = <-c.packetsToRead:
+		case <-c.closedChan:
+			return 0, nil, io.EOF
 		case <-time.After(time.Until(deadline)):
 			return 0, nil, ErrDeadlineExceeded
 		}
 	} else {
-		pkt = <-c.packetsToRead
+	outer:
+		for {
+			select {
+			case pkt = <-c.packetsToRead:
+				break outer
+			case <-c.closedChan:
+				return 0, nil, net.ErrClosed
+			case <-c.deadlineUpdated:
+				return c.ReadFrom(p)
+			}
+		}
 	}
 
 	n = copy(p, pkt.buf)
@@ -187,6 +230,10 @@ func (c *SimConn) SetReadDeadline(t time.Time) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.readDeadline = t
+	select {
+	case c.deadlineUpdated <- struct{}{}:
+	default:
+	}
 	return nil
 }
 
