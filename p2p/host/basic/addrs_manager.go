@@ -2,6 +2,7 @@ package basichost
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -110,11 +111,7 @@ func (a *addrsManager) Start() error {
 		}
 	}
 
-	err := a.background()
-	if err != nil {
-		return err
-	}
-	return nil
+	return a.startBackgroundWorker()
 }
 
 func (a *addrsManager) Close() {
@@ -151,7 +148,7 @@ func (a *addrsManager) triggerAddrsUpdate() {
 	}
 }
 
-func (a *addrsManager) background() error {
+func (a *addrsManager) startBackgroundWorker() error {
 	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("addrs-manager"))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
@@ -159,12 +156,26 @@ func (a *addrsManager) background() error {
 
 	autonatReachabilitySub, err := a.bus.Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("addrs-manager"))
 	if err != nil {
-		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
+		err1 := autoRelayAddrsSub.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("error closign autorelaysub: %w", err1)
+		}
+		err = fmt.Errorf("error subscribing to autonat reachability: %s", err)
+		return errors.Join(err, err1)
 	}
 
 	emitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
 	if err != nil {
-		return fmt.Errorf("error creating host reachable addrs emitter: %w", err)
+		err1 := autoRelayAddrsSub.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("error closing autorelaysub: %w", err1)
+		}
+		err2 := autonatReachabilitySub.Close()
+		if err2 != nil {
+			err2 = fmt.Errorf("error closing autonat reachability: %w", err1)
+		}
+		err = fmt.Errorf("error subscribing to autonat reachability: %s", err)
+		return errors.Join(err, err1, err2)
 	}
 
 	// update relay addrs in case we're private
@@ -183,66 +194,73 @@ func (a *addrsManager) background() error {
 		}
 	default:
 	}
+	// update addresses before starting the worker loop. This ensures that any address updates
+	// before calling addrsManager.Start are correctly reported after Start returns.
 	a.updateAddrs()
-
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		defer func() {
-			err := autoRelayAddrsSub.Close()
-			if err != nil {
-				log.Warnf("error closing auto relay addrs sub: %s", err)
-			}
-		}()
-		defer func() {
-			err := autonatReachabilitySub.Close()
-			if err != nil {
-				log.Warnf("error closing autonat reachability sub: %s", err)
-			}
-		}()
-
-		ticker := time.NewTicker(addrChangeTickrInterval)
-		defer ticker.Stop()
-		var previousAddrs hostAddrs
-		for {
-			currAddrs := a.updateAddrs()
-			a.notifyAddrsChanged(emitter, previousAddrs, currAddrs)
-			previousAddrs = currAddrs
-			select {
-			case <-ticker.C:
-			case <-a.triggerAddrsUpdateChan:
-			case e := <-autoRelayAddrsSub.Out():
-				if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
-					a.updateRelayAddrs(evt.RelayAddrs)
-				}
-			case <-a.triggerReachabilityUpdate:
-			case e := <-autonatReachabilitySub.Out():
-				if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
-					a.hostReachability.Store(&evt.Reachability)
-				}
-			case <-a.ctx.Done():
-				return
-			}
-		}
+		a.background(autoRelayAddrsSub, autonatReachabilitySub, emitter)
 	}()
 	return nil
 }
 
+func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub event.Subscription, emitter event.Emitter) {
+	defer func() {
+		err := autoRelayAddrsSub.Close()
+		if err != nil {
+			log.Warnf("error closing auto relay addrs sub: %s", err)
+		}
+	}()
+	defer func() {
+		err := autonatReachabilitySub.Close()
+		if err != nil {
+			log.Warnf("error closing autonat reachability sub: %s", err)
+		}
+	}()
+
+	ticker := time.NewTicker(addrChangeTickrInterval)
+	defer ticker.Stop()
+	var previousAddrs hostAddrs
+	for {
+		currAddrs := a.updateAddrs()
+		a.notifyAddrsChanged(emitter, previousAddrs, currAddrs)
+		previousAddrs = currAddrs
+		select {
+		case <-ticker.C:
+		case <-a.triggerAddrsUpdateChan:
+		case e := <-autoRelayAddrsSub.Out():
+			if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
+				a.updateRelayAddrs(evt.RelayAddrs)
+			}
+		case <-a.triggerReachabilityUpdate:
+		case e := <-autonatReachabilitySub.Out():
+			if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
+				a.hostReachability.Store(&evt.Reachability)
+			}
+		case <-a.ctx.Done():
+			return
+		}
+	}
+}
+
 func (a *addrsManager) updateAddrs() hostAddrs {
+	a.addrsMx.Lock()
+	defer a.addrsMx.Unlock()
+
 	localAddrs := a.getLocalAddrs()
 	var currReachableAddrs, currUnreachableAddrs []ma.Multiaddr
 	if a.addrsReachabilityTracker != nil {
 		currReachableAddrs, currUnreachableAddrs = a.getConfirmedAddrs(localAddrs)
 	}
-	currAddrs := a.getAddrs(slices.Clone(localAddrs), a.RelayAddrs())
+	currAddrs := a.getAddrs(slices.Clone(localAddrs), a.getRelayAddrsUnlocked())
 
-	// maybe we can avoid this clone?
-	a.addrsMx.Lock()
-	a.currentAddrs.addrs = append(a.currentAddrs.addrs[:0], currAddrs...)
-	a.currentAddrs.localAddrs = append(a.currentAddrs.localAddrs[:0], localAddrs...)
-	a.currentAddrs.reachableAddrs = append(a.currentAddrs.reachableAddrs[:0], currReachableAddrs...)
-	a.currentAddrs.unreachableAddrs = append(a.currentAddrs.unreachableAddrs[:0], currUnreachableAddrs...)
-	a.addrsMx.Unlock()
+	a.currentAddrs = hostAddrs{
+		addrs:            append(a.currentAddrs.addrs[:0], currAddrs...),
+		localAddrs:       append(a.currentAddrs.localAddrs[:0], localAddrs...),
+		reachableAddrs:   append(a.currentAddrs.reachableAddrs[:0], currReachableAddrs...),
+		unreachableAddrs: append(a.currentAddrs.unreachableAddrs[:0], currUnreachableAddrs...),
+	}
 
 	return hostAddrs{
 		localAddrs:       localAddrs,
@@ -254,12 +272,13 @@ func (a *addrsManager) updateAddrs() hostAddrs {
 
 func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, current hostAddrs) {
 	if areAddrsDifferent(previous.localAddrs, current.localAddrs) {
-		log.Debugf("host addresses updated: %s", current.localAddrs)
+		log.Debugf("host local addresses updated: %s", current.localAddrs)
 		if a.addrsReachabilityTracker != nil {
 			a.addrsReachabilityTracker.UpdateAddrs(current.localAddrs)
 		}
 	}
 	if areAddrsDifferent(previous.addrs, current.addrs) {
+		log.Debugf("host addresses updated: %s", current.localAddrs)
 		select {
 		case a.addrsUpdatedChan <- struct{}{}:
 		default:
@@ -268,6 +287,7 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, curre
 
 	if areAddrsDifferent(previous.reachableAddrs, current.reachableAddrs) ||
 		areAddrsDifferent(previous.unreachableAddrs, current.unreachableAddrs) {
+		log.Debugf("host reachable addrs updated: %s", current.localAddrs)
 		if err := emitter.Emit(event.EvtHostReachableAddrsChanged{
 			Reachable:   slices.Clone(current.reachableAddrs),
 			Unreachable: slices.Clone(current.unreachableAddrs),
@@ -284,7 +304,7 @@ func (a *addrsManager) Addrs() []ma.Multiaddr {
 	return a.getAddrs(a.DirectAddrs(), a.RelayAddrs())
 }
 
-// mutates localAddrs
+// getAddrs returns the node's dialable addresses. Mutates localAddrs
 func (a *addrsManager) getAddrs(localAddrs []ma.Multiaddr, relayAddrs []ma.Multiaddr) []ma.Multiaddr {
 	addrs := localAddrs
 	rch := a.hostReachability.Load()
@@ -302,6 +322,7 @@ func (a *addrsManager) getAddrs(localAddrs []ma.Multiaddr, relayAddrs []ma.Multi
 	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 	return addrs
 }
+
 func (a *addrsManager) HolePunchAddrs() []ma.Multiaddr {
 	addrs := a.DirectAddrs()
 	addrs = slices.Clone(a.addrsFactory(addrs))
@@ -331,6 +352,10 @@ func (a *addrsManager) ReachableAddrs() []ma.Multiaddr {
 func (a *addrsManager) RelayAddrs() []ma.Multiaddr {
 	a.addrsMx.RLock()
 	defer a.addrsMx.RUnlock()
+	return a.getRelayAddrsUnlocked()
+}
+
+func (a *addrsManager) getRelayAddrsUnlocked() []ma.Multiaddr {
 	return slices.Clone(a.relayAddrs)
 }
 
@@ -342,7 +367,7 @@ func (a *addrsManager) updateRelayAddrs(addrs []ma.Multiaddr) {
 
 func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
 	reachableAddrs, unreachableAddrs = a.addrsReachabilityTracker.ConfirmedAddrs()
-	// Only include relevant host addresses as the reachability manager may have
+	// Only include host addresses as the reachability manager may have
 	// a stale view of host's addresses.
 	reachableAddrs = slices.DeleteFunc(reachableAddrs, func(a ma.Multiaddr) bool {
 		return !contains(localAddrs, a)
