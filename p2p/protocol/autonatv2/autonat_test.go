@@ -75,7 +75,7 @@ func waitForPeer(t testing.TB, a *AutoNAT) {
 	require.Eventually(t, func() bool {
 		a.mx.Lock()
 		defer a.mx.Unlock()
-		return len(a.peers) != 0
+		return len(a.peers.peers) != 0
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
@@ -154,19 +154,6 @@ func TestClientServerError(t *testing.T) {
 					&pb.Message{Msg: &pb.Message_DialRequest{DialRequest: &pb.DialRequest{}}}))
 			},
 			errorStr: "invalid msg type",
-		},
-		{
-			handler: func(s network.Stream) {
-				w := pbio.NewDelimitedWriter(s)
-				assert.NoError(t, w.WriteMsg(
-					&pb.Message{Msg: &pb.Message_DialResponse{
-						DialResponse: &pb.DialResponse{
-							Status: pb.DialResponse_E_DIAL_REFUSED,
-						},
-					}},
-				))
-			},
-			errorStr: ErrDialRefused.Error(),
 		},
 	}
 
@@ -508,7 +495,6 @@ func TestClientDialBacks(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, res.Reachability, network.ReachabilityPublic)
-				require.Equal(t, res.Status, pb.DialStatus_OK)
 			}
 		})
 	}
@@ -527,28 +513,28 @@ func TestEventSubscription(t *testing.T) {
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 1
+		return len(an.peers.peers) == 1
 	}, 5*time.Second, 100*time.Millisecond)
 
 	idAndConnect(t, an.host, c)
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 2
+		return len(an.peers.peers) == 2
 	}, 5*time.Second, 100*time.Millisecond)
 
 	an.host.Network().ClosePeer(b.ID())
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 1
+		return len(an.peers.peers) == 1
 	}, 5*time.Second, 100*time.Millisecond)
 
 	an.host.Network().ClosePeer(c.ID())
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 0
+		return len(an.peers.peers) == 0
 	}, 5*time.Second, 100*time.Millisecond)
 }
 

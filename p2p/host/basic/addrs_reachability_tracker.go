@@ -12,7 +12,6 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -213,30 +212,36 @@ var errTooManyConsecutiveFailures = errors.New("too many consecutive failures")
 // errTooManyConsecutiveFailures in case of many consecutive failures
 type errCountingClient struct {
 	autonatv2Client
-	MaxConsecutiveErrors int
-	mx                   sync.Mutex
-	consecutiveErrors    int
+	MaxConsecutiveErrors    int
+	mx                      sync.Mutex
+	consecutiveErrors       int
+	loggedPrivateAddrsError bool
 }
 
 func (c *errCountingClient) GetReachability(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 	res, err := c.autonatv2Client.GetReachability(ctx, reqs)
 	c.mx.Lock()
 	defer c.mx.Unlock()
-	if err == nil || errors.Is(err, autonatv2.ErrDialRefused) || errors.Is(err, autonatv2.ErrNoValidPeers) {
-		c.consecutiveErrors = 0
-	} else {
+	if err != nil {
 		c.consecutiveErrors++
 		if c.consecutiveErrors > c.MaxConsecutiveErrors {
 			err = fmt.Errorf("%w:%w", errTooManyConsecutiveFailures, err)
 		}
+		// This is hacky, but we do want to log this error
+		if !c.loggedPrivateAddrsError && errors.Is(err, autonatv2.ErrPrivateAddrs) {
+			log.Errorf("private IP addr in autonatv2 request: %s", err)
+			c.loggedPrivateAddrsError = true // log it only once. This should never happen
+		}
+	} else {
+		c.consecutiveErrors = 0
 	}
 	return res, err
 }
 
 type probeResponse struct {
-	Requests []autonatv2.Request
-	Result   autonatv2.Result
-	Err      error
+	Req []autonatv2.Request
+	Res autonatv2.Result
+	Err error
 }
 
 const maxConsecutiveErrors = 20
@@ -261,7 +266,7 @@ func runProbes(ctx context.Context, concurrency int, addrsTracker *addrsProbeTra
 				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				res, err := client.GetReachability(ctx, reqs)
 				cancel()
-				resultsCh <- probeResponse{Requests: reqs, Result: res, Err: err}
+				resultsCh <- probeResponse{Req: reqs, Res: res, Err: err}
 			}
 		}()
 	}
@@ -274,8 +279,8 @@ outer:
 		case jc <- nextProbe:
 			addrsTracker.MarkProbeInProgress(nextProbe)
 		case resp := <-resultsCh:
-			addrsTracker.CompleteProbe(resp.Requests, resp.Result, resp.Err)
-			if errors.Is(resp.Err, autonatv2.ErrNoValidPeers) || errors.Is(resp.Err, errTooManyConsecutiveFailures) {
+			addrsTracker.CompleteProbe(resp.Req, resp.Res, resp.Err)
+			if isErrorPersistent(resp.Err) {
 				backoff = true
 				break outer
 			}
@@ -291,8 +296,8 @@ outer:
 	close(jobsCh)
 	for addrsTracker.InProgressProbes() > 0 {
 		resp := <-resultsCh
-		addrsTracker.CompleteProbe(resp.Requests, resp.Result, resp.Err)
-		if errors.Is(resp.Err, autonatv2.ErrNoValidPeers) || errors.Is(resp.Err, errTooManyConsecutiveFailures) {
+		addrsTracker.CompleteProbe(resp.Req, resp.Res, resp.Err)
+		if isErrorPersistent(resp.Err) {
 			backoff = true
 		}
 	}
@@ -300,10 +305,19 @@ outer:
 	return backoff
 }
 
+// isErrorPersistent returns whether the error will repeat on future probes for a while
+func isErrorPersistent(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, autonatv2.ErrPrivateAddrs) || errors.Is(err, autonatv2.ErrNoPeers) ||
+		errors.Is(err, errTooManyConsecutiveFailures)
+}
+
 // addrsProbeTracker tracks reachability for a set of addresses. This struct decides the priority order of
 // addresses for testing reachability.
 //
-// To execute the probes with a client use the `runProbes` function.
+// Use the `runProbes` function to execute the probes with an autonatv2 client.
 //
 // Probes returned by `GetProbe` should be marked as in progress using `MarkProbeInProgress`
 // before being executed.
@@ -344,6 +358,7 @@ func (t *addrsProbeTracker) AppendConfirmedAddrs(reachable, unreachable []ma.Mul
 	return reachable, unreachable
 }
 
+// UpdateAddrs updates the tracked addrs
 func (t *addrsProbeTracker) UpdateAddrs(addrs []ma.Multiaddr) {
 	t.mx.Lock()
 	defer t.mx.Unlock()
@@ -367,6 +382,9 @@ func (t *addrsProbeTracker) UpdateAddrs(addrs []ma.Multiaddr) {
 	t.addrs = addrs
 }
 
+// GetProbe returns the next probe. Returns empty slice in case there are no more probes.
+// Probes that are run against an autonatv2 client should be marked in progress with
+// `MarkProbeInProgress` before running.
 func (t *addrsProbeTracker) GetProbe() []autonatv2.Request {
 	t.mx.Lock()
 	defer t.mx.Unlock()
@@ -391,6 +409,7 @@ func (t *addrsProbeTracker) GetProbe() []autonatv2.Request {
 }
 
 // MarkProbeInProgress should be called when a probe is started.
+// All in progress probes *MUST* be completed with `CompleteProbe`
 func (t *addrsProbeTracker) MarkProbeInProgress(reqs []autonatv2.Request) {
 	if len(reqs) == 0 {
 		return
@@ -428,24 +447,23 @@ func (t *addrsProbeTracker) CompleteProbe(reqs []autonatv2.Request, res autonatv
 		delete(t.inProgressProbes, primaryAddrKey)
 	}
 
-	// request failed
+	// nothing to do if the request errored.
 	if err != nil {
-		// request refused
-		if errors.Is(err, autonatv2.ErrDialRefused) {
-			for _, req := range reqs {
-				if status, ok := t.statuses[string(req.Addr.Bytes())]; ok {
-					status.AddRefusal(now)
-				}
+		return
+	}
+
+	// request failed
+	if res.AllAddrsRefused {
+		for _, req := range reqs {
+			if status, ok := t.statuses[string(req.Addr.Bytes())]; ok {
+				status.AddRefusal(now)
 			}
 		}
 		return
 	}
 
 	// mark addresses that were skipped as refused
-	for _, req := range reqs {
-		if req.Addr.Equal(res.Addr) {
-			break
-		}
+	for _, req := range reqs[:res.Idx] {
 		if status, ok := t.statuses[string(req.Addr.Bytes())]; ok {
 			status.AddRefusal(now)
 		}
@@ -453,13 +471,13 @@ func (t *addrsProbeTracker) CompleteProbe(reqs []autonatv2.Request, res autonatv
 
 	// record the result for the probed address
 	if status, ok := t.statuses[string(res.Addr.Bytes())]; ok {
-		switch res.Status {
-		case pb.DialStatus_OK:
+		switch res.Reachability {
+		case network.ReachabilityPublic:
 			status.AddResult(now, true)
-		case pb.DialStatus_E_DIAL_ERROR:
+		case network.ReachabilityPrivate:
 			status.AddResult(now, false)
 		default:
-			log.Debug("unexpected dial status", res.Addr, res.Status)
+			log.Debug("unexpected dial status", res.Addr)
 		}
 		status.Trim(t.recentProbeResultWindow)
 	}
@@ -579,9 +597,9 @@ func (s *addrStatus) resultCounts() (successes, failures int) {
 	return successes, failures
 }
 
-func (s *addrStatus) ExpireBefore(before time.Time) {
+func (s *addrStatus) ExpireBefore(expiry time.Time) {
 	s.results = slices.DeleteFunc(s.results, func(pr probeResult) bool {
-		return pr.Time.Before(before)
+		return pr.Time.Before(expiry)
 	})
 }
 
@@ -595,8 +613,8 @@ func (s *addrStatus) AddResult(at time.Time, success bool) {
 }
 
 func (s *addrStatus) Trim(n int) {
-	if len(s.results) >= n {
-		s.results = s.results[len(s.results)-n:]
+	if len(s.results) > n {
+		s.results = slices.Delete(s.results, 0, len(s.results)-n)
 	}
 }
 

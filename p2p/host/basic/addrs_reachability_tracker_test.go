@@ -61,7 +61,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 		}
 		// first one rejected second one successful
 		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, Status: pb.DialStatus_OK}, nil)
+			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_OK}, nil)
 		}
 		// the second address is validated!
 		probes = nil
@@ -97,7 +97,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 		}
 		// first one rejected second one successful
 		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub1, Status: pb.DialStatus_E_DIAL_ERROR}, nil)
+			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil)
 		}
 		// the second address is validated!
 		probes = nil
@@ -110,7 +110,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 		reqs := tr.GetProbe()
 		require.Empty(t, reqs)
 		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, Status: pb.DialStatus_OK}, nil)
+			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_OK}, nil)
 		}
 		// all statueses probed
 		reqs = tr.GetProbe()
@@ -135,7 +135,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 			probes = append(probes, reqs)
 		}
 		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub1, Status: pb.DialStatus_OK}, nil)
+			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil)
 		}
 		probes = nil
 		for i := 0; i < 3; i++ {
@@ -145,7 +145,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 			probes = append(probes, reqs)
 		}
 		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, Status: pb.DialStatus_E_DIAL_ERROR}, nil)
+			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil)
 		}
 
 		reachable, unreachable := tr.AppendConfirmedAddrs(nil, nil)
@@ -297,9 +297,9 @@ func TestAddrReachabilityTracker(t *testing.T) {
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for _, req := range reqs {
 					if req.Addr.Equal(pub1) {
-						return autonatv2.Result{Addr: pub1, Status: pb.DialStatus_OK}, nil
+						return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
 					} else if req.Addr.Equal(pub2) {
-						return autonatv2.Result{Addr: pub2, Status: pb.DialStatus_E_DIAL_ERROR}, nil
+						return autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil
 					}
 				}
 				return autonatv2.Result{}, autonatv2.ErrDialRefused
@@ -347,10 +347,10 @@ func TestAddrReachabilityTracker(t *testing.T) {
 				default:
 				}
 				if !allow.Load() {
-					return autonatv2.Result{}, autonatv2.ErrNoValidPeers
+					return autonatv2.Result{}, autonatv2.ErrNoPeers
 				}
 				if reqs[0].Addr.Equal(pub1) {
-					return autonatv2.Result{Addr: pub1, Status: pb.DialStatus_OK}, nil
+					return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
 				}
 				return autonatv2.Result{}, autonatv2.ErrDialRefused
 			},
@@ -418,7 +418,7 @@ func TestAddrReachabilityTracker(t *testing.T) {
 				case called <- struct{}{}:
 					notify <- struct{}{}
 				}
-				return autonatv2.Result{Addr: pub1, Status: pb.DialStatus_OK}, nil
+				return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
 			},
 		}
 
@@ -453,7 +453,7 @@ func TestRunProbes(t *testing.T) {
 	t.Run("backoff on ErrNoValidPeers", func(t *testing.T) {
 		mockClient := mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
-				return autonatv2.Result{}, autonatv2.ErrNoValidPeers
+				return autonatv2.Result{}, autonatv2.ErrNoPeers
 			},
 		}
 
@@ -530,7 +530,7 @@ func TestRunProbes(t *testing.T) {
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for _, req := range reqs {
 					if req.Addr.Equal(pub1) {
-						return autonatv2.Result{Addr: pub1, Status: pb.DialStatus_OK}, nil
+						return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
 					}
 				}
 				return autonatv2.Result{}, autonatv2.ErrDialRefused
@@ -554,10 +554,10 @@ func TestRunProbes(t *testing.T) {
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for _, req := range reqs {
 					if req.Addr.Equal(pub1) {
-						return autonatv2.Result{Addr: pub1, Status: pb.DialStatus_OK}, nil
+						return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
 					}
 					if req.Addr.Equal(pub2) {
-						return autonatv2.Result{Addr: pub2, Status: pb.DialStatus_E_DIAL_ERROR}, nil
+						return autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil
 					}
 				}
 				return autonatv2.Result{}, autonatv2.ErrDialRefused
@@ -592,6 +592,6 @@ func BenchmarkAddrTracker(b *testing.B) {
 			pp = p
 		}
 		t.MarkProbeInProgress(pp)
-		t.CompleteProbe(pp, autonatv2.Result{Addr: pp[0].Addr, Status: pb.DialStatus_OK}, nil)
+		t.CompleteProbe(pp, autonatv2.Result{Addr: pp[0].Addr, DialStatus: pb.DialStatus_OK}, nil)
 	}
 }

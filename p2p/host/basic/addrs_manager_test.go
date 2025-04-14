@@ -455,9 +455,9 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 		AutoNATClient: mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				if reqs[0].Addr.Equal(publicQUIC) {
-					return autonatv2.Result{Addr: reqs[0].Addr, Status: pb.DialStatus_OK}, nil
+					return autonatv2.Result{Addr: reqs[0].Addr, DialStatus: pb.DialStatus_OK}, nil
 				} else if reqs[0].Addr.Equal(publicTCP) {
-					return autonatv2.Result{Addr: reqs[0].Addr, Status: pb.DialStatus_E_DIAL_ERROR}, nil
+					return autonatv2.Result{Addr: reqs[0].Addr, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil
 				}
 				t.Errorf("received invalid request for addr: %+v", reqs[0])
 				return autonatv2.Result{}, errors.New("invalid")

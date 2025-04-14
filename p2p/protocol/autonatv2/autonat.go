@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"math/rand/v2"
 	"slices"
 	"sync"
 	"time"
@@ -13,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -38,8 +39,10 @@ const (
 )
 
 var (
-	ErrNoValidPeers = errors.New("no valid peers for autonat v2")
-	ErrDialRefused  = errors.New("dial refused")
+	// ErrNoPeers is returned when the client knows no autonatv2 servers.
+	ErrNoPeers = errors.New("no peers for autonat v2")
+	// ErrPrivateAddrs is returned when the request has private IP addresses.
+	ErrPrivateAddrs = errors.New("private addresses cannot be verified with autonatv2")
 
 	log = logging.Logger("autonatv2")
 )
@@ -56,10 +59,12 @@ type Request struct {
 type Result struct {
 	// Addr is the dialed address
 	Addr ma.Multiaddr
-	// Reachability of the dialed address
+	// Idx is the index of the address that was dialed
+	Idx int
+	// Reachability is the reachability for `Addr`
 	Reachability network.Reachability
-	// Status is the outcome of the dialback
-	Status pb.DialStatus
+	// AllAddrsRefused is true when the server refused to dial all the addresses in the request.
+	AllAddrsRefused bool
 }
 
 // AutoNAT implements the AutoNAT v2 client and server.
@@ -77,7 +82,7 @@ type AutoNAT struct {
 	cli *client
 
 	mx                   sync.Mutex
-	peers                map[peer.ID]struct{}
+	peers                *peersMap
 	throttlePeer         map[peer.ID]time.Time
 	throttlePeerDuration time.Duration
 	// allowPrivateAddrs enables using private and localhost addresses for reachability checks.
@@ -104,7 +109,7 @@ func New(host host.Host, dialerHost host.Host, opts ...AutoNATOption) (*AutoNAT,
 		srv:                  newServer(host, dialerHost, s),
 		cli:                  newClient(host),
 		allowPrivateAddrs:    s.allowPrivateAddrs,
-		peers:                make(map[peer.ID]struct{}),
+		peers:                newPeersMap(),
 		throttlePeer:         make(map[peer.ID]time.Time),
 		throttlePeerDuration: s.throttlePeerDuration,
 	}
@@ -173,14 +178,14 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 	if !an.allowPrivateAddrs {
 		for _, r := range reqs {
 			if !manet.IsPublicAddr(r.Addr) {
-				return Result{}, fmt.Errorf("private address cannot be verified by autonatv2: %s", r.Addr)
+				return Result{}, fmt.Errorf("%w: %s", ErrPrivateAddrs, r.Addr)
 			}
 		}
 	}
-	now := time.Now()
 	an.mx.Lock()
+	now := time.Now()
 	var p peer.ID
-	for pr := range an.peers {
+	for pr := range an.peers.Shuffled() {
 		if t := an.throttlePeer[pr]; t.After(now) {
 			continue
 		}
@@ -190,7 +195,7 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 	}
 	an.mx.Unlock()
 	if p == "" {
-		return Result{}, ErrNoValidPeers
+		return Result{}, ErrNoPeers
 	}
 	res, err := an.cli.GetReachability(ctx, p, reqs)
 	if err != nil {
@@ -210,8 +215,58 @@ func (an *AutoNAT) updatePeer(p peer.ID) {
 	protos, err := an.host.Peerstore().SupportsProtocols(p, DialProtocol)
 	connectedness := an.host.Network().Connectedness(p)
 	if err == nil && connectedness == network.Connected && slices.Contains(protos, DialProtocol) {
-		an.peers[p] = struct{}{}
+		an.peers.Put(p)
 	} else {
-		delete(an.peers, p)
+		an.peers.Delete(p)
 	}
+}
+
+// peersMap provides random access to a set of peers. This is useful when the map iteration order is
+// not sufficiently random.
+type peersMap struct {
+	peerIdx map[peer.ID]int
+	peers   []peer.ID
+}
+
+func newPeersMap() *peersMap {
+	return &peersMap{
+		peerIdx: make(map[peer.ID]int),
+		peers:   make([]peer.ID, 0),
+	}
+}
+
+// Shuffled iterates over the map in random order
+func (p *peersMap) Shuffled() iter.Seq[peer.ID] {
+	n := len(p.peers)
+	start := 0
+	if n > 0 {
+		start = rand.IntN(len(p.peers))
+	}
+	return func(yield func(peer.ID) bool) {
+		for i := range n {
+			if !yield(p.peers[(i+start)%n]) {
+				return
+			}
+		}
+	}
+}
+
+func (p *peersMap) Put(id peer.ID) {
+	if _, ok := p.peerIdx[id]; ok {
+		return
+	}
+	p.peers = append(p.peers, id)
+	p.peerIdx[id] = len(p.peers) - 1
+}
+
+func (p *peersMap) Delete(id peer.ID) {
+	idx, ok := p.peerIdx[id]
+	if !ok {
+		return
+	}
+	delete(p.peerIdx, id)
+	p.peers[idx] = p.peers[len(p.peers)-1]
+	p.peerIdx[p.peers[idx]] = idx
+	p.peers[len(p.peers)-1] = ""
+	p.peers = p.peers[:len(p.peers)-1]
 }
