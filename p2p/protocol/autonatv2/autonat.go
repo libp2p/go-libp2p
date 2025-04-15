@@ -132,6 +132,8 @@ func (an *AutoNAT) background(sub event.Subscription) {
 				an.updatePeer(evt.Peer)
 			case event.EvtPeerIdentificationCompleted:
 				an.updatePeer(evt.Peer)
+			default:
+				log.Errorf("unexpected event: %T", e)
 			}
 		case <-ticker.C:
 			now := time.Now()
@@ -175,12 +177,21 @@ func (an *AutoNAT) Close() {
 
 // GetReachability makes a single dial request for checking reachability for requested addresses
 func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result, error) {
+	var filteredReqs []Request
 	if !an.allowPrivateAddrs {
+		filteredReqs = make([]Request, 0, len(reqs))
 		for _, r := range reqs {
-			if !manet.IsPublicAddr(r.Addr) {
-				return Result{}, fmt.Errorf("%w: %s", ErrPrivateAddrs, r.Addr)
+			if manet.IsPublicAddr(r.Addr) {
+				filteredReqs = append(filteredReqs, r)
+			} else {
+				log.Errorf("private address in reachability check: %s", r.Addr)
 			}
 		}
+		if len(filteredReqs) == 0 {
+			return Result{}, ErrPrivateAddrs
+		}
+	} else {
+		filteredReqs = reqs
 	}
 	an.mx.Lock()
 	now := time.Now()
@@ -201,6 +212,13 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 	if err != nil {
 		log.Debugf("reachability check with %s failed, err: %s", p, err)
 		return res, fmt.Errorf("reachability check with %s failed: %w", p, err)
+	}
+	// restore the correct index in case we'd filtered private addresses
+	for i, r := range reqs {
+		if r.Addr.Equal(res.Addr) {
+			res.Idx = i
+			break
+		}
 	}
 	log.Debugf("reachability check with %s successful", p)
 	return res, nil

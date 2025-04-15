@@ -25,7 +25,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 	cl := clock.NewMock()
 
 	t.Run("inprogress probes", func(t *testing.T) {
-		tr := newAddrsTracker(cl.Now, maxRecentProbeResultWindow)
+		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
 
 		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
 		reqs1 := tr.GetProbe()
@@ -50,7 +50,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 	})
 
 	t.Run("probe refusals", func(t *testing.T) {
-		tr := newAddrsTracker(cl.Now, maxRecentProbeResultWindow)
+		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
 		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
 		var probes [][]autonatv2.Request
 		for i := 0; i < 3; i++ {
@@ -86,7 +86,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 	})
 
 	t.Run("probe successes", func(t *testing.T) {
-		tr := newAddrsTracker(cl.Now, maxRecentProbeResultWindow)
+		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
 		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
 		var probes [][]autonatv2.Request
 		for i := 0; i < 3; i++ {
@@ -125,7 +125,7 @@ func TestAddrTrackerGetProbe(t *testing.T) {
 	})
 
 	t.Run("reachabilityUpdate", func(t *testing.T) {
-		tr := newAddrsTracker(cl.Now, maxRecentProbeResultWindow)
+		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
 		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
 		var probes [][]autonatv2.Request
 		for i := 0; i < 3; i++ {
@@ -280,7 +280,7 @@ func TestAddrReachabilityTracker(t *testing.T) {
 			reachabilityUpdateCh: make(chan struct{}, 1),
 			maxConcurrency:       3,
 			newAddrsProbeDelay:   0 * time.Second,
-			addrTracker:          newAddrsTracker(cl.Now, maxRecentProbeResultWindow),
+			addrTracker:          newProbeManager(cl.Now, maxRecentProbeResultWindow),
 			clock:                cl,
 		}
 		err := tr.Start()
@@ -457,7 +457,7 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newAddrsTracker(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
 		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
 		require.True(t, result)
@@ -472,7 +472,7 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newAddrsTracker(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
 
 		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
@@ -490,7 +490,7 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newAddrsTracker(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -523,7 +523,7 @@ func TestRunProbes(t *testing.T) {
 	t.Run("handles refusals", func(t *testing.T) {
 		pub1, _ := ma.NewMultiaddr("/ip4/1.1.1.1/tcp/1")
 
-		addrTracker := newAddrsTracker(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
 
 		mockClient := mockAutoNATClient{
@@ -547,7 +547,7 @@ func TestRunProbes(t *testing.T) {
 	})
 
 	t.Run("handles completions", func(t *testing.T) {
-		addrTracker := newAddrsTracker(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
 
 		mockClient := mockAutoNATClient{
@@ -576,7 +576,7 @@ func TestRunProbes(t *testing.T) {
 
 func BenchmarkAddrTracker(b *testing.B) {
 	cl := clock.NewMock()
-	t := newAddrsTracker(cl.Now, maxRecentProbeResultWindow)
+	t := newProbeManager(cl.Now, maxRecentProbeResultWindow)
 
 	var addrs []ma.Multiaddr
 	for i := 0; i < 20; i++ {

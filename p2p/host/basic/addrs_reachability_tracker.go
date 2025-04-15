@@ -41,7 +41,7 @@ type addrsReachabilityTracker struct {
 	reachabilityUpdateCh chan struct{}
 	maxConcurrency       int
 	newAddrsProbeDelay   time.Duration
-	addrTracker          *addrsProbeTracker
+	addrTracker          *probeManager
 	newAddrs             chan []ma.Multiaddr
 	clock                clock.Clock
 
@@ -64,7 +64,7 @@ func newAddrsReachabilityTracker(client autonatv2Client, reachabilityUpdateCh ch
 		cancel:               cancel,
 		cli:                  client,
 		reachabilityUpdateCh: reachabilityUpdateCh,
-		addrTracker:          newAddrsTracker(cl.Now, maxRecentProbeResultWindow),
+		addrTracker:          newProbeManager(cl.Now, maxRecentProbeResultWindow),
 		newAddrsProbeDelay:   1 * time.Second,
 		maxConcurrency:       defaultMaxConcurrency,
 		newAddrs:             make(chan []ma.Multiaddr, 1),
@@ -252,7 +252,7 @@ const maxConsecutiveErrors = 20
 // - context is completed
 // - there are too many consecutive failures from the client
 // - the client has no valid peers to probe
-func runProbes(ctx context.Context, concurrency int, addrsTracker *addrsProbeTracker, client autonatv2Client) bool {
+func runProbes(ctx context.Context, concurrency int, addrsTracker *probeManager, client autonatv2Client) bool {
 	client = &errCountingClient{autonatv2Client: client, MaxConsecutiveErrors: maxConsecutiveErrors}
 
 	resultsCh := make(chan probeResponse, 2*concurrency) // enough buffer to allow all worker goroutines to exit quickly
@@ -314,187 +314,6 @@ func isErrorPersistent(err error) bool {
 		errors.Is(err, errTooManyConsecutiveFailures)
 }
 
-// addrsProbeTracker tracks reachability for a set of addresses. This struct decides the priority order of
-// addresses for testing reachability.
-//
-// Use the `runProbes` function to execute the probes with an autonatv2 client.
-//
-// Probes returned by `GetProbe` should be marked as in progress using `MarkProbeInProgress`
-// before being executed.
-type addrsProbeTracker struct {
-	now                     func() time.Time
-	recentProbeResultWindow int
-
-	mx                    sync.Mutex
-	inProgressProbes      map[string]int // addr -> count
-	inProgressProbesTotal int
-	statuses              map[string]*addrStatus
-	addrs                 []ma.Multiaddr
-}
-
-func newAddrsTracker(now func() time.Time, recentProbeResultWindow int) *addrsProbeTracker {
-	return &addrsProbeTracker{
-		statuses:                make(map[string]*addrStatus),
-		inProgressProbes:        make(map[string]int),
-		now:                     now,
-		recentProbeResultWindow: recentProbeResultWindow,
-	}
-}
-
-// AppendConfirmedAddrs appends the current confirmed reachable and unreachable addresses.
-func (t *addrsProbeTracker) AppendConfirmedAddrs(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
-	t.mx.Lock()
-	defer t.mx.Unlock()
-
-	t.gc()
-	for _, as := range t.statuses {
-		switch as.Reachability() {
-		case network.ReachabilityPublic:
-			reachable = append(reachable, as.Addr)
-		case network.ReachabilityPrivate:
-			unreachable = append(unreachable, as.Addr)
-		}
-	}
-	return reachable, unreachable
-}
-
-// UpdateAddrs updates the tracked addrs
-func (t *addrsProbeTracker) UpdateAddrs(addrs []ma.Multiaddr) {
-	t.mx.Lock()
-	defer t.mx.Unlock()
-	for _, addr := range addrs {
-		if _, ok := t.statuses[string(addr.Bytes())]; !ok {
-			t.statuses[string(addr.Bytes())] = &addrStatus{Addr: addr}
-		}
-	}
-	for k, s := range t.statuses {
-		found := false
-		for _, a := range addrs {
-			if a.Equal(s.Addr) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			delete(t.statuses, k)
-		}
-	}
-	t.addrs = addrs
-}
-
-// GetProbe returns the next probe. Returns empty slice in case there are no more probes.
-// Probes that are run against an autonatv2 client should be marked in progress with
-// `MarkProbeInProgress` before running.
-func (t *addrsProbeTracker) GetProbe() []autonatv2.Request {
-	t.mx.Lock()
-	defer t.mx.Unlock()
-
-	reqs := make([]autonatv2.Request, 0, maxAddrsPerRequest)
-	now := t.now()
-	for _, a := range t.addrs {
-		akey := string(a.Bytes())
-		pc := t.statuses[akey].ProbeCount(now)
-		if pc == 0 {
-			continue
-		}
-		if len(reqs) == 0 && t.inProgressProbes[akey] >= pc {
-			continue
-		}
-		reqs = append(reqs, autonatv2.Request{Addr: a, SendDialData: true})
-		if len(reqs) >= maxAddrsPerRequest {
-			break
-		}
-	}
-	return reqs
-}
-
-// MarkProbeInProgress should be called when a probe is started.
-// All in progress probes *MUST* be completed with `CompleteProbe`
-func (t *addrsProbeTracker) MarkProbeInProgress(reqs []autonatv2.Request) {
-	if len(reqs) == 0 {
-		return
-	}
-	t.mx.Lock()
-	defer t.mx.Unlock()
-	t.inProgressProbes[string(reqs[0].Addr.Bytes())]++
-	t.inProgressProbesTotal++
-}
-
-// InProgressProbes returns the number of probes that are currently in progress.
-func (t *addrsProbeTracker) InProgressProbes() int {
-	t.mx.Lock()
-	defer t.mx.Unlock()
-	return t.inProgressProbesTotal
-}
-
-// CompleteProbe should be called when a probe completes.
-func (t *addrsProbeTracker) CompleteProbe(reqs []autonatv2.Request, res autonatv2.Result, err error) {
-	now := t.now()
-
-	if len(reqs) == 0 {
-		// should never happen
-		return
-	}
-
-	t.mx.Lock()
-	defer t.mx.Unlock()
-
-	// decrement in-progress count for the first address
-	primaryAddrKey := string(reqs[0].Addr.Bytes())
-	t.inProgressProbes[primaryAddrKey]--
-	t.inProgressProbesTotal--
-	if t.inProgressProbes[primaryAddrKey] <= 0 {
-		delete(t.inProgressProbes, primaryAddrKey)
-	}
-
-	// nothing to do if the request errored.
-	if err != nil {
-		return
-	}
-
-	// request failed
-	if res.AllAddrsRefused {
-		for _, req := range reqs {
-			if status, ok := t.statuses[string(req.Addr.Bytes())]; ok {
-				status.AddRefusal(now)
-			}
-		}
-		return
-	}
-
-	// mark addresses that were skipped as refused
-	for _, req := range reqs[:res.Idx] {
-		if status, ok := t.statuses[string(req.Addr.Bytes())]; ok {
-			status.AddRefusal(now)
-		}
-	}
-
-	// record the result for the probed address
-	if status, ok := t.statuses[string(res.Addr.Bytes())]; ok {
-		switch res.Reachability {
-		case network.ReachabilityPublic:
-			status.AddResult(now, true)
-		case network.ReachabilityPrivate:
-			status.AddResult(now, false)
-		default:
-			log.Debug("unexpected dial status", res.Addr)
-		}
-		status.Trim(t.recentProbeResultWindow)
-	}
-}
-
-func (t *addrsProbeTracker) gc() {
-	expireBefore := t.now().Add(-maxProbeResultTTL)
-	for _, s := range t.statuses {
-		s.ExpireBefore(expireBefore)
-	}
-}
-
-type probeResult struct {
-	Time    time.Time
-	Success bool
-}
-
 const (
 	// maxProbeResultTTL is the maximum time to keep probe results for an address
 	maxProbeResultTTL = 3 * time.Hour
@@ -522,21 +341,220 @@ const (
 	maxRecentProbeResultWindow = targetConfidence + 2
 )
 
-type addrStatus struct {
-	Addr                ma.Multiaddr
-	results             []probeResult
-	consecutiveRefusals struct {
-		Count int
-		Last  time.Time
+// probeManager tracks reachability for a set of addresses. This struct decides the priority order of
+// addresses for testing reachability.
+//
+// Use the `runProbes` function to execute the probes with an autonatv2 client.
+//
+// Probes returned by `GetProbe` should be marked as in progress using `MarkProbeInProgress`
+// before being executed.
+type probeManager struct {
+	now                          func() time.Time
+	recentProbeResultWindow      int
+	ProbeInterval                time.Duration
+	MaxProbesPerAddrsPerInterval int
+
+	mx                    sync.Mutex
+	inProgressProbes      map[string]int // addr -> count
+	inProgressProbesTotal int
+	statuses              map[string]*addrStatus
+	addrs                 []ma.Multiaddr
+}
+
+func newProbeManager(now func() time.Time, recentProbeResultWindow int) *probeManager {
+	return &probeManager{
+		statuses:                make(map[string]*addrStatus),
+		inProgressProbes:        make(map[string]int),
+		now:                     now,
+		recentProbeResultWindow: recentProbeResultWindow,
 	}
 }
 
-func (s *addrStatus) Reachability() network.Reachability {
-	successes, failures := s.resultCounts()
-	return s.reachability(successes, failures)
+// AppendConfirmedAddrs appends the current confirmed reachable and unreachable addresses.
+func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
+	for _, as := range m.statuses {
+		switch as.outcomes.Reachability() {
+		case network.ReachabilityPublic:
+			reachable = append(reachable, as.Addr)
+		case network.ReachabilityPrivate:
+			unreachable = append(unreachable, as.Addr)
+		}
+	}
+	return reachable, unreachable
 }
 
-func (*addrStatus) reachability(success, failures int) network.Reachability {
+// UpdateAddrs updates the tracked addrs
+func (m *probeManager) UpdateAddrs(addrs []ma.Multiaddr) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	for _, addr := range addrs {
+		if _, ok := m.statuses[string(addr.Bytes())]; !ok {
+			m.statuses[string(addr.Bytes())] = &addrStatus{Addr: addr}
+		}
+	}
+	for k, s := range m.statuses {
+		found := false
+		for _, a := range addrs {
+			if a.Equal(s.Addr) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			delete(m.statuses, k)
+		}
+	}
+	m.addrs = addrs
+}
+
+// GetProbe returns the next probe. Returns empty slice in case there are no more probes.
+// Probes that are run against an autonatv2 client should be marked in progress with
+// `MarkProbeInProgress` before running.
+func (m *probeManager) GetProbe() []autonatv2.Request {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
+	reqs := make([]autonatv2.Request, 0, maxAddrsPerRequest)
+	now := m.now()
+	for _, a := range m.addrs {
+		akey := string(a.Bytes())
+		pc := m.probeCount(m.statuses[akey], now)
+		if pc == 0 {
+			continue
+		}
+		if len(reqs) == 0 && m.inProgressProbes[akey] >= pc {
+			continue
+		}
+		reqs = append(reqs, autonatv2.Request{Addr: a, SendDialData: true})
+		if len(reqs) >= maxAddrsPerRequest {
+			break
+		}
+	}
+	return reqs
+}
+
+// MarkProbeInProgress should be called when a probe is started.
+// All in progress probes *MUST* be completed with `CompleteProbe`
+func (m *probeManager) MarkProbeInProgress(reqs []autonatv2.Request) {
+	if len(reqs) == 0 {
+		return
+	}
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	m.inProgressProbes[string(reqs[0].Addr.Bytes())]++
+	m.inProgressProbesTotal++
+}
+
+// InProgressProbes returns the number of probes that are currently in progress.
+func (m *probeManager) InProgressProbes() int {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	return m.inProgressProbesTotal
+}
+
+// CompleteProbe should be called when a probe completes.
+func (m *probeManager) CompleteProbe(reqs []autonatv2.Request, res autonatv2.Result, err error) {
+	now := m.now()
+
+	if len(reqs) == 0 {
+		// should never happen
+		return
+	}
+
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
+	// decrement in-progress count for the first address
+	primaryAddrKey := string(reqs[0].Addr.Bytes())
+	m.inProgressProbes[primaryAddrKey]--
+	m.inProgressProbesTotal--
+	if m.inProgressProbes[primaryAddrKey] <= 0 {
+		delete(m.inProgressProbes, primaryAddrKey)
+	}
+
+	// nothing to do if the request errored.
+	if err != nil {
+		return
+	}
+
+	expireBefore := now.Add(-maxProbeInterval)
+	// request failed
+	if res.AllAddrsRefused {
+		if s, ok := m.statuses[primaryAddrKey]; ok {
+			s.lastRefusalTime = now
+			s.consecutiveRefusals++
+		}
+		return
+	}
+
+	// mark only the primary status as refused
+	if s, ok := m.statuses[primaryAddrKey]; ok {
+		s.lastRefusalTime = now
+		s.consecutiveRefusals++
+	}
+
+	// record the result for the probed address
+	if s, ok := m.statuses[string(res.Addr.Bytes())]; ok {
+		s.outcomes.AddDialOutcomeAndExpire(now, res.Reachability, m.recentProbeResultWindow, expireBefore)
+		s.probeTimes = append(s.probeTimes, now)
+	}
+}
+
+func (m *probeManager) probeCount(s *addrStatus, now time.Time) int {
+	if s.consecutiveRefusals >= maxConsecutiveRefusals {
+		if now.Sub(s.lastRefusalTime) < addrRefusedProbeInterval {
+			return 0
+		}
+		// reset this
+		s.lastRefusalTime = time.Time{}
+		s.consecutiveRefusals = 0
+	}
+
+	// Don't probe if we have probed too many times recently
+	if m.recentProbesCount(s, now) >= m.MaxProbesPerAddrsPerInterval {
+		return 0
+	}
+
+	return s.outcomes.ProbeCount(now)
+}
+
+func (m *probeManager) recentProbesCount(s *addrStatus, now time.Time) int {
+	cnt := 0
+	for _, t := range slices.Backward(s.probeTimes) {
+		if now.Sub(t) > m.ProbeInterval {
+			break
+		}
+		cnt++
+	}
+	return cnt
+}
+
+type dialOutcome struct {
+	Success bool
+	At      time.Time
+}
+
+type addrStatus struct {
+	Addr                ma.Multiaddr
+	lastRefusalTime     time.Time
+	consecutiveRefusals int
+	probeTimes          []time.Time
+	outcomes            *addrOutcomes
+}
+
+type addrOutcomes struct {
+	outcomes []dialOutcome
+}
+
+func (o *addrOutcomes) Reachability() network.Reachability {
+	successes, failures := o.outcomeCounts()
+	return o.computeReachability(successes, failures)
+}
+
+func (*addrOutcomes) computeReachability(success, failures int) network.Reachability {
 	if success-failures >= minConfidence {
 		return network.ReachabilityPublic
 	}
@@ -546,48 +564,87 @@ func (*addrStatus) reachability(success, failures int) network.Reachability {
 	return network.ReachabilityUnknown
 }
 
-func (s *addrStatus) ProbeCount(now time.Time) int {
-	// if we have had too many consecutive refusals, probe after a small wait.
-	if s.consecutiveRefusals.Count >= maxConsecutiveRefusals {
-		if s.consecutiveRefusals.Last.Add(addrRefusedProbeInterval).Before(now) {
-			return 1
-		}
-		return 0
-	}
-
-	successes, failures := s.resultCounts()
+func (o *addrOutcomes) numProbesInInterval(now time.Time, probeInterval time.Duration) int {
 	cnt := 0
-	if successes >= failures {
-		cnt = targetConfidence - (successes - failures)
-	}
-	if failures >= successes {
-		cnt = targetConfidence - (failures - successes)
-	}
-	if cnt <= 0 {
-		if len(s.results) == 0 {
-			return 0
+	for _, v := range slices.Backward(o.outcomes) {
+		if now.Sub(v.At) > probeInterval {
+			break
 		}
-		if s.results[len(s.results)-1].Time.Add(maxProbeInterval).Before(now) {
-			return 1
-		}
-		// Last probe result was different from reachability. Probe again.
-		switch s.reachability(successes, failures) {
-		case network.ReachabilityPublic:
-			if !s.results[len(s.results)-1].Success {
-				return 1
-			}
-		case network.ReachabilityPrivate:
-			if s.results[len(s.results)-1].Success {
-				return 1
-			}
-		}
-		return 0
+		cnt++
 	}
 	return cnt
 }
 
-func (s *addrStatus) resultCounts() (successes, failures int) {
-	for _, r := range s.results {
+func (o *addrOutcomes) ProbeCount(now time.Time) int {
+	successes, failures := o.outcomeCounts()
+	confidence := successes - failures
+	if confidence < 0 {
+		confidence = -confidence
+	}
+	cnt := targetConfidence - confidence
+	if cnt > 0 {
+		return cnt
+	}
+	// we have enough confirmations, see if we should still retest
+
+	// There are no confirmations. This should never happen. In case there are no confirmations,
+	// the confidence logic above should require a few probes.
+	if len(o.outcomes) == 0 {
+		return 0
+	}
+	lastOutcome := o.outcomes[len(o.outcomes)-1]
+	// If the last probe result is old, we need to retest
+	if now.Sub(lastOutcome.At) > maxProbeInterval {
+		return 1
+	}
+	// if the last probe result was different from reachability, probe again.
+	switch o.computeReachability(successes, failures) {
+	case network.ReachabilityPublic:
+		if !lastOutcome.Success {
+			return 1
+		}
+	case network.ReachabilityPrivate:
+		if lastOutcome.Success {
+			return 1
+		}
+	default:
+		// this should never happen. no reachability => confidence is low
+		return 1
+	}
+	return 0
+}
+
+func (o *addrOutcomes) AddDialOutcomeAndExpire(at time.Time, rch network.Reachability, windowSize int, expireBefore time.Time) {
+	success := false
+	switch rch {
+	case network.ReachabilityPublic:
+		success = true
+	case network.ReachabilityPrivate:
+		success = false
+	default:
+		return // don't store the outcome if reachability is unknown
+	}
+	o.outcomes = append(o.outcomes, dialOutcome{At: at, Success: success})
+	if len(o.outcomes) > windowSize {
+		o.outcomes = slices.Delete(o.outcomes, 0, len(o.outcomes)-windowSize)
+	}
+	o.removeBefore(expireBefore)
+}
+
+// removeBefore removes outcomes before t
+func (o *addrOutcomes) removeBefore(t time.Time) {
+	st := 0
+	var ot dialOutcome
+	for st, ot = range o.outcomes {
+		if ot.At.After(t) {
+			break
+		}
+	}
+	o.outcomes = slices.Delete(o.outcomes, 0, st)
+}
+
+func (o *addrOutcomes) outcomeCounts() (successes, failures int) {
+	for _, r := range o.outcomes {
 		if r.Success {
 			successes++
 		} else {
@@ -595,30 +652,4 @@ func (s *addrStatus) resultCounts() (successes, failures int) {
 		}
 	}
 	return successes, failures
-}
-
-func (s *addrStatus) ExpireBefore(expiry time.Time) {
-	s.results = slices.DeleteFunc(s.results, func(pr probeResult) bool {
-		return pr.Time.Before(expiry)
-	})
-}
-
-func (s *addrStatus) AddResult(at time.Time, success bool) {
-	s.results = append(s.results, probeResult{
-		Success: success,
-		Time:    at,
-	})
-	s.consecutiveRefusals.Count = 0
-	s.consecutiveRefusals.Last = time.Time{}
-}
-
-func (s *addrStatus) Trim(n int) {
-	if len(s.results) > n {
-		s.results = slices.Delete(s.results, 0, len(s.results)-n)
-	}
-}
-
-func (s *addrStatus) AddRefusal(at time.Time) {
-	s.consecutiveRefusals.Count++
-	s.consecutiveRefusals.Last = at
 }
