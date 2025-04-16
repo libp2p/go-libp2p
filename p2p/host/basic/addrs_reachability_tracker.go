@@ -103,40 +103,37 @@ func (r *addrsReachabilityTracker) background() error {
 		var task reachabilityTask
 		var backoffInterval time.Duration
 		var reachable, unreachable []ma.Multiaddr // used to avoid allocations
+		var prevReachable, prevUnreachable []ma.Multiaddr
 		for {
+			var resetInterval time.Duration
 			select {
 			case <-timer.C:
 				if task.RespCh == nil {
 					task = r.refreshReachability()
 				}
-				timer.Reset(defaultResetInterval)
+				resetInterval = defaultResetInterval
 			case backoff := <-task.RespCh:
 				task = reachabilityTask{}
 				if backoff {
 					backoffInterval = newBackoffInterval(backoffInterval)
-				} else {
-					backoffInterval = 0
 				}
-				reachable, unreachable = r.appendConfirmedAddrsAndNotify(reachable[:0], unreachable[:0])
-				timer.Reset(backoffInterval)
+				reachable, unreachable = r.appendConfirmedAddrs(reachable[:0], unreachable[:0])
+				resetInterval = 0
 			case addrs := <-r.newAddrs:
 				if task.RespCh != nil {
 					task.Cancel()
-					<-task.RespCh
+					backoff := <-task.RespCh
 					task = reachabilityTask{}
-					// We must send the event here. If there are no new addrs in this event we may not probe
-					// again for a while delaying any reachability updates.
-					reachable, unreachable = r.appendConfirmedAddrsAndNotify(reachable[:0], unreachable[:0])
+					if backoff {
+						backoffInterval = newBackoffInterval(backoffInterval)
+					}
+					// We must update reachable addrs here.
+					// If there are no new addrs in this event we may not probe again for a while
+					// and suppress any reachability updates.
+					reachable, unreachable = r.appendConfirmedAddrs(reachable[:0], unreachable[:0])
 				}
-				addrs = slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool {
-					return !manet.IsPublicAddr(a)
-				})
-				if len(addrs) > maxTrackedAddrs {
-					log.Errorf("too many addresses (%d) for addrs reachability tracker; dropping %d", len(addrs), len(addrs)-maxTrackedAddrs)
-					addrs = addrs[:maxTrackedAddrs]
-				}
-				r.addrTracker.UpdateAddrs(addrs)
-				timer.Reset(r.newAddrsProbeDelay)
+				resetInterval = r.newAddrsProbeDelay
+				r.updateTrackedAddrs(addrs)
 			case <-r.ctx.Done():
 				if task.RespCh != nil {
 					task.Cancel()
@@ -145,28 +142,51 @@ func (r *addrsReachabilityTracker) background() error {
 				}
 				return
 			}
+
+			if areAddrsDifferent(prevReachable, r.reachableAddrs) || areAddrsDifferent(prevUnreachable, r.unreachableAddrs) {
+				reachable, unreachable = r.appendConfirmedAddrs(reachable[:0], unreachable[:0])
+			}
+			prevReachable, prevUnreachable = r.reachableAddrs, r.unreachableAddrs
+			if backoffInterval > resetInterval {
+				resetInterval = backoffInterval
+			}
+			timer.Reset(resetInterval)
 		}
 	}()
 	return nil
-}
-
-func (r *addrsReachabilityTracker) appendConfirmedAddrsAndNotify(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
-	reachable, unreachable = r.addrTracker.AppendConfirmedAddrs(reachable, unreachable)
-	r.mx.Lock()
-	r.reachableAddrs = append(r.reachableAddrs[:0], reachable...)
-	r.unreachableAddrs = append(r.unreachableAddrs[:0], unreachable...)
-	r.mx.Unlock()
-	select {
-	case r.reachabilityUpdateCh <- struct{}{}:
-	default:
-	}
-	return reachable, unreachable
 }
 
 func (r *addrsReachabilityTracker) ConfirmedAddrs() (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 	return slices.Clone(r.reachableAddrs), slices.Clone(r.unreachableAddrs)
+}
+
+func (r *addrsReachabilityTracker) appendConfirmedAddrs(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
+	reachable, unreachable = r.addrTracker.AppendConfirmedAddrs(reachable, unreachable)
+	r.mx.Lock()
+	r.reachableAddrs = append(r.reachableAddrs[:0], reachable...)
+	r.unreachableAddrs = append(r.unreachableAddrs[:0], unreachable...)
+	r.mx.Unlock()
+	return reachable, unreachable
+}
+
+func (r *addrsReachabilityTracker) notify() {
+	select {
+	case r.reachabilityUpdateCh <- struct{}{}:
+	default:
+	}
+}
+
+func (r *addrsReachabilityTracker) updateTrackedAddrs(addrs []ma.Multiaddr) {
+	addrs = slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool {
+		return !manet.IsPublicAddr(a)
+	})
+	if len(addrs) > maxTrackedAddrs {
+		log.Errorf("too many addresses (%d) for addrs reachability tracker; dropping %d", len(addrs), len(addrs)-maxTrackedAddrs)
+		addrs = addrs[:maxTrackedAddrs]
+	}
+	r.addrTracker.UpdateAddrs(addrs)
 }
 
 const (
@@ -222,7 +242,7 @@ func (c *errCountingClient) GetReachability(ctx context.Context, reqs []autonatv
 	res, err := c.autonatv2Client.GetReachability(ctx, reqs)
 	c.mx.Lock()
 	defer c.mx.Unlock()
-	if err != nil {
+	if err != nil && !errors.Is(err, context.Canceled) { // ignore canceled errors, they're not errors from autonatv2
 		c.consecutiveErrors++
 		if c.consecutiveErrors > c.MaxConsecutiveErrors {
 			err = fmt.Errorf("%w:%w", errTooManyConsecutiveFailures, err)
@@ -375,12 +395,12 @@ func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable []ma.Multiadd
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
-	for _, as := range m.statuses {
-		switch as.outcomes.Reachability() {
+	for _, a := range m.addrs {
+		switch m.statuses[string(a.Bytes())].outcomes.Reachability() {
 		case network.ReachabilityPublic:
-			reachable = append(reachable, as.Addr)
+			reachable = append(reachable, a)
 		case network.ReachabilityPrivate:
-			unreachable = append(unreachable, as.Addr)
+			unreachable = append(unreachable, a)
 		}
 	}
 	return reachable, unreachable
@@ -542,7 +562,7 @@ type addrStatus struct {
 	lastRefusalTime     time.Time
 	consecutiveRefusals int
 	probeTimes          []time.Time
-	outcomes            *addrOutcomes
+	outcomes            *addrOutcomes // TODO: no pointer?
 }
 
 type addrOutcomes struct {
