@@ -97,42 +97,51 @@ func (r *addrsReachabilityTracker) background() error {
 	go func() {
 		defer r.wg.Done()
 
-		timer := r.clock.Timer(time.Duration(math.MaxInt64))
-		defer timer.Stop()
+		// probeTicker is used to trigger probes at regular intervals
+		probeTicker := r.clock.Ticker(defaultResetInterval)
+		defer probeTicker.Stop()
+
+		// probeTimer is used to trigger probes at specific times
+		probeTimer := r.clock.Timer(time.Duration(math.MaxInt64))
+		defer probeTimer.Stop()
+		nextProbeTime := time.Time{}
 
 		var task reachabilityTask
 		var backoffInterval time.Duration
-		var reachable, unreachable []ma.Multiaddr // used to avoid allocations
-		var prevReachable, prevUnreachable []ma.Multiaddr
+		var currReachable, currUnreachable, prevReachable, prevUnreachable []ma.Multiaddr
 		for {
-			var resetInterval time.Duration
 			select {
-			case <-timer.C:
+			case <-probeTicker.C:
 				if task.RespCh == nil {
 					task = r.refreshReachability()
 				}
-				resetInterval = defaultResetInterval
+				nextProbeTime = time.Time{}
+			case <-probeTimer.C:
+				if task.RespCh == nil {
+					task = r.refreshReachability()
+				}
+				nextProbeTime = time.Time{}
 			case backoff := <-task.RespCh:
 				task = reachabilityTask{}
+				// On completion, start the next probe immediately, or wait for backoff
+				// In case there are no further probes, the reachability tracker will return an empty task,
+				// which hangs forever. Eventually, we'll refresh again when the ticker fires.
 				if backoff {
 					backoffInterval = newBackoffInterval(backoffInterval)
+				} else {
+					backoffInterval = -1 * time.Second // negative to trigger next probe immediately
 				}
-				reachable, unreachable = r.appendConfirmedAddrs(reachable[:0], unreachable[:0])
-				resetInterval = 0
+				nextProbeTime = r.clock.Now().Add(backoffInterval)
 			case addrs := <-r.newAddrs:
-				if task.RespCh != nil {
+				if task.RespCh != nil { // cancel running task.
 					task.Cancel()
-					backoff := <-task.RespCh
+					<-task.RespCh // ignore backoff from cancelled task
 					task = reachabilityTask{}
-					if backoff {
-						backoffInterval = newBackoffInterval(backoffInterval)
-					}
-					// We must update reachable addrs here.
-					// If there are no new addrs in this event we may not probe again for a while
-					// and suppress any reachability updates.
-					reachable, unreachable = r.appendConfirmedAddrs(reachable[:0], unreachable[:0])
 				}
-				resetInterval = r.newAddrsProbeDelay
+				newAddrsNextTime := r.clock.Now().Add(r.newAddrsProbeDelay)
+				if nextProbeTime.Before(newAddrsNextTime) {
+					nextProbeTime = newAddrsNextTime
+				}
 				r.updateTrackedAddrs(addrs)
 			case <-r.ctx.Done():
 				if task.RespCh != nil {
@@ -143,14 +152,15 @@ func (r *addrsReachabilityTracker) background() error {
 				return
 			}
 
-			if areAddrsDifferent(prevReachable, r.reachableAddrs) || areAddrsDifferent(prevUnreachable, r.unreachableAddrs) {
-				reachable, unreachable = r.appendConfirmedAddrs(reachable[:0], unreachable[:0])
+			currReachable, currUnreachable = r.appendConfirmedAddrs(currReachable[:0], currUnreachable[:0])
+			if areAddrsDifferent(prevReachable, currReachable) || areAddrsDifferent(prevUnreachable, currUnreachable) {
+				r.notify()
 			}
-			prevReachable, prevUnreachable = r.reachableAddrs, r.unreachableAddrs
-			if backoffInterval > resetInterval {
-				resetInterval = backoffInterval
+			prevReachable = append(prevReachable[:0], currReachable...)
+			prevUnreachable = append(prevUnreachable[:0], currUnreachable...)
+			if !nextProbeTime.IsZero() {
+				probeTimer.Reset(nextProbeTime.Sub(r.clock.Now()))
 			}
-			timer.Reset(resetInterval)
 		}
 	}()
 	return nil
@@ -191,11 +201,12 @@ func (r *addrsReachabilityTracker) updateTrackedAddrs(addrs []ma.Multiaddr) {
 
 const (
 	backoffStartInterval = 5 * time.Second
-	maxBackoffInterval   = 2 * defaultResetInterval
+	// maxBackoffInterval should be shorter or equal to defaultResetInterval as we probe every reset interval at least.
+	maxBackoffInterval = defaultResetInterval
 )
 
 func newBackoffInterval(current time.Duration) time.Duration {
-	if current == 0 {
+	if current <= 0 {
 		return backoffStartInterval
 	}
 	current *= 2
@@ -205,6 +216,7 @@ func newBackoffInterval(current time.Duration) time.Duration {
 	return current
 }
 
+// reachabilityTask is a task to refresh reachability.
 type reachabilityTask struct {
 	Cancel context.CancelFunc
 	RespCh chan bool
@@ -410,20 +422,17 @@ func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable []ma.Multiadd
 func (m *probeManager) UpdateAddrs(addrs []ma.Multiaddr) {
 	m.mx.Lock()
 	defer m.mx.Unlock()
+
+	slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+
 	for _, addr := range addrs {
 		if _, ok := m.statuses[string(addr.Bytes())]; !ok {
 			m.statuses[string(addr.Bytes())] = &addrStatus{Addr: addr}
 		}
 	}
 	for k, s := range m.statuses {
-		found := false
-		for _, a := range addrs {
-			if a.Equal(s.Addr) {
-				found = true
-				break
-			}
-		}
-		if !found {
+		_, ok := slices.BinarySearchFunc(addrs, s.Addr, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+		if !ok {
 			delete(m.statuses, k)
 		}
 	}
