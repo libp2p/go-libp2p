@@ -112,10 +112,10 @@ func (r *addrsReachabilityTracker) background() error {
 		for {
 			select {
 			case <-probeTicker.C:
-				if task.RespCh == nil {
+				// don't start a probe if we have a scheduled probe
+				if task.RespCh == nil && nextProbeTime.IsZero() {
 					task = r.refreshReachability()
 				}
-				nextProbeTime = time.Time{}
 			case <-probeTimer.C:
 				if task.RespCh == nil {
 					task = r.refreshReachability()
