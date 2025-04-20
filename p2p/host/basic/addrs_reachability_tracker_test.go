@@ -12,243 +12,181 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestAddrTrackerGetProbe(t *testing.T) {
+func TestProbeManager(t *testing.T) {
 	pub1 := ma.StringCast("/ip4/1.1.1.1/tcp/1")
 	pub2 := ma.StringCast("/ip4/1.1.1.2/tcp/1")
+	pub3 := ma.StringCast("/ip4/1.1.1.3/tcp/1")
 
 	cl := clock.NewMock()
 
-	t.Run("inprogress probes", func(t *testing.T) {
-		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
+	nextProbe := func(pm *probeManager) []autonatv2.Request {
+		reqs := pm.GetProbe()
+		if len(reqs) != 0 {
+			pm.MarkProbeInProgress(reqs)
+		}
+		return reqs
+	}
 
-		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
-		reqs1 := tr.GetProbe()
-		reqs2 := tr.GetProbe()
-		require.Equal(t, reqs1, reqs2)
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
-			require.NotEmpty(t, reqs)
-			tr.MarkProbeInProgress(reqs)
-			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
+	makeNewProbeManager := func(addrs []ma.Multiaddr) *probeManager {
+		pm := newProbeManager(cl.Now, maxRecentProbeResultWindow, 10*time.Minute, 10)
+		pm.UpdateAddrs(addrs)
+		return pm
+	}
+
+	t.Run("addrs updates", func(t *testing.T) {
+		pm := newProbeManager(cl.Now, maxRecentProbeResultWindow, 10*time.Minute, 10)
+		pm.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
+		for {
+			reqs := nextProbe(pm)
+			if len(reqs) == 0 {
+				break
+			}
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 		}
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
-			require.NotEmpty(t, reqs)
-			tr.MarkProbeInProgress(reqs)
-			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub2, SendDialData: true}})
-		}
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
-			require.Empty(t, reqs)
-		}
+		reachable, _ := pm.AppendConfirmedAddrs(nil, nil)
+		require.Equal(t, reachable, []ma.Multiaddr{pub1, pub2})
+		pm.UpdateAddrs([]ma.Multiaddr{pub3})
+
+		reachable, _ = pm.AppendConfirmedAddrs(nil, nil)
+		require.Empty(t, reachable)
+		require.Len(t, pm.statuses, 1)
 	})
 
-	t.Run("probe refusals", func(t *testing.T) {
-		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
-		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
-		var probes [][]autonatv2.Request
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
+	t.Run("inprogress", func(t *testing.T) {
+		pm := makeNewProbeManager([]ma.Multiaddr{pub1, pub2})
+		reqs1 := pm.GetProbe()
+		reqs2 := pm.GetProbe()
+		require.Equal(t, reqs1, reqs2)
+		for i := 0; i < targetConfidence; i++ {
+			reqs := nextProbe(pm)
 			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
-			tr.MarkProbeInProgress(reqs)
+		}
+		for i := 0; i < targetConfidence; i++ {
+			reqs := nextProbe(pm)
+			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub2, SendDialData: true}, {Addr: pub1, SendDialData: true}})
+		}
+		reqs := pm.GetProbe()
+		require.Empty(t, reqs)
+	})
+
+	t.Run("refusals", func(t *testing.T) {
+		pm := makeNewProbeManager([]ma.Multiaddr{pub1, pub2})
+		var probes [][]autonatv2.Request
+		for i := 0; i < targetConfidence; i++ {
+			reqs := nextProbe(pm)
+			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
 			probes = append(probes, reqs)
 		}
-		// first one rejected second one successful
+		// first one refused second one successful
 		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_OK}, nil)
+			pm.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, Idx: 1, Reachability: network.ReachabilityPublic}, nil)
 		}
 		// the second address is validated!
 		probes = nil
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
+		for i := 0; i < targetConfidence; i++ {
+			reqs := nextProbe(pm)
 			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}})
-			tr.MarkProbeInProgress(reqs)
 			probes = append(probes, reqs)
 		}
-		reqs := tr.GetProbe()
+		reqs := pm.GetProbe()
 		require.Empty(t, reqs)
 		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{}, autonatv2.ErrDialRefused)
+			pm.CompleteProbe(probes[i], autonatv2.Result{AllAddrsRefused: true}, nil)
 		}
-		// all requests refused
-		reqs = tr.GetProbe()
+		// all requests refused; no more probes for too many refusals
+		reqs = pm.GetProbe()
 		require.Empty(t, reqs)
 
 		cl.Add(10*time.Minute + 5*time.Second)
-		reqs = tr.GetProbe()
+		reqs = pm.GetProbe()
 		require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}})
 	})
 
-	t.Run("probe successes", func(t *testing.T) {
-		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
-		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
-		var probes [][]autonatv2.Request
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
-			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
-			tr.MarkProbeInProgress(reqs)
-			probes = append(probes, reqs)
+	t.Run("successes", func(t *testing.T) {
+		pm := makeNewProbeManager([]ma.Multiaddr{pub1, pub2})
+		for j := 0; j < 2; j++ {
+			for i := 0; i < targetConfidence; i++ {
+				reqs := nextProbe(pm)
+				pm.CompleteProbe(reqs, autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+			}
 		}
-		// first one rejected second one successful
-		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil)
-		}
-		// the second address is validated!
-		probes = nil
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
-			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub2, SendDialData: true}})
-			tr.MarkProbeInProgress(reqs)
-			probes = append(probes, reqs)
-		}
-		reqs := tr.GetProbe()
-		require.Empty(t, reqs)
-		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_OK}, nil)
-		}
-		// all statueses probed
-		reqs = tr.GetProbe()
+		// all addrs confirmed
+		reqs := pm.GetProbe()
 		require.Empty(t, reqs)
 
 		cl.Add(1*time.Hour + 5*time.Second)
-		reqs = tr.GetProbe()
+		reqs = nextProbe(pm)
 		require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
-		tr.MarkProbeInProgress(reqs)
-		reqs = tr.GetProbe()
-		require.Equal(t, reqs, []autonatv2.Request{{Addr: pub2, SendDialData: true}})
+		reqs = nextProbe(pm)
+		require.Equal(t, reqs, []autonatv2.Request{{Addr: pub2, SendDialData: true}, {Addr: pub1, SendDialData: true}})
+	})
+
+	t.Run("throttling on indeterminate reachability", func(t *testing.T) {
+		pm := makeNewProbeManager([]ma.Multiaddr{pub1, pub2})
+		reachability := network.ReachabilityPublic
+		nextReachability := func() network.Reachability {
+			if reachability == network.ReachabilityPublic {
+				reachability = network.ReachabilityPrivate
+			} else {
+				reachability = network.ReachabilityPublic
+			}
+			return reachability
+		}
+		for range 2 * 10 {
+			reqs := nextProbe(pm)
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: nextReachability()}, nil)
+		}
+		reqs := pm.GetProbe()
+		require.Empty(t, reqs)
+
+		cl.Add(10*time.Minute + 5*time.Second)
+		reqs = pm.GetProbe()
+		require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
+		for range 2 * 10 {
+			reqs := nextProbe(pm)
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: nextReachability()}, nil)
+		}
+		reqs = pm.GetProbe()
+		require.Empty(t, reqs)
+
 	})
 
 	t.Run("reachabilityUpdate", func(t *testing.T) {
-		tr := newProbeManager(cl.Now, maxRecentProbeResultWindow)
-		tr.UpdateAddrs([]ma.Multiaddr{pub1, pub2})
-		var probes [][]autonatv2.Request
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
-			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
-			tr.MarkProbeInProgress(reqs)
-			probes = append(probes, reqs)
-		}
-		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil)
-		}
-		probes = nil
-		for i := 0; i < 3; i++ {
-			reqs := tr.GetProbe()
-			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub2, SendDialData: true}})
-			tr.MarkProbeInProgress(reqs)
-			probes = append(probes, reqs)
-		}
-		for i := 0; i < len(probes); i++ {
-			tr.CompleteProbe(probes[i], autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil)
+		pm := makeNewProbeManager([]ma.Multiaddr{pub1, pub2})
+		for range 2 * targetConfidence {
+			reqs := nextProbe(pm)
+			if reqs[0].Addr.Equal(pub1) {
+				pm.CompleteProbe(reqs, autonatv2.Result{Addr: pub1, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+			} else {
+				pm.CompleteProbe(reqs, autonatv2.Result{Addr: pub2, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+			}
 		}
 
-		reachable, unreachable := tr.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Equal(t, unreachable, []ma.Multiaddr{pub2})
+	})
+	t.Run("expiry", func(t *testing.T) {
+		pm := makeNewProbeManager([]ma.Multiaddr{pub1})
+		for range 2 * targetConfidence {
+			reqs := nextProbe(pm)
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: pub1, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+		}
 
-		// should expire addrs after 3 hours
-		cl.Add(3*time.Hour + 1*time.Second)
-		reachable, unreachable = tr.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
+		require.Equal(t, reachable, []ma.Multiaddr{pub1})
+		require.Empty(t, unreachable)
+
+		cl.Add(maxProbeResultTTL + 1*time.Second)
+		reachable, unreachable = pm.AppendConfirmedAddrs(nil, nil)
 		require.Empty(t, reachable)
 		require.Empty(t, unreachable)
 	})
-}
-
-func TestAddrStatus(t *testing.T) {
-	now := time.Now()
-	probeResultWindow := maxRecentProbeResultWindow
-
-	type input struct {
-		At               time.Time
-		Success, Refused bool
-	}
-	type testCase struct {
-		inputs       []input
-		probeCount   int
-		reachability network.Reachability
-	}
-	tests := []testCase{
-		{
-			inputs: []input{
-				{At: now, Success: true},
-			},
-			probeCount:   2,
-			reachability: network.ReachabilityUnknown,
-		},
-		{
-			inputs: []input{
-				{At: now, Success: false},
-				{At: now, Success: true},
-				{At: now, Success: true},
-				{At: now, Success: true},
-			},
-			probeCount:   1,
-			reachability: network.ReachabilityPublic,
-		},
-		{
-			inputs: []input{
-				{At: now, Success: true},
-				{At: now, Success: false},
-				{At: now, Success: false},
-				{At: now, Success: false},
-			},
-			probeCount:   1,
-			reachability: network.ReachabilityPrivate,
-		},
-		{
-			inputs: []input{
-				{At: now, Success: false},
-				{At: now, Success: false},
-				{At: now, Success: false},
-				{At: now, Success: false},
-				{At: now, Success: false},
-				{At: now, Success: false},
-				{At: now, Success: true},
-				{At: now, Success: true},
-				{At: now, Success: true},
-				{At: now, Success: true},
-			},
-			probeCount:   0,
-			reachability: network.ReachabilityPublic,
-		},
-	}
-	for i, tt := range tests {
-		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
-			s := &addrStatus{Addr: ma.StringCast("/ip4/1.1.1.1/tcp/1")}
-			for _, inp := range tt.inputs {
-				if inp.Refused {
-					s.AddRefusal(now)
-				} else {
-					s.AddResult(now, inp.Success)
-				}
-				s.Trim(probeResultWindow)
-			}
-			require.Equal(t, tt.reachability, s.Reachability())
-			require.Equal(t, tt.probeCount, s.ProbeCount(now))
-		})
-	}
-}
-
-func TestAddrStatusRefused(t *testing.T) {
-	s := &addrStatus{Addr: ma.StringCast("/ip4/1.1.1.1/tcp/1")}
-	now := time.Now()
-	for i := 0; i < maxConsecutiveRefusals-1; i++ {
-		s.AddRefusal(now)
-	}
-	require.Equal(t, s.ProbeCount(now), 3)
-	s.AddRefusal(now)
-	require.Equal(t, s.ProbeCount(now), 0)
-	require.Equal(t, s.ProbeCount(now.Add(addrRefusedProbeInterval+(1*time.Nanosecond))), 1) // +1 to push it over the threshold
-
-	s.AddResult(now, true)
-	require.Equal(t, s.ProbeCount(now), 2)
-	require.Equal(t, s.consecutiveRefusals.Count, 0)
 }
 
 type mockAutoNATClient struct {
@@ -261,11 +199,11 @@ func (m mockAutoNATClient) GetReachability(ctx context.Context, reqs []autonatv2
 
 var _ autonatv2Client = mockAutoNATClient{}
 
-func TestAddrReachabilityTracker(t *testing.T) {
-	pub1, _ := ma.NewMultiaddr("/ip4/1.1.1.1/tcp/1")
-	pub2, _ := ma.NewMultiaddr("/ip4/1.1.1.2/tcp/1")
-	pub3, _ := ma.NewMultiaddr("/ip4/1.1.1.3/tcp/1")
-	pri, _ := ma.NewMultiaddr("/ip4/192.168.1.1/tcp/1")
+func TestAddrsReachabilityTracker(t *testing.T) {
+	pub1 := ma.StringCast("/ip4/1.1.1.1/tcp/1")
+	pub2 := ma.StringCast("/ip4/1.1.1.2/tcp/1")
+	pub3 := ma.StringCast("/ip4/1.1.1.3/tcp/1")
+	pri := ma.StringCast("/ip4/192.168.1.1/tcp/1")
 
 	newTracker := func(cli mockAutoNATClient, cl clock.Clock) *addrsReachabilityTracker {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -280,7 +218,7 @@ func TestAddrReachabilityTracker(t *testing.T) {
 			reachabilityUpdateCh: make(chan struct{}, 1),
 			maxConcurrency:       3,
 			newAddrsProbeDelay:   0 * time.Second,
-			addrTracker:          newProbeManager(cl.Now, maxRecentProbeResultWindow),
+			addrTracker:          newProbeManager(cl.Now, maxRecentProbeResultWindow, defaultResetInterval, 10),
 			clock:                cl,
 		}
 		err := tr.Start()
@@ -293,20 +231,21 @@ func TestAddrReachabilityTracker(t *testing.T) {
 	}
 
 	t.Run("simple", func(t *testing.T) {
+		// pub1 reachable, pub2 unreachable, pub3 ignored
 		mockClient := mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
-				for _, req := range reqs {
+				for i, req := range reqs {
 					if req.Addr.Equal(pub1) {
-						return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
+						return autonatv2.Result{Addr: pub1, Idx: i, Reachability: network.ReachabilityPublic}, nil
 					} else if req.Addr.Equal(pub2) {
-						return autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil
+						return autonatv2.Result{Addr: pub2, Idx: i, Reachability: network.ReachabilityPrivate}, nil
 					}
 				}
-				return autonatv2.Result{}, autonatv2.ErrDialRefused
+				return autonatv2.Result{}, autonatv2.ErrNoPeers
 			},
 		}
 		tr := newTracker(mockClient, nil)
-		tr.UpdateAddrs([]ma.Multiaddr{pub3, pub1, pri})
+		tr.UpdateAddrs([]ma.Multiaddr{pub2, pub1, pri})
 		select {
 		case <-tr.reachabilityUpdateCh:
 		case <-time.After(2 * time.Second):
@@ -314,27 +253,29 @@ func TestAddrReachabilityTracker(t *testing.T) {
 		}
 		reachable, unreachable := tr.ConfirmedAddrs()
 		require.Equal(t, reachable, []ma.Multiaddr{pub1}, "%s %s", reachable, pub1)
-		require.Empty(t, unreachable)
+		require.Equal(t, unreachable, []ma.Multiaddr{pub2}, "%s %s", unreachable, pub2)
 
-		tr.UpdateAddrs([]ma.Multiaddr{pub3, pub1, pub2, pri})
+		tr.UpdateAddrs([]ma.Multiaddr{pub3, pub1, pri})
 		select {
 		case <-tr.reachabilityUpdateCh:
-		case <-time.After(1 * time.Second):
-			t.Fatal("unexpected call")
+		case <-time.After(2 * time.Second):
+			t.Fatal("expected reachability update")
 		}
 		reachable, unreachable = tr.ConfirmedAddrs()
 		require.Equal(t, reachable, []ma.Multiaddr{pub1}, "%s %s", reachable, pub1)
-		require.Equal(t, unreachable, []ma.Multiaddr{pub2}, "%s %s", unreachable, pub2)
+		require.Empty(t, unreachable)
 	})
 
 	t.Run("backoff", func(t *testing.T) {
 		notify := make(chan struct{}, 1)
-		drainNotify := func() {
+		drainNotify := func() bool {
+			found := false
 			for {
 				select {
 				case <-notify:
+					found = true
 				default:
-					return
+					return found
 				}
 			}
 		}
@@ -350,9 +291,9 @@ func TestAddrReachabilityTracker(t *testing.T) {
 					return autonatv2.Result{}, autonatv2.ErrNoPeers
 				}
 				if reqs[0].Addr.Equal(pub1) {
-					return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
+					return autonatv2.Result{Addr: pub1, Idx: 0, Reachability: network.ReachabilityPublic}, nil
 				}
-				return autonatv2.Result{}, autonatv2.ErrDialRefused
+				return autonatv2.Result{AllAddrsRefused: true}, nil
 			},
 		}
 
@@ -364,14 +305,8 @@ func TestAddrReachabilityTracker(t *testing.T) {
 		// need to update clock after the background goroutine processes the new addrs
 		time.Sleep(100 * time.Millisecond)
 		cl.Add(1)
-		select {
-		case <-tr.reachabilityUpdateCh:
-			reachable, unreachable := tr.ConfirmedAddrs()
-			require.Empty(t, reachable)
-			require.Empty(t, unreachable)
-		case <-time.After(1 * time.Second):
-			t.Fatal("unexpected call")
-		}
+		time.Sleep(100 * time.Millisecond)
+		require.True(t, drainNotify()) // check that we did receive probes
 
 		backoffInterval := backoffStartInterval
 		for i := 0; i < 4; i++ {
@@ -385,9 +320,9 @@ func TestAddrReachabilityTracker(t *testing.T) {
 			cl.Add(backoffInterval/2 + 1) // +1 to push it slightly over the backoff interval
 			backoffInterval *= 2
 			select {
-			case <-tr.reachabilityUpdateCh:
+			case <-notify:
 			case <-time.After(1 * time.Second):
-				t.Fatal("unexpected call")
+				t.Fatal("expected probe")
 			}
 			reachable, unreachable := tr.ConfirmedAddrs()
 			require.Empty(t, reachable)
@@ -399,7 +334,7 @@ func TestAddrReachabilityTracker(t *testing.T) {
 		select {
 		case <-tr.reachabilityUpdateCh:
 		case <-time.After(1 * time.Second):
-			t.Fatal("unexpected call")
+			t.Fatal("unexpected reachability update")
 		}
 		reachable, unreachable := tr.ConfirmedAddrs()
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
@@ -413,16 +348,16 @@ func TestAddrReachabilityTracker(t *testing.T) {
 		mockClient := mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				select {
-				case <-ctx.Done():
-					return autonatv2.Result{}, ctx.Err()
 				case called <- struct{}{}:
 					notify <- struct{}{}
+					return autonatv2.Result{Addr: pub1, Idx: 0, Reachability: network.ReachabilityPublic}, nil
+				default:
+					return autonatv2.Result{AllAddrsRefused: true}, nil
 				}
-				return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
 			},
 		}
 
-		tr := newTracker(mockClient, clock.New())
+		tr := newTracker(mockClient, nil)
 		tr.UpdateAddrs([]ma.Multiaddr{pub1})
 		for i := 0; i < minConfidence; i++ {
 			select {
@@ -433,14 +368,79 @@ func TestAddrReachabilityTracker(t *testing.T) {
 		}
 		select {
 		case <-tr.reachabilityUpdateCh:
-			t.Fatal("didn't expect reachability update")
-		case <-time.After(1 * time.Second):
-		}
-		tr.UpdateAddrs([]ma.Multiaddr{pub1})
-		select {
-		case <-tr.reachabilityUpdateCh:
+			reachable, unreachable := tr.ConfirmedAddrs()
+			require.Equal(t, reachable, []ma.Multiaddr{pub1})
+			require.Empty(t, unreachable)
 		case <-time.After(1 * time.Second):
 			t.Fatal("expected reachability update")
+		}
+		tr.UpdateAddrs([]ma.Multiaddr{pub1}) // same addrs shouldn't get update
+		select {
+		case <-tr.reachabilityUpdateCh:
+			t.Fatal("didn't expect reachability update")
+		case <-time.After(100 * time.Millisecond):
+		}
+		tr.UpdateAddrs([]ma.Multiaddr{pub2})
+		select {
+		case <-tr.reachabilityUpdateCh:
+			reachable, unreachable := tr.ConfirmedAddrs()
+			require.Empty(t, reachable)
+			require.Empty(t, unreachable)
+		case <-time.After(1 * time.Second):
+			t.Fatal("expected reachability update")
+		}
+	})
+
+	t.Run("refresh after reset interval", func(t *testing.T) {
+		notify := make(chan struct{}, 1)
+		drainNotify := func() bool {
+			found := false
+			for {
+				select {
+				case <-notify:
+					found = true
+				default:
+					return found
+				}
+			}
+		}
+
+		mockClient := mockAutoNATClient{
+			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				select {
+				case notify <- struct{}{}:
+				default:
+				}
+				if reqs[0].Addr.Equal(pub1) {
+					return autonatv2.Result{Addr: pub1, Idx: 0, Reachability: network.ReachabilityPublic}, nil
+				}
+				return autonatv2.Result{AllAddrsRefused: true}, nil
+			},
+		}
+
+		cl := clock.NewMock()
+		tr := newTracker(mockClient, cl)
+
+		// update addrs and wait for initial checks
+		tr.UpdateAddrs([]ma.Multiaddr{pub1})
+		// need to update clock after the background goroutine processes the new addrs
+		time.Sleep(100 * time.Millisecond)
+		cl.Add(1)
+		time.Sleep(100 * time.Millisecond)
+		require.True(t, drainNotify()) // check that we did receive probes
+
+		cl.Add(maxProbeInterval / 2)
+		select {
+		case <-notify:
+			t.Fatal("unexpected call")
+		case <-time.After(50 * time.Millisecond):
+		}
+
+		cl.Add(maxProbeInterval/2 + defaultResetInterval) // defaultResetInterval for the next probe time
+		select {
+		case <-notify:
+		case <-time.After(1 * time.Second):
+			t.Fatal("expected probe")
 		}
 	})
 }
@@ -457,7 +457,7 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow, defaultResetInterval, 10)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
 		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
 		require.True(t, result)
@@ -472,7 +472,7 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow, defaultResetInterval, 10)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
 
 		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
@@ -490,7 +490,7 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow, defaultResetInterval, 10)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -523,17 +523,17 @@ func TestRunProbes(t *testing.T) {
 	t.Run("handles refusals", func(t *testing.T) {
 		pub1, _ := ma.NewMultiaddr("/ip4/1.1.1.1/tcp/1")
 
-		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow, defaultResetInterval, 10)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
 
 		mockClient := mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
-				for _, req := range reqs {
+				for i, req := range reqs {
 					if req.Addr.Equal(pub1) {
-						return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
+						return autonatv2.Result{Addr: pub1, Idx: i, Reachability: network.ReachabilityPublic}, nil
 					}
 				}
-				return autonatv2.Result{}, autonatv2.ErrDialRefused
+				return autonatv2.Result{AllAddrsRefused: true}, nil
 			},
 		}
 
@@ -547,20 +547,20 @@ func TestRunProbes(t *testing.T) {
 	})
 
 	t.Run("handles completions", func(t *testing.T) {
-		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow)
+		addrTracker := newProbeManager(time.Now, maxRecentProbeResultWindow, defaultResetInterval, 10)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
 
 		mockClient := mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
-				for _, req := range reqs {
+				for i, req := range reqs {
 					if req.Addr.Equal(pub1) {
-						return autonatv2.Result{Addr: pub1, DialStatus: pb.DialStatus_OK}, nil
+						return autonatv2.Result{Addr: pub1, Idx: i, Reachability: network.ReachabilityPublic}, nil
 					}
 					if req.Addr.Equal(pub2) {
-						return autonatv2.Result{Addr: pub2, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil
+						return autonatv2.Result{Addr: pub2, Idx: i, Reachability: network.ReachabilityPrivate}, nil
 					}
 				}
-				return autonatv2.Result{}, autonatv2.ErrDialRefused
+				return autonatv2.Result{AllAddrsRefused: true}, nil
 			},
 		}
 
@@ -574,9 +574,72 @@ func TestRunProbes(t *testing.T) {
 	})
 }
 
+func TestDialOutcome(t *testing.T) {
+	cases := []struct {
+		inputs             string
+		wantRequiredProbes int
+		wantReachability   network.Reachability
+	}{
+		{
+			inputs:             "SSSSSSSSSSS",
+			wantRequiredProbes: 0,
+			wantReachability:   network.ReachabilityPublic,
+		},
+		{
+			inputs:             "SSSSSSSSSSF",
+			wantRequiredProbes: 1,
+			wantReachability:   network.ReachabilityPublic,
+		},
+		{
+			inputs:             "SFSFSFSFSSSS",
+			wantRequiredProbes: 0,
+			wantReachability:   network.ReachabilityPublic,
+		},
+		{
+			inputs:             "SSSSSSSSSFSF",
+			wantRequiredProbes: 2,
+			wantReachability:   network.ReachabilityUnknown,
+		},
+		{
+			inputs:             "S",
+			wantRequiredProbes: 2,
+			wantReachability:   network.ReachabilityUnknown,
+		},
+		{
+			inputs:             "FF",
+			wantRequiredProbes: 1,
+			wantReachability:   network.ReachabilityPrivate,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.inputs, func(t *testing.T) {
+			now := time.Time{}.Add(1 * time.Second)
+			ao := addrOutcomes{}
+			for _, r := range c.inputs {
+				if r == 'S' {
+					ao.AddOutcome(now, network.ReachabilityPublic, 5)
+				} else {
+					ao.AddOutcome(now, network.ReachabilityPrivate, 5)
+				}
+				now = now.Add(1 * time.Second)
+			}
+			require.Equal(t, ao.RequiredProbes(now), c.wantRequiredProbes)
+			require.Equal(t, ao.Reachability(), c.wantReachability)
+			if c.wantRequiredProbes == 0 {
+				now = now.Add(1*time.Hour + 10*time.Microsecond)
+				require.Equal(t, ao.RequiredProbes(now), 1)
+			}
+
+			now = now.Add(1 * time.Second)
+			ao.RemoveBefore(now)
+			require.Len(t, ao.outcomes, 0)
+		})
+	}
+}
+
 func BenchmarkAddrTracker(b *testing.B) {
 	cl := clock.NewMock()
-	t := newProbeManager(cl.Now, maxRecentProbeResultWindow)
+	t := newProbeManager(cl.Now, maxRecentProbeResultWindow, 10*time.Minute, 10)
 
 	var addrs []ma.Multiaddr
 	for i := 0; i < 20; i++ {
@@ -592,6 +655,6 @@ func BenchmarkAddrTracker(b *testing.B) {
 			pp = p
 		}
 		t.MarkProbeInProgress(pp)
-		t.CompleteProbe(pp, autonatv2.Result{Addr: pp[0].Addr, DialStatus: pb.DialStatus_OK}, nil)
+		t.CompleteProbe(pp, autonatv2.Result{Addr: pp[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 	}
 }

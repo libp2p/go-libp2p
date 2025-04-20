@@ -302,7 +302,6 @@ func (ac *client) handleDialBack(s network.Stream) {
 	}
 	w := pbio.NewDelimitedWriter(s)
 	res := pb.DialBackResponse{}
-	// TODO: Check what happens on sending empty
 	if err := w.WriteMsg(&res); err != nil {
 		log.Debugf("failed to write dialback response: %s", err)
 		s.Reset()
@@ -310,7 +309,6 @@ func (ac *client) handleDialBack(s network.Stream) {
 }
 
 func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) bool {
-	// TODO: Check this n times
 	if len(connLocalAddr) == 0 || len(dialedAddr) == 0 {
 		return false
 	}
@@ -322,32 +320,31 @@ func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) boo
 	if len(localProtos) != len(externalProtos) {
 		return false
 	}
-	for i := 0; i < len(localProtos); i++ {
+	for i, lp := range localProtos {
+		ep := externalProtos[i]
 		if i == 0 {
-			switch externalProtos[i].Code {
+			switch ep.Code {
 			case ma.P_DNS, ma.P_DNSADDR:
-				if localProtos[i].Code == ma.P_IP4 || localProtos[i].Code == ma.P_IP6 {
+				if lp.Code == ma.P_IP4 || lp.Code == ma.P_IP6 {
 					continue
 				}
 				return false
 			case ma.P_DNS4:
-				if localProtos[i].Code == ma.P_IP4 {
+				if lp.Code == ma.P_IP4 {
 					continue
 				}
 				return false
 			case ma.P_DNS6:
-				if localProtos[i].Code == ma.P_IP6 {
+				if lp.Code == ma.P_IP6 {
 					continue
 				}
 				return false
 			}
-			if localProtos[i].Code != externalProtos[i].Code {
+			if lp.Code != ep.Code {
 				return false
 			}
-		} else {
-			if localProtos[i].Code != externalProtos[i].Code {
-				return false
-			}
+		} else if lp.Code != ep.Code {
+			return false
 		}
 	}
 	return true

@@ -29,6 +29,8 @@ const (
 	maxTrackedAddrs = 50
 	// defaultMaxConcurrency is the default number of concurrent workers for reachability checks
 	defaultMaxConcurrency = 5
+	// newAddrsProbeDelay is the delay before probing new addr's reachability.
+	newAddrsProbeDelay = 1 * time.Second
 )
 
 type addrsReachabilityTracker struct {
@@ -64,8 +66,8 @@ func newAddrsReachabilityTracker(client autonatv2Client, reachabilityUpdateCh ch
 		cancel:               cancel,
 		cli:                  client,
 		reachabilityUpdateCh: reachabilityUpdateCh,
-		addrTracker:          newProbeManager(cl.Now, maxRecentProbeResultWindow),
-		newAddrsProbeDelay:   1 * time.Second,
+		addrTracker:          newProbeManager(cl.Now, maxRecentProbeResultWindow, defaultResetInterval, 10),
+		newAddrsProbeDelay:   newAddrsProbeDelay,
 		maxConcurrency:       defaultMaxConcurrency,
 		newAddrs:             make(chan []ma.Multiaddr, 1),
 		clock:                cl,
@@ -74,6 +76,12 @@ func newAddrsReachabilityTracker(client autonatv2Client, reachabilityUpdateCh ch
 
 func (r *addrsReachabilityTracker) UpdateAddrs(addrs []ma.Multiaddr) {
 	r.newAddrs <- slices.Clone(addrs)
+}
+
+func (r *addrsReachabilityTracker) ConfirmedAddrs() (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
+	r.mx.Lock()
+	defer r.mx.Unlock()
+	return slices.Clone(r.reachableAddrs), slices.Clone(r.unreachableAddrs)
 }
 
 func (r *addrsReachabilityTracker) Start() error {
@@ -91,7 +99,11 @@ func (r *addrsReachabilityTracker) Close() error {
 	return nil
 }
 
-const defaultResetInterval = 5 * time.Minute
+const (
+	defaultResetInterval = 5 * time.Minute
+	maxBackoffInterval   = 5 * time.Minute
+	backoffStartInterval = 5 * time.Second
+)
 
 func (r *addrsReachabilityTracker) background() error {
 	go func() {
@@ -166,10 +178,15 @@ func (r *addrsReachabilityTracker) background() error {
 	return nil
 }
 
-func (r *addrsReachabilityTracker) ConfirmedAddrs() (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
-	r.mx.Lock()
-	defer r.mx.Unlock()
-	return slices.Clone(r.reachableAddrs), slices.Clone(r.unreachableAddrs)
+func newBackoffInterval(current time.Duration) time.Duration {
+	if current <= 0 {
+		return backoffStartInterval
+	}
+	current *= 2
+	if current > maxBackoffInterval {
+		return maxBackoffInterval
+	}
+	return current
 }
 
 func (r *addrsReachabilityTracker) appendConfirmedAddrs(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
@@ -199,23 +216,6 @@ func (r *addrsReachabilityTracker) updateTrackedAddrs(addrs []ma.Multiaddr) {
 	r.addrTracker.UpdateAddrs(addrs)
 }
 
-const (
-	backoffStartInterval = 5 * time.Second
-	// maxBackoffInterval should be shorter or equal to defaultResetInterval as we probe every reset interval at least.
-	maxBackoffInterval = defaultResetInterval
-)
-
-func newBackoffInterval(current time.Duration) time.Duration {
-	if current <= 0 {
-		return backoffStartInterval
-	}
-	current *= 2
-	if current > maxBackoffInterval {
-		return maxBackoffInterval
-	}
-	return current
-}
-
 // reachabilityTask is a task to refresh reachability.
 type reachabilityTask struct {
 	Cancel context.CancelFunc
@@ -241,7 +241,7 @@ func (r *addrsReachabilityTracker) refreshReachability() reachabilityTask {
 var errTooManyConsecutiveFailures = errors.New("too many consecutive failures")
 
 // errCountingClient counts errors from autonatv2Client and wraps the errors in response with a
-// errTooManyConsecutiveFailures in case of many consecutive failures
+// errTooManyConsecutiveFailures in case of persistent failures from autonatv2 module.
 type errCountingClient struct {
 	autonatv2Client
 	MaxConsecutiveErrors    int
@@ -347,10 +347,6 @@ func isErrorPersistent(err error) bool {
 }
 
 const (
-	// maxProbeResultTTL is the maximum time to keep probe results for an address
-	maxProbeResultTTL = 3 * time.Hour
-	// maxProbeInterval is the maximum interval between probes for an address
-	maxProbeInterval = 1 * time.Hour
 	// addrRefusedProbeInterval is the interval to probe addresses that have been refused
 	// these are generally addresses with newer transports for which we don't have many peers
 	// capable of dialing the transport
@@ -371,6 +367,10 @@ const (
 	// and then a success(...S S S S F S). The confidence in the targetConfidence window  will be equal to
 	// targetConfidence, the last F and S cancel each other, and we won't probe again for maxProbeInterval.
 	maxRecentProbeResultWindow = targetConfidence + 2
+	// maxProbeInterval is the maximum interval between probes for an address
+	maxProbeInterval = 1 * time.Hour
+	// maxProbeResultTTL is the maximum time to keep probe results for an address
+	maxProbeResultTTL = maxRecentProbeResultWindow * maxProbeInterval
 )
 
 // probeManager tracks reachability for a set of addresses. This struct decides the priority order of
@@ -381,10 +381,10 @@ const (
 // Probes returned by `GetProbe` should be marked as in progress using `MarkProbeInProgress`
 // before being executed.
 type probeManager struct {
-	now                          func() time.Time
-	recentProbeResultWindow      int
-	ProbeInterval                time.Duration
-	MaxProbesPerAddrsPerInterval int
+	now                         func() time.Time
+	recentProbeResultWindow     int
+	ProbeInterval               time.Duration
+	MaxDialsPerAddrsPerInterval int
 
 	mx                    sync.Mutex
 	inProgressProbes      map[string]int // addr -> count
@@ -393,12 +393,14 @@ type probeManager struct {
 	addrs                 []ma.Multiaddr
 }
 
-func newProbeManager(now func() time.Time, recentProbeResultWindow int) *probeManager {
+func newProbeManager(now func() time.Time, recentProbeResultWindow int, probeInterval time.Duration, maxProbesPerAddrsPerInterval int) *probeManager {
 	return &probeManager{
-		statuses:                make(map[string]*addrStatus),
-		inProgressProbes:        make(map[string]int),
-		now:                     now,
-		recentProbeResultWindow: recentProbeResultWindow,
+		statuses:                    make(map[string]*addrStatus),
+		inProgressProbes:            make(map[string]int),
+		now:                         now,
+		recentProbeResultWindow:     recentProbeResultWindow,
+		ProbeInterval:               probeInterval,
+		MaxDialsPerAddrsPerInterval: maxProbesPerAddrsPerInterval,
 	}
 }
 
@@ -408,7 +410,9 @@ func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable []ma.Multiadd
 	defer m.mx.Unlock()
 
 	for _, a := range m.addrs {
-		switch m.statuses[string(a.Bytes())].outcomes.Reachability() {
+		s := m.statuses[string(a.Bytes())]
+		s.outcomes.RemoveBefore(m.now().Add(-maxProbeResultTTL)) // cleanup stale results
+		switch s.outcomes.Reachability() {
 		case network.ReachabilityPublic:
 			reachable = append(reachable, a)
 		case network.ReachabilityPrivate:
@@ -423,11 +427,12 @@ func (m *probeManager) UpdateAddrs(addrs []ma.Multiaddr) {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
-	slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 
 	for _, addr := range addrs {
-		if _, ok := m.statuses[string(addr.Bytes())]; !ok {
-			m.statuses[string(addr.Bytes())] = &addrStatus{Addr: addr}
+		k := string(addr.Bytes())
+		if _, ok := m.statuses[k]; !ok {
+			m.statuses[k] = &addrStatus{Addr: addr, outcomes: addrOutcomes{}}
 		}
 	}
 	for k, s := range m.statuses {
@@ -446,23 +451,36 @@ func (m *probeManager) GetProbe() []autonatv2.Request {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
-	reqs := make([]autonatv2.Request, 0, maxAddrsPerRequest)
 	now := m.now()
-	for _, a := range m.addrs {
-		akey := string(a.Bytes())
-		pc := m.probeCount(m.statuses[akey], now)
+	for i, a := range m.addrs {
+		ab := a.Bytes()
+		pc := m.requiredProbes(m.statuses[string(ab)], now)
 		if pc == 0 {
 			continue
 		}
-		if len(reqs) == 0 && m.inProgressProbes[akey] >= pc {
+		if m.inProgressProbes[string(ab)] >= pc {
 			continue
 		}
+		reqs := make([]autonatv2.Request, 0, maxAddrsPerRequest)
 		reqs = append(reqs, autonatv2.Request{Addr: a, SendDialData: true})
-		if len(reqs) >= maxAddrsPerRequest {
-			break
+		// We have the first(primary) address. Append other addresses, ignoring inprogress probes
+		// on secondary addresses. The expectation is that the primary address will
+		// be dialed.
+		for j := 1; j < len(m.addrs); j++ {
+			k := (i + j) % len(m.addrs)
+			ab := m.addrs[k].Bytes()
+			pc := m.requiredProbes(m.statuses[string(ab)], now)
+			if pc == 0 {
+				continue
+			}
+			reqs = append(reqs, autonatv2.Request{Addr: m.addrs[k], SendDialData: true})
+			if len(reqs) >= maxAddrsPerRequest {
+				break
+			}
 		}
+		return reqs
 	}
-	return reqs
+	return nil
 }
 
 // MarkProbeInProgress should be called when a probe is started.
@@ -499,10 +517,10 @@ func (m *probeManager) CompleteProbe(reqs []autonatv2.Request, res autonatv2.Res
 	// decrement in-progress count for the first address
 	primaryAddrKey := string(reqs[0].Addr.Bytes())
 	m.inProgressProbes[primaryAddrKey]--
-	m.inProgressProbesTotal--
 	if m.inProgressProbes[primaryAddrKey] <= 0 {
 		delete(m.inProgressProbes, primaryAddrKey)
 	}
+	m.inProgressProbesTotal--
 
 	// nothing to do if the request errored.
 	if err != nil {
@@ -510,29 +528,43 @@ func (m *probeManager) CompleteProbe(reqs []autonatv2.Request, res autonatv2.Res
 	}
 
 	expireBefore := now.Add(-maxProbeInterval)
-	// request failed
 	if res.AllAddrsRefused {
 		if s, ok := m.statuses[primaryAddrKey]; ok {
-			s.lastRefusalTime = now
-			s.consecutiveRefusals++
+			m.addRefusal(s, now, expireBefore)
 		}
 		return
 	}
 
-	// mark only the primary status as refused
-	if s, ok := m.statuses[primaryAddrKey]; ok {
-		s.lastRefusalTime = now
-		s.consecutiveRefusals++
+	// Consider only primary address as refused. This increases the number of
+	// probes are refused, but refused probes are cheap as no dial is
+	// made by the server.
+	dialAddrKey := string(res.Addr.Bytes())
+	if dialAddrKey != primaryAddrKey {
+		if s, ok := m.statuses[primaryAddrKey]; ok {
+			m.addRefusal(s, now, expireBefore)
+		}
 	}
 
 	// record the result for the probed address
-	if s, ok := m.statuses[string(res.Addr.Bytes())]; ok {
-		s.outcomes.AddDialOutcomeAndExpire(now, res.Reachability, m.recentProbeResultWindow, expireBefore)
-		s.probeTimes = append(s.probeTimes, now)
+	if s, ok := m.statuses[dialAddrKey]; ok {
+		m.addDial(s, now, res.Reachability, expireBefore)
 	}
 }
 
-func (m *probeManager) probeCount(s *addrStatus, now time.Time) int {
+func (*probeManager) addRefusal(s *addrStatus, now time.Time, expireBefore time.Time) {
+	s.lastRefusalTime = now
+	s.consecutiveRefusals++
+}
+
+func (m *probeManager) addDial(s *addrStatus, now time.Time, rch network.Reachability, expireBefore time.Time) {
+	s.lastRefusalTime = time.Time{}
+	s.consecutiveRefusals = 0
+	s.dialTimes = append(s.dialTimes, now)
+	s.outcomes.AddOutcome(now, rch, m.recentProbeResultWindow)
+	s.outcomes.RemoveBefore(expireBefore)
+}
+
+func (m *probeManager) requiredProbes(s *addrStatus, now time.Time) int {
 	if s.consecutiveRefusals >= maxConsecutiveRefusals {
 		if now.Sub(s.lastRefusalTime) < addrRefusedProbeInterval {
 			return 0
@@ -543,16 +575,16 @@ func (m *probeManager) probeCount(s *addrStatus, now time.Time) int {
 	}
 
 	// Don't probe if we have probed too many times recently
-	if m.recentProbesCount(s, now) >= m.MaxProbesPerAddrsPerInterval {
+	if m.recentDialCount(s, now) >= m.MaxDialsPerAddrsPerInterval {
 		return 0
 	}
 
-	return s.outcomes.ProbeCount(now)
+	return s.outcomes.RequiredProbes(now)
 }
 
-func (m *probeManager) recentProbesCount(s *addrStatus, now time.Time) int {
+func (m *probeManager) recentDialCount(s *addrStatus, now time.Time) int {
 	cnt := 0
-	for _, t := range slices.Backward(s.probeTimes) {
+	for _, t := range slices.Backward(s.dialTimes) {
 		if now.Sub(t) > m.ProbeInterval {
 			break
 		}
@@ -570,8 +602,8 @@ type addrStatus struct {
 	Addr                ma.Multiaddr
 	lastRefusalTime     time.Time
 	consecutiveRefusals int
-	probeTimes          []time.Time
-	outcomes            *addrOutcomes // TODO: no pointer?
+	dialTimes           []time.Time
+	outcomes            addrOutcomes
 }
 
 type addrOutcomes struct {
@@ -579,33 +611,12 @@ type addrOutcomes struct {
 }
 
 func (o *addrOutcomes) Reachability() network.Reachability {
-	successes, failures := o.outcomeCounts()
-	return o.computeReachability(successes, failures)
+	rch, _, _ := o.reachabilityAndCounts()
+	return rch
 }
 
-func (*addrOutcomes) computeReachability(success, failures int) network.Reachability {
-	if success-failures >= minConfidence {
-		return network.ReachabilityPublic
-	}
-	if failures-success >= minConfidence {
-		return network.ReachabilityPrivate
-	}
-	return network.ReachabilityUnknown
-}
-
-func (o *addrOutcomes) numProbesInInterval(now time.Time, probeInterval time.Duration) int {
-	cnt := 0
-	for _, v := range slices.Backward(o.outcomes) {
-		if now.Sub(v.At) > probeInterval {
-			break
-		}
-		cnt++
-	}
-	return cnt
-}
-
-func (o *addrOutcomes) ProbeCount(now time.Time) int {
-	successes, failures := o.outcomeCounts()
+func (o *addrOutcomes) RequiredProbes(now time.Time) int {
+	reachability, successes, failures := o.reachabilityAndCounts()
 	confidence := successes - failures
 	if confidence < 0 {
 		confidence = -confidence
@@ -614,10 +625,9 @@ func (o *addrOutcomes) ProbeCount(now time.Time) int {
 	if cnt > 0 {
 		return cnt
 	}
-	// we have enough confirmations, see if we should still retest
+	// we have enough confirmations; check if we should refresh
 
-	// There are no confirmations. This should never happen. In case there are no confirmations,
-	// the confidence logic above should require a few probes.
+	// Should never happen. The confidence logic above should require a few probes.
 	if len(o.outcomes) == 0 {
 		return 0
 	}
@@ -627,7 +637,7 @@ func (o *addrOutcomes) ProbeCount(now time.Time) int {
 		return 1
 	}
 	// if the last probe result was different from reachability, probe again.
-	switch o.computeReachability(successes, failures) {
+	switch reachability {
 	case network.ReachabilityPublic:
 		if !lastOutcome.Success {
 			return 1
@@ -637,13 +647,13 @@ func (o *addrOutcomes) ProbeCount(now time.Time) int {
 			return 1
 		}
 	default:
-		// this should never happen. no reachability => confidence is low
+		// this should never happen
 		return 1
 	}
 	return 0
 }
 
-func (o *addrOutcomes) AddDialOutcomeAndExpire(at time.Time, rch network.Reachability, windowSize int, expireBefore time.Time) {
+func (o *addrOutcomes) AddOutcome(at time.Time, rch network.Reachability, windowSize int) {
 	success := false
 	switch rch {
 	case network.ReachabilityPublic:
@@ -657,22 +667,20 @@ func (o *addrOutcomes) AddDialOutcomeAndExpire(at time.Time, rch network.Reachab
 	if len(o.outcomes) > windowSize {
 		o.outcomes = slices.Delete(o.outcomes, 0, len(o.outcomes)-windowSize)
 	}
-	o.removeBefore(expireBefore)
 }
 
-// removeBefore removes outcomes before t
-func (o *addrOutcomes) removeBefore(t time.Time) {
-	st := 0
-	var ot dialOutcome
-	for st, ot = range o.outcomes {
-		if ot.At.After(t) {
+// RemoveBefore removes outcomes before t
+func (o *addrOutcomes) RemoveBefore(t time.Time) {
+	var end = 0
+	for ; end < len(o.outcomes); end++ {
+		if !o.outcomes[end].At.Before(t) {
 			break
 		}
 	}
-	o.outcomes = slices.Delete(o.outcomes, 0, st)
+	o.outcomes = slices.Delete(o.outcomes, 0, end)
 }
 
-func (o *addrOutcomes) outcomeCounts() (successes, failures int) {
+func (o *addrOutcomes) reachabilityAndCounts() (rch network.Reachability, successes int, failures int) {
 	for _, r := range o.outcomes {
 		if r.Success {
 			successes++
@@ -680,5 +688,11 @@ func (o *addrOutcomes) outcomeCounts() (successes, failures int) {
 			failures++
 		}
 	}
-	return successes, failures
+	if successes-failures >= minConfidence {
+		return network.ReachabilityPublic, successes, failures
+	}
+	if failures-successes >= minConfidence {
+		return network.ReachabilityPrivate, successes, failures
+	}
+	return network.ReachabilityUnknown, successes, failures
 }

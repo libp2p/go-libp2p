@@ -11,7 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/assert"
@@ -436,14 +435,11 @@ func TestAddrsManager(t *testing.T) {
 }
 
 func TestAddrsManagerReachabilityEvent(t *testing.T) {
-	// Setup test addresses
 	publicQUIC, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1")
 	publicTCP, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 
-	// Create a new event bus
 	bus := eventbus.NewBus()
 
-	// Subscribe to EvtHostReachableAddrsChanged events
 	sub, err := bus.Subscribe(new(event.EvtHostReachableAddrsChanged))
 	require.NoError(t, err)
 	defer sub.Close()
@@ -455,9 +451,9 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 		AutoNATClient: mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				if reqs[0].Addr.Equal(publicQUIC) {
-					return autonatv2.Result{Addr: reqs[0].Addr, DialStatus: pb.DialStatus_OK}, nil
+					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil
 				} else if reqs[0].Addr.Equal(publicTCP) {
-					return autonatv2.Result{Addr: reqs[0].Addr, DialStatus: pb.DialStatus_E_DIAL_ERROR}, nil
+					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPrivate}, nil
 				}
 				t.Errorf("received invalid request for addr: %+v", reqs[0])
 				return autonatv2.Result{}, errors.New("invalid")
@@ -468,11 +464,9 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 	reachableAddrs := []ma.Multiaddr{publicQUIC}
 	unreachableAddrs := []ma.Multiaddr{publicTCP}
 
-	// No new event should be received
 	select {
 	case e := <-sub.Out():
 		evt := e.(event.EvtHostReachableAddrsChanged)
-		// Verify the event contains the expected addresses
 		require.ElementsMatch(t, reachableAddrs, evt.Reachable)
 		require.ElementsMatch(t, unreachableAddrs, evt.Unreachable)
 		require.ElementsMatch(t, reachableAddrs, am.ReachableAddrs())
