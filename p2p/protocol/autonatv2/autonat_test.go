@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
+	"net/netip"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,11 +41,11 @@ func newAutoNAT(t testing.TB, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 					swarm.WithIPv6BlackHoleSuccessCounter(nil))))
 	}
 	opts = append([]AutoNATOption{withThrottlePeerDuration(0)}, opts...)
-	an, err := New(h, dialer, opts...)
+	an, err := New(dialer, opts...)
 	if err != nil {
 		t.Error(err)
 	}
-	an.Start()
+	require.NoError(t, an.Start(h))
 	t.Cleanup(an.Close)
 	return an
 }
@@ -89,7 +93,7 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 	an := newAutoNAT(t, nil)
 	res, err := an.GetReachability(context.Background(), []Request{{Addr: ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")}})
 	require.Equal(t, res, Result{})
-	require.Contains(t, err.Error(), "private address cannot be verified by autonatv2")
+	require.ErrorIs(t, err, ErrPrivateAddrs)
 }
 
 func TestClientRequest(t *testing.T) {
@@ -610,4 +614,98 @@ func TestAreAddrsConsistency(t *testing.T) {
 			}
 		})
 	}
+}
+
+func FuzzClient(f *testing.F) {
+	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
+	c := newAutoNAT(f, nil)
+	idAndWait(f, c, a)
+
+	randProto := func() ma.Multiaddr {
+		protoTemplates := []string{
+			"/tcp/%d/",
+			"/udp/%d/",
+			"/udp/%d/quic-v1/",
+			"/udp/%d/quic-v1/tcp/%d",
+			"/udp/%d/quic-v1/webtransport/",
+			"/udp/%d/webrtc/",
+			"/udp/%d/webrtc-direct/",
+			"/unix/hello/",
+		}
+		s := protoTemplates[rand.Intn(len(protoTemplates))]
+		if strings.Count(s, "%d") == 1 {
+			return ma.StringCast(fmt.Sprintf(s, rand.Intn(1000)))
+		}
+		return ma.StringCast(fmt.Sprintf(s, rand.Intn(1000), rand.Intn(1000)))
+	}
+
+	randIP := func() ma.Multiaddr {
+		x := rand.Intn(2)
+		if x == 0 {
+			i := rand.Int31()
+			ip := netip.AddrFrom4([4]byte{byte(i), byte(i >> 8), byte(i >> 16), byte(i >> 24)})
+			return ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/1", ip))
+		}
+		a, b := rand.Int63(), rand.Int63()
+		ip := netip.AddrFrom16([16]byte{
+			byte(a), byte(a >> 8), byte(a >> 16), byte(a >> 24),
+			byte(a >> 32), byte(a >> 40), byte(a >> 48), byte(a >> 56),
+			byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24),
+			byte(b >> 32), byte(b >> 40), byte(b >> 48), byte(b >> 56),
+		})
+		return ma.StringCast(fmt.Sprintf("/ip6/%s/tcp/1", ip))
+	}
+
+	newAddrs := func() ma.Multiaddr {
+		switch rand.Intn(5) {
+		case 0:
+			return randIP().Encapsulate(randProto())
+		case 1:
+			return randProto()
+		case 2:
+			return nil
+		default:
+			return randProto().Encapsulate(randIP())
+		}
+	}
+
+	randDNSAddr := func(hostName string) ma.Multiaddr {
+		if len(hostName) == 0 {
+			panic("wtf")
+		}
+		var da ma.Multiaddr
+		switch rand.Intn(4) {
+		case 0:
+			da = ma.StringCast(fmt.Sprintf("/dns/%s/", hostName))
+		case 1:
+			da = ma.StringCast(fmt.Sprintf("/dns4/%s/", hostName))
+		case 2:
+			da = ma.StringCast(fmt.Sprintf("/dns6/%s/", hostName))
+		default:
+			da = ma.StringCast(fmt.Sprintf("/dnsaddr/%s/", hostName))
+		}
+		return da.Encapsulate(randProto())
+	}
+
+	// reduce the streamTimeout before running this. TODO: fix this
+	f.Fuzz(func(t *testing.T, i int, hostNames []byte) {
+		const maxAddrs = 100
+		numAddrs := ((i % maxAddrs) + maxAddrs) % maxAddrs
+		addrs := make([]ma.Multiaddr, numAddrs)
+		for i := range numAddrs {
+			addrs[i] = newAddrs()
+		}
+		maxDNSAddrs := 10
+		hostNamesStr := strings.ReplaceAll(string(hostNames), "\\", "")
+		hostNamesStr = strings.ReplaceAll(hostNamesStr, "/", "")
+		for i := 0; i < len(hostNamesStr) && i < 2*maxDNSAddrs; i += 2 {
+			ed := min(i+2, len(hostNamesStr))
+			addrs = append(addrs, randDNSAddr(hostNamesStr[i:ed]))
+		}
+		reqs := make([]Request, len(addrs))
+		for i, addr := range addrs {
+			reqs[i] = Request{Addr: addr, SendDialData: true}
+		}
+		c.GetReachability(context.Background(), reqs)
+	})
 }

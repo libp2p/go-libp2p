@@ -156,8 +156,8 @@ type HostOpts struct {
 
 	// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses in identify
 	DisableIdentifyAddressDiscovery bool
-	EnableAutoNATv2                 bool
-	AutoNATv2Dialer                 host.Host
+
+	AutoNATv2 *autonatv2.AutoNAT
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -237,20 +237,11 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		tfl = s.TransportForListening
 	}
 
-	if opts.EnableAutoNATv2 {
-		var mt autonatv2.MetricsTracer
-		if opts.EnableMetrics {
-			mt = autonatv2.NewMetricsTracer(opts.PrometheusRegisterer)
-		}
-		// keep this on host as it has the server as well as the client
-		h.autonatv2, err = autonatv2.New(h, opts.AutoNATv2Dialer, autonatv2.WithMetricsTracer(mt))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create autonatv2: %w", err)
-		}
+	if opts.AutoNATv2 != nil {
+		h.autonatv2 = opts.AutoNATv2
 	}
 
-	// avoid typed nil errors
-	var autonatv2Client autonatv2Client
+	var autonatv2Client autonatv2Client // avoid typed nil errors
 	if h.autonatv2 != nil {
 		autonatv2Client = h.autonatv2
 	}
@@ -327,7 +318,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 func (h *BasicHost) Start() {
 	h.psManager.Start()
 	if h.autonatv2 != nil {
-		err := h.autonatv2.Start()
+		err := h.autonatv2.Start(h)
 		if err != nil {
 			log.Errorf("autonat v2 failed to start: %s", err)
 		}

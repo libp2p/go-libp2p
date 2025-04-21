@@ -35,20 +35,20 @@ type normalizeMultiaddrer interface {
 	NormalizeMultiaddr(ma.Multiaddr) ma.Multiaddr
 }
 
-func newClient(h host.Host) *client {
+func newClient() *client {
+	return &client{
+		dialData:       make([]byte, 4000),
+		dialBackQueues: make(map[uint64]chan ma.Multiaddr),
+	}
+}
+
+func (ac *client) Start(h host.Host) {
 	normalizeMultiaddr := func(a ma.Multiaddr) ma.Multiaddr { return a }
 	if hn, ok := h.(normalizeMultiaddrer); ok {
 		normalizeMultiaddr = hn.NormalizeMultiaddr
 	}
-	return &client{
-		host:               h,
-		dialData:           make([]byte, 4000),
-		normalizeMultiaddr: normalizeMultiaddr,
-		dialBackQueues:     make(map[uint64]chan ma.Multiaddr),
-	}
-}
-
-func (ac *client) Start() {
+	ac.host = h
+	ac.normalizeMultiaddr = normalizeMultiaddr
 	ac.host.SetStreamHandler(DialBackProtocol, ac.handleDialBack)
 }
 

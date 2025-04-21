@@ -93,7 +93,7 @@ type AutoNAT struct {
 // New returns a new AutoNAT instance.
 // host and dialerHost should have the same dialing capabilities. In case the host doesn't support
 // a transport, dial back requests for address for that transport will be ignored.
-func New(host host.Host, dialerHost host.Host, opts ...AutoNATOption) (*AutoNAT, error) {
+func New(dialerHost host.Host, opts ...AutoNATOption) (*AutoNAT, error) {
 	s := defaultSettings()
 	for _, o := range opts {
 		if err := o(s); err != nil {
@@ -103,11 +103,10 @@ func New(host host.Host, dialerHost host.Host, opts ...AutoNATOption) (*AutoNAT,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	an := &AutoNAT{
-		host:                 host,
 		ctx:                  ctx,
 		cancel:               cancel,
-		srv:                  newServer(host, dialerHost, s),
-		cli:                  newClient(host),
+		srv:                  newServer(dialerHost, s),
+		cli:                  newClient(),
 		allowPrivateAddrs:    s.allowPrivateAddrs,
 		peers:                newPeersMap(),
 		throttlePeer:         make(map[peer.ID]time.Time),
@@ -148,7 +147,8 @@ func (an *AutoNAT) background(sub event.Subscription) {
 	}
 }
 
-func (an *AutoNAT) Start() error {
+func (an *AutoNAT) Start(h host.Host) error {
+	an.host = h
 	// Listen on event.EvtPeerProtocolsUpdated, event.EvtPeerConnectednessChanged
 	// event.EvtPeerIdentificationCompleted to maintain our set of autonat supporting peers.
 	sub, err := an.host.EventBus().Subscribe([]interface{}{
@@ -159,8 +159,8 @@ func (an *AutoNAT) Start() error {
 	if err != nil {
 		return fmt.Errorf("event subscription failed: %w", err)
 	}
-	an.cli.Start()
-	an.srv.Start()
+	an.cli.Start(h)
+	an.srv.Start(h)
 
 	an.wg.Add(1)
 	go an.background(sub)
