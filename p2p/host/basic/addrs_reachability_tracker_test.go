@@ -157,7 +157,6 @@ func TestProbeManager(t *testing.T) {
 		}
 		reqs = pm.GetProbe()
 		require.Empty(t, reqs)
-
 	})
 
 	t.Run("reachabilityUpdate", func(t *testing.T) {

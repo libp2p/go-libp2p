@@ -136,7 +136,6 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		require.ErrorIs(t, err, network.ErrReset)
 		require.Equal(t, Result{}, res)
 	})
-
 }
 
 func TestServerDataRequest(t *testing.T) {
