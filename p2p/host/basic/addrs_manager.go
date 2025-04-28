@@ -53,14 +53,14 @@ type addrsManager struct {
 	triggerAddrsUpdateChan chan struct{}
 	// triggerReachabilityUpdate is notified when reachable addrs are updated.
 	triggerReachabilityUpdate chan struct{}
-	// triggerHostReachabilityUpdate is notified when host's reachability from autonat v1 changes.
-	triggerHostReachabilityUpdate chan struct{}
 
 	hostReachability atomic.Pointer[network.Reachability]
 
 	addrsMx      sync.RWMutex // protects fields below
 	currentAddrs hostAddrs
-	relayAddrs   []ma.Multiaddr
+	// relayAddrs are the host's relay addresses. Kept separate from hostAddrs as we
+	// update them differently from hostAddrs.
+	relayAddrs []ma.Multiaddr
 
 	wg        sync.WaitGroup
 	ctx       context.Context
@@ -79,19 +79,18 @@ func newAddrsManager(
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	as := &addrsManager{
-		bus:                           bus,
-		listenAddrs:                   listenAddrs,
-		transportForListening:         transportForListening,
-		observedAddrsManager:          observedAddrsManager,
-		natManager:                    natmgr,
-		addrsFactory:                  addrsFactory,
-		triggerAddrsUpdateChan:        make(chan struct{}, 1),
-		triggerHostReachabilityUpdate: make(chan struct{}, 1),
-		triggerReachabilityUpdate:     make(chan struct{}, 1),
-		addrsUpdatedChan:              addrsUpdatedChan,
-		interfaceAddrs:                &interfaceAddrsCache{},
-		ctx:                           ctx,
-		ctxCancel:                     cancel,
+		bus:                       bus,
+		listenAddrs:               listenAddrs,
+		transportForListening:     transportForListening,
+		observedAddrsManager:      observedAddrsManager,
+		natManager:                natmgr,
+		addrsFactory:              addrsFactory,
+		triggerAddrsUpdateChan:    make(chan struct{}, 1),
+		triggerReachabilityUpdate: make(chan struct{}, 1),
+		addrsUpdatedChan:          addrsUpdatedChan,
+		interfaceAddrs:            &interfaceAddrsCache{},
+		ctx:                       ctx,
+		ctxCancel:                 cancel,
 	}
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
@@ -229,11 +228,11 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 		select {
 		case <-ticker.C:
 		case <-a.triggerAddrsUpdateChan:
+		case <-a.triggerReachabilityUpdate:
 		case e := <-autoRelayAddrsSub.Out():
 			if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
 				a.updateRelayAddrs(evt.RelayAddrs)
 			}
-		case <-a.triggerReachabilityUpdate:
 		case e := <-autonatReachabilitySub.Out():
 			if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
 				a.hostReachability.Store(&evt.Reachability)
@@ -270,6 +269,12 @@ func (a *addrsManager) updateAddrs() hostAddrs {
 		reachableAddrs:   currReachableAddrs,
 		unreachableAddrs: currUnreachableAddrs,
 	}
+}
+
+func (a *addrsManager) updateRelayAddrs(addrs []ma.Multiaddr) {
+	a.addrsMx.Lock()
+	defer a.addrsMx.Unlock()
+	a.relayAddrs = append(a.relayAddrs[:0], addrs...)
 }
 
 func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, current hostAddrs) {
@@ -325,6 +330,8 @@ func (a *addrsManager) getAddrs(localAddrs []ma.Multiaddr, relayAddrs []ma.Multi
 	return addrs
 }
 
+// HolePunchAddrs returns all the host's direct public addresses, reachable or unreachable,
+// suitable for hole punching.
 func (a *addrsManager) HolePunchAddrs() []ma.Multiaddr {
 	addrs := a.DirectAddrs()
 	addrs = slices.Clone(a.addrsFactory(addrs))
@@ -351,6 +358,7 @@ func (a *addrsManager) ReachableAddrs() []ma.Multiaddr {
 	return slices.Clone(a.currentAddrs.reachableAddrs)
 }
 
+// RelayAddrs returns all the relay addresses of the host.
 func (a *addrsManager) RelayAddrs() []ma.Multiaddr {
 	a.addrsMx.RLock()
 	defer a.addrsMx.RUnlock()
@@ -361,25 +369,37 @@ func (a *addrsManager) getRelayAddrsUnlocked() []ma.Multiaddr {
 	return slices.Clone(a.relayAddrs)
 }
 
-func (a *addrsManager) updateRelayAddrs(addrs []ma.Multiaddr) {
-	a.addrsMx.Lock()
-	defer a.addrsMx.Unlock()
-	a.relayAddrs = append(a.relayAddrs[:0], addrs...)
-}
-
 func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
 	reachableAddrs, unreachableAddrs = a.addrsReachabilityTracker.ConfirmedAddrs()
-	// Only include host addresses as the reachability manager may have
-	// a stale view of host's addresses.
-	reachableAddrs = slices.DeleteFunc(reachableAddrs, func(a ma.Multiaddr) bool {
-		_, ok := slices.BinarySearchFunc(localAddrs, a, func(a, b ma.Multiaddr) int { return a.Compare(b) })
-		return !ok
-	})
-	unreachableAddrs = slices.DeleteFunc(unreachableAddrs, func(a ma.Multiaddr) bool {
-		_, ok := slices.BinarySearchFunc(localAddrs, a, func(a, b ma.Multiaddr) int { return a.Compare(b) })
-		return !ok
-	})
-	return reachableAddrs, unreachableAddrs
+	return removeIfNotInSource(reachableAddrs, localAddrs), removeIfNotInSource(unreachableAddrs, localAddrs)
+}
+
+// removeIfNotInSource removes items from addrs that are not present in source.
+// Modifies the addrs slice in place
+// addrs and source must be sorted using multiaddr.Compare.
+func removeIfNotInSource(addrs, source []ma.Multiaddr) []ma.Multiaddr {
+	j := 0
+	// mark entries not in source as nil
+	for i, a := range addrs {
+		// move right till a is greater
+		for j < len(source) && a.Compare(source[j]) > 0 {
+			j++
+		}
+		// a is not in source if we've reached the end, or a is lesser
+		if j == len(source) || a.Compare(source[j]) < 0 {
+			addrs[i] = nil
+		}
+		// a is in source, nothing to do
+	}
+	// j is the current element, i is the lowest index nil element
+	i := 0
+	for j := 0; j < len(addrs); j++ {
+		if addrs[j] != nil {
+			addrs[i], addrs[j] = addrs[j], addrs[i]
+			i++
+		}
+	}
+	return addrs[:i]
 }
 
 var p2pCircuitAddr = ma.StringCast("/p2p-circuit")

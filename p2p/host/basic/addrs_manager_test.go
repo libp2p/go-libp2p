@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -474,6 +475,33 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 	}
 }
 
+func TestRemoveIfNotInSource(t *testing.T) {
+	var addrs []ma.Multiaddr
+	for i := 0; i < 10; i++ {
+		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i)))
+	}
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	cases := []struct {
+		addrs    []ma.Multiaddr
+		source   []ma.Multiaddr
+		expected []ma.Multiaddr
+	}{
+		{},
+		{addrs: slices.Clone(addrs[:5]), source: nil, expected: nil},
+		{addrs: nil, source: addrs, expected: nil},
+		{addrs: []ma.Multiaddr{addrs[0]}, source: []ma.Multiaddr{addrs[0]}, expected: []ma.Multiaddr{addrs[0]}},
+		{addrs: slices.Clone(addrs), source: []ma.Multiaddr{addrs[0]}, expected: []ma.Multiaddr{addrs[0]}},
+		{addrs: slices.Clone(addrs), source: slices.Clone(addrs[5:]), expected: slices.Clone(addrs[5:])},
+		{addrs: slices.Clone(addrs[:5]), source: []ma.Multiaddr{addrs[0], addrs[2], addrs[8]}, expected: []ma.Multiaddr{addrs[0], addrs[2]}},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			addrs := removeIfNotInSource(tc.addrs, tc.source)
+			require.ElementsMatch(t, tc.expected, addrs, "%s\n%s", tc.expected, tc.addrs)
+		})
+	}
+}
+
 func BenchmarkAreAddrsDifferent(b *testing.B) {
 	var addrs [10]ma.Multiaddr
 	for i := 0; i < len(addrs); i++ {
@@ -486,4 +514,16 @@ func BenchmarkAreAddrsDifferent(b *testing.B) {
 			areAddrsDifferent(addrs[:], addrs[:])
 		}
 	})
+}
+
+func BenchmarkRemoveIfNotInSource(b *testing.B) {
+	var addrs [10]ma.Multiaddr
+	for i := 0; i < len(addrs); i++ {
+		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		removeIfNotInSource(slices.Clone(addrs[:5]), addrs[:])
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -269,6 +270,32 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		reachable, unreachable = tr.ConfirmedAddrs()
 		require.Equal(t, reachable, []ma.Multiaddr{pub1}, "%s %s", reachable, pub1)
 		require.Empty(t, unreachable)
+	})
+
+	t.Run("confirmed addrs ordering", func(t *testing.T) {
+		mockClient := mockAutoNATClient{
+			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil
+			},
+		}
+		tr := newTracker(mockClient, nil)
+		var addrs []ma.Multiaddr
+		for i := 0; i < 10; i++ {
+			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.1.1.1/tcp/%d", i)))
+		}
+		slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return -a.Compare(b) }) // sort in reverse order
+		tr.UpdateAddrs(addrs)
+		select {
+		case <-tr.reachabilityUpdateCh:
+		case <-time.After(2 * time.Second):
+			t.Fatal("expected reachability update")
+		}
+		reachable, unreachable := tr.ConfirmedAddrs()
+		require.Empty(t, unreachable)
+
+		orderedAddrs := slices.Clone(addrs)
+		slices.Reverse(orderedAddrs)
+		require.Equal(t, reachable, orderedAddrs, "%s %s", reachable, addrs)
 	})
 
 	t.Run("backoff", func(t *testing.T) {
@@ -762,12 +789,12 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 	}
 
 	randDNSAddr := func(hostName string) ma.Multiaddr {
-		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
+		hostName = strings.ReplaceAll(hostName, "\\", "")
+		hostName = strings.ReplaceAll(hostName, "/", "")
 		if hostName == "" {
 			hostName = "localhost"
 		}
-		hostName = strings.ReplaceAll(hostName, "\\", "")
-		hostName = strings.ReplaceAll(hostName, "/", "")
+		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
 		da := ma.StringCast(fmt.Sprintf("/%s/%s/", dnsProtos[rand.Intn(len(dnsProtos))], hostName))
 		return da.Encapsulate(randProto())
 	}

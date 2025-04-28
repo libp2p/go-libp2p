@@ -677,12 +677,12 @@ func FuzzClient(f *testing.F) {
 	}
 
 	randDNSAddr := func(hostName string) ma.Multiaddr {
-		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
+		hostName = strings.ReplaceAll(hostName, "\\", "")
+		hostName = strings.ReplaceAll(hostName, "/", "")
 		if hostName == "" {
 			hostName = "localhost"
 		}
-		hostName = strings.ReplaceAll(hostName, "\\", "")
-		hostName = strings.ReplaceAll(hostName, "/", "")
+		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
 		da := ma.StringCast(fmt.Sprintf("/%s/%s/", dnsProtos[rand.Intn(len(dnsProtos))], hostName))
 		return da.Encapsulate(randProto())
 	}
