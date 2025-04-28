@@ -2,10 +2,12 @@ package autonatv2
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"net/netip"
 	"strings"
 	"sync/atomic"
@@ -621,6 +623,7 @@ func FuzzClient(f *testing.F) {
 	c := newAutoNAT(f, nil)
 	idAndWait(f, c, a)
 
+	// TODO: Move this to go-multiaddrs
 	randProto := func() ma.Multiaddr {
 		protoTemplates := []string{
 			"/tcp/%d/",
@@ -647,6 +650,10 @@ func FuzzClient(f *testing.F) {
 			return ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/1", ip))
 		}
 		a, b := rand.Int63(), rand.Int63()
+		if rand.Intn(2) == 0 {
+			pubIP := net.ParseIP("2005::") // Public IP address
+			a = int64(binary.LittleEndian.Uint64(pubIP[0:8]))
+		}
 		ip := netip.AddrFrom16([16]byte{
 			byte(a), byte(a >> 8), byte(a >> 16), byte(a >> 24),
 			byte(a >> 32), byte(a >> 40), byte(a >> 48), byte(a >> 56),
@@ -670,38 +677,34 @@ func FuzzClient(f *testing.F) {
 	}
 
 	randDNSAddr := func(hostName string) ma.Multiaddr {
-		if len(hostName) == 0 {
-			panic("wtf")
+		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
+		if hostName == "" {
+			hostName = "localhost"
 		}
-		var da ma.Multiaddr
-		switch rand.Intn(4) {
-		case 0:
-			da = ma.StringCast(fmt.Sprintf("/dns/%s/", hostName))
-		case 1:
-			da = ma.StringCast(fmt.Sprintf("/dns4/%s/", hostName))
-		case 2:
-			da = ma.StringCast(fmt.Sprintf("/dns6/%s/", hostName))
-		default:
-			da = ma.StringCast(fmt.Sprintf("/dnsaddr/%s/", hostName))
-		}
+		hostName = strings.ReplaceAll(hostName, "\\", "")
+		hostName = strings.ReplaceAll(hostName, "/", "")
+		da := ma.StringCast(fmt.Sprintf("/%s/%s/", dnsProtos[rand.Intn(len(dnsProtos))], hostName))
 		return da.Encapsulate(randProto())
 	}
 
-	// reduce the streamTimeout before running this. TODO: fix this
-	f.Fuzz(func(t *testing.T, i int, hostNames []byte) {
-		const maxAddrs = 100
-		numAddrs := ((i % maxAddrs) + maxAddrs) % maxAddrs
+	const maxAddrs = 1000
+	getAddrs := func(numAddrs int, hostNames []byte) []ma.Multiaddr {
+		numAddrs = ((numAddrs % maxAddrs) + maxAddrs) % maxAddrs
 		addrs := make([]ma.Multiaddr, numAddrs)
 		for i := range numAddrs {
 			addrs[i] = newAddrs()
 		}
 		maxDNSAddrs := 10
-		hostNamesStr := strings.ReplaceAll(string(hostNames), "\\", "")
-		hostNamesStr = strings.ReplaceAll(hostNamesStr, "/", "")
-		for i := 0; i < len(hostNamesStr) && i < 2*maxDNSAddrs; i += 2 {
-			ed := min(i+2, len(hostNamesStr))
-			addrs = append(addrs, randDNSAddr(hostNamesStr[i:ed]))
+		for i := 0; i < len(hostNames) && i < maxDNSAddrs; i += 2 {
+			ed := min(i+2, len(hostNames))
+			addrs = append(addrs, randDNSAddr(string(hostNames[i:ed])))
 		}
+		return addrs
+	}
+
+	// reduce the streamTimeout before running this. TODO: fix this
+	f.Fuzz(func(t *testing.T, numAddrs int, hostNames []byte) {
+		addrs := getAddrs(numAddrs, hostNames)
 		reqs := make([]Request, len(addrs))
 		for i, addr := range addrs {
 			reqs[i] = Request{Addr: addr, SendDialData: true}

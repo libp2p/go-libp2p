@@ -2,9 +2,11 @@ package basichost
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/netip"
 	"strings"
 	"sync"
@@ -663,31 +665,50 @@ func BenchmarkAddrTracker(b *testing.B) {
 }
 
 func FuzzAddrsReachabilityTracker(f *testing.F) {
-	cl := clock.NewMock()
+	type autonatv2Response struct {
+		Result autonatv2.Result
+		Err    error
+	}
 	// The only constraint we force is that result.Idx < len(reqs)
 	client := mockAutoNATClient{
 		F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
-			switch rand.Intn(7) {
-			case 0:
-				return autonatv2.Result{AllAddrsRefused: true}, nil
-			case 1:
-				return autonatv2.Result{}, errors.New("test error")
-			case 2:
-				return autonatv2.Result{}, nil
-			case 3:
-				k := rand.Intn(len(reqs))
-				r := network.Reachability(rand.Intn(3))
-				return autonatv2.Result{Addr: reqs[k].Addr, Idx: k, Reachability: r}, nil
-			case 4:
-				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic, AllAddrsRefused: true}, nil
-			case 5:
-				return autonatv2.Result{Addr: reqs[0].Addr, Idx: len(reqs) - 1, Reachability: network.ReachabilityPublic, AllAddrsRefused: true}, nil
-			default:
-				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil
+			if rand.Intn(3) == 0 {
+				// some address confirmed
+				x := rand.Intn(3)
+				rch := network.Reachability(x)
+				n := rand.Intn(len(reqs))
+				return autonatv2.Result{
+					Addr:         reqs[n].Addr,
+					Idx:          n,
+					Reachability: rch,
+				}, nil
 			}
+			outcomes := []autonatv2Response{
+				{Result: autonatv2.Result{AllAddrsRefused: true}},
+				{Err: errors.New("test error")},
+				{Err: autonatv2.ErrPrivateAddrs},
+				{Err: autonatv2.ErrNoPeers},
+				{Result: autonatv2.Result{}, Err: nil},
+				{Result: autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}},
+				{Result: autonatv2.Result{
+					Addr:            reqs[0].Addr,
+					Idx:             0,
+					Reachability:    network.ReachabilityPublic,
+					AllAddrsRefused: true,
+				}},
+				{Result: autonatv2.Result{
+					Addr:            reqs[0].Addr,
+					Idx:             len(reqs) - 1, // invalid idx
+					Reachability:    network.ReachabilityPublic,
+					AllAddrsRefused: false,
+				}},
+			}
+			outcome := outcomes[rand.Intn(len(outcomes))]
+			return outcome.Result, outcome.Err
 		},
 	}
 
+	// TODO: Move this to go-multiaddrs
 	randProto := func() ma.Multiaddr {
 		protoTemplates := []string{
 			"/tcp/%d/",
@@ -714,6 +735,10 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 			return ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/1", ip))
 		}
 		a, b := rand.Int63(), rand.Int63()
+		if rand.Intn(2) == 0 {
+			pubIP := net.ParseIP("2005::") // Public IP address
+			a = int64(binary.LittleEndian.Uint64(pubIP[0:8]))
+		}
 		ip := netip.AddrFrom16([16]byte{
 			byte(a), byte(a >> 8), byte(a >> 16), byte(a >> 24),
 			byte(a >> 32), byte(a >> 40), byte(a >> 48), byte(a >> 56),
@@ -737,22 +762,18 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 	}
 
 	randDNSAddr := func(hostName string) ma.Multiaddr {
-		var da ma.Multiaddr
-		switch rand.Intn(4) {
-		case 0:
-			da = ma.StringCast(fmt.Sprintf("/dns/%s/", hostName))
-		case 1:
-			da = ma.StringCast(fmt.Sprintf("/dns4/%s/", hostName))
-		case 2:
-			da = ma.StringCast(fmt.Sprintf("/dns6/%s/", hostName))
-		default:
-			da = ma.StringCast(fmt.Sprintf("/dnsaddr/%s/", hostName))
+		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
+		if hostName == "" {
+			hostName = "localhost"
 		}
+		hostName = strings.ReplaceAll(hostName, "\\", "")
+		hostName = strings.ReplaceAll(hostName, "/", "")
+		da := ma.StringCast(fmt.Sprintf("/%s/%s/", dnsProtos[rand.Intn(len(dnsProtos))], hostName))
 		return da.Encapsulate(randProto())
 	}
 
+	const maxAddrs = 1000
 	getAddrs := func(numAddrs int, hostNames []byte) []ma.Multiaddr {
-		const maxAddrs = 1000
 		numAddrs = ((numAddrs % maxAddrs) + maxAddrs) % maxAddrs
 		addrs := make([]ma.Multiaddr, numAddrs)
 		for i := range numAddrs {
@@ -766,9 +787,9 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 		return addrs
 	}
 
+	cl := clock.NewMock()
 	f.Fuzz(func(t *testing.T, i int, hostNames []byte) {
 		tr := newAddrsReachabilityTracker(client, nil, cl)
-
 		require.NoError(t, tr.Start())
 		tr.UpdateAddrs(getAddrs(i, hostNames))
 

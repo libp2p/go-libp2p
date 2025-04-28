@@ -245,6 +245,8 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 }
 
 func (a *addrsManager) updateAddrs() hostAddrs {
+	// Must lock while doing both recompute and update as this method is called from
+	// multiple goroutines.
 	a.addrsMx.Lock()
 	defer a.addrsMx.Unlock()
 
@@ -370,10 +372,12 @@ func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAd
 	// Only include host addresses as the reachability manager may have
 	// a stale view of host's addresses.
 	reachableAddrs = slices.DeleteFunc(reachableAddrs, func(a ma.Multiaddr) bool {
-		return !contains(localAddrs, a)
+		_, ok := slices.BinarySearchFunc(localAddrs, a, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+		return !ok
 	})
 	unreachableAddrs = slices.DeleteFunc(unreachableAddrs, func(a ma.Multiaddr) bool {
-		return !contains(localAddrs, a)
+		_, ok := slices.BinarySearchFunc(localAddrs, a, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+		return !ok
 	})
 	return reachableAddrs, unreachableAddrs
 }
@@ -549,15 +553,6 @@ func areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	slices.SortFunc(current, func(a, b ma.Multiaddr) int { return a.Compare(b) })
 	for i := range prev {
 		if !prev[i].Equal(current[i]) {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(addrs []ma.Multiaddr, addr ma.Multiaddr) bool {
-	for _, a := range addrs {
-		if a.Equal(addr) {
 			return true
 		}
 	}

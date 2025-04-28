@@ -436,6 +436,7 @@ func TestAddrsManager(t *testing.T) {
 
 func TestAddrsManagerReachabilityEvent(t *testing.T) {
 	publicQUIC, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1")
+	publicQUIC2, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1235/quic-v1")
 	publicTCP, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 
 	bus := eventbus.NewBus()
@@ -447,23 +448,21 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 	am := newAddrsManagerTestCase(t, addrsManagerArgs{
 		Bus: bus,
 		// currently they aren't being passed to the reachability tracker
-		ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{publicQUIC, publicTCP} },
+		ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{publicQUIC, publicQUIC2, publicTCP} },
 		AutoNATClient: mockAutoNATClient{
 			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				if reqs[0].Addr.Equal(publicQUIC) {
 					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil
-				} else if reqs[0].Addr.Equal(publicTCP) {
+				} else if reqs[0].Addr.Equal(publicTCP) || reqs[0].Addr.Equal(publicQUIC2) {
 					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPrivate}, nil
 				}
-				t.Errorf("received invalid request for addr: %+v", reqs[0])
 				return autonatv2.Result{}, errors.New("invalid")
 			},
 		},
 	})
 
 	reachableAddrs := []ma.Multiaddr{publicQUIC}
-	unreachableAddrs := []ma.Multiaddr{publicTCP}
-
+	unreachableAddrs := []ma.Multiaddr{publicTCP, publicQUIC2}
 	select {
 	case e := <-sub.Out():
 		evt := e.(event.EvtHostReachableAddrsChanged)
