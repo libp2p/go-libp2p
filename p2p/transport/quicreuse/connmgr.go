@@ -1,3 +1,7 @@
+// Package quicreuse provides `quicreuse.ConnManager`, which provides functionality
+// for reusing QUIC transports for various purposes, like listening & dialing, having
+// multiple QUIC listeners on the same address with different ALPNs, and sharing the
+// same address with non QUIC transports like WebRTC.
 package quicreuse
 
 import (
@@ -34,6 +38,13 @@ type QUICTransport interface {
 	io.Closer
 }
 
+// ConnManager implements using the same listen address for both QUIC & WebTransport, reusing
+// listen addresses for dialing, and provides a PacketConn for sharing the listen address
+// with other protocols like WebRTC.
+// Reusing the listen address for dialing helps with address discovery and hole punching. For details
+// of the reuse logic see `ListenQUICAndAssociate` and `DialQUIC`.
+// If reuseport is disabled using the `DisableReuseport` option, listen addresses are not used for
+// dialing.
 type ConnManager struct {
 	reuseUDP4       *reuse
 	reuseUDP6       *reuse
@@ -69,6 +80,7 @@ func defaultSourceIPSelectorFn() (SourceIPSelector, error) {
 	return &netrouteSourceIPSelector{routes: r}, err
 }
 
+// NewConnManager returns a new ConnManager
 func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
 		enableReuseport:    true,
@@ -160,11 +172,18 @@ func (c *ConnManager) LendTransport(network string, tr QUICTransport, conn net.P
 	return refCountedTr.borrowDoneSignal, reuse.AddTransport(refCountedTr, localAddr)
 }
 
+// ListenQUIC listens for quic connections with the provided `tlsConf.NextProtos` ALPNs on `addr`. The same addr can be shared between
+// different ALPNs.
 func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
 	return c.ListenQUICAndAssociate(nil, addr, tlsConf, allowWindowIncrease)
 }
 
-// ListenQUICAndAssociate returns a QUIC listener and associates the underlying transport with the given association.
+// ListenQUICAndAssociate listens for quic connections with the provided `tlsConf.NextProtos` ALPNs on `addr`. The same addr can be shared between
+// different ALPNs.
+// The QUIC Transport used for listening is tagged with the `association`. Any subsequent `TransportWithAssociationForDial`,
+// or `DialQUIC` calls with the same `association` will reuse the QUIC Transport used by this method.
+// A common use of associations is to ensure /quic dials use the quic listening address and /webtransport dials use the
+// WebTransport listening address.
 func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
 	netw, host, err := manet.DialArgs(addr)
 	if err != nil {
@@ -230,7 +249,8 @@ func (c *ConnManager) onListenerClosed(key string) {
 	}
 }
 
-func (c *ConnManager) SharedNonQUICPacketConn(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+// SharedNonQUICPacketConn returns a `net.PacketConn` for `laddr` for non QUIC uses.
+func (c *ConnManager) SharedNonQUICPacketConn(_ string, laddr *net.UDPAddr) (net.PacketConn, error) {
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 	key := laddr.String()
@@ -252,7 +272,7 @@ func (c *ConnManager) SharedNonQUICPacketConn(network string, laddr *net.UDPAddr
 	return nil, errors.New("expected to be able to share with a QUIC listener, but the QUIC listener is not using a refcountedTransport. `DisableReuseport` should not be set")
 }
 
-func (c *ConnManager) transportForListen(association any, network string, laddr *net.UDPAddr) (refCountedQuicTransport, error) {
+func (c *ConnManager) transportForListen(association any, network string, laddr *net.UDPAddr) (RefCountedQUICTransport, error) {
 	if c.enableReuseport {
 		reuse, err := c.getReuse(network)
 		if err != nil {
@@ -290,6 +310,13 @@ func WithAssociation(ctx context.Context, association any) context.Context {
 	return context.WithValue(ctx, associationKey{}, association)
 }
 
+// DialQUIC dials `raddr`. Use `WithAssociation` to select a specific transport that was previously used for listening.
+// see the documentation for `ListenQUICAndAssociate` for details on associate.
+// The priority order for reusing the transport is as follows:
+// - Listening transport with the same association
+// - Any other listening transport
+// - Any transport previously used for dialing
+// If none of these are available, it'll create a new transport.
 func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (quic.Connection, error) {
 	naddr, v, err := FromQuicMultiaddr(raddr)
 	if err != nil {
@@ -310,12 +337,9 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 		return nil, errors.New("unknown QUIC version")
 	}
 
-	var tr refCountedQuicTransport
-	if association := ctx.Value(associationKey{}); association != nil {
-		tr, err = c.TransportWithAssociationForDial(association, netw, naddr)
-	} else {
-		tr, err = c.TransportForDial(netw, naddr)
-	}
+	var tr RefCountedQUICTransport
+	association := ctx.Value(associationKey{})
+	tr, err = c.TransportWithAssociationForDial(association, netw, naddr)
 	if err != nil {
 		return nil, err
 	}
@@ -327,18 +351,23 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 	return conn, nil
 }
 
-func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refCountedQuicTransport, error) {
+// TransportForDial returns a transport for dialing `raddr`.
+// If reuseport is enabled, it attempts to reuse the QUIC Transport used for
+// previous listens or dials.
+func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (RefCountedQUICTransport, error) {
 	return c.TransportWithAssociationForDial(nil, network, raddr)
 }
 
-// TransportWithAssociationForDial returns a QUIC transport for dialing, preferring a transport with the given association.
-func (c *ConnManager) TransportWithAssociationForDial(association any, network string, raddr *net.UDPAddr) (refCountedQuicTransport, error) {
+// TransportWithAssociationForDial returns a transport for dialing `raddr`.
+// If reuseport is enabled, it attempts to reuse the QUIC Transport previously used for listening with `ListenQuicAndAssociate`
+// with the same `association`. If it fails to do so, it uses any other previously used transport.
+func (c *ConnManager) TransportWithAssociationForDial(association any, network string, raddr *net.UDPAddr) (RefCountedQUICTransport, error) {
 	if c.enableReuseport {
 		reuse, err := c.getReuse(network)
 		if err != nil {
 			return nil, err
 		}
-		return reuse.transportWithAssociationForDial(association, network, raddr)
+		return reuse.TransportWithAssociationForDial(association, network, raddr)
 	}
 
 	var laddr *net.UDPAddr
@@ -356,6 +385,7 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 	return &singleOwnerTransport{Transport: &wrappedQUICTransport{&quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, packetConn: conn}, nil
 }
 
+// Protocols returns the supported QUIC protocols. The only supported protocol at the moment is /quic-v1.
 func (c *ConnManager) Protocols() []int {
 	return []int{ma.P_QUIC_V1}
 }
@@ -374,9 +404,12 @@ func (c *ConnManager) ClientConfig() *quic.Config {
 	return c.clientConfig
 }
 
+// wrappedQUICTransport wraps a `quic.Transport` to confirm to `QUICTransport`
 type wrappedQUICTransport struct {
 	*quic.Transport
 }
+
+var _ QUICTransport = (*wrappedQUICTransport)(nil)
 
 func (t *wrappedQUICTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
 	return t.Transport.Listen(tlsConf, conf)

@@ -97,7 +97,7 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 	quicTr, err := cm.transportForListen(nil, netw, naddr)
 	require.NoError(t, err)
 	defer quicTr.Close()
-	if _, ok := quicTr.(*singleOwnerTransport).packetConn.(quic.OOBCapablePacketConn); !ok {
+	if _, ok := quicTr.(*singleOwnerTransport).Transport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }
@@ -141,23 +141,39 @@ func TestConnectionPassedToQUICForDialing(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping on windows. Windows doesn't support these optimizations")
 	}
-	cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{}, DisableReuseport())
-	require.NoError(t, err)
-	defer cm.Close()
+	for _, reuse := range []bool{true, false} {
+		t.Run(fmt.Sprintf("reuseport: %t", reuse), func(t *testing.T) {
+			var cm *ConnManager
+			var err error
+			if reuse {
+				cm, err = NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+			} else {
+				cm, err = NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{}, DisableReuseport())
+			}
+			require.NoError(t, err)
+			defer func() { _ = cm.Close() }()
 
-	raddr := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
+			raddr := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
 
-	naddr, _, err := FromQuicMultiaddr(raddr)
-	require.NoError(t, err)
-	netw, _, err := manet.DialArgs(raddr)
-	require.NoError(t, err)
+			naddr, _, err := FromQuicMultiaddr(raddr)
+			require.NoError(t, err)
+			netw, _, err := manet.DialArgs(raddr)
+			require.NoError(t, err)
 
-	quicTr, err := cm.TransportForDial(netw, naddr)
+			quicTr, err := cm.TransportForDial(netw, naddr)
 
-	require.NoError(t, err, "dial error")
-	defer quicTr.Close()
-	if _, ok := quicTr.(*singleOwnerTransport).packetConn.(quic.OOBCapablePacketConn); !ok {
-		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
+			require.NoError(t, err, "dial error")
+			defer func() { _ = quicTr.Close() }()
+			if reuse {
+				if _, ok := quicTr.(*refcountedTransport).QUICTransport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
+					t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
+				}
+			} else {
+				if _, ok := quicTr.(*singleOwnerTransport).Transport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
+					t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
+				}
+			}
+		})
 	}
 }
 
