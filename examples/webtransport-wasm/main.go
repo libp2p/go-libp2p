@@ -1,6 +1,3 @@
-//go:build js
-// +build js
-
 package main
 
 import (
@@ -24,7 +21,8 @@ func main() {
 	}
 
 	// Define the multiaddress to connect to
-	multiaddrStr := "/ip4/20.77.12.206/udp/53249/quic-v1/webtransport/certhash/uEiCF2z9Z-7ZhVq2fiUg1NbQPdUT6YuPAiW8-Javsg9wbkQ/certhash/uEiCE4wCzfgqlrALJqlp4XauM0gHMoQokBN8QPWL-fWb1Gg"
+	multiaddrStr := "/ip4/12.144.75.172/udp/4001/quic-v1/webtransport/certhash/uEiBYjbsQlBmvE2iO7JU6OilEHaokJPgDh9POSXU-T42tVw/certhash/uEiDLMJWuxuf4-2RBP1ln_Ic1uXPnXOpJKFFlFmDJWOH4sg/p2p/12D3KooWFxAMbz588VcN4Ae69nMiGvVscWEyEoA6A3fcJxhSzBFM"
+
 	ma, err := multiaddr.NewMultiaddr(multiaddrStr)
 	if err != nil {
 		log.Fatalf("Failed to parse multiaddress: %v", err)
@@ -42,4 +40,13 @@ func main() {
 	}
 
 	fmt.Println("Connected to peer:", info.ID)
+
+	// List protocols of a remote node
+	remotePeer := info.ID
+	protocols, err := h.Peerstore().GetProtocols(remotePeer)
+
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Protocols of remote peer:", protocols)
 }

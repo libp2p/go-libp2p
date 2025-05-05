@@ -1,4 +1,6 @@
-const go = new Go();
+import './wasm_exec.js';
 
-const inst = await WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject);
-go.run(inst);
+const go = new Go();
+WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+    go.run(result.instance);
+});

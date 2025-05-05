@@ -4,3 +4,5 @@
 *.sqlog
 *.qlog.zst
 *.sqlog.zst
+
+examples/webtransport-wasm/*.wasm
