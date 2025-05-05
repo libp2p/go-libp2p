@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	// Create a new libp2p Host that uses the WebTransport protocol
 	h, err := libp2p.New(
 		libp2p.Transport(libp2pwebtransport.New),
@@ -35,13 +36,12 @@ func main() {
 	}
 
 	// Connect to the peer
-	if err := h.Connect(context.Background(), *info); err != nil {
+	if err := h.Connect(ctx, *info); err != nil {
 		log.Fatalf("Failed to connect to peer: %v", err)
 	}
 
 	fmt.Println("Connected to peer:", info.ID)
 
-	// List protocols of a remote node
 	remotePeer := info.ID
 	protocols, err := h.Peerstore().GetProtocols(remotePeer)
 
@@ -49,4 +49,5 @@ func main() {
 		panic(err)
 	}
 	fmt.Println("Protocols of remote peer:", protocols)
+	select {}
 }
