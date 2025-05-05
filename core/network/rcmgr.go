@@ -269,6 +269,9 @@ type ScopeStat struct {
 	Memory int64
 }
 
+// ScopeKey is the key to store Scope in contexts
+type ScopeKey struct{}
+
 // NullResourceManager is a stub for tests and initialization of default values
 type NullResourceManager struct{}
 

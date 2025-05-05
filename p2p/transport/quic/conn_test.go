@@ -580,7 +580,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 
 	var drop uint32
-	dropCallback := func(quicproxy.Direction, []byte) bool { return atomic.LoadUint32(&drop) > 0 }
+	dropCallback := func(quicproxy.Direction, net.Addr, net.Addr, []byte) bool { return atomic.LoadUint32(&drop) > 0 }
 	proxyConn, cleanup := newUDPConnLocalhost(t, 0)
 	proxy := quicproxy.Proxy{
 		Conn:       proxyConn,
