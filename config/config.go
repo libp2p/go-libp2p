@@ -379,8 +379,24 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fxopts = append(fxopts, cfg.QUICReuse...)
 	} else {
 		fxopts = append(fxopts,
-			fx.Provide(func(key quic.StatelessResetKey, tokenGenerator quic.TokenGeneratorKey, lifecycle fx.Lifecycle) (*quicreuse.ConnManager, error) {
-				var opts []quicreuse.Option
+			fx.Provide(func(key quic.StatelessResetKey, tokenGenerator quic.TokenGeneratorKey, rcmgr network.ResourceManager, lifecycle fx.Lifecycle) (*quicreuse.ConnManager, error) {
+				opts := []quicreuse.Option{
+					quicreuse.ConnContext(func(ctx context.Context, clientInfo *quic.ClientInfo) context.Context {
+						// even if creating the quic maddr fails, let the rcmgr decide what to do with the connection
+						addr, _ := quicreuse.ToQuicMultiaddr(clientInfo.RemoteAddr, quic.Version1)
+						scope, err := rcmgr.OpenConnection(network.DirInbound, false, addr)
+						if err != nil {
+							ctx, cancel := context.WithCancel(ctx)
+							cancel()
+							return ctx
+						}
+						ctx = context.WithValue(ctx, network.ScopeKey{}, scope)
+						context.AfterFunc(ctx, func() {
+							scope.Done()
+						})
+						return ctx
+					}),
+				}
 				if !cfg.DisableMetrics {
 					opts = append(opts, quicreuse.EnableMetrics(cfg.PrometheusRegisterer))
 				}

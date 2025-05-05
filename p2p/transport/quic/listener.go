@@ -88,11 +88,25 @@ func (l *listener) wrapConn(qconn quic.Connection) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	connScope, err := l.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
-	if err != nil {
-		log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
-		return nil, err
+	var connScope network.ConnManagementScope
+	scopeVal := qconn.Context().Value(network.ScopeKey{})
+	if scopeVal != nil {
+		s, ok := scopeVal.(network.ConnManagementScope)
+		if !ok {
+			log.Errorf("expected scope on context of type: %T to implement network.ConnManagementScope", scopeVal)
+		} else {
+			connScope = s
+		}
+	}
+	// Setup scope if we don't have scope from quicreuse.
+	// This is better than failing so that users that don't use quicreuse.ConnContext option with the resource
+	// manager still work correctly.
+	if connScope == nil {
+		connScope, err = l.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
+		if err != nil {
+			log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
+			return nil, err
+		}
 	}
 	c, err := l.wrapConnWithScope(qconn, connScope, remoteMultiaddr)
 	if err != nil {

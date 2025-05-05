@@ -63,7 +63,7 @@ func testListenOnSameProto(t *testing.T, enableReuseport bool) {
 
 	ln1, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{alpn}}, nil)
 	require.NoError(t, err)
-	defer ln1.Close()
+	defer func() { _ = ln1.Close() }()
 
 	addr := ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", ln1.Addr().(*net.UDPAddr).Port))
 	_, err = cm.ListenQUIC(addr, &tls.Config{NextProtos: []string{alpn}}, nil)
@@ -72,7 +72,7 @@ func testListenOnSameProto(t *testing.T, enableReuseport bool) {
 	// listening on a different address works
 	ln2, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{alpn}}, nil)
 	require.NoError(t, err)
-	defer ln2.Close()
+	defer func() { _ = ln2.Close() }()
 }
 
 // The conn passed to quic-go should be a conn that quic-go can be
@@ -206,7 +206,9 @@ func connectWithProtocol(t *testing.T, addr net.Addr, alpn string) (peer.ID, err
 	cconn, err := net.ListenUDP("udp4", nil)
 	tlsConf.NextProtos = []string{alpn}
 	require.NoError(t, err)
-	c, err := quic.Dial(context.Background(), cconn, addr, tlsConf, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	c, err := quic.Dial(ctx, cconn, addr, tlsConf, nil)
+	cancel()
 	if err != nil {
 		return "", err
 	}
@@ -386,4 +388,52 @@ func TestAssociate(t *testing.T) {
 			&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},
 		)
 	})
+}
+
+func TestConnContext(t *testing.T) {
+	for _, reuse := range []bool{true, false} {
+		t.Run(fmt.Sprintf("reuseport:%t", reuse), func(t *testing.T) {
+			opts := []Option{
+				ConnContext(func(ctx context.Context, _ *quic.ClientInfo) context.Context {
+					ctx, cancel := context.WithCancel(ctx)
+					cancel()
+					return ctx
+				})}
+			if !reuse {
+				opts = append(opts, DisableReuseport())
+			}
+			cm, err := NewConnManager(
+				quic.StatelessResetKey{},
+				quic.TokenGeneratorKey{},
+				opts...,
+			)
+			require.NoError(t, err)
+			defer func() { _ = cm.Close() }()
+
+			proto1 := "proto1"
+			_, proto1TLS := getTLSConfForProto(t, proto1)
+			ln1, err := cm.ListenQUIC(
+				ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+				proto1TLS,
+				nil,
+			)
+			require.NoError(t, err)
+			defer ln1.Close()
+			proto2 := "proto2"
+			_, proto2TLS := getTLSConfForProto(t, proto2)
+			ln2, err := cm.ListenQUIC(
+				ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", ln1.Addr().(*net.UDPAddr).Port)),
+				proto2TLS,
+				nil,
+			)
+			require.NoError(t, err)
+			defer ln2.Close()
+
+			_, err = connectWithProtocol(t, ln1.Addr(), proto1)
+			require.ErrorContains(t, err, "CONNECTION_REFUSED")
+
+			_, err = connectWithProtocol(t, ln1.Addr(), proto2)
+			require.ErrorContains(t, err, "CONNECTION_REFUSED")
+		})
+	}
 }
