@@ -1,9 +1,12 @@
 package quicreuse
 
 import (
+	"context"
+	"errors"
 	"net"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/quic-go/quic-go"
 )
 
 type Option func(*ConnManager) error
@@ -27,6 +30,18 @@ func OverrideSourceIPSelector(f func() (SourceIPSelector, error)) Option {
 func DisableReuseport() Option {
 	return func(m *ConnManager) error {
 		m.enableReuseport = false
+		return nil
+	}
+}
+
+// ConnContext sets the context for all connections accepted by listeners. This doesn't affect the
+// context for dialed connections. To reject a connection, return a cancelled context.
+func ConnContext(f func(ctx context.Context, clientInfo *quic.ClientInfo) context.Context) Option {
+	return func(m *ConnManager) error {
+		if m.connContext != nil {
+			return errors.New("cannot set ConnContext more than once")
+		}
+		m.connContext = f
 		return nil
 	}
 }

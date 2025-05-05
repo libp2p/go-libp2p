@@ -62,8 +62,9 @@ type ConnManager struct {
 	quicListenersMu sync.Mutex
 	quicListeners   map[string]quicListenerEntry
 
-	srk      quic.StatelessResetKey
-	tokenKey quic.TokenGeneratorKey
+	srk         quic.StatelessResetKey
+	tokenKey    quic.TokenGeneratorKey
+	connContext func(context.Context, *quic.ClientInfo) context.Context
 }
 
 type quicListenerEntry struct {
@@ -104,8 +105,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
-		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext)
 	}
 	return cm, nil
 }
@@ -290,16 +291,7 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{
-		packetConn: conn,
-		Transport: &wrappedQUICTransport{
-			&quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: &c.srk,
-				TokenGeneratorKey: &c.tokenKey,
-			},
-		},
-	}, nil
+	return c.newSingleOwnerTransport(conn), nil
 }
 
 type associationKey struct{}
@@ -378,11 +370,22 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
 	conn, err := c.listenUDP(network, laddr)
-
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{Transport: &wrappedQUICTransport{&quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, packetConn: conn}, nil
+	return c.newSingleOwnerTransport(conn), nil
+}
+
+func (c *ConnManager) newSingleOwnerTransport(conn net.PacketConn) *singleOwnerTransport {
+	return &singleOwnerTransport{
+		Transport: &wrappedQUICTransport{
+			&quic.Transport{
+				Conn:              conn,
+				StatelessResetKey: &c.srk,
+				TokenGeneratorKey: &c.tokenKey,
+				ConnContext:       c.connContext,
+			}},
+		packetConn: conn}
 }
 
 // Protocols returns the supported QUIC protocols. The only supported protocol at the moment is /quic-v1.

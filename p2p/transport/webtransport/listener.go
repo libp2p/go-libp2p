@@ -149,12 +149,26 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-
-	connScope, err := l.transport.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
-	if err != nil {
-		log.Debugw("resource manager blocked incoming connection", "addr", r.RemoteAddr, "error", err)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
+	var connScope network.ConnManagementScope
+	scopeVal := r.Context().Value(network.ScopeKey{})
+	if scopeVal != nil {
+		s, ok := scopeVal.(network.ConnManagementScope)
+		if !ok {
+			log.Errorf("expected scope on context of type: %T to implement network.ConnManagementScope", scopeVal)
+		} else {
+			connScope = s
+		}
+	}
+	// Setup scope if we don't have scope from quicreuse.
+	// This is better than failing so that users that don't use quicreuse.ConnContext option with the resource
+	// manager still work correctly.
+	if connScope == nil {
+		connScope, err = l.transport.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
+		if err != nil {
+			log.Debugw("resource manager blocked incoming connection", "addr", r.RemoteAddr, "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 	}
 	err = l.httpHandlerWithConnScope(w, r, connScope)
 	if err != nil {
@@ -212,7 +226,7 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 	}
 
 	conn := newConn(l.transport, sess, sconn, connScope, qconn)
-	l.transport.addConn(sess, conn)
+	l.transport.addConn(qconn, conn)
 	select {
 	case l.queue <- conn:
 	default:
