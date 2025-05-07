@@ -28,6 +28,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -885,4 +887,21 @@ func (s *streamWrapper) CloseWrite() error {
 		_ = flusher.Flush()
 	}
 	return s.Stream.CloseWrite()
+}
+
+// NormalizeMultiaddr returns a multiaddr suitable for equality checks.
+// If the multiaddr is a webtransport component, it removes the certhashes.
+func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
+	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
+	if !ok {
+		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
+	}
+	if ok && n > 0 {
+		out := addr
+		for i := 0; i < n; i++ {
+			out, _ = ma.SplitLast(out)
+		}
+		return out
+	}
+	return addr
 }
