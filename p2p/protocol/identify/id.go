@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"slices"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/internal/rate"
 	useragent "github.com/libp2p/go-libp2p/p2p/protocol/identify/internal/user-agent"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
@@ -32,15 +34,15 @@ import (
 
 var log = logging.Logger("net/identify")
 
-var Timeout = 30 * time.Second // timeout on all incoming Identify interactions
-
 const (
 	// ID is the protocol.ID of version 1.0.0 of the identify service.
 	ID = "/ipfs/id/1.0.0"
 	// IDPush is the protocol.ID of the Identify push protocol.
 	// It sends full identify messages containing the current state of the peer.
 	IDPush = "/ipfs/id/push/1.0.0"
-
+	// DefaultTimeout for all id interactions, incoming / outgoing, id / id-push.
+	DefaultTimeout = 5 * time.Second
+	// ServiceName is the default identify service name
 	ServiceName = "libp2p.identify"
 
 	legacyIDSize          = 2 * 1024
@@ -53,6 +55,21 @@ const (
 	// localhost, private IP or public IP address
 	recentlyConnectedPeerMaxAddrs = 20
 	connectedPeerMaxAddrs         = 500
+)
+
+var (
+	defaultNetworkPrefixRateLimits = []rate.PrefixLimit{
+		{Prefix: netip.MustParsePrefix("127.0.0.0/8"), Limit: rate.Limit{}}, // inf
+		{Prefix: netip.MustParsePrefix("::1/128"), Limit: rate.Limit{}},     // inf
+	}
+	defaultGlobalRateLimit      = rate.Limit{RPS: 2000, Burst: 3000}
+	defaultIPv4SubnetRateLimits = []rate.SubnetLimit{
+		{PrefixLength: 24, Limit: rate.Limit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
+	}
+	defaultIPv6SubnetRateLimits = []rate.SubnetLimit{
+		{PrefixLength: 56, Limit: rate.Limit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
+		{PrefixLength: 48, Limit: rate.Limit{RPS: 0.5, Burst: 20}}, // 1 every 2 seconds
+	}
 )
 
 type identifySnapshot struct {
@@ -148,6 +165,7 @@ type idService struct {
 	refCount sync.WaitGroup
 
 	disableSignedPeerRecord bool
+	timeout                 time.Duration
 
 	connsMu sync.RWMutex
 	// The conns map contains all connections we're currently handling.
@@ -173,6 +191,8 @@ type idService struct {
 	}
 
 	natEmitter *natEmitter
+
+	rateLimiter *rate.Limiter
 }
 
 type normalizer interface {
@@ -182,7 +202,9 @@ type normalizer interface {
 // NewIDService constructs a new *idService and activates it by
 // attaching its stream handler to the given host.Host.
 func NewIDService(h host.Host, opts ...Option) (*idService, error) {
-	var cfg config
+	cfg := config{
+		timeout: DefaultTimeout,
+	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -203,6 +225,16 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
 		setupCompleted:          make(chan struct{}),
 		metricsTracer:           cfg.metricsTracer,
+		timeout:                 cfg.timeout,
+		rateLimiter: &rate.Limiter{
+			GlobalLimit:         defaultGlobalRateLimit,
+			NetworkPrefixLimits: defaultNetworkPrefixRateLimits,
+			SubnetRateLimiter: rate.SubnetLimiter{
+				IPv4SubnetLimits: defaultIPv4SubnetRateLimits,
+				IPv6SubnetLimits: defaultIPv6SubnetRateLimits,
+				GracePeriod:      1 * time.Minute,
+			},
+		},
 	}
 
 	var normalize func(ma.Multiaddr) ma.Multiaddr
@@ -245,7 +277,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 func (ids *idService) Start() {
 	ids.Host.Network().Notify((*netNotifiee)(ids))
 	ids.Host.SetStreamHandler(ID, ids.handleIdentifyRequest)
-	ids.Host.SetStreamHandler(IDPush, ids.handlePush)
+	ids.Host.SetStreamHandler(IDPush, ids.rateLimiter.Limit(ids.handlePush))
 	ids.updateSnapshot()
 	close(ids.setupCompleted)
 
@@ -344,10 +376,10 @@ func (ids *idService) sendPushes(ctx context.Context) {
 		go func(c network.Conn) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, ids.timeout)
 			defer cancel()
 
-			str, err := newStreamAndNegotiate(ctx, c, IDPush)
+			str, err := newStreamAndNegotiate(ctx, c, IDPush, ids.timeout)
 			if err != nil { // connection might have been closed recently
 				return
 			}
@@ -438,34 +470,35 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 }
 
 // newStreamAndNegotiate opens a new stream on the given connection and negotiates the given protocol.
-func newStreamAndNegotiate(ctx context.Context, c network.Conn, proto protocol.ID) (network.Stream, error) {
+func newStreamAndNegotiate(ctx context.Context, c network.Conn, proto protocol.ID, timeout time.Duration) (network.Stream, error) {
 	s, err := c.NewStream(network.WithAllowLimitedConn(ctx, "identify"))
 	if err != nil {
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to open new stream: %w", err)
 	}
 
 	// Ignore the error. Consistent with our previous behavior. (See https://github.com/libp2p/go-libp2p/issues/3109)
-	_ = s.SetDeadline(time.Now().Add(Timeout))
+	_ = s.SetDeadline(time.Now().Add(timeout))
 
 	if err := s.SetProtocol(proto); err != nil {
 		log.Warnf("error setting identify protocol for stream: %s", err)
 		_ = s.Reset()
+		return nil, fmt.Errorf("failed to set protocol: %w", err)
 	}
 
 	// ok give the response to our handler.
 	if err := msmux.SelectProtoOrFail(proto, s); err != nil {
 		log.Infow("failed negotiate identify protocol with peer", "peer", c.RemotePeer(), "error", err)
 		_ = s.Reset()
-		return nil, err
+		return nil, fmt.Errorf("multistream mux select protocol failed: %w", err)
 	}
 	return s, nil
 }
 
 func (ids *idService) identifyConn(c network.Conn) error {
-	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), ids.timeout)
 	defer cancel()
-	s, err := newStreamAndNegotiate(network.WithAllowLimitedConn(ctx, "identify"), c, ID)
+	s, err := newStreamAndNegotiate(network.WithAllowLimitedConn(ctx, "identify"), c, ID, ids.timeout)
 	if err != nil {
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return err
@@ -476,8 +509,10 @@ func (ids *idService) identifyConn(c network.Conn) error {
 
 // handlePush handles incoming identify push streams
 func (ids *idService) handlePush(s network.Stream) {
-	s.SetDeadline(time.Now().Add(Timeout))
-	ids.handleIdentifyResponse(s, true)
+	s.SetDeadline(time.Now().Add(ids.timeout))
+	if err := ids.handleIdentifyResponse(s, true); err != nil {
+		log.Debugf("failed to handle identify push: %s", err)
+	}
 }
 
 func (ids *idService) handleIdentifyRequest(s network.Stream) {
@@ -862,7 +897,6 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 		ProtocolVersion:  pv,
 		AgentVersion:     av,
 	})
-
 }
 
 func (ids *idService) consumeSignedPeerRecord(p peer.ID, signedPeerRecord *record.Envelope) ([]ma.Multiaddr, error) {

@@ -203,7 +203,7 @@ func TestInterceptAccept(t *testing.T) {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
 					require.Equal(t, normalize(h2.Addrs()[0]), normalize(addrs.LocalMultiaddr()))
 				}).AnyTimes()
-			} else if strings.Contains(tc.Name, "WebSocket-Shared") || strings.Contains(tc.Name, "WebSocket-Secured-Shared") {
+			} else if strings.Contains(tc.Name, "WebSocket") {
 				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
 					require.Equal(t, addrPort(h2.Addrs()[0]), addrPort(addrs.LocalMultiaddr()))
 				})

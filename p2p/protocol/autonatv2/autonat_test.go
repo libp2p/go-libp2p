@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
 	"net"
 	"net/netip"
 	"strings"
@@ -624,7 +623,19 @@ func FuzzClient(f *testing.F) {
 	idAndWait(f, c, a)
 
 	// TODO: Move this to go-multiaddrs
-	randProto := func() ma.Multiaddr {
+	getProto := func(protos []byte) ma.Multiaddr {
+		protoType := 0
+		if len(protos) > 0 {
+			protoType = int(protos[0])
+		}
+
+		port1, port2 := 0, 0
+		if len(protos) > 1 {
+			port1 = int(protos[1])
+		}
+		if len(protos) > 2 {
+			port2 = int(protos[2])
+		}
 		protoTemplates := []string{
 			"/tcp/%d/",
 			"/udp/%d/",
@@ -635,76 +646,113 @@ func FuzzClient(f *testing.F) {
 			"/udp/%d/webrtc-direct/",
 			"/unix/hello/",
 		}
-		s := protoTemplates[rand.Intn(len(protoTemplates))]
+		s := protoTemplates[protoType%len(protoTemplates)]
+		port1 %= (1 << 16)
 		if strings.Count(s, "%d") == 1 {
-			return ma.StringCast(fmt.Sprintf(s, rand.Intn(1000)))
+			return ma.StringCast(fmt.Sprintf(s, port1))
 		}
-		return ma.StringCast(fmt.Sprintf(s, rand.Intn(1000), rand.Intn(1000)))
+		port2 %= (1 << 16)
+		return ma.StringCast(fmt.Sprintf(s, port1, port2))
 	}
 
-	randIP := func() ma.Multiaddr {
-		x := rand.Intn(2)
-		if x == 0 {
-			i := rand.Int31()
-			ip := netip.AddrFrom4([4]byte{byte(i), byte(i >> 8), byte(i >> 16), byte(i >> 24)})
-			return ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/1", ip))
+	getIP := func(ips []byte) ma.Multiaddr {
+		ipType := 0
+		if len(ips) > 0 {
+			ipType = int(ips[0])
 		}
-		a, b := rand.Int63(), rand.Int63()
-		if rand.Intn(2) == 0 {
-			pubIP := net.ParseIP("2005::") // Public IP address
-			a = int64(binary.LittleEndian.Uint64(pubIP[0:8]))
+		ips = ips[1:]
+		var x, y int64 = 0, 0
+		split := 128 / 8
+		if len(ips) < split {
+			split = len(ips)
 		}
-		ip := netip.AddrFrom16([16]byte{
-			byte(a), byte(a >> 8), byte(a >> 16), byte(a >> 24),
-			byte(a >> 32), byte(a >> 40), byte(a >> 48), byte(a >> 56),
-			byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24),
-			byte(b >> 32), byte(b >> 40), byte(b >> 48), byte(b >> 56),
-		})
-		return ma.StringCast(fmt.Sprintf("/ip6/%s/tcp/1", ip))
-	}
+		var b [8]byte
+		copy(b[:], ips[:split])
+		x = int64(binary.LittleEndian.Uint64(b[:]))
+		clear(b[:])
+		copy(b[:], ips[split:])
+		y = int64(binary.LittleEndian.Uint64(b[:]))
 
-	newAddrs := func() ma.Multiaddr {
-		switch rand.Intn(5) {
+		var ip netip.Addr
+		switch ipType % 3 {
 		case 0:
-			return randIP().Encapsulate(randProto())
+			ip = netip.AddrFrom4([4]byte{byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24)})
+			return ma.StringCast(fmt.Sprintf("/ip4/%s/", ip))
 		case 1:
-			return randProto()
+			pubIP := net.ParseIP("2005::") // Public IP address
+			x := int64(binary.LittleEndian.Uint64(pubIP[0:8]))
+			ip = netip.AddrFrom16([16]byte{
+				byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24),
+				byte(x >> 32), byte(x >> 40), byte(x >> 48), byte(x >> 56),
+				byte(y), byte(y >> 8), byte(y >> 16), byte(y >> 24),
+				byte(y >> 32), byte(y >> 40), byte(y >> 48), byte(y >> 56),
+			})
+			return ma.StringCast(fmt.Sprintf("/ip6/%s/", ip))
+		default:
+			ip := netip.AddrFrom16([16]byte{
+				byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24),
+				byte(x >> 32), byte(x >> 40), byte(x >> 48), byte(x >> 56),
+				byte(y), byte(y >> 8), byte(y >> 16), byte(y >> 24),
+				byte(y >> 32), byte(y >> 40), byte(y >> 48), byte(y >> 56),
+			})
+			return ma.StringCast(fmt.Sprintf("/ip6/%s/", ip))
+		}
+	}
+
+	getAddr := func(addrType int, ips, protos []byte) ma.Multiaddr {
+		switch addrType % 4 {
+		case 0:
+			return getIP(ips).Encapsulate(getProto(protos))
+		case 1:
+			return getProto(protos)
 		case 2:
 			return nil
 		default:
-			return randProto().Encapsulate(randIP())
+			return getIP(ips).Encapsulate(getProto(protos))
 		}
 	}
 
-	randDNSAddr := func(hostName string) ma.Multiaddr {
-		hostName = strings.ReplaceAll(hostName, "\\", "")
+	getDNSAddr := func(hostNameBytes, protos []byte) ma.Multiaddr {
+		hostName := strings.ReplaceAll(string(hostNameBytes), "\\", "")
 		hostName = strings.ReplaceAll(hostName, "/", "")
 		if hostName == "" {
 			hostName = "localhost"
 		}
+		dnsType := 0
+		if len(hostNameBytes) > 0 {
+			dnsType = int(hostNameBytes[0])
+		}
 		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
-		da := ma.StringCast(fmt.Sprintf("/%s/%s/", dnsProtos[rand.Intn(len(dnsProtos))], hostName))
-		return da.Encapsulate(randProto())
+		da := ma.StringCast(fmt.Sprintf("/%s/%s/", dnsProtos[dnsType%len(dnsProtos)], hostName))
+		return da.Encapsulate(getProto(protos))
 	}
 
-	const maxAddrs = 1000
-	getAddrs := func(numAddrs int, hostNames []byte) []ma.Multiaddr {
+	const maxAddrs = 100
+	getAddrs := func(numAddrs int, ips, protos, hostNames []byte) []ma.Multiaddr {
+		if len(ips) == 0 || len(protos) == 0 || len(hostNames) == 0 {
+			return nil
+		}
 		numAddrs = ((numAddrs % maxAddrs) + maxAddrs) % maxAddrs
 		addrs := make([]ma.Multiaddr, numAddrs)
+		ipIdx := 0
+		protoIdx := 0
 		for i := range numAddrs {
-			addrs[i] = newAddrs()
+			addrs[i] = getAddr(i, ips[ipIdx:], protos[protoIdx:])
+			ipIdx = (ipIdx + 1) % len(ips)
+			protoIdx = (protoIdx + 1) % len(protos)
 		}
 		maxDNSAddrs := 10
+		protoIdx = 0
 		for i := 0; i < len(hostNames) && i < maxDNSAddrs; i += 2 {
 			ed := min(i+2, len(hostNames))
-			addrs = append(addrs, randDNSAddr(string(hostNames[i:ed])))
+			addrs = append(addrs, getDNSAddr(hostNames[i:ed], protos[protoIdx:]))
+			protoIdx = (protoIdx + 1) % len(protos)
 		}
 		return addrs
 	}
-
 	// reduce the streamTimeout before running this. TODO: fix this
-	f.Fuzz(func(t *testing.T, numAddrs int, hostNames []byte) {
-		addrs := getAddrs(numAddrs, hostNames)
+	f.Fuzz(func(t *testing.T, numAddrs int, ips, protos, hostNames []byte) {
+		addrs := getAddrs(numAddrs, ips, protos, hostNames)
 		reqs := make([]Request, len(addrs))
 		for i, addr := range addrs {
 			reqs[i] = Request{Addr: addr, SendDialData: true}

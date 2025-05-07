@@ -3,6 +3,7 @@ package libp2pwebrtc
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync/atomic"
@@ -148,8 +149,8 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	var clientDone, serverDone atomic.Bool
-	clientStr := newStream(client.dc, client.rwc, func() { clientDone.Store(true) })
-	serverStr := newStream(server.dc, server.rwc, func() { serverDone.Store(true) })
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() { clientDone.Store(true) })
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() { serverDone.Store(true) })
 
 	// send a foobar from the client
 	n, err := clientStr.Write([]byte("foobar"))
@@ -194,8 +195,8 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 func TestStreamPartialReads(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
 	_, err := serverStr.Write([]byte("foobar"))
 	require.NoError(t, err)
@@ -217,8 +218,8 @@ func TestStreamPartialReads(t *testing.T) {
 func TestStreamSkipEmptyFrames(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
 	for i := 0; i < 10; i++ {
 		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
@@ -252,7 +253,7 @@ func TestStreamSkipEmptyFrames(t *testing.T) {
 func TestStreamReadReturnsOnClose(t *testing.T) {
 	client, _ := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
 	errChan := make(chan error, 1)
 	go func() {
 		_, err := clientStr.Read([]byte{0})
@@ -275,8 +276,8 @@ func TestStreamResets(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	var clientDone, serverDone atomic.Bool
-	clientStr := newStream(client.dc, client.rwc, func() { clientDone.Store(true) })
-	serverStr := newStream(server.dc, server.rwc, func() { serverDone.Store(true) })
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() { clientDone.Store(true) })
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() { serverDone.Store(true) })
 
 	// send a foobar from the client
 	_, err := clientStr.Write([]byte("foobar"))
@@ -311,8 +312,8 @@ func TestStreamResets(t *testing.T) {
 func TestStreamReadDeadlineAsync(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
 	timeout := 100 * time.Millisecond
 	if os.Getenv("CI") != "" {
@@ -342,8 +343,8 @@ func TestStreamReadDeadlineAsync(t *testing.T) {
 func TestStreamWriteDeadlineAsync(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 	_ = serverStr
 
 	b := make([]byte, 1024)
@@ -372,8 +373,8 @@ func TestStreamWriteDeadlineAsync(t *testing.T) {
 func TestStreamReadAfterClose(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
 	serverStr.Close()
 	b := make([]byte, 1)
@@ -384,8 +385,8 @@ func TestStreamReadAfterClose(t *testing.T) {
 
 	client, server = getDetachedDataChannels(t)
 
-	clientStr = newStream(client.dc, client.rwc, func() {})
-	serverStr = newStream(server.dc, server.rwc, func() {})
+	clientStr = newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
+	serverStr = newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
 	serverStr.Reset()
 	b = make([]byte, 1)
@@ -399,8 +400,8 @@ func TestStreamCloseAfterFINACK(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	done := make(chan bool, 1)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() { done <- true })
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
 	go func() {
 		err := clientStr.Close()
@@ -427,8 +428,8 @@ func TestStreamFinAckAfterStopSending(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	done := make(chan bool, 1)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
-	serverStr := newStream(server.dc, server.rwc, func() {})
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() { done <- true })
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
 	go func() {
 		clientStr.CloseRead()
@@ -460,8 +461,8 @@ func TestStreamConcurrentClose(t *testing.T) {
 
 	start := make(chan bool, 2)
 	done := make(chan bool, 2)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
-	serverStr := newStream(server.dc, server.rwc, func() { done <- true })
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() { done <- true })
+	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() { done <- true })
 
 	go func() {
 		start <- true
@@ -495,7 +496,7 @@ func TestStreamResetAfterClose(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	done := make(chan bool, 2)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() { done <- true })
 	clientStr.Close()
 
 	select {
@@ -520,7 +521,7 @@ func TestStreamDataChannelCloseOnFINACK(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	done := make(chan bool, 1)
-	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
+	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() { done <- true })
 
 	clientStr.Close()
 
@@ -540,24 +541,35 @@ func TestStreamDataChannelCloseOnFINACK(t *testing.T) {
 }
 
 func TestStreamChunking(t *testing.T) {
-	client, server := getDetachedDataChannels(t)
+	for _, msgSize := range []int{16 << 10, 32 << 10, 64 << 10, 128 << 10, 256 << 10} {
+		t.Run(fmt.Sprintf("msgSize=%d", msgSize), func(t *testing.T) {
+			client, server := getDetachedDataChannels(t)
+			defer client.dc.Close()
+			defer server.dc.Close()
 
-	clientStr := newStream(client.dc, client.rwc, func() {})
-	serverStr := newStream(server.dc, server.rwc, func() {})
+			clientStr := newStream(client.dc, client.rwc, msgSize, nil)
+			// server should read large messages even if it can only send 16 kB messages.
+			serverStr := newStream(server.dc, server.rwc, 16<<10, nil)
 
-	const N = (16 << 10) + 1000
-	go func() {
-		data := make([]byte, N)
-		_, err := clientStr.Write(data)
-		require.NoError(t, err)
-	}()
+			N := msgSize + 1000
+			input := make([]byte, N)
+			_, err := rand.Read(input)
+			require.NoError(t, err)
+			go func() {
+				n, err := clientStr.Write(input)
+				require.NoError(t, err)
+				require.Equal(t, n, len(input))
+			}()
 
-	data := make([]byte, N)
-	n, err := serverStr.Read(data)
-	require.NoError(t, err)
-	require.LessOrEqual(t, n, 16<<10)
-
-	nn, err := serverStr.Read(data)
-	require.NoError(t, err)
-	require.Equal(t, nn+n, N)
+			data := make([]byte, N)
+			n, err := serverStr.Read(data)
+			require.NoError(t, err)
+			require.LessOrEqual(t, n, msgSize)
+			// shouldn't be much less than msgSize
+			require.GreaterOrEqual(t, n, msgSize-100)
+			_, err = serverStr.Read(data[n:])
+			require.NoError(t, err)
+			require.Equal(t, input, data)
+		})
+	}
 }

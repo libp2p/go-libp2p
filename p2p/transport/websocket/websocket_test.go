@@ -35,6 +35,7 @@ import (
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -296,18 +297,39 @@ func TestDialWssNoClientCert(t *testing.T) {
 }
 
 func TestWebsocketTransport(t *testing.T) {
-	peerA, ua := newUpgrader(t)
-	ta, err := New(ua, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ub := newUpgrader(t)
-	tb, err := New(ub, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Run("/ws", func(t *testing.T) {
+		peerA, ua := newUpgrader(t)
+		ta, err := New(ua, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		peerB, ub := newUpgrader(t)
+		tb, err := New(ub, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	ttransport.SubtestTransport(t, ta, tb, "/ip4/127.0.0.1/tcp/0/ws", peerA)
+		ttransport.SubtestTransport(t, ta, tb, "/ip4/127.0.0.1/tcp/0/ws", peerA)
+		ttransport.SubtestTransport(t, tb, ta, "/ip4/127.0.0.1/tcp/0/ws", peerB)
+
+	})
+	t.Run("/wss", func(t *testing.T) {
+		peerA, ua := newUpgrader(t)
+		tca := generateTLSConfig(t)
+		ta, err := New(ua, nil, nil, WithTLSConfig(tca), WithTLSClientConfig(&tls.Config{InsecureSkipVerify: true}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		peerB, ub := newUpgrader(t)
+		tcb := generateTLSConfig(t)
+		tb, err := New(ub, nil, nil, WithTLSConfig(tcb), WithTLSClientConfig(&tls.Config{InsecureSkipVerify: true}))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ttransport.SubtestTransport(t, ta, tb, "/ip4/127.0.0.1/tcp/0/wss", peerA)
+		ttransport.SubtestTransport(t, tb, ta, "/ip4/127.0.0.1/tcp/0/ws", peerB)
+	})
 }
 
 func isWSS(addr ma.Multiaddr) bool {
@@ -441,7 +463,7 @@ func TestConcurrentClose(t *testing.T) {
 	_, u := newUpgrader(t)
 	tpt, err := New(u, &network.NullResourceManager{}, nil)
 	require.NoError(t, err)
-	l, err := tpt.maListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	l, err := tpt.gatedMaListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +473,7 @@ func TestConcurrentClose(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			c, err := tpt.maDial(context.Background(), l.Multiaddr())
+			c, err := tpt.maDial(context.Background(), l.Multiaddr(), &network.NullScope{})
 			if err != nil {
 				t.Error(err)
 				return
@@ -467,7 +489,7 @@ func TestConcurrentClose(t *testing.T) {
 	}()
 
 	for i := 0; i < 100; i++ {
-		c, err := l.Accept()
+		c, _, err := l.Accept()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -481,7 +503,7 @@ func TestWriteZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := tpt.maListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	l, err := tpt.gatedMaListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +512,7 @@ func TestWriteZero(t *testing.T) {
 	msg := []byte(nil)
 
 	go func() {
-		c, err := tpt.maDial(context.Background(), l.Multiaddr())
+		c, err := tpt.maDial(context.Background(), l.Multiaddr(), &network.NullScope{})
 		if err != nil {
 			t.Error(err)
 			return
@@ -509,7 +531,7 @@ func TestWriteZero(t *testing.T) {
 		}
 	}()
 
-	c, err := l.Accept()
+	c, _, err := l.Accept()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -622,4 +644,99 @@ func TestSocksProxy(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestListenerAddr(t *testing.T) {
+	_, upgrader := newUpgrader(t)
+	transport, err := New(upgrader, &network.NullResourceManager{}, nil, WithTLSConfig(generateTLSConfig(t)))
+	require.NoError(t, err)
+	l1, err := transport.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+	require.NoError(t, err)
+	defer l1.Close()
+	require.Regexp(t, `^ws://127\.0\.0\.1:[\d]+$`, l1.Addr().String())
+	l2, err := transport.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/wss"))
+	require.NoError(t, err)
+	defer l2.Close()
+	require.Regexp(t, `^wss://127\.0\.0\.1:[\d]+$`, l2.Addr().String())
+}
+func TestHandshakeTimeout(t *testing.T) {
+	handshakeTimeout := 200 * time.Millisecond
+	_, upgrader := newUpgrader(t)
+	tlsconf := generateTLSConfig(t)
+	transport, err := New(upgrader, &network.NullResourceManager{}, nil, WithHandshakeTimeout(handshakeTimeout), WithTLSConfig(tlsconf))
+	require.NoError(t, err)
+
+	fastWSDialer := gws.Dialer{
+		HandshakeTimeout: 10 * handshakeTimeout,
+		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true},
+		NetDial: func(network, addr string) (net.Conn, error) {
+			tcpConn, err := net.Dial("tcp", addr)
+			if !assert.NoError(t, err) {
+				return nil, err
+			}
+			return tcpConn, nil
+		},
+	}
+
+	slowWSDialer := gws.Dialer{
+		HandshakeTimeout: 10 * handshakeTimeout,
+		NetDial: func(network, addr string) (net.Conn, error) {
+			tcpConn, err := net.Dial("tcp", addr)
+			if !assert.NoError(t, err) {
+				return nil, err
+			}
+			// wait to simulate a slow handshake
+			time.Sleep(2 * handshakeTimeout)
+			return tcpConn, nil
+		},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	t.Run("ws", func(t *testing.T) {
+		// test the gatedMaListener as we're interested in the websocket handshake timeout and not the upgrader steps.
+		wsListener, err := transport.gatedMaListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
+		require.NoError(t, err)
+		defer wsListener.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*handshakeTimeout)
+		defer cancel()
+		conn, resp, err := fastWSDialer.DialContext(ctx, wsListener.Addr().String(), nil)
+		if !assert.NoError(t, err) {
+			return
+		}
+		conn.Close()
+		resp.Body.Close()
+
+		ctx, cancel = context.WithTimeout(context.Background(), 10*handshakeTimeout)
+		defer cancel()
+		conn, resp, err = slowWSDialer.DialContext(ctx, wsListener.Addr().String(), nil)
+		if err == nil {
+			conn.Close()
+			resp.Body.Close()
+			t.Fatal("should error as the handshake will time out")
+		}
+	})
+
+	t.Run("wss", func(t *testing.T) {
+		// test the gatedMaListener as we're interested in the websocket handshake timeout and not the upgrader steps.
+		wsListener, err := transport.gatedMaListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/wss"))
+		require.NoError(t, err)
+		defer wsListener.Close()
+
+		// Test that the normal dial works fine
+		ctx, cancel := context.WithTimeout(context.Background(), 10*handshakeTimeout)
+		defer cancel()
+		wsConn, resp, err := fastWSDialer.DialContext(ctx, wsListener.Addr().String(), nil)
+		require.NoError(t, err)
+		wsConn.Close()
+		resp.Body.Close()
+
+		ctx, cancel = context.WithTimeout(context.Background(), 10*handshakeTimeout)
+		defer cancel()
+		wsConn, resp, err = slowWSDialer.DialContext(ctx, wsListener.Addr().String(), nil)
+		if err == nil {
+			wsConn.Close()
+			resp.Body.Close()
+			t.Fatal("websocket handshake should have timed out")
+		}
+	})
 }

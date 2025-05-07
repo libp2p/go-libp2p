@@ -24,6 +24,22 @@ func TestItLimits(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, cl.addConn(otherIP))
 	})
+
+	t.Run("IPv4 removal", func(t *testing.T) {
+		ip, err := netip.ParseAddr("1.2.3.4")
+		require.NoError(t, err)
+		cl := newConnLimiter()
+		cl.connLimitPerSubnetV4[0].ConnCount = 1
+		require.True(t, cl.addConn(ip))
+
+		// should fail the second time
+		require.False(t, cl.addConn(ip))
+		// remove the connection
+		cl.rmConn(ip)
+		// should succeed now
+		require.True(t, cl.addConn(ip))
+	})
+
 	t.Run("IPv6", func(t *testing.T) {
 		ip, err := netip.ParseAddr("1:2:3:4::1")
 		require.NoError(t, err)

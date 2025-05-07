@@ -1,0 +1,6 @@
+go test fuzz v1
+int(0)
+[]byte("0")
+[]byte("\xc1\xd6,\x9e.]")
+[]byte("0")
+[]byte("")
