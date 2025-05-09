@@ -36,7 +36,7 @@ func newStream(s js.Value, c *conn) *stream {
 
 func (s *stream) Read(b []byte) (n int, err error) {
 	if len(b) == 0 {
-		// We use a zero copy as dectection of an empty array bellow, so we need a
+		// We use a zero copy as detection of an empty array bellow, so we need a
 		// a non empty destination.
 		return
 	}

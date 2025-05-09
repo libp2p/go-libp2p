@@ -88,7 +88,6 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 		return nil, err
 	}
 
-	// Initialize the Noise transport
 	noiseTransport, err := noise.New(noise.ID, key, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize noise transport: %w", err)
@@ -100,7 +99,7 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 			pid:     pid,
 			rcmgr:   rcmgr,
 			gater:   gater,
-			noise:   noiseTransport, // Ensure the 'common' struct has a 'noise' field
+			noise:   noiseTransport,
 		},
 	}
 
