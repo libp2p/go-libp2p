@@ -11,8 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/multiformats/go-multiaddr"
@@ -22,10 +20,6 @@ import (
 //
 // Useful when you want to extend, but not replace, the supported transport
 // security protocols.
-var DefaultSecurity = ChainOptions(
-	Security(tls.ID, tls.New),
-	Security(noise.ID, noise.New),
-)
 
 // DefaultMuxers configures libp2p to use the stream connection multiplexers.
 //
