@@ -277,6 +277,24 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		}),
 	)
 
+	fxopts = append(fxopts,
+		fx.Provide(func(eventBus event.Bus, lifecycle fx.Lifecycle) (*swarm.Swarm, error) {
+			sw, err := cfg.makeSwarm(eventBus, !cfg.DisableMetrics)
+			if err != nil {
+				return nil, err
+			}
+			lifecycle.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					return sw.Listen(cfg.ListenAddrs...)
+				},
+				OnStop: func(ctx context.Context) error {
+					return sw.Close()
+				},
+			})
+			return sw, nil
+		}),
+	)
+
 	var bh *bhost.BasicHost
 	fxopts = append(fxopts, fx.Invoke(func(bho *bhost.BasicHost) { bh = bho }))
 	fxopts = append(fxopts, fx.Invoke(func(h *bhost.BasicHost, lifecycle fx.Lifecycle) {
