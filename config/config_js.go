@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package config
 
@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -34,13 +33,9 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
-	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/quic-go/quic-go"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
@@ -63,7 +58,6 @@ type Config struct {
 
 	PeerKey crypto.PrivKey
 
-	QUICReuse          []fx.Option
 	Transports         []fx.Option
 	Muxers             []tptu.StreamMuxer
 	SecurityTransports []Security
@@ -137,29 +131,6 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 			}
 			return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, upgrader)
 		}),
-		fx.Provide(func(cm *quicreuse.ConnManager, sw *swarm.Swarm) libp2pwebrtc.ListenUDPFn {
-			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {
-				quicAddrPorts := map[string]struct{}{}
-				for _, addr := range sw.ListenAddresses() {
-					if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
-						netw, addr, err := manet.DialArgs(addr)
-						if err != nil {
-							return false
-						}
-						quicAddrPorts[netw+"_"+addr] = struct{}{}
-					}
-				}
-				_, ok := quicAddrPorts[network+"_"+laddr.String()]
-				return ok
-			}
-
-			return func(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
-				if hasQuicAddrPortFor(network, laddr) {
-					return cm.SharedNonQUICPacketConn(network, laddr)
-				}
-				return net.ListenUDP(network, laddr)
-			}
-		}),
 	}
 	fxopts = append(fxopts, cfg.Transports...)
 	if cfg.Insecure {
@@ -214,24 +185,6 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 
 	fxopts = append(fxopts, fx.Provide(PrivKeyToStatelessResetKey))
 	fxopts = append(fxopts, fx.Provide(PrivKeyToTokenGeneratorKey))
-	if cfg.QUICReuse != nil {
-		fxopts = append(fxopts, cfg.QUICReuse...)
-	} else {
-		fxopts = append(fxopts,
-			fx.Provide(func(key quic.StatelessResetKey, tokenGenerator quic.TokenGeneratorKey, lifecycle fx.Lifecycle) (*quicreuse.ConnManager, error) {
-				var opts []quicreuse.Option
-				if !cfg.DisableMetrics {
-					opts = append(opts, quicreuse.EnableMetrics(cfg.PrometheusRegisterer))
-				}
-				cm, err := quicreuse.NewConnManager(key, tokenGenerator, opts...)
-				if err != nil {
-					return nil, err
-				}
-				lifecycle.Append(fx.StopHook(cm.Close))
-				return cm, nil
-			}),
-		)
-	}
 
 	fxopts = append(fxopts, fx.Invoke(
 		fx.Annotate(
@@ -283,26 +236,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		fx.Provide(func() crypto.PrivKey {
 			return cfg.PeerKey
 		}),
-		// Make sure the swarm constructor depends on the quicreuse.ConnManager.
-		// That way, the ConnManager will be started before the swarm, and more importantly,
-		// the swarm will be stopped before the ConnManager.
-		fx.Provide(func(eventBus event.Bus, _ *quicreuse.ConnManager, lifecycle fx.Lifecycle) (*swarm.Swarm, error) {
-			sw, err := cfg.makeSwarm(eventBus, !cfg.DisableMetrics)
-			if err != nil {
-				return nil, err
-			}
-			lifecycle.Append(fx.Hook{
-				OnStart: func(context.Context) error {
-					// TODO: This method succeeds if listening on one address succeeds. We
-					// should probably fail if listening on *any* addr fails.
-					return sw.Listen(cfg.ListenAddrs...)
-				},
-				OnStop: func(context.Context) error {
-					return sw.Close()
-				},
-			})
-			return sw, nil
-		}),
+
 		fx.Provide(cfg.newBasicHost),
 		fx.Provide(func(bh *bhost.BasicHost) identify.IDService {
 			return bh.IDService()
