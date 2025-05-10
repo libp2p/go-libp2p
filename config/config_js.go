@@ -33,7 +33,6 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/fx"
@@ -125,12 +124,6 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),
-		fx.Provide(func(upgrader transport.Upgrader) *tcpreuse.ConnMgr {
-			if !cfg.ShareTCPListener {
-				return nil
-			}
-			return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, upgrader)
-		}),
 	}
 	fxopts = append(fxopts, cfg.Transports...)
 	if cfg.Insecure {
