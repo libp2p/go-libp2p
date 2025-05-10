@@ -1,6 +1,3 @@
-//go:build !js
-// +build !js
-
 package libp2pwebtransport
 
 import (
