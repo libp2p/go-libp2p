@@ -13,8 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/multiformats/go-multiaddr"
@@ -44,10 +42,6 @@ var DefaultMuxers = Muxer(yamux.ID, yamux.DefaultTransport)
 //
 // Use this option when you want to *extend* the set of transports used by
 // libp2p instead of replacing them.
-var DefaultPrivateTransports = ChainOptions(
-	Transport(tcp.NewTCPTransport),
-	Transport(ws.New),
-)
 
 // DefaultPeerstore configures libp2p to use the default peerstore.
 var DefaultPeerstore Option = func(cfg *Config) error {

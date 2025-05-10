@@ -18,3 +18,8 @@ var DefaultTransports = ChainOptions(
 	Transport(webtransport.New),
 	Transport(libp2pwebrtc.New),
 )
+
+var DefaultPrivateTransports = ChainOptions(
+	Transport(tcp.NewTCPTransport),
+	Transport(ws.New),
+)
