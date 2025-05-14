@@ -176,9 +176,6 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 			)))
 	}
 
-	fxopts = append(fxopts, fx.Provide(PrivKeyToStatelessResetKey))
-	fxopts = append(fxopts, fx.Provide(PrivKeyToTokenGeneratorKey))
-
 	fxopts = append(fxopts, fx.Invoke(
 		fx.Annotate(
 			func(swrm *swarm.Swarm, tpts []transport.Transport) error {
