@@ -1,3 +1,6 @@
+//go:build !js
+// +build !js
+
 package libp2pwebtransport
 
 import (
@@ -23,7 +26,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	"github.com/benbjohnson/clock"
-	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multihash"
@@ -31,14 +33,6 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 )
-
-var log = logging.Logger("webtransport")
-
-const webtransportHTTPEndpoint = "/.well-known/libp2p-webtransport"
-
-const errorCodeConnectionGating = 0x47415445 // GATE in ASCII
-
-const certValidity = 14 * 24 * time.Hour
 
 type Option func(*transport) error
 
@@ -68,13 +62,10 @@ func WithHandshakeTimeout(d time.Duration) Option {
 }
 
 type transport struct {
-	privKey ic.PrivKey
-	pid     peer.ID
-	clock   clock.Clock
+	common
+	clock clock.Clock
 
 	connManager *quicreuse.ConnManager
-	rcmgr       network.ResourceManager
-	gater       connmgr.ConnectionGater
 
 	listenOnce     sync.Once
 	listenOnceErr  error
@@ -82,8 +73,6 @@ type transport struct {
 	hasCertManager atomic.Bool // set to true once the certManager is initialized
 	staticTLSConf  *tls.Config
 	tlsClientConf  *tls.Config
-
-	noise *noise.Transport
 
 	connMx           sync.Mutex
 	conns            map[quic.ConnectionTracingID]*conn // using quic-go's ConnectionTracingKey as map key
@@ -107,10 +96,12 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 		return nil, err
 	}
 	t := &transport{
-		pid:              id,
-		privKey:          key,
-		rcmgr:            rcmgr,
-		gater:            gater,
+		common: common{
+			privKey: key,
+			pid:     id,
+			rcmgr:   rcmgr,
+			gater:   gater,
+		},
 		clock:            clock.New(),
 		connManager:      connManager,
 		conns:            map[quic.ConnectionTracingID]*conn{},
@@ -290,18 +281,6 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	}, nil
 }
 
-func decodeCertHashesFromProtobuf(b [][]byte) ([]multihash.DecodedMultihash, error) {
-	hashes := make([]multihash.DecodedMultihash, 0, len(b))
-	for _, h := range b {
-		dh, err := multihash.Decode(h)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode hash: %w", err)
-		}
-		hashes = append(hashes, *dh)
-	}
-	return hashes, nil
-}
-
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
 	ok, _ := IsWebtransportMultiaddr(addr)
 	return ok
@@ -378,28 +357,6 @@ func (t *transport) removeConn(sess *webtransport.Session) {
 	t.connMx.Lock()
 	delete(t.conns, sess.Context().Value(quic.ConnectionTracingKey).(quic.ConnectionTracingID))
 	t.connMx.Unlock()
-}
-
-// extractSNI returns what the SNI should be for the given maddr. If there is an
-// SNI component in the multiaddr, then it will be returned and
-// foundSniComponent will be true. If there's no SNI component, but there is a
-// DNS-like component, then that will be returned for the sni and
-// foundSniComponent will be false (since we didn't find an actual sni component).
-func extractSNI(maddr ma.Multiaddr) (sni string, foundSniComponent bool) {
-	ma.ForEach(maddr, func(c ma.Component) bool {
-		switch c.Protocol().Code {
-		case ma.P_SNI:
-			sni = c.Value()
-			foundSniComponent = true
-			return false
-		case ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
-			sni = c.Value()
-			// Keep going in case we find an `sni` component
-			return true
-		}
-		return true
-	})
-	return sni, foundSniComponent
 }
 
 // Resolve implements transport.Resolver

@@ -1,3 +1,6 @@
+//go:build !js
+// +build !js
+
 package libp2pwebtransport
 
 import (
@@ -72,7 +75,7 @@ func (s *stream) Reset() error {
 
 // ResetWithError resets the stream ignoring the error code. Error codes aren't
 // specified for WebTransport as the current implementation of WebTransport in
-// browsers(https://www.ietf.org/archive/id/draft-kinnear-webtransport-http2-02.html)
+// browsers (https://www.ietf.org/archive/id/draft-kinnear-webtransport-http2-02.html)
 // only supports 1 byte error codes. For more details, see
 // https://github.com/libp2p/specs/blob/4eca305185c7aef219e936bef76c48b1ab0a8b43/error-codes/README.md?plain=1#L84
 func (s *stream) ResetWithError(_ network.StreamErrorCode) error {
