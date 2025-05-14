@@ -75,7 +75,7 @@ func (t *transport) verifyChallengeOnOutboundConnection(ctx context.Context, con
 	return c, nil
 }
 
-func New(key ic.PrivKey, psk pnet.PSK, connManager any, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+func New(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		return nil, errors.New("WebTransport doesn't support private networks yet")
 	}
