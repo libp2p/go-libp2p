@@ -1,3 +1,6 @@
+//go:build !js
+// +build !js
+
 // Package websocket implements a websocket based transport for go-libp2p.
 package websocket
 
