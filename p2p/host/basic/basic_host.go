@@ -905,20 +905,3 @@ func (s *streamWrapper) CloseWrite() error {
 	}
 	return s.Stream.CloseWrite()
 }
-
-// NormalizeMultiaddr returns a multiaddr suitable for equality checks.
-// If the multiaddr is a webtransport component, it removes the certhashes.
-func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
-	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
-	if !ok {
-		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
-	}
-	if ok && n > 0 {
-		out := addr
-		for i := 0; i < n; i++ {
-			out, _ = ma.SplitLast(out)
-		}
-		return out
-	}
-	return addr
-}
