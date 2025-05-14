@@ -4,6 +4,8 @@
 package libp2p
 
 import (
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
@@ -17,4 +19,14 @@ var DefaultTransports = ChainOptions(
 	Transport(ws.New),
 	Transport(webtransport.New),
 	Transport(libp2pwebrtc.New),
+)
+
+var DefaultPrivateTransports = ChainOptions(
+	Transport(tcp.NewTCPTransport),
+	Transport(ws.New),
+)
+
+var DefaultSecurity = ChainOptions(
+	Security(tls.ID, tls.New),
+	Security(noise.ID, noise.New),
 )

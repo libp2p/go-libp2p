@@ -1,3 +1,6 @@
+//go:build !js
+// +build !js
+
 package tcpreuse
 
 import "testing"
