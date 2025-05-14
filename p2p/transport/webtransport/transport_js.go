@@ -19,7 +19,6 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
-	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -76,7 +75,7 @@ func (t *transport) verifyChallengeOnOutboundConnection(ctx context.Context, con
 	return c, nil
 }
 
-func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+func New(key ic.PrivKey, psk pnet.PSK, connManager any, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		return nil, errors.New("WebTransport doesn't support private networks yet")
 	}
