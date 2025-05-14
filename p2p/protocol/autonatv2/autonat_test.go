@@ -291,6 +291,49 @@ func TestClientDataRequest(t *testing.T) {
 	}
 }
 
+func TestAutoNATPrivateAndPublicAddrs(t *testing.T) {
+	an := newAutoNAT(t, nil)
+	defer an.Close()
+	defer an.host.Close()
+
+	b := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer b.Close()
+	idAndConnect(t, an.host, b)
+	waitForPeer(t, an)
+
+	dialerHost := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer dialerHost.Close()
+	handler := func(s network.Stream) {
+		w := pbio.NewDelimitedWriter(s)
+		r := pbio.NewDelimitedReader(s, maxMsgSize)
+		var msg pb.Message
+		assert.NoError(t, r.ReadMsg(&msg))
+		w.WriteMsg(&pb.Message{
+			Msg: &pb.Message_DialResponse{
+				DialResponse: &pb.DialResponse{
+					Status:     pb.DialResponse_OK,
+					DialStatus: pb.DialStatus_E_DIAL_ERROR,
+					AddrIdx:    0,
+				},
+			},
+		})
+		s.Close()
+	}
+
+	b.SetStreamHandler(DialProtocol, handler)
+	privateAddr := ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")
+	publicAddr := ma.StringCast("/ip4/1.2.3.4/udp/10/quic-v1")
+	res, err := an.GetReachability(context.Background(),
+		[]Request{
+			{Addr: privateAddr},
+			{Addr: publicAddr},
+		})
+	require.NoError(t, err)
+	require.Equal(t, res.Addr, publicAddr, "%s\n%s", res.Addr, publicAddr)
+	require.Equal(t, res.Idx, 1)
+	require.Equal(t, res.Reachability, network.ReachabilityPrivate)
+}
+
 func TestClientDialBacks(t *testing.T) {
 	an := newAutoNAT(t, nil, allowPrivateAddrs)
 	defer an.Close()
@@ -661,7 +704,7 @@ func FuzzClient(f *testing.F) {
 			ipType = int(ips[0])
 		}
 		ips = ips[1:]
-		var x, y int64 = 0, 0
+		var x, y int64
 		split := 128 / 8
 		if len(ips) < split {
 			split = len(ips)
@@ -751,7 +794,7 @@ func FuzzClient(f *testing.F) {
 		return addrs
 	}
 	// reduce the streamTimeout before running this. TODO: fix this
-	f.Fuzz(func(t *testing.T, numAddrs int, ips, protos, hostNames []byte) {
+	f.Fuzz(func(_ *testing.T, numAddrs int, ips, protos, hostNames []byte) {
 		addrs := getAddrs(numAddrs, ips, protos, hostNames)
 		reqs := make([]Request, len(addrs))
 		for i, addr := range addrs {

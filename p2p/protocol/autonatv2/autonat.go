@@ -81,9 +81,11 @@ type AutoNAT struct {
 	srv *server
 	cli *client
 
-	mx                   sync.Mutex
-	peers                *peersMap
-	throttlePeer         map[peer.ID]time.Time
+	mx           sync.Mutex
+	peers        *peersMap
+	throttlePeer map[peer.ID]time.Time
+	// throttlePeerDuration is the duration to wait before making another dial request to the
+	// same server.
 	throttlePeerDuration time.Duration
 	// allowPrivateAddrs enables using private and localhost addresses for reachability checks.
 	// This is only useful for testing.
@@ -208,7 +210,7 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 	if p == "" {
 		return Result{}, ErrNoPeers
 	}
-	res, err := an.cli.GetReachability(ctx, p, reqs)
+	res, err := an.cli.GetReachability(ctx, p, filteredReqs)
 	if err != nil {
 		log.Debugf("reachability check with %s failed, err: %s", p, err)
 		return res, fmt.Errorf("reachability check with %s failed: %w", p, err)
@@ -258,7 +260,7 @@ func (p *peersMap) Shuffled() iter.Seq[peer.ID] {
 	n := len(p.peers)
 	start := 0
 	if n > 0 {
-		start = rand.IntN(len(p.peers))
+		start = rand.IntN(n)
 	}
 	return func(yield func(peer.ID) bool) {
 		for i := range n {

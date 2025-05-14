@@ -109,7 +109,7 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 		break
 	// provide dial data if appropriate
 	case msg.GetDialDataRequest() != nil:
-		if err := ac.validateDialDataRequest(reqs, &msg); err != nil {
+		if err := validateDialDataRequest(reqs, &msg); err != nil {
 			s.Reset()
 			return Result{}, fmt.Errorf("invalid dial data request: %s %w", s.Conn().RemoteMultiaddr(), err)
 		}
@@ -162,7 +162,7 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	return ac.newResult(resp, reqs, dialBackAddr)
 }
 
-func (*client) validateDialDataRequest(reqs []Request, msg *pb.Message) error {
+func validateDialDataRequest(reqs []Request, msg *pb.Message) error {
 	idx := int(msg.GetDialDataRequest().AddrIdx)
 	if idx >= len(reqs) { // invalid address index
 		return fmt.Errorf("addr index out of range: %d [0-%d)", idx, len(reqs))
@@ -184,7 +184,7 @@ func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr 
 	}
 	addr := reqs[idx].Addr
 
-	rch := network.ReachabilityUnknown
+	rch := network.ReachabilityUnknown //nolint:ineffassign
 	switch resp.DialStatus {
 	case pb.DialStatus_OK:
 		if !ac.areAddrsConsistent(dialBackAddr, addr) {

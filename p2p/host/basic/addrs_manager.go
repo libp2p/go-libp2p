@@ -34,6 +34,7 @@ type hostAddrs struct {
 	localAddrs       []ma.Multiaddr
 	reachableAddrs   []ma.Multiaddr
 	unreachableAddrs []ma.Multiaddr
+	relayAddrs       []ma.Multiaddr
 }
 
 type addrsManager struct {
@@ -56,11 +57,8 @@ type addrsManager struct {
 
 	hostReachability atomic.Pointer[network.Reachability]
 
-	addrsMx      sync.RWMutex // protects fields below
+	addrsMx      sync.RWMutex
 	currentAddrs hostAddrs
-	// relayAddrs are the host's relay addresses. Kept separate from hostAddrs as we
-	// update them differently from hostAddrs.
-	relayAddrs []ma.Multiaddr
 
 	wg        sync.WaitGroup
 	ctx       context.Context
@@ -140,7 +138,7 @@ func (a *addrsManager) NetNotifee() network.Notifiee {
 }
 
 func (a *addrsManager) triggerAddrsUpdate() {
-	a.updateAddrs()
+	a.updateAddrs(false, nil)
 	select {
 	case a.triggerAddrsUpdateChan <- struct{}{}:
 	default:
@@ -177,11 +175,12 @@ func (a *addrsManager) startBackgroundWorker() error {
 		return errors.Join(err, err1, err2)
 	}
 
+	var relayAddrs []ma.Multiaddr
 	// update relay addrs in case we're private
 	select {
 	case e := <-autoRelayAddrsSub.Out():
 		if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
-			a.updateRelayAddrs(evt.RelayAddrs)
+			relayAddrs = slices.Clone(evt.RelayAddrs)
 		}
 	default:
 	}
@@ -195,24 +194,23 @@ func (a *addrsManager) startBackgroundWorker() error {
 	}
 	// update addresses before starting the worker loop. This ensures that any address updates
 	// before calling addrsManager.Start are correctly reported after Start returns.
-	a.updateAddrs()
+	a.updateAddrs(true, relayAddrs)
+
 	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		a.background(autoRelayAddrsSub, autonatReachabilitySub, emitter)
-	}()
+	go a.background(autoRelayAddrsSub, autonatReachabilitySub, emitter, relayAddrs)
 	return nil
 }
 
-func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub event.Subscription, emitter event.Emitter) {
+func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub event.Subscription,
+	emitter event.Emitter, relayAddrs []ma.Multiaddr,
+) {
+	defer a.wg.Done()
 	defer func() {
 		err := autoRelayAddrsSub.Close()
 		if err != nil {
 			log.Warnf("error closing auto relay addrs sub: %s", err)
 		}
-	}()
-	defer func() {
-		err := autonatReachabilitySub.Close()
+		err = autonatReachabilitySub.Close()
 		if err != nil {
 			log.Warnf("error closing autonat reachability sub: %s", err)
 		}
@@ -222,7 +220,7 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 	defer ticker.Stop()
 	var previousAddrs hostAddrs
 	for {
-		currAddrs := a.updateAddrs()
+		currAddrs := a.updateAddrs(true, relayAddrs)
 		a.notifyAddrsChanged(emitter, previousAddrs, currAddrs)
 		previousAddrs = currAddrs
 		select {
@@ -231,7 +229,7 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 		case <-a.triggerReachabilityUpdate:
 		case e := <-autoRelayAddrsSub.Out():
 			if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
-				a.updateRelayAddrs(evt.RelayAddrs)
+				relayAddrs = slices.Clone(evt.RelayAddrs)
 			}
 		case e := <-autonatReachabilitySub.Out():
 			if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
@@ -243,7 +241,9 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 	}
 }
 
-func (a *addrsManager) updateAddrs() hostAddrs {
+// updateAddrs updates the addresses of the host and returns the new updated
+// addrs
+func (a *addrsManager) updateAddrs(updateRelayAddrs bool, relayAddrs []ma.Multiaddr) hostAddrs {
 	// Must lock while doing both recompute and update as this method is called from
 	// multiple goroutines.
 	a.addrsMx.Lock()
@@ -254,13 +254,20 @@ func (a *addrsManager) updateAddrs() hostAddrs {
 	if a.addrsReachabilityTracker != nil {
 		currReachableAddrs, currUnreachableAddrs = a.getConfirmedAddrs(localAddrs)
 	}
-	currAddrs := a.getAddrs(slices.Clone(localAddrs), a.getRelayAddrsUnlocked())
+	if !updateRelayAddrs {
+		relayAddrs = a.currentAddrs.relayAddrs
+	} else {
+		// Copy the callers slice
+		relayAddrs = slices.Clone(relayAddrs)
+	}
+	currAddrs := a.getAddrs(slices.Clone(localAddrs), relayAddrs)
 
 	a.currentAddrs = hostAddrs{
 		addrs:            append(a.currentAddrs.addrs[:0], currAddrs...),
 		localAddrs:       append(a.currentAddrs.localAddrs[:0], localAddrs...),
 		reachableAddrs:   append(a.currentAddrs.reachableAddrs[:0], currReachableAddrs...),
 		unreachableAddrs: append(a.currentAddrs.unreachableAddrs[:0], currUnreachableAddrs...),
+		relayAddrs:       append(a.currentAddrs.relayAddrs[:0], relayAddrs...),
 	}
 
 	return hostAddrs{
@@ -268,13 +275,8 @@ func (a *addrsManager) updateAddrs() hostAddrs {
 		addrs:            currAddrs,
 		reachableAddrs:   currReachableAddrs,
 		unreachableAddrs: currUnreachableAddrs,
+		relayAddrs:       relayAddrs,
 	}
-}
-
-func (a *addrsManager) updateRelayAddrs(addrs []ma.Multiaddr) {
-	a.addrsMx.Lock()
-	defer a.addrsMx.Unlock()
-	a.relayAddrs = append(a.relayAddrs[:0], addrs...)
 }
 
 func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, current hostAddrs) {
@@ -308,7 +310,11 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, curre
 // If autorelay is enabled and node reachability is private, it returns
 // the node's relay addresses and private network addresses.
 func (a *addrsManager) Addrs() []ma.Multiaddr {
-	return a.getAddrs(a.DirectAddrs(), a.RelayAddrs())
+	a.addrsMx.RLock()
+	directAddrs := slices.Clone(a.currentAddrs.localAddrs)
+	relayAddrs := slices.Clone(a.currentAddrs.relayAddrs)
+	a.addrsMx.RUnlock()
+	return a.getAddrs(directAddrs, relayAddrs)
 }
 
 // getAddrs returns the node's dialable addresses. Mutates localAddrs
@@ -358,48 +364,9 @@ func (a *addrsManager) ReachableAddrs() []ma.Multiaddr {
 	return slices.Clone(a.currentAddrs.reachableAddrs)
 }
 
-// RelayAddrs returns all the relay addresses of the host.
-func (a *addrsManager) RelayAddrs() []ma.Multiaddr {
-	a.addrsMx.RLock()
-	defer a.addrsMx.RUnlock()
-	return a.getRelayAddrsUnlocked()
-}
-
-func (a *addrsManager) getRelayAddrsUnlocked() []ma.Multiaddr {
-	return slices.Clone(a.relayAddrs)
-}
-
 func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
 	reachableAddrs, unreachableAddrs = a.addrsReachabilityTracker.ConfirmedAddrs()
-	return removeIfNotInSource(reachableAddrs, localAddrs), removeIfNotInSource(unreachableAddrs, localAddrs)
-}
-
-// removeIfNotInSource removes items from addrs that are not present in source.
-// Modifies the addrs slice in place
-// addrs and source must be sorted using multiaddr.Compare.
-func removeIfNotInSource(addrs, source []ma.Multiaddr) []ma.Multiaddr {
-	j := 0
-	// mark entries not in source as nil
-	for i, a := range addrs {
-		// move right till a is greater
-		for j < len(source) && a.Compare(source[j]) > 0 {
-			j++
-		}
-		// a is not in source if we've reached the end, or a is lesser
-		if j == len(source) || a.Compare(source[j]) < 0 {
-			addrs[i] = nil
-		}
-		// a is in source, nothing to do
-	}
-	// j is the current element, i is the lowest index nil element
-	i := 0
-	for j := 0; j < len(addrs); j++ {
-		if addrs[j] != nil {
-			addrs[i], addrs[j] = addrs[j], addrs[i]
-			i++
-		}
-	}
-	return addrs[:i]
+	return removeNotInSource(reachableAddrs, localAddrs), removeNotInSource(unreachableAddrs, localAddrs)
 }
 
 var p2pCircuitAddr = ma.StringCast("/p2p-circuit")
@@ -700,4 +667,32 @@ func (i *interfaceAddrsCache) updateUnlocked() {
 			}
 		}
 	}
+}
+
+// removeNotInSource removes items from addrs that are not present in source.
+// Modifies the addrs slice in place
+// addrs and source must be sorted using multiaddr.Compare.
+func removeNotInSource(addrs, source []ma.Multiaddr) []ma.Multiaddr {
+	j := 0
+	// mark entries not in source as nil
+	for i, a := range addrs {
+		// move right till a is greater
+		for j < len(source) && a.Compare(source[j]) > 0 {
+			j++
+		}
+		// a is not in source if we've reached the end, or a is lesser
+		if j == len(source) || a.Compare(source[j]) < 0 {
+			addrs[i] = nil
+		}
+		// a is in source, nothing to do
+	}
+	// j is the current element, i is the lowest index nil element
+	i := 0
+	for j := range len(addrs) {
+		if addrs[j] != nil {
+			addrs[i], addrs[j] = addrs[j], addrs[i]
+			i++
+		}
+	}
+	return addrs[:i]
 }

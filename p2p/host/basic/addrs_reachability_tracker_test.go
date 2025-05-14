@@ -125,7 +125,7 @@ func TestProbeManager(t *testing.T) {
 		reqs := pm.GetProbe()
 		require.Empty(t, reqs)
 
-		cl.Add(maxProbeInterval + time.Millisecond)
+		cl.Add(highConfidenceAddrProbeInterval + time.Millisecond)
 		reqs = nextProbe(pm)
 		require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
 		reqs = nextProbe(pm)
@@ -239,7 +239,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		// pub1 reachable, pub2 unreachable, pub3 ignored
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for i, req := range reqs {
 					if req.Addr.Equal(pub1) {
 						return autonatv2.Result{Addr: pub1, Idx: i, Reachability: network.ReachabilityPublic}, nil
@@ -274,7 +274,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 
 	t.Run("confirmed addrs ordering", func(t *testing.T) {
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil
 			},
 		}
@@ -314,7 +314,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 
 		var allow atomic.Bool
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				select {
 				case notify <- struct{}{}:
 				default:
@@ -378,7 +378,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		called := make(chan struct{}, minConfidence)
 		notify := make(chan struct{})
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
 				select {
 				case called <- struct{}{}:
 					notify <- struct{}{}
@@ -438,7 +438,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		}
 
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				select {
 				case notify <- struct{}{}:
 				default:
@@ -461,14 +461,14 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		require.True(t, drainNotify()) // check that we did receive probes
 
-		cl.Add(maxProbeInterval / 2)
+		cl.Add(highConfidenceAddrProbeInterval / 2)
 		select {
 		case <-notify:
 			t.Fatal("unexpected call")
 		case <-time.After(50 * time.Millisecond):
 		}
 
-		cl.Add(maxProbeInterval/2 + defaultResetInterval) // defaultResetInterval for the next probe time
+		cl.Add(highConfidenceAddrProbeInterval/2 + defaultReachabilityRefreshInterval) // defaultResetInterval for the next probe time
 		select {
 		case <-notify:
 		case <-time.After(1 * time.Second):
@@ -484,7 +484,7 @@ func TestRunProbes(t *testing.T) {
 	defer cancel()
 	t.Run("backoff on ErrNoValidPeers", func(t *testing.T) {
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
 				return autonatv2.Result{}, autonatv2.ErrNoPeers
 			},
 		}
@@ -499,7 +499,7 @@ func TestRunProbes(t *testing.T) {
 	t.Run("returns backoff on errTooManyConsecutiveFailures", func(t *testing.T) {
 		// Create a client that always returns ErrDialRefused
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
 				return autonatv2.Result{}, errors.New("test error")
 			},
 		}
@@ -516,7 +516,7 @@ func TestRunProbes(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		block := make(chan struct{})
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
 				block <- struct{}{}
 				return autonatv2.Result{}, nil
 			},
@@ -559,7 +559,7 @@ func TestRunProbes(t *testing.T) {
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
 
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for i, req := range reqs {
 					if req.Addr.Equal(pub1) {
 						return autonatv2.Result{Addr: pub1, Idx: i, Reachability: network.ReachabilityPublic}, nil
@@ -583,7 +583,7 @@ func TestRunProbes(t *testing.T) {
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
 
 		mockClient := mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for i, req := range reqs {
 					if req.Addr.Equal(pub1) {
 						return autonatv2.Result{Addr: pub1, Idx: i, Reachability: network.ReachabilityPublic}, nil
@@ -606,34 +606,44 @@ func TestRunProbes(t *testing.T) {
 	})
 }
 
-func TestDialOutcome(t *testing.T) {
+func TestAddrStatusProbeCount(t *testing.T) {
 	cases := []struct {
 		inputs             string
 		wantRequiredProbes int
 		wantReachability   network.Reachability
 	}{
 		{
-			inputs:             "SSSSSSSSSSS",
-			wantRequiredProbes: 0,
-			wantReachability:   network.ReachabilityPublic,
-		},
-		{
-			inputs:             "SSSSSSSSSSF",
-			wantRequiredProbes: 1,
-			wantReachability:   network.ReachabilityPublic,
-		},
-		{
-			inputs:             "SFSFSFSFSSSS",
-			wantRequiredProbes: 0,
-			wantReachability:   network.ReachabilityPublic,
-		},
-		{
-			inputs:             "SSSSSSSSSFSF",
-			wantRequiredProbes: 2,
+			inputs:             "",
+			wantRequiredProbes: 3,
 			wantReachability:   network.ReachabilityUnknown,
 		},
 		{
 			inputs:             "S",
+			wantRequiredProbes: 2,
+			wantReachability:   network.ReachabilityUnknown,
+		},
+		{
+			inputs:             "SS",
+			wantRequiredProbes: 1,
+			wantReachability:   network.ReachabilityPublic,
+		},
+		{
+			inputs:             "SSS",
+			wantRequiredProbes: 0,
+			wantReachability:   network.ReachabilityPublic,
+		},
+		{
+			inputs:             "SSSSSSSF",
+			wantRequiredProbes: 1,
+			wantReachability:   network.ReachabilityPublic,
+		},
+		{
+			inputs:             "SFSFSSSS",
+			wantRequiredProbes: 0,
+			wantReachability:   network.ReachabilityPublic,
+		},
+		{
+			inputs:             "SSSSSFSF",
 			wantRequiredProbes: 2,
 			wantReachability:   network.ReachabilityUnknown,
 		},
@@ -646,7 +656,7 @@ func TestDialOutcome(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.inputs, func(t *testing.T) {
 			now := time.Time{}.Add(1 * time.Second)
-			ao := addrOutcomes{}
+			ao := addrStatus{}
 			for _, r := range c.inputs {
 				if r == 'S' {
 					ao.AddOutcome(now, network.ReachabilityPublic, 5)
@@ -658,7 +668,7 @@ func TestDialOutcome(t *testing.T) {
 			require.Equal(t, ao.RequiredProbeCount(now), c.wantRequiredProbes)
 			require.Equal(t, ao.Reachability(), c.wantReachability)
 			if c.wantRequiredProbes == 0 {
-				now = now.Add(maxProbeInterval + 10*time.Microsecond)
+				now = now.Add(highConfidenceAddrProbeInterval + 10*time.Microsecond)
 				require.Equal(t, ao.RequiredProbeCount(now), 1)
 			}
 
@@ -673,9 +683,9 @@ func BenchmarkAddrTracker(b *testing.B) {
 	cl := clock.NewMock()
 	t := newProbeManager(cl.Now)
 
-	var addrs []ma.Multiaddr
-	for range 20 {
-		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.1.1.1/tcp/%d", rand.Intn(1000))))
+	addrs := make([]ma.Multiaddr, 20)
+	for i := range addrs {
+		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.1/tcp/%d", rand.Intn(1000)))
 	}
 	t.UpdateAddrs(addrs)
 	b.ReportAllocs()
@@ -700,7 +710,7 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 	newMockClient := func(b []byte) mockAutoNATClient {
 		count := 0
 		return mockAutoNATClient{
-			F: func(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				if len(b) == 0 {
 					return autonatv2.Result{}, nil
 				}
@@ -782,7 +792,7 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 			ipType = int(ips[0])
 		}
 		ips = ips[1:]
-		var x, y int64 = 0, 0
+		var x, y int64
 		split := 128 / 8
 		if len(ips) < split {
 			split = len(ips)

@@ -1,6 +1,0 @@
-go test fuzz v1
-int(0)
-[]byte("")
-[]byte("")
-[]byte("0")
-[]byte("")
