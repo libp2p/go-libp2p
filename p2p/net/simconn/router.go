@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 )
@@ -12,18 +13,101 @@ type PacketReciever interface {
 	RecvPacket(p Packet)
 }
 
+type ipPortKey struct {
+	ip    string
+	port  uint16
+	isUDP bool
+}
+
+func (k *ipPortKey) FromNetAddr(addr net.Addr) error {
+	switch addr := addr.(type) {
+	case *net.UDPAddr:
+		*k = ipPortKey{
+			ip:    string(addr.IP),
+			port:  uint16(addr.Port),
+			isUDP: true,
+		}
+		return nil
+	case *net.TCPAddr:
+		*k = ipPortKey{
+			ip:    string(addr.IP),
+			port:  uint16(addr.Port),
+			isUDP: false,
+		}
+		return nil
+	default:
+		ip, err := netip.ParseAddrPort(addr.String())
+		if err != nil {
+			return err
+		}
+		*k = ipPortKey{
+			ip:    string(ip.Addr().AsSlice()),
+			port:  ip.Port(),
+			isUDP: addr.Network() == "udp",
+		}
+		return nil
+	}
+}
+
+type addrMap[V any] struct {
+	mu    sync.Mutex
+	nodes map[ipPortKey]V
+}
+
+func (m *addrMap[V]) Get(addr net.Addr) (V, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var v V
+	if len(m.nodes) == 0 {
+		return v, false
+	}
+	var k ipPortKey
+	if err := k.FromNetAddr(addr); err != nil {
+		return v, false
+	}
+	v, ok := m.nodes[k]
+	return v, ok
+}
+
+func (m *addrMap[V]) Set(addr net.Addr, v V) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.nodes == nil {
+		m.nodes = make(map[ipPortKey]V)
+	}
+
+	var k ipPortKey
+	if err := k.FromNetAddr(addr); err != nil {
+		return err
+	}
+	m.nodes[k] = v
+	return nil
+}
+
+func (m *addrMap[V]) Remove(addr net.Addr) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.nodes == nil {
+		m.nodes = make(map[ipPortKey]V)
+	}
+
+	var k ipPortKey
+	if err := k.FromNetAddr(addr); err != nil {
+		return err
+	}
+	delete(m.nodes, k)
+	return nil
+}
+
 // PerfectRouter is a router that has no latency or jitter and can route to
 // every node
 type PerfectRouter struct {
-	mu    sync.Mutex
-	nodes map[net.Addr]PacketReciever
+	nodes addrMap[PacketReciever]
 }
 
 // SendPacket implements Router.
 func (r *PerfectRouter) SendPacket(p Packet) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	conn, ok := r.nodes[p.To]
+	conn, ok := r.nodes.Get(p.To)
 	if !ok {
 		return errors.New("unknown destination")
 	}
@@ -33,16 +117,11 @@ func (r *PerfectRouter) SendPacket(p Packet) error {
 }
 
 func (r *PerfectRouter) AddNode(addr net.Addr, conn PacketReciever) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.nodes == nil {
-		r.nodes = make(map[net.Addr]PacketReciever)
-	}
-	r.nodes[addr] = conn
+	r.nodes.Set(addr, conn)
 }
 
 func (r *PerfectRouter) RemoveNode(addr net.Addr) {
-	delete(r.nodes, addr)
+	r.nodes.Remove(addr)
 }
 
 var _ Router = &PerfectRouter{}
