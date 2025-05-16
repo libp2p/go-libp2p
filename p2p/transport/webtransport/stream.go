@@ -36,16 +36,30 @@ var _ network.MuxedStream = &stream{}
 
 func (s *stream) Read(b []byte) (n int, err error) {
 	n, err = s.Stream.Read(b)
-	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
-		err = network.ErrReset
+	if err != nil {
+		var streamErr *webtransport.StreamError
+		if errors.As(err, &streamErr) {
+			err = &network.StreamError{
+				ErrorCode:      0,
+				Remote:         streamErr.Remote,
+				TransportError: err,
+			}
+		}
 	}
 	return n, err
 }
 
 func (s *stream) Write(b []byte) (n int, err error) {
 	n, err = s.Stream.Write(b)
-	if err != nil && errors.Is(err, &webtransport.StreamError{}) {
-		err = network.ErrReset
+	if err != nil {
+		var streamErr *webtransport.StreamError
+		if errors.As(err, &streamErr) {
+			err = &network.StreamError{
+				ErrorCode:      0,
+				Remote:         streamErr.Remote,
+				TransportError: err,
+			}
+		}
 	}
 	return n, err
 }

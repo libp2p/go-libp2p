@@ -1,11 +1,14 @@
 package identify
 
+import "time"
+
 type config struct {
 	protocolVersion            string
 	userAgent                  string
 	disableSignedPeerRecord    bool
 	metricsTracer              MetricsTracer
 	disableObservedAddrManager bool
+	timeout                    time.Duration
 }
 
 // Option is an option function for identify.
@@ -45,5 +48,12 @@ func WithMetricsTracer(tr MetricsTracer) Option {
 func DisableObservedAddrManager() Option {
 	return func(cfg *config) {
 		cfg.disableObservedAddrManager = true
+	}
+}
+
+// WithTimeout sets the timeout for identify interactions.
+func WithTimeout(timeout time.Duration) Option {
+	return func(cfg *config) {
+		cfg.timeout = timeout
 	}
 }

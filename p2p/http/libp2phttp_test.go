@@ -24,9 +24,11 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2phttp "github.com/libp2p/go-libp2p/p2p/http"
+	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	httpping "github.com/libp2p/go-libp2p/p2p/http/ping"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	ma "github.com/multiformats/go-multiaddr"
@@ -861,6 +863,14 @@ func TestRedirects(t *testing.T) {
 		w.Write([]byte("hello"))
 	}))
 
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/bar/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "../baz/")
+		w.WriteHeader(http.StatusMovedPermanently)
+	}))
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/baz/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello"))
+	}))
+
 	clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs, libp2p.Transport(libp2pquic.NewTransport))
 	require.NoError(t, err)
 	client := http.Client{Transport: &libp2phttp.Host{StreamHost: clientStreamHost}}
@@ -877,9 +887,17 @@ func TestRedirects(t *testing.T) {
 			u := fmt.Sprintf("multiaddr:%s/http-path/a%%2f", a)
 			f := fmt.Sprintf("http://127.0.0.1:%s/d/", port)
 			testCases = append(testCases, testCase{u, f})
+
+			u = fmt.Sprintf("multiaddr:%s/http-path/foo%%2Fbar", a)
+			f = fmt.Sprintf("http://127.0.0.1:%s/foo/baz/", port)
+			testCases = append(testCases, testCase{u, f})
 		} else {
 			u := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/a%%2f", a, serverHost.ID())
-			f := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/%%2Fd%%2F", a, serverHost.ID())
+			f := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/d%%2F", a, serverHost.ID())
+			testCases = append(testCases, testCase{u, f})
+
+			u = fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/foo%%2Fbar", a, serverHost.ID())
+			f = fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/foo%%2Fbaz%%2F", a, serverHost.ID())
 			testCases = append(testCases, testCase{u, f})
 		}
 	}
@@ -1013,4 +1031,118 @@ func TestErrServerClosed(t *testing.T) {
 
 	server.Close()
 	<-done
+}
+
+func TestHTTPOverStreamsGetClientID(t *testing.T) {
+	serverHost, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+	)
+	require.NoError(t, err)
+
+	httpHost := libp2phttp.Host{StreamHost: serverHost}
+
+	httpHost.SetHTTPHandler("/echo-id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientID := libp2phttp.ClientPeerID(r)
+		w.Write([]byte(clientID.String()))
+	}))
+
+	// Start server
+	go httpHost.Serve()
+	defer httpHost.Close()
+
+	// Start client
+	clientHost, err := libp2p.New(libp2p.NoListenAddrs)
+	require.NoError(t, err)
+	clientHost.Connect(context.Background(), peer.AddrInfo{
+		ID:    serverHost.ID(),
+		Addrs: serverHost.Addrs(),
+	})
+
+	client := http.Client{
+		Transport: &libp2phttp.Host{StreamHost: clientHost},
+	}
+	require.NoError(t, err)
+
+	resp, err := client.Get("multiaddr:" + serverHost.Addrs()[0].String() + "/p2p/" + serverHost.ID().String() + "/http-path/echo-id")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, clientHost.ID().String(), string(body))
+}
+
+func TestAuthenticatedRequest(t *testing.T) {
+	serverSK, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	serverID, err := peer.IDFromPrivateKey(serverSK)
+	require.NoError(t, err)
+
+	serverStreamHost, err := libp2p.New(
+		libp2p.Identity(serverSK),
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+		libp2p.Transport(libp2pquic.NewTransport),
+	)
+	require.NoError(t, err)
+
+	server := libp2phttp.Host{
+		InsecureAllowHTTP: true,
+		StreamHost:        serverStreamHost,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+		ServerPeerIDAuth: &httpauth.ServerPeerIDAuth{
+			TokenTTL: time.Hour,
+			PrivKey:  serverSK,
+			NoTLS:    true,
+			ValidHostnameFn: func(hostname string) bool {
+				return strings.HasPrefix(hostname, "127.0.0.1")
+			},
+		},
+	}
+	server.SetHTTPHandler("/echo-id", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientID := libp2phttp.ClientPeerID(r)
+		w.Write([]byte(clientID.String()))
+	}))
+
+	go server.Serve()
+
+	clientSK, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	clientStreamHost, err := libp2p.New(
+		libp2p.Identity(clientSK),
+		libp2p.NoListenAddrs,
+		libp2p.Transport(libp2pquic.NewTransport))
+	require.NoError(t, err)
+
+	client := &http.Client{
+		Transport: &libp2phttp.Host{
+			StreamHost: clientStreamHost,
+			ClientPeerIDAuth: &httpauth.ClientPeerIDAuth{
+				TokenTTL: time.Hour,
+				PrivKey:  clientSK,
+			},
+		},
+	}
+
+	clientID, err := peer.IDFromPrivateKey(clientSK)
+	require.NoError(t, err)
+
+	for _, serverAddr := range server.Addrs() {
+		_, tpt := ma.SplitLast(serverAddr)
+		t.Run(tpt.String(), func(t *testing.T) {
+			url := fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/echo-id", serverAddr, serverID)
+			t.Log("Making a GET request to:", url)
+			resp, err := client.Get(url)
+			require.NoError(t, err)
+
+			observedServerID := libp2phttp.ServerPeerID(resp)
+			require.Equal(t, serverID, observedServerID)
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			require.Equal(t, clientID.String(), string(body))
+		})
+	}
 }

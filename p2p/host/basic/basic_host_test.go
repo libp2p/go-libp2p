@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/matest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -205,29 +207,6 @@ func TestHostAddrsFactory(t *testing.T) {
 	}
 }
 
-func TestLocalIPChangesWhenListenAddrChanges(t *testing.T) {
-	// no listen addrs
-	h, err := NewHost(swarmt.GenSwarm(t, swarmt.OptDialOnly), nil)
-	require.NoError(t, err)
-	h.Start()
-	defer h.Close()
-
-	h.addrMu.Lock()
-	h.filteredInterfaceAddrs = nil
-	h.allInterfaceAddrs = nil
-	h.addrMu.Unlock()
-
-	// change listen addrs and verify local IP addr is not nil again
-	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
-	h.SignalAddressChange()
-	time.Sleep(1 * time.Second)
-
-	h.addrMu.RLock()
-	defer h.addrMu.RUnlock()
-	require.NotEmpty(t, h.filteredInterfaceAddrs)
-	require.NotEmpty(t, h.allInterfaceAddrs)
-}
-
 func TestAllAddrs(t *testing.T) {
 	// no listen addrs
 	h, err := NewHost(swarmt.GenSwarm(t, swarmt.OptDialOnly), nil)
@@ -300,7 +279,7 @@ func TestAllAddrsUnique(t *testing.T) {
 	}()
 	close(sendNewAddrs)
 	require.Len(t, h.Addrs(), 2)
-	require.ElementsMatch(t, []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1"), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")}, h.Addrs())
+	matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1"), ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")}, h.Addrs())
 	time.Sleep(2*addrChangeTickrInterval + 1*time.Second) // the background loop runs every 5 seconds. Wait for 2x that time.
 	close(done)
 	cnt := <-out
@@ -619,8 +598,13 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	ctx := context.Background()
 	taddrs := []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1234")}
 
-	starting := make(chan struct{})
+	starting := make(chan struct{}, 1)
+	var count atomic.Int32
 	h, err := NewHost(swarmt.GenSwarm(t), &HostOpts{AddrsFactory: func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		// The first call here is made from the constructor. Don't block.
+		if count.Add(1) == 1 {
+			return addrs
+		}
 		<-starting
 		return taddrs
 	}})
@@ -628,11 +612,11 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	defer h.Close()
 
 	sub, err := h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
-	close(starting)
 	if err != nil {
 		t.Error(err)
 	}
 	defer sub.Close()
+	close(starting)
 	h.Start()
 
 	expected := event.EvtLocalAddressesUpdated{
@@ -650,13 +634,13 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 
 	// assert it's on the signed record
 	rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
-	require.Equal(t, taddrs, rc.Addrs)
+	matest.AssertEqualMultiaddrs(t, taddrs, rc.Addrs)
 
 	// assert it's in the peerstore
 	ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 	require.NotNil(t, ev)
 	rc = peerRecordFromEnvelope(t, ev)
-	require.Equal(t, taddrs, rc.Addrs)
+	matest.AssertEqualMultiaddrs(t, taddrs, rc.Addrs)
 }
 
 func TestStatefulAddrEvents(t *testing.T) {
@@ -751,7 +735,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		lk.Lock()
 		currentAddrSet = i
 		lk.Unlock()
-		h.SignalAddressChange()
+		h.addressManager.triggerAddrsUpdate()
 		evt := waitForAddrChangeEvent(ctx, sub, t)
 		if !updatedAddrEventsEqual(expectedEvents[i-1], evt) {
 			t.Errorf("change events not equal: \n\texpected: %v \n\tactual: %v", expectedEvents[i-1], evt)
@@ -759,13 +743,13 @@ func TestHostAddrChangeDetection(t *testing.T) {
 
 		// assert it's on the signed record
 		rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
-		require.Equal(t, addrSets[i], rc.Addrs)
+		matest.AssertMultiaddrsMatch(t, addrSets[i], rc.Addrs)
 
 		// assert it's in the peerstore
 		ev := h.Peerstore().(peerstore.CertifiedAddrBook).GetPeerRecord(h.ID())
 		require.NotNil(t, ev)
 		rc = peerRecordFromEnvelope(t, ev)
-		require.Equal(t, addrSets[i], rc.Addrs)
+		matest.AssertMultiaddrsMatch(t, addrSets[i], rc.Addrs)
 	}
 }
 

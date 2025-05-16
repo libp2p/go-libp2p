@@ -1,8 +1,28 @@
 package quicreuse
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"net"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type Option func(*ConnManager) error
+
+type listenUDP func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
+
+func OverrideListenUDP(f listenUDP) Option {
+	return func(m *ConnManager) error {
+		m.listenUDP = f
+		return nil
+	}
+}
+
+func OverrideSourceIPSelector(f func() (SourceIPSelector, error)) Option {
+	return func(m *ConnManager) error {
+		m.sourceIPSelectorFn = f
+		return nil
+	}
+}
 
 func DisableReuseport() Option {
 	return func(m *ConnManager) error {

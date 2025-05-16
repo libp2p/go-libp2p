@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/stretchr/testify/require"
+	matest "github.com/multiformats/go-multiaddr/matest"
 )
 
 func TestCleanupAddrs(t *testing.T) {
@@ -21,7 +21,7 @@ func TestCleanupAddrs(t *testing.T) {
 			"/ip4/1.2.3.4/udp/4002/quic-v1",
 			"/dnsaddr/somedomain.com/tcp/4002/ws",
 		)
-		require.ElementsMatch(t, clean, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
+		matest.AssertMultiaddrsMatch(t, clean, cleanupAddressSet(addrs))
 	})
 
 	t.Run("with default port", func(t *testing.T) {
@@ -38,7 +38,7 @@ func TestCleanupAddrs(t *testing.T) {
 			"/ip4/1.2.3.4/tcp/4001",
 			"/ip4/1.2.3.4/udp/4002/quic-v1",
 		)
-		require.ElementsMatch(t, clean, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
+		matest.AssertMultiaddrsMatch(t, clean, cleanupAddressSet(addrs))
 	})
 
 	t.Run("with default port, but no private addrs", func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestCleanupAddrs(t *testing.T) {
 			"/ip4/1.2.3.4/tcp/4001",
 			"/ip4/1.2.3.4/udp/4002/quic-v1",
 		)
-		require.ElementsMatch(t, clean, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
+		matest.AssertMultiaddrsMatch(t, clean, cleanupAddressSet(addrs))
 	})
 
 	t.Run("with non-standard port", func(t *testing.T) {
@@ -68,7 +68,9 @@ func TestCleanupAddrs(t *testing.T) {
 		clean := makeAddrList(
 			"/ip4/1.2.3.4/tcp/12345",
 		)
-		require.ElementsMatch(t, clean, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
+		if !matest.AssertEqualMultiaddrs(t, clean, cleanupAddressSet(addrs)) {
+			t.Log("cleaned up set doesn't match expected")
+		}
 	})
 
 	t.Run("with a clean address set", func(t *testing.T) {
@@ -77,7 +79,7 @@ func TestCleanupAddrs(t *testing.T) {
 			"/ip4/1.2.3.4/tcp/4001",
 			"/ip4/1.2.3.4/udp/4001/quic-v1",
 		)
-		require.ElementsMatch(t, addrs, cleanupAddressSet(addrs), "cleaned up set doesn't match expected")
+		matest.AssertMultiaddrsMatch(t, addrs, cleanupAddressSet(addrs))
 	})
 }
 

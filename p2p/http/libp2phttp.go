@@ -25,6 +25,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	gostream "github.com/libp2p/go-libp2p/p2p/net/gostream"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -43,6 +44,27 @@ const LegacyWellKnownProtocols = "/.well-known/libp2p"
 
 const peerMetadataLimit = 8 << 10 // 8KB
 const peerMetadataLRUSize = 256   // How many different peer's metadata to keep in our LRU cache
+
+// DefaultNewStreamTimeout is the default value for new stream establishing timeout.
+// It is the same value as basic_host.DefaultNegotiationTimeout
+var DefaultNewStreamTimeout = 10 * time.Second
+
+type clientPeerIDContextKey struct{}
+type serverPeerIDContextKey struct{}
+
+func ClientPeerID(r *http.Request) peer.ID {
+	if id, ok := r.Context().Value(clientPeerIDContextKey{}).(peer.ID); ok {
+		return id
+	}
+	return ""
+}
+
+func ServerPeerID(r *http.Response) peer.ID {
+	if id, ok := r.Request.Context().Value(serverPeerIDContextKey{}).(peer.ID); ok {
+		return id
+	}
+	return ""
+}
 
 // ProtocolMeta is metadata about a protocol.
 type ProtocolMeta struct {
@@ -134,6 +156,14 @@ type Host struct {
 	// InsecureAllowHTTP indicates if the server is allowed to serve unencrypted
 	// HTTP requests over TCP.
 	InsecureAllowHTTP bool
+
+	// ServerPeerIDAuth sets the Server's signing key and TTL for server
+	// provided tokens.
+	ServerPeerIDAuth *httpauth.ServerPeerIDAuth
+	// ClientPeerIDAuth sets the Client's signing key and TTL for our stored
+	// tokens.
+	ClientPeerIDAuth *httpauth.ClientPeerIDAuth
+
 	// ServeMux is the http.ServeMux used by the server to serve requests. If
 	// nil, a new serve mux will be created. Users may manually add handlers to
 	// this mux instead of using `SetHTTPHandler`, but if they do, they should
@@ -264,7 +294,7 @@ func (h *Host) setupListeners(listenerErrCh chan error) error {
 		if parsedAddr.useHTTPS {
 			go func() {
 				srv := http.Server{
-					Handler:   h.ServeMux,
+					Handler:   maybeDecorateContextWithAuthMiddleware(h.ServerPeerIDAuth, h.ServeMux),
 					TLSConfig: h.TLSConfig,
 				}
 				listenerErrCh <- srv.ServeTLS(l, "", "")
@@ -272,7 +302,10 @@ func (h *Host) setupListeners(listenerErrCh chan error) error {
 			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 		} else if h.InsecureAllowHTTP {
 			go func() {
-				listenerErrCh <- http.Serve(l, h.ServeMux)
+				srv := http.Server{
+					Handler: maybeDecorateContextWithAuthMiddleware(h.ServerPeerIDAuth, h.ServeMux),
+				}
+				listenerErrCh <- srv.Serve(l)
 			}()
 			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 		} else {
@@ -332,7 +365,20 @@ func (h *Host) Serve() error {
 		h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, h.StreamHost.Addrs()...)
 
 		go func() {
-			errCh <- http.Serve(listener, connectionCloseHeaderMiddleware(h.ServeMux))
+			srv := &http.Server{
+				Handler: connectionCloseHeaderMiddleware(h.ServeMux),
+				ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+					remote := c.RemoteAddr()
+					if remote.Network() == gostream.Network {
+						remoteID, err := peer.Decode(remote.String())
+						if err == nil {
+							return context.WithValue(ctx, clientPeerIDContextKey{}, remoteID)
+						}
+					}
+					return ctx
+				},
+			}
+			errCh <- srv.Serve(listener)
 		}()
 	}
 
@@ -454,7 +500,16 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		})
 	}
 
-	s, err := rt.h.NewStream(r.Context(), rt.server, ProtocolIDForMultistreamSelect)
+	// If r.Context() timeout is greater than DefaultNewStreamTimeout
+	// use DefaultNewStreamTimeout for new stream negotiation.
+	newStreamCtx := r.Context()
+	if deadline, ok := newStreamCtx.Deadline(); !ok || deadline.After(time.Now().Add(DefaultNewStreamTimeout)) {
+		var cancel context.CancelFunc
+		newStreamCtx, cancel = context.WithTimeout(context.Background(), DefaultNewStreamTimeout)
+		defer cancel()
+	}
+
+	s, err := rt.h.NewStream(newStreamCtx, rt.server, ProtocolIDForMultistreamSelect)
 	if err != nil {
 		return nil, err
 	}
@@ -481,58 +536,92 @@ func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 	resp.Body = &streamReadCloser{resp.Body, s}
 
-	locUrl, err := resp.Location()
-	if err == nil {
-		// Location url in response. Is this a multiaddr uri? and is it relative?
-		// If it's relative we want to convert it to an absolute multiaddr uri
-		// so that the next request knows how to reach the endpoint.
-		if locUrl.Scheme == "multiaddr" && resp.Request.URL.Scheme == "multiaddr" {
-			// Check if it's a relative URI and turn it into an absolute one
-			u, err := relativeMultiaddrURIToAbs(resp.Request.URL, locUrl)
-			if err == nil {
-				// It was a relative URI and we were able to convert it to an absolute one
-				// Update the location header to be an absolute multiaddr uri
-				resp.Header.Set("Location", u.String())
+	if r.URL.Scheme == "multiaddr" {
+		// This was a multiaddr uri, we may need to convert relative URI
+		// references to absolute multiaddr ones so that the next request
+		// knows how to reach the endpoint.
+		locationHeader := resp.Header.Get("Location")
+		if locationHeader != "" {
+			u, err := locationHeaderToMultiaddrURI(r.URL, locationHeader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert location header (%s) from request (%s) to multiaddr uri: %w", locationHeader, r.URL, err)
 			}
+			// Update the location header to be an absolute multiaddr uri
+			resp.Header.Set("Location", u.String())
 		}
 	}
 
+	ctxWithServerID := context.WithValue(r.Context(), serverPeerIDContextKey{}, rt.server)
+	resp.Request = resp.Request.WithContext(ctxWithServerID)
 	return resp, nil
 }
 
-var errNotRelative = errors.New("not relative")
-
-// relativeMultiaddrURIToAbs takes a relative multiaddr URI and turns it into an
-// absolute one. Useful, for example, when a server gives us a relative URI for a redirect.
-// It allows the following request (the one after redirected) to reach the correct server.
-func relativeMultiaddrURIToAbs(original *url.URL, relative *url.URL) (*url.URL, error) {
-	// Is this a relative uri? We know if it is because non-relative URI's of the form:
-	// "multiaddr:/ip4/1.2.3.4/tcp/9899" when parsed by Go's url package will have url.OmitHost == true
-	// But if it is relative (just a path to an http resource e.g. /here-instead)
-	// a redirect will inherit the multiaddr scheme, but set url.OmitHost == false. It will also stringify as something like
-	// multiaddr://here-instead.
-	if relative.OmitHost {
-		// Not relative (at least we can't tell). Nothing we can do here
-		return nil, errNotRelative
+// locationHeaderToMultiaddrURI takes our original URL and the response's Location header
+// and, if the location header is relative, turns it into an absolute multiaddr uri.
+// Refer to https://www.rfc-editor.org/rfc/rfc3986#section-4.2 for the
+// definition of a Relative Reference.
+func locationHeaderToMultiaddrURI(original *url.URL, locationHeader string) (*url.URL, error) {
+	if locationHeader == "" {
+		return nil, errors.New("location header is empty")
 	}
+	if strings.HasPrefix(locationHeader, "//") {
+		// This is a network path reference. We don't support these.
+		return nil, errors.New("network path reference not supported")
+	}
+
+	firstSegment := strings.SplitN(locationHeader, "/", 2)[0]
+	if strings.Contains(firstSegment, ":") {
+		// This location contains a scheme, so it's an absolute uri.
+		return url.Parse(locationHeader)
+	}
+
+	// It's a relative reference. We need to resolve it against the original URL.
+	if original.Scheme != "multiaddr" {
+		return nil, errors.New("original uri is not a multiaddr")
+	}
+
+	// Parse the original multiaddr
 	originalStr := original.RawPath
 	if originalStr == "" {
 		originalStr = original.Path
 	}
 	originalMa, err := ma.NewMultiaddr(originalStr)
 	if err != nil {
-		return nil, errors.New("original uri is not a multiaddr")
+		return nil, fmt.Errorf("original uri is not a valid multiaddr: %w", err)
 	}
 
-	relativePathComponent, err := ma.NewComponent("http-path", relative.Path)
+	// Get the target http path
+	var targetHTTPPath string
+	for _, c := range originalMa {
+		if c.Protocol().Code == ma.P_HTTP_PATH {
+			targetHTTPPath = string(c.RawValue())
+			break
+		}
+	}
+
+	// Resolve reference from targetURL and relativeURL
+	targetURL := url.URL{Path: targetHTTPPath}
+	relativeURL := url.URL{Path: locationHeader}
+	resolved := targetURL.ResolveReference(&relativeURL)
+
+	resolvedHTTPPath := resolved.Path
+	if len(resolvedHTTPPath) > 0 && resolvedHTTPPath[0] == '/' {
+		resolvedHTTPPath = resolvedHTTPPath[1:] // trim leading slash. It's implied by the http-path component
+	}
+
+	resolvedHTTPPathComponent, err := ma.NewComponent("http-path", resolvedHTTPPath)
 	if err != nil {
-		return nil, errors.New("relative path is not a valid http-path")
+		return nil, fmt.Errorf("relative path is not a valid http-path: %w", err)
 	}
 
-	withoutPath, _ := ma.SplitFunc(originalMa, func(c ma.Component) bool {
+	withoutPath, afterAndIncludingPath := ma.SplitFunc(originalMa, func(c ma.Component) bool {
 		return c.Protocol().Code == ma.P_HTTP_PATH
 	})
-	withNewPath := withoutPath.Encapsulate(relativePathComponent)
+	withNewPath := withoutPath.AppendComponent(resolvedHTTPPathComponent)
+	if len(afterAndIncludingPath) > 1 {
+		// Include after path since it may include other parts
+		withNewPath = append(withNewPath, afterAndIncludingPath[1:]...)
+	}
 	return url.Parse("multiaddr:" + withNewPath.String())
 }
 
@@ -701,6 +790,18 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch r.URL.Scheme {
 	case "http", "https":
 		h.initDefaultRT()
+		if r.Host == "" {
+			r.Host = r.URL.Host
+		}
+		if h.ClientPeerIDAuth != nil && h.ClientPeerIDAuth.HasToken(r.Host) {
+			serverID, resp, err := h.ClientPeerIDAuth.AuthenticateWithRoundTripper(h.DefaultClientRoundTripper, r)
+			if err != nil {
+				return nil, err
+			}
+			ctxWithServerID := context.WithValue(r.Context(), serverPeerIDContextKey{}, serverID)
+			resp.Request = resp.Request.WithContext(ctxWithServerID)
+			return resp, nil
+		}
 		return h.DefaultClientRoundTripper.RoundTrip(r)
 	case "multiaddr":
 		break
@@ -732,7 +833,12 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		h.initDefaultRT()
 		rt := h.DefaultClientRoundTripper
-		if parsed.sni != parsed.host {
+		sni := parsed.sni
+		if sni == "" {
+			sni = parsed.host
+		}
+
+		if sni != parsed.host {
 			// We have a different host and SNI (e.g. using an IP address but specifying a SNI)
 			// We need to make our own transport to support this.
 			//
@@ -741,6 +847,33 @@ func (h *Host) RoundTrip(r *http.Request) (*http.Response, error) {
 			// completeness, but I don't expect us to hit it often.
 			rt = rt.Clone()
 			rt.TLSClientConfig.ServerName = parsed.sni
+		}
+
+		if parsed.peer != "" {
+			// The peer ID is present. We are making an authenticated request
+			if h.ClientPeerIDAuth == nil {
+				return nil, fmt.Errorf("can not authenticate server. Host.ClientPeerIDAuth field is not set")
+			}
+
+			if r.Host == "" {
+				// Missing a host header. Default to what we parsed earlier
+				r.Host = u.Host
+			}
+
+			serverID, resp, err := h.ClientPeerIDAuth.AuthenticateWithRoundTripper(rt, r)
+			if err != nil {
+				return nil, err
+			}
+
+			if serverID != parsed.peer {
+				resp.Body.Close()
+				return nil, fmt.Errorf("authenticated server ID does not match expected server ID")
+			}
+
+			ctxWithServerID := context.WithValue(r.Context(), serverPeerIDContextKey{}, serverID)
+			resp.Request = resp.Request.WithContext(ctxWithServerID)
+
+			return resp, nil
 		}
 
 		return rt.RoundTrip(r)
@@ -937,10 +1070,12 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 
 	_, afterHTTPS := ma.SplitFirst(afterIncludingHTTPS)
 	if afterHTTPS == nil {
-		return ma.Join(beforeHTTPS, tlsComponent, httpComponent), isHTTPMultiaddr
+		return beforeHTTPS.AppendComponent(tlsComponent, httpComponent), isHTTPMultiaddr
 	}
 
-	return ma.Join(beforeHTTPS, tlsComponent, httpComponent, afterHTTPS), isHTTPMultiaddr
+	t := beforeHTTPS.AppendComponent(tlsComponent, httpComponent)
+	t = append(t, afterHTTPS...)
+	return t, isHTTPMultiaddr
 }
 
 // getAndStorePeerMetadata looks up the protocol path in the well-known mapping and
@@ -1084,5 +1219,24 @@ func connectionCloseHeaderMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
 		next.ServeHTTP(w, r)
+	})
+}
+
+// maybeDecorateContextWithAuth decorates the request context with
+// authentication information if serverAuth is provided.
+func maybeDecorateContextWithAuthMiddleware(serverAuth *httpauth.ServerPeerIDAuth, next http.Handler) http.Handler {
+	if next == nil {
+		return nil
+	}
+	if serverAuth == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if httpauth.HasAuthHeader(r) {
+			serverAuth.ServeHTTPWithNextHandler(w, r, func(p peer.ID, w http.ResponseWriter, r *http.Request) {
+				r = r.WithContext(context.WithValue(r.Context(), clientPeerIDContextKey{}, p))
+				next.ServeHTTP(w, r)
+			})
+		}
 	})
 }

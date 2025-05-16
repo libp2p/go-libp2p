@@ -251,6 +251,9 @@ func (rf *relayFinder) updateAddrs() {
 // This function returns the p2p-circuit addrs for the host.
 // The returned addresses are of the form <relay's-addr>/p2p/<relay's-id>/p2p-circuit.
 func (rf *relayFinder) getCircuitAddrs() []ma.Multiaddr {
+	rf.relayMx.Lock()
+	defer rf.relayMx.Unlock()
+
 	raddrs := make([]ma.Multiaddr, 0, 4*len(rf.relays)+4)
 	for p := range rf.relays {
 		addrs := cleanupAddressSet(rf.host.Peerstore().Addrs(p))

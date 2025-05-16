@@ -811,3 +811,17 @@ func TestCustomTCPDialer(t *testing.T) {
 	})
 	require.ErrorContains(t, err, expectedErr.Error())
 }
+
+func BenchmarkAllAddrs(b *testing.B) {
+	h, err := New()
+
+	addrsHost := h.(interface{ AllAddrs() []ma.Multiaddr })
+	require.NoError(b, err)
+	defer h.Close()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		addrsHost.AllAddrs()
+	}
+}

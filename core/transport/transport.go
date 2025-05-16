@@ -129,11 +129,41 @@ type TransportNetwork interface {
 	AddTransport(t Transport) error
 }
 
+// GatedMaListener is listener that listens for raw(unsecured and non-multiplexed) incoming connections,
+// gates them with a `connmgr.ConnGater`and creates a resource management scope for them.
+// It can be upgraded to a full libp2p transport listener by the Upgrader.
+//
+// Compared to manet.Listener, this listener creates the resource management scope for the accepted connection.
+type GatedMaListener interface {
+	// Accept waits for and returns the next connection to the listener.
+	Accept() (manet.Conn, network.ConnManagementScope, error)
+
+	// Close closes the listener.
+	// Any blocked Accept operations will be unblocked and return errors.
+	Close() error
+
+	// Multiaddr returns the listener's (local) Multiaddr.
+	Multiaddr() ma.Multiaddr
+
+	// Addr returns the net.Listener's network address.
+	Addr() net.Addr
+}
+
 // Upgrader is a multistream upgrader that can upgrade an underlying connection
 // to a full transport connection (secure and multiplexed).
 type Upgrader interface {
 	// UpgradeListener upgrades the passed multiaddr-net listener into a full libp2p-transport listener.
+	//
+	// Deprecated: Use UpgradeGatedMaListener(upgrader.GateMaListener(manet.Listener)) instead.
 	UpgradeListener(Transport, manet.Listener) Listener
+
+	// GateMaListener creates a GatedMaListener from a manet.Listener. It gates the accepted connection
+	// and creates a resource scope for it.
+	GateMaListener(manet.Listener) GatedMaListener
+
+	// UpgradeGatedMaListener upgrades the passed GatedMaListener into a full libp2p-transport listener.
+	UpgradeGatedMaListener(Transport, GatedMaListener) Listener
+
 	// Upgrade upgrades the multiaddr/net connection into a full libp2p-transport connection.
 	Upgrade(ctx context.Context, t Transport, maconn manet.Conn, dir network.Direction, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
 }

@@ -11,7 +11,7 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 
-	"github.com/libp2p/go-nat"
+	"github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat"
 )
 
 // ErrNoMapping signals no mapping exists for an address
@@ -239,11 +239,10 @@ func (nat *NAT) establishMapping(ctx context.Context, protocol string, internalP
 	nat.natmu.Unlock()
 
 	if err != nil || externalPort == 0 {
-		// TODO: log.Event
 		if err != nil {
-			log.Warnf("failed to establish port mapping: %s", err)
+			log.Warnf("NAT port mapping failed: protocol=%s internal_port=%d error=%q", protocol, internalPort, err)
 		} else {
-			log.Warnf("failed to establish port mapping: newport = 0")
+			log.Warnf("NAT port mapping failed: protocol=%s internal_port=%d external_port=0", protocol, internalPort)
 		}
 		// we do not close if the mapping failed,
 		// because it may work again next time.

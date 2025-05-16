@@ -18,8 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type EventA struct{}
-type EventB int
+type (
+	EventA struct{}
+	EventB int
+)
 
 func getN() int {
 	n := 50000
@@ -142,6 +144,10 @@ func (m *mockLogger) Errorf(format string, args ...interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.logs = append(m.logs, fmt.Sprintf(format, args...))
+}
+
+func (m *mockLogger) Warnf(format string, args ...interface{}) {
+	m.Errorf(format, args...)
 }
 
 func (m *mockLogger) Logs() []string {

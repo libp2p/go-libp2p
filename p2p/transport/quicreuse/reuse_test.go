@@ -61,7 +61,7 @@ func cleanup(t *testing.T, reuse *reuse) {
 }
 
 func TestReuseListenOnAllIPv4(t *testing.T) {
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -73,7 +73,7 @@ func TestReuseListenOnAllIPv4(t *testing.T) {
 }
 
 func TestReuseListenOnAllIPv6(t *testing.T) {
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -86,12 +86,12 @@ func TestReuseListenOnAllIPv6(t *testing.T) {
 }
 
 func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
 	require.NoError(t, err)
-	conn, err := reuse.transportWithAssociationForDial(nil, "udp4", addr)
+	conn, err := reuse.TransportWithAssociationForDial(nil, "udp4", addr)
 	require.NoError(t, err)
 	require.Equal(t, 1, conn.GetCount())
 	laddr := conn.LocalAddr().(*net.UDPAddr)
@@ -100,29 +100,29 @@ func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
 }
 
 func TestReuseConnectionWhenDialing(t *testing.T) {
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:0")
 	require.NoError(t, err)
-	lconn, err := reuse.TransportForListen("udp4", addr)
+	ltr, err := reuse.TransportForListen("udp4", addr)
 	require.NoError(t, err)
-	require.Equal(t, 1, lconn.GetCount())
+	require.Equal(t, 1, ltr.GetCount())
 	// dial
 	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
 	require.NoError(t, err)
-	conn, err := reuse.transportWithAssociationForDial(nil, "udp4", raddr)
+	tr, err := reuse.TransportWithAssociationForDial(nil, "udp4", raddr)
 	require.NoError(t, err)
-	require.Equal(t, 2, conn.GetCount())
+	require.Equal(t, 2, tr.GetCount())
 }
 
 func TestReuseConnectionWhenListening(t *testing.T) {
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	cleanup(t, reuse)
 
 	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
 	require.NoError(t, err)
-	tr, err := reuse.transportWithAssociationForDial(nil, "udp4", raddr)
+	tr, err := reuse.TransportWithAssociationForDial(nil, "udp4", raddr)
 	require.NoError(t, err)
 	laddr := &net.UDPAddr{IP: net.IPv4zero, Port: tr.LocalAddr().(*net.UDPAddr).Port}
 	lconn, err := reuse.TransportForListen("udp4", laddr)
@@ -132,13 +132,13 @@ func TestReuseConnectionWhenListening(t *testing.T) {
 }
 
 func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	cleanup(t, reuse)
 
 	// dial any address
 	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
 	require.NoError(t, err)
-	rTr, err := reuse.transportWithAssociationForDial(nil, "udp4", raddr)
+	rTr, err := reuse.TransportWithAssociationForDial(nil, "udp4", raddr)
 	require.NoError(t, err)
 
 	// open a listener
@@ -149,7 +149,7 @@ func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
 	// new dials should go via the listener connection
 	raddr, err = net.ResolveUDPAddr("udp4", "1.1.1.1:1235")
 	require.NoError(t, err)
-	tr, err := reuse.transportWithAssociationForDial(nil, "udp4", raddr)
+	tr, err := reuse.TransportWithAssociationForDial(nil, "udp4", raddr)
 	require.NoError(t, err)
 	require.Equal(t, lTr, tr)
 	require.Equal(t, 2, tr.GetCount())
@@ -166,7 +166,7 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 	if platformHasRoutingTables() {
 		t.Skip("this test only works on platforms that support routing tables")
 	}
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	cleanup(t, reuse)
 
 	router, err := netroute.New()
@@ -183,7 +183,7 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, lconn.GetCount())
 	// dial
-	conn, err := reuse.transportWithAssociationForDial(nil, "udp4", raddr)
+	conn, err := reuse.TransportWithAssociationForDial(nil, "udp4", raddr)
 	require.NoError(t, err)
 	require.Equal(t, 1, conn.GetCount())
 }
@@ -203,7 +203,7 @@ func TestReuseGarbageCollect(t *testing.T) {
 		maxUnusedDuration = 10 * maxUnusedDuration
 	}
 
-	reuse := newReuse(nil, nil)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
 	cleanup(t, reuse)
 
 	numGlobals := func() int {
@@ -214,7 +214,7 @@ func TestReuseGarbageCollect(t *testing.T) {
 
 	raddr, err := net.ResolveUDPAddr("udp4", "1.2.3.4:1234")
 	require.NoError(t, err)
-	dTr, err := reuse.transportWithAssociationForDial(nil, "udp4", raddr)
+	dTr, err := reuse.TransportWithAssociationForDial(nil, "udp4", raddr)
 	require.NoError(t, err)
 	require.Equal(t, 1, dTr.GetCount())
 

@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	_ "github.com/glebarez/go-sqlite"
+	_ "modernc.org/sqlite"
 )
 
 const dbPath = "./test_results.db"

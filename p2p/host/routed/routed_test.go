@@ -33,6 +33,7 @@ func TestRoutedHostConnectToObsoleteAddresses(t *testing.T) {
 	h2, err := basic.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
 	defer h2.Close()
+	h2.Start()
 
 	// assemble the AddrInfo struct to use for the connection attempt
 	pi := peer.AddrInfo{

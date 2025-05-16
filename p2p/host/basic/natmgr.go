@@ -151,7 +151,7 @@ func (nmgr *natManager) doSync() {
 	for _, maddr := range nmgr.net.ListenAddresses() {
 		// Strip the IP
 		maIP, rest := ma.SplitFirst(maddr)
-		if maIP == nil || rest == nil {
+		if maIP == nil || len(rest) == 0 {
 			continue
 		}
 

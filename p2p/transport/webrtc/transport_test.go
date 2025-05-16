@@ -546,7 +546,7 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 		require.NoError(t, err)
 
 		stream.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-		largeBuffer := make([]byte, 2*1024*1024)
+		largeBuffer := make([]byte, 20*1024*1024)
 		_, err = stream.Write(largeBuffer)
 		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
@@ -776,6 +776,14 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 	require.Nil(t, conn)
 }
 
+func newUDPConnLocalhost(t testing.TB) *net.UDPConn {
+	t.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
 func TestConnectionTimeoutOnListener(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	tr.peerConnectionTimeouts.Disconnect = 100 * time.Millisecond
@@ -788,11 +796,12 @@ func TestConnectionTimeoutOnListener(t *testing.T) {
 	defer ln.Close()
 
 	var drop atomic.Bool
-	proxy, err := quicproxy.NewQuicProxy("127.0.0.1:0", &quicproxy.Opts{
-		RemoteAddr: fmt.Sprintf("127.0.0.1:%d", ln.Addr().(*net.UDPAddr).Port),
+	proxy := quicproxy.Proxy{
+		Conn:       newUDPConnLocalhost(t),
+		ServerAddr: ln.Addr().(*net.UDPAddr),
 		DropPacket: func(quicproxy.Direction, []byte) bool { return drop.Load() },
-	})
-	require.NoError(t, err)
+	}
+	require.NoError(t, proxy.Start())
 	defer proxy.Close()
 
 	tr1, connectingPeer := getTransport(t)
