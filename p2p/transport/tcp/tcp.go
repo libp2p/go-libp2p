@@ -331,11 +331,16 @@ func (t *TcpTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
 		list = t.upgrader.GateMaListener(mal)
 	}
 
+	// Always wrap the listener with tcpGatedMaListener to apply TCP-specific configurations
+	tcpList := &tcpGatedMaListener{list, 0}
+
 	if t.enableMetrics {
-		// TODO: Fix this: The tcpListener wrapping should happen on both enableMetrics and disabledMetrics path
-		list = newTracingListener(&tcpGatedMaListener{list, 0}, t.metricsCollector)
+		// Wrap with tracing listener if metrics are enabled
+		return t.upgrader.UpgradeGatedMaListener(t, newTracingListener(tcpList, t.metricsCollector)), nil
 	}
-	return t.upgrader.UpgradeGatedMaListener(t, list), nil
+
+	// Regular path without metrics
+	return t.upgrader.UpgradeGatedMaListener(t, tcpList), nil
 }
 
 // Protocols returns the list of terminal protocols this transport can dial.
