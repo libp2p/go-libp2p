@@ -27,12 +27,12 @@ func getSleepDurationAndRequestCount(rps float64) (time.Duration, int) {
 func assertLimiter(t *testing.T, rl *Limiter, ipAddr netip.Addr, allowed, errorMargin int) {
 	t.Helper()
 	for i := 0; i < allowed; i++ {
-		require.True(t, rl.allow(ipAddr))
+		require.True(t, rl.Allow(ipAddr))
 	}
 	for i := 0; i < errorMargin; i++ {
-		rl.allow(ipAddr)
+		rl.Allow(ipAddr)
 	}
-	require.False(t, rl.allow(ipAddr))
+	require.False(t, rl.Allow(ipAddr))
 }
 
 func TestLimiterGlobal(t *testing.T) {
@@ -52,7 +52,7 @@ func TestLimiterGlobal(t *testing.T) {
 			if limit.RPS == 0 {
 				// 0 implies no rate limiting, any large number would do
 				for i := 0; i < 1000; i++ {
-					require.True(t, rl.allow(addr))
+					require.True(t, rl.Allow(addr))
 				}
 				return
 			}
@@ -75,16 +75,16 @@ func TestLimiterNetworkPrefix(t *testing.T) {
 	}
 	// element within prefix is allowed even over the limit
 	for range rl.GlobalLimit.Burst + 100 {
-		require.True(t, rl.allow(local))
+		require.True(t, rl.Allow(local))
 	}
 	// rate limit public ips
 	assertLimiter(t, rl, public, rl.GlobalLimit.Burst, int(rl.GlobalLimit.RPS*rateLimitErrorTolerance))
 
 	// public ip rejected
-	require.False(t, rl.allow(public))
+	require.False(t, rl.Allow(public))
 	// local ip accepted
 	for range 100 {
-		require.True(t, rl.allow(local))
+		require.True(t, rl.Allow(local))
 	}
 }
 
@@ -101,13 +101,13 @@ func TestLimiterNetworkPrefixWidth(t *testing.T) {
 		},
 	}
 	for range 2 * wideLimit {
-		rl.allow(a1)
+		rl.Allow(a1)
 	}
 	// a1 rejected
-	require.False(t, rl.allow(a1))
+	require.False(t, rl.Allow(a1))
 	// a2 accepted
 	for range wideLimit - narrowLimit {
-		require.True(t, rl.allow(a2))
+		require.True(t, rl.Allow(a2))
 	}
 }
 

@@ -87,7 +87,7 @@ func (r *Limiter) Limit(f func(s network.Stream)) func(s network.Stream) {
 		if !ok {
 			ipAddr = netip.Addr{}
 		}
-		if !r.allow(ipAddr) {
+		if !r.Allow(ipAddr) {
 			_ = s.ResetWithError(network.StreamRateLimited)
 			return
 		}
@@ -95,7 +95,8 @@ func (r *Limiter) Limit(f func(s network.Stream)) func(s network.Stream) {
 	}
 }
 
-func (r *Limiter) allow(ipAddr netip.Addr) bool {
+// Allow returns true if requests for `ipAddr` are within specified rate limits
+func (r *Limiter) Allow(ipAddr netip.Addr) bool {
 	r.init()
 	// Check buckets from the most specific to the least.
 	//
