@@ -64,7 +64,7 @@ type ConnManager struct {
 
 	srk         quic.StatelessResetKey
 	tokenKey    quic.TokenGeneratorKey
-	connContext func(context.Context, *quic.ClientInfo) context.Context
+	connContext connContextFunc
 }
 
 type quicListenerEntry struct {

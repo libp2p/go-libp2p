@@ -91,7 +91,7 @@ type refcountedTransport struct {
 	assocations map[any]struct{}
 }
 
-type connContext = func(context.Context, *quic.ClientInfo) context.Context
+type connContextFunc = func(context.Context, *quic.ClientInfo) (context.Context, error)
 
 // associate an arbitrary value with this transport.
 // This lets us "tag" the refcountedTransport when listening so we can use it
@@ -185,11 +185,11 @@ type reuse struct {
 
 	statelessResetKey *quic.StatelessResetKey
 	tokenGeneratorKey *quic.TokenGeneratorKey
-	connContext       connContext
+	connContext       connContextFunc
 }
 
 func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey, listenUDP listenUDP, sourceIPSelectorFn func() (SourceIPSelector, error),
-	connContext connContext) *reuse {
+	connContext connContextFunc) *reuse {
 	r := &reuse{
 		unicast:            make(map[string]map[int]*refcountedTransport),
 		globalListeners:    make(map[int]*refcountedTransport),

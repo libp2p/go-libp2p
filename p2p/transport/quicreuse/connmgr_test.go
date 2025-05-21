@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -394,10 +395,8 @@ func TestConnContext(t *testing.T) {
 	for _, reuse := range []bool{true, false} {
 		t.Run(fmt.Sprintf("reuseport:%t", reuse), func(t *testing.T) {
 			opts := []Option{
-				ConnContext(func(ctx context.Context, _ *quic.ClientInfo) context.Context {
-					ctx, cancel := context.WithCancel(ctx)
-					cancel()
-					return ctx
+				ConnContext(func(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
+					return ctx, errors.New("test error")
 				})}
 			if !reuse {
 				opts = append(opts, DisableReuseport())
