@@ -183,24 +183,26 @@ type reuse struct {
 	// On Listen, transports are reused from this map if the requested port is 0, and then moved to globalListeners
 	globalDialers map[int]*refcountedTransport
 
-	statelessResetKey *quic.StatelessResetKey
-	tokenGeneratorKey *quic.TokenGeneratorKey
-	connContext       connContextFunc
+	statelessResetKey   *quic.StatelessResetKey
+	tokenGeneratorKey   *quic.TokenGeneratorKey
+	connContext         connContextFunc
+	verifySourceAddress func(addr net.Addr) bool
 }
 
 func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey, listenUDP listenUDP, sourceIPSelectorFn func() (SourceIPSelector, error),
-	connContext connContextFunc) *reuse {
+	connContext connContextFunc, verifySourceAddress func(addr net.Addr) bool) *reuse {
 	r := &reuse{
-		unicast:            make(map[string]map[int]*refcountedTransport),
-		globalListeners:    make(map[int]*refcountedTransport),
-		globalDialers:      make(map[int]*refcountedTransport),
-		closeChan:          make(chan struct{}),
-		gcStopChan:         make(chan struct{}),
-		listenUDP:          listenUDP,
-		sourceIPSelectorFn: sourceIPSelectorFn,
-		statelessResetKey:  srk,
-		tokenGeneratorKey:  tokenKey,
-		connContext:        connContext,
+		unicast:             make(map[string]map[int]*refcountedTransport),
+		globalListeners:     make(map[int]*refcountedTransport),
+		globalDialers:       make(map[int]*refcountedTransport),
+		closeChan:           make(chan struct{}),
+		gcStopChan:          make(chan struct{}),
+		listenUDP:           listenUDP,
+		sourceIPSelectorFn:  sourceIPSelectorFn,
+		statelessResetKey:   srk,
+		tokenGeneratorKey:   tokenKey,
+		connContext:         connContext,
+		verifySourceAddress: verifySourceAddress,
 	}
 	go r.gc()
 	return r
@@ -459,11 +461,13 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 func (r *reuse) newTransport(conn net.PacketConn) *refcountedTransport {
 	return &refcountedTransport{
 		QUICTransport: &wrappedQUICTransport{
-			Transport: &quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: r.statelessResetKey,
-				ConnContext:       r.connContext,
-			},
+			Transport: newQuicTransport(
+				conn,
+				r.tokenGeneratorKey,
+				r.statelessResetKey,
+				r.connContext,
+				r.verifySourceAddress,
+			),
 		},
 		packetConn: conn,
 	}

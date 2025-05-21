@@ -20,6 +20,7 @@ import (
 	"github.com/quic-go/quic-go"
 	quiclogging "github.com/quic-go/quic-go/logging"
 	quicmetrics "github.com/quic-go/quic-go/metrics"
+	"golang.org/x/time/rate"
 )
 
 type QUICListener interface {
@@ -65,6 +66,8 @@ type ConnManager struct {
 	srk         quic.StatelessResetKey
 	tokenKey    quic.TokenGeneratorKey
 	connContext connContextFunc
+
+	verifySourceAddress func(addr net.Addr) bool
 }
 
 type quicListenerEntry struct {
@@ -104,9 +107,17 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
+
+	// Verify source addresses when under high load.
+	// This is ensures that the number of spoofed/unverified addresses that are passed to downstream rate limiters
+	// are limited, which enables IP address based rate limiting.
+	sourceAddrRateLimiter := rate.NewLimiter(1000, 1000)
+	verifySourceAddress := func(_ net.Addr) bool {
+		return !sourceAddrRateLimiter.Allow()
+	}
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext)
-		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, verifySourceAddress)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, verifySourceAddress)
 	}
 	return cm, nil
 }
@@ -379,12 +390,14 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 func (c *ConnManager) newSingleOwnerTransport(conn net.PacketConn) *singleOwnerTransport {
 	return &singleOwnerTransport{
 		Transport: &wrappedQUICTransport{
-			&quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: &c.srk,
-				TokenGeneratorKey: &c.tokenKey,
-				ConnContext:       c.connContext,
-			}},
+			Transport: newQuicTransport(
+				conn,
+				&c.tokenKey,
+				&c.srk,
+				c.connContext,
+				c.verifySourceAddress,
+			),
+		},
 		packetConn: conn}
 }
 
@@ -416,4 +429,20 @@ var _ QUICTransport = (*wrappedQUICTransport)(nil)
 
 func (t *wrappedQUICTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
 	return t.Transport.Listen(tlsConf, conf)
+}
+
+func newQuicTransport(
+	conn net.PacketConn,
+	tokenGeneratorKey *quic.TokenGeneratorKey,
+	statelessResetKey *quic.StatelessResetKey,
+	connContext connContextFunc,
+	verifySourceAddress func(addr net.Addr) bool,
+) *quic.Transport {
+	return &quic.Transport{
+		Conn:                conn,
+		TokenGeneratorKey:   tokenGeneratorKey,
+		StatelessResetKey:   statelessResetKey,
+		ConnContext:         connContext,
+		VerifySourceAddress: verifySourceAddress,
+	}
 }
