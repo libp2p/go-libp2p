@@ -39,7 +39,7 @@ type QUICTransport interface {
 	io.Closer
 }
 
-// ConnManager implements using the same listen address for both QUIC & WebTransport, reusing
+// ConnManager enables QUIC and WebTransport transport to listen on the same port, reusing
 // listen addresses for dialing, and provides a PacketConn for sharing the listen address
 // with other protocols like WebRTC.
 // Reusing the listen address for dialing helps with address discovery and hole punching. For details

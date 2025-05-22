@@ -894,19 +894,12 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
+			mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
+				// Block the connection
+				return nil, fmt.Errorf("connections blocked")
+			})
 			if strings.HasPrefix(tc.Name, "QUIC") || strings.HasPrefix(tc.Name, "WebTransport") {
-				// QUIC and WebTransport may can OpenConnection multiple times depending on when the
-				// quic client resends the ClientHello Packet.
-				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
-					// Block the connection
-					return nil, fmt.Errorf("connections blocked")
-				})
 				mockRcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)
-			} else {
-				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
-					// Block the connection
-					return nil, fmt.Errorf("connections blocked")
-				})
 			}
 			mockRcmgr.EXPECT().Close().AnyTimes()
 

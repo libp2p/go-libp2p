@@ -383,7 +383,10 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 				opts := []quicreuse.Option{
 					quicreuse.ConnContext(func(ctx context.Context, clientInfo *quic.ClientInfo) (context.Context, error) {
 						// even if creating the quic maddr fails, let the rcmgr decide what to do with the connection
-						addr, _ := quicreuse.ToQuicMultiaddr(clientInfo.RemoteAddr, quic.Version1)
+						addr, err := quicreuse.ToQuicMultiaddr(clientInfo.RemoteAddr, quic.Version1)
+						if err != nil {
+							addr = nil
+						}
 						scope, err := rcmgr.OpenConnection(network.DirInbound, false, addr)
 						if err != nil {
 							return ctx, err
