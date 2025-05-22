@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -630,7 +630,7 @@ func (s *addrStatus) AddOutcome(at time.Time, rch network.Reachability, windowSi
 
 // RemoveBefore removes outcomes before t
 func (s *addrStatus) RemoveBefore(t time.Time) {
-	var end = 0
+	end := 0
 	for ; end < len(s.outcomes); end++ {
 		if !s.outcomes[end].At.Before(t) {
 			break
