@@ -156,8 +156,8 @@ type HostOpts struct {
 
 	// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses in identify
 	DisableIdentifyAddressDiscovery bool
-	EnableAutoNATv2                 bool
-	AutoNATv2Dialer                 host.Host
+
+	AutoNATv2 *autonatv2.AutoNAT
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -236,7 +236,16 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}); ok {
 		tfl = s.TransportForListening
 	}
-	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, h.addrsUpdatedChan)
+
+	if opts.AutoNATv2 != nil {
+		h.autonatv2 = opts.AutoNATv2
+	}
+
+	var autonatv2Client autonatv2Client // avoid typed nil errors
+	if h.autonatv2 != nil {
+		autonatv2Client = h.autonatv2
+	}
+	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, h.addrsUpdatedChan, autonatv2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}
@@ -283,17 +292,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		h.pings = ping.NewPingService(h)
 	}
 
-	if opts.EnableAutoNATv2 {
-		var mt autonatv2.MetricsTracer
-		if opts.EnableMetrics {
-			mt = autonatv2.NewMetricsTracer(opts.PrometheusRegisterer)
-		}
-		h.autonatv2, err = autonatv2.New(h, opts.AutoNATv2Dialer, autonatv2.WithMetricsTracer(mt))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create autonatv2: %w", err)
-		}
-	}
-
 	if !h.disableSignedPeerRecord {
 		h.signKey = h.Peerstore().PrivKey(h.ID())
 		cab, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
@@ -320,7 +318,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 func (h *BasicHost) Start() {
 	h.psManager.Start()
 	if h.autonatv2 != nil {
-		err := h.autonatv2.Start()
+		err := h.autonatv2.Start(h)
 		if err != nil {
 			log.Errorf("autonat v2 failed to start: %s", err)
 		}
@@ -754,6 +752,16 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	return h.addressManager.DirectAddrs()
 }
 
+// ReachableAddrs returns all addresses of the host that are reachable from the internet
+// as verified by autonatv2.
+//
+// Experimental: This API may change in the future without deprecation.
+//
+// Requires AutoNATv2 to be enabled.
+func (h *BasicHost) ReachableAddrs() []ma.Multiaddr {
+	return h.addressManager.ReachableAddrs()
+}
+
 func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
 	totalSize := 0
 	for _, a := range addrs {
@@ -836,7 +844,6 @@ func (h *BasicHost) Close() error {
 		if h.cmgr != nil {
 			h.cmgr.Close()
 		}
-
 		h.addressManager.Close()
 
 		if h.ids != nil {
