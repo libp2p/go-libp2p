@@ -13,7 +13,7 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-type refCountedQuicTransport interface {
+type RefCountedQUICTransport interface {
 	LocalAddr() net.Addr
 
 	// Used to send packets directly around QUIC. Useful for hole punching.
@@ -37,6 +37,7 @@ type singleOwnerTransport struct {
 }
 
 var _ QUICTransport = &singleOwnerTransport{}
+var _ RefCountedQUICTransport = (*singleOwnerTransport)(nil)
 
 func (c *singleOwnerTransport) IncreaseCount() {}
 func (c *singleOwnerTransport) DecreaseCount() { c.Transport.Close() }
@@ -264,7 +265,7 @@ func (r *reuse) gc() {
 	}
 }
 
-func (r *reuse) transportWithAssociationForDial(association any, network string, raddr *net.UDPAddr) (*refcountedTransport, error) {
+func (r *reuse) TransportWithAssociationForDial(association any, network string, raddr *net.UDPAddr) (*refcountedTransport, error) {
 	var ip *net.IP
 
 	// Only bother looking up the source address if we actually _have_ non 0.0.0.0 listeners.
@@ -368,7 +369,7 @@ func (r *reuse) AddTransport(tr *refcountedTransport, laddr *net.UDPAddr) error 
 	return nil
 }
 
-func (r *reuse) AssertTransportExists(tr refCountedQuicTransport) error {
+func (r *reuse) AssertTransportExists(tr RefCountedQUICTransport) error {
 	t, ok := tr.(*refcountedTransport)
 	if !ok {
 		return fmt.Errorf("invalid transport type: expected: *refcountedTransport, got: %T", tr)

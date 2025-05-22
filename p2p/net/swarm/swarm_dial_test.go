@@ -427,5 +427,5 @@ func TestSkipDialingManyDNS(t *testing.T) {
 
 	resolved := s.resolveAddrs(context.Background(), peer.AddrInfo{ID: id, Addrs: []ma.Multiaddr{addr}})
 	require.NoError(t, err)
-	require.Less(t, len(resolved), 3)
+	require.Less(t, len(resolved), 3, "got: %v", resolved)
 }

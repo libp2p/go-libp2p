@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 )
 
 // config is the configuration struct for the basic connection manager.

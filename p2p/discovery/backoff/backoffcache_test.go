@@ -13,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/discovery"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	mockClock "github.com/benbjohnson/clock"
+	mockClock "github.com/filecoin-project/go-clock"
 )
 
 type delayedDiscovery struct {

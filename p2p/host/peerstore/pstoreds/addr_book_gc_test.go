@@ -8,7 +8,7 @@ import (
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/test"
 
-	mockClock "github.com/benbjohnson/clock"
+	mockClock "github.com/filecoin-project/go-clock"
 	"github.com/ipfs/go-datastore/query"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
