@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/libp2p/go-libp2p"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/test"

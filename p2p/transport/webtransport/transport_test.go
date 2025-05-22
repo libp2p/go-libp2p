@@ -28,7 +28,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
@@ -40,8 +40,10 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-const clockSkewAllowance = time.Hour
-const certValidity = 14 * 24 * time.Hour
+const (
+	clockSkewAllowance = time.Hour
+	certValidity       = 14 * 24 * time.Hour
+)
 
 func newIdentity(t *testing.T) (peer.ID, ic.PrivKey) {
 	key, _, err := ic.GenerateEd25519Key(rand.Reader)
@@ -699,7 +701,6 @@ func serverSendsBackValidCert(t *testing.T, timeSinceUnixEpoch time.Duration, ke
 			return nil
 		},
 	}, &quic.Config{MaxIdleTimeout: time.Second})
-
 	if err != nil {
 		if _, ok := err.(*quic.IdleTimeoutError); ok {
 			return errTimeout
@@ -712,7 +713,7 @@ func serverSendsBackValidCert(t *testing.T, timeSinceUnixEpoch time.Duration, ke
 }
 
 func TestServerSendsBackValidCert(t *testing.T) {
-	var maxTimeoutErrors = 10
+	maxTimeoutErrors := 10
 	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, keySeed int64, randomClientSkew time.Duration) bool {
 		err := serverSendsBackValidCert(t, timeSinceUnixEpoch, keySeed, randomClientSkew)
 		if err == errTimeout {
@@ -790,7 +791,6 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 		})
 
 		return found
-
 	}, nil))
 }
 

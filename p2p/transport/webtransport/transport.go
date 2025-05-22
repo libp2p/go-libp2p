@@ -22,7 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -90,9 +90,11 @@ type transport struct {
 	handshakeTimeout time.Duration
 }
 
-var _ tpt.Transport = &transport{}
-var _ tpt.Resolver = &transport{}
-var _ io.Closer = &transport{}
+var (
+	_ tpt.Transport = &transport{}
+	_ tpt.Resolver  = &transport{}
+	_ io.Closer     = &transport{}
+)
 
 func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {

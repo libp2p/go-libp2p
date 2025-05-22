@@ -9,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	tu "github.com/libp2p/go-libp2p/core/test"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/stretchr/testify/require"
 )
 
