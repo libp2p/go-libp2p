@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"strings"
 	"sync"
@@ -24,8 +25,9 @@ var log = logging.Logger("rcmgr")
 type resourceManager struct {
 	limits Limiter
 
-	connLimiter     *connLimiter
-	connRateLimiter *rate.Limiter
+	connLimiter                    *connLimiter
+	connRateLimiter                *rate.Limiter
+	verifySourceAddressRateLimiter *rate.Limiter
 
 	trace          *trace
 	metrics        *metrics
@@ -137,13 +139,14 @@ type Option func(*resourceManager) error
 func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager, error) {
 	allowlist := newAllowlist()
 	r := &resourceManager{
-		limits:          limits,
-		connLimiter:     newConnLimiter(),
-		allowlist:       &allowlist,
-		svc:             make(map[string]*serviceScope),
-		proto:           make(map[protocol.ID]*protocolScope),
-		peer:            make(map[peer.ID]*peerScope),
-		connRateLimiter: newConnRateLimiter(),
+		limits:                         limits,
+		connLimiter:                    newConnLimiter(),
+		allowlist:                      &allowlist,
+		svc:                            make(map[string]*serviceScope),
+		proto:                          make(map[protocol.ID]*protocolScope),
+		peer:                           make(map[peer.ID]*peerScope),
+		connRateLimiter:                newConnRateLimiter(),
+		verifySourceAddressRateLimiter: newVerifySourceAddressRateLimiter(),
 	}
 
 	for _, opt := range opts {
@@ -342,7 +345,27 @@ func (r *resourceManager) nextStreamId() int64 {
 	return r.streamId
 }
 
+// VerifySourceAddress tells the transport to verify the peer's IP address before
+// initiating a handshake.
+func (r *resourceManager) VerifySourceAddress(addr net.Addr) bool {
+	if r.verifySourceAddressRateLimiter == nil {
+		return false
+	}
+	// Verify all non IP addr source addrs
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return true
+	}
+	ipAddr, err := netip.ParseAddr(host)
+	if err != nil {
+		return true
+	}
+	return !r.verifySourceAddressRateLimiter.Allow(ipAddr)
+}
+
 // OpenConnectionNoIP is deprecated and will be removed in the next release
+//
+// Deprecated: Use OpenConnection instead
 func (r *resourceManager) OpenConnectionNoIP(dir network.Direction, usefd bool, endpoint multiaddr.Multiaddr) (network.ConnManagementScope, error) {
 	return r.openConnection(dir, usefd, endpoint, netip.Addr{})
 }

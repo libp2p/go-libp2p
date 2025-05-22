@@ -1,6 +1,8 @@
 package network
 
 import (
+	"net"
+
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
@@ -86,6 +88,10 @@ type ResourceManager interface {
 	// The caller owns the returned scope and is responsible for calling Done in order to signify
 	// the end of the scope's span.
 	OpenConnection(dir Direction, usefd bool, endpoint multiaddr.Multiaddr) (ConnManagementScope, error)
+
+	// VerifySourceAddress tells the transport to verify the source address for an incoming connection
+	// before gating the connection with OpenConnection.
+	VerifySourceAddress(addr net.Addr) bool
 
 	// OpenStream creates a new stream scope, initially unnegotiated.
 	// An unnegotiated stream will be initially unattached to any protocol scope
@@ -275,6 +281,8 @@ type ScopeKey struct{}
 // NullResourceManager is a stub for tests and initialization of default values
 type NullResourceManager struct{}
 
+var _ ResourceManager = (*NullResourceManager)(nil)
+
 var _ ResourceScope = (*NullScope)(nil)
 var _ ResourceScopeSpan = (*NullScope)(nil)
 var _ ServiceScope = (*NullScope)(nil)
@@ -309,6 +317,10 @@ func (n *NullResourceManager) OpenConnection(dir Direction, usefd bool, endpoint
 func (n *NullResourceManager) OpenStream(p peer.ID, dir Direction) (StreamManagementScope, error) {
 	return &NullScope{}, nil
 }
+func (*NullResourceManager) VerifySourceAddress(addr net.Addr) bool {
+	return false
+}
+
 func (n *NullResourceManager) Close() error {
 	return nil
 }
@@ -327,3 +339,4 @@ func (n *NullScope) ProtocolScope() ProtocolScope             { return &NullScop
 func (n *NullScope) SetProtocol(proto protocol.ID) error      { return nil }
 func (n *NullScope) ServiceScope() ServiceScope               { return &NullScope{} }
 func (n *NullScope) SetService(srv string) error              { return nil }
+func (n *NullScope) VerifySourceAddress(addr net.Addr) bool   { return false }

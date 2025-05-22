@@ -1,6 +1,7 @@
 package rcmgr
 
 import (
+	"net"
 	"net/netip"
 	"testing"
 
@@ -1119,12 +1120,15 @@ func TestResourceManagerRateLimiting(t *testing.T) {
 	limits.system.Conns = 100 // High enough to not be the limiting factor
 	limits.transient.Conns = 100
 
-	// Create a rate limiter with very low RPS
+	// Create limiters with very low RPS
 	limiter := &rate.Limiter{
 		GlobalLimit: rate.Limit{RPS: 0.00001, Burst: 2},
 	}
+	sourceLimiter := &rate.Limiter{
+		GlobalLimit: rate.Limit{RPS: 0.00001, Burst: 1},
+	}
 
-	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithConnRateLimiter(limiter))
+	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithConnRateLimiters(limiter, sourceLimiter))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1142,4 +1146,14 @@ func TestResourceManagerRateLimiting(t *testing.T) {
 
 	connScope, err = rcmgr.OpenConnection(network.DirInbound, true, addr)
 	require.ErrorContains(t, err, "rate limit exceeded")
+
+	netAddr := &net.UDPAddr{
+		IP:   net.ParseIP("1.2.3.4"),
+		Port: 1234,
+	}
+	verify := rcmgr.VerifySourceAddress(netAddr)
+	require.False(t, verify)
+
+	verify = rcmgr.VerifySourceAddress(netAddr)
+	require.True(t, verify)
 }

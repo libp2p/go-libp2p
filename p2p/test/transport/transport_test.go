@@ -283,7 +283,14 @@ var transportsToTest = []TransportTestCase{
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.QUICReuse(quicreuse.NewConnManager))
 			} else {
-				libp2pOpts = append(libp2pOpts, libp2p.QUICReuse(quicreuse.NewConnManager), libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
+				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
+				if !opts.NoRcmgr && opts.ResourceManager != nil {
+					qr = libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress))
+				}
+				libp2pOpts = append(libp2pOpts,
+					qr,
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+				)
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -311,7 +318,14 @@ var transportsToTest = []TransportTestCase{
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.QUICReuse(quicreuse.NewConnManager))
 			} else {
-				libp2pOpts = append(libp2pOpts, libp2p.QUICReuse(quicreuse.NewConnManager), libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
+				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
+				if !opts.NoRcmgr && opts.ResourceManager != nil {
+					qr = libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress))
+				}
+				libp2pOpts = append(libp2pOpts,
+					qr,
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"),
+				)
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -887,6 +901,7 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 					// Block the connection
 					return nil, fmt.Errorf("connections blocked")
 				})
+				mockRcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)
 			} else {
 				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
 					// Block the connection

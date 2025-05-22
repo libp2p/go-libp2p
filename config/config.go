@@ -394,6 +394,9 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 						})
 						return ctx, nil
 					}),
+					quicreuse.VerifySourceAddress(func(addr net.Addr) bool {
+						return rcmgr.VerifySourceAddress(addr)
+					}),
 				}
 				if !cfg.DisableMetrics {
 					opts = append(opts, quicreuse.EnableMetrics(cfg.PrometheusRegisterer))

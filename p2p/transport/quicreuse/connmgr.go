@@ -112,12 +112,19 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	// This is ensures that the number of spoofed/unverified addresses that are passed to downstream rate limiters
 	// are limited, which enables IP address based rate limiting.
 	sourceAddrRateLimiter := rate.NewLimiter(1000, 1000)
-	verifySourceAddress := func(_ net.Addr) bool {
-		return !sourceAddrRateLimiter.Allow()
+	vsa := cm.verifySourceAddress
+	cm.verifySourceAddress = func(addr net.Addr) bool {
+		if sourceAddrRateLimiter.Allow() {
+			if vsa != nil {
+				return vsa(addr)
+			}
+			return false
+		}
+		return true
 	}
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, verifySourceAddress)
-		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, verifySourceAddress)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, cm.verifySourceAddress)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, cm.verifySourceAddress)
 	}
 	return cm, nil
 }

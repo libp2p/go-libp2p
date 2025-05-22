@@ -46,6 +46,15 @@ func ConnContext(f func(ctx context.Context, clientInfo *quic.ClientInfo) (conte
 	}
 }
 
+// VerifySourceAddress returns whether to verify the source address for incoming connection requests.
+// For more details see: `quic.Transport.VerifySourceAddress`
+func VerifySourceAddress(f func(addr net.Addr) bool) Option {
+	return func(m *ConnManager) error {
+		m.verifySourceAddress = f
+		return nil
+	}
+}
+
 // EnableMetrics enables Prometheus metrics collection. If reg is nil,
 // prometheus.DefaultRegisterer will be used as the registerer.
 func EnableMetrics(reg prometheus.Registerer) Option {
