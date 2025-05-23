@@ -799,7 +799,7 @@ func TestConnectionTimeoutOnListener(t *testing.T) {
 	proxy := quicproxy.Proxy{
 		Conn:       newUDPConnLocalhost(t),
 		ServerAddr: ln.Addr().(*net.UDPAddr),
-		DropPacket: func(quicproxy.Direction, []byte) bool { return drop.Load() },
+		DropPacket: func(_ quicproxy.Direction, _, _ net.Addr, _ []byte) bool { return drop.Load() },
 	}
 	require.NoError(t, proxy.Start())
 	defer proxy.Close()

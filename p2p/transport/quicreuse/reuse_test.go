@@ -61,7 +61,7 @@ func cleanup(t *testing.T, reuse *reuse) {
 }
 
 func TestReuseListenOnAllIPv4(t *testing.T) {
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -73,7 +73,7 @@ func TestReuseListenOnAllIPv4(t *testing.T) {
 }
 
 func TestReuseListenOnAllIPv6(t *testing.T) {
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -86,7 +86,7 @@ func TestReuseListenOnAllIPv6(t *testing.T) {
 }
 
 func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
@@ -100,7 +100,7 @@ func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
 }
 
 func TestReuseConnectionWhenDialing(t *testing.T) {
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:0")
@@ -117,7 +117,7 @@ func TestReuseConnectionWhenDialing(t *testing.T) {
 }
 
 func TestReuseConnectionWhenListening(t *testing.T) {
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	cleanup(t, reuse)
 
 	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
@@ -132,7 +132,7 @@ func TestReuseConnectionWhenListening(t *testing.T) {
 }
 
 func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	cleanup(t, reuse)
 
 	// dial any address
@@ -166,7 +166,7 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 	if platformHasRoutingTables() {
 		t.Skip("this test only works on platforms that support routing tables")
 	}
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	cleanup(t, reuse)
 
 	router, err := netroute.New()
@@ -203,7 +203,7 @@ func TestReuseGarbageCollect(t *testing.T) {
 		maxUnusedDuration = 10 * maxUnusedDuration
 	}
 
-	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn)
+	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
 	cleanup(t, reuse)
 
 	numGlobals := func() int {

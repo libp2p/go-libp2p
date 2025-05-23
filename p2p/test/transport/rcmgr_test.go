@@ -56,11 +56,6 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						expectedAddr = gomock.Any()
 					}
 
-					expectFd := true
-					if strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport") || strings.Contains(tc.Name, "WebRTC") {
-						expectFd = false
-					}
-
 					peerScope := mocknetwork.NewMockPeerScope(ctrl)
 					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, pri uint8) {
 						reservedMemory.Add(int32(amount))
@@ -94,9 +89,16 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					}
 					connScope.EXPECT().Done().MinTimes(1)
 
-					var allStreamsDone sync.WaitGroup
-
+					expectFd := true
+					if strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport") || strings.Contains(tc.Name, "WebRTC") {
+						expectFd = false
+					}
+					if !testDialer && (strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport")) {
+						rcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)
+					}
 					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
+
+					var allStreamsDone sync.WaitGroup
 					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
 						allStreamsDone.Add(1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)

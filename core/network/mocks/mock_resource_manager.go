@@ -10,6 +10,7 @@
 package mocknetwork
 
 import (
+	net "net"
 	reflect "reflect"
 
 	network "github.com/libp2p/go-libp2p/core/network"
@@ -85,6 +86,20 @@ func (m *MockResourceManager) OpenStream(p peer.ID, dir network.Direction) (netw
 func (mr *MockResourceManagerMockRecorder) OpenStream(p, dir any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenStream", reflect.TypeOf((*MockResourceManager)(nil).OpenStream), p, dir)
+}
+
+// VerifySourceAddress mocks base method.
+func (m *MockResourceManager) VerifySourceAddress(addr net.Addr) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "VerifySourceAddress", addr)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// VerifySourceAddress indicates an expected call of VerifySourceAddress.
+func (mr *MockResourceManagerMockRecorder) VerifySourceAddress(addr any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VerifySourceAddress", reflect.TypeOf((*MockResourceManager)(nil).VerifySourceAddress), addr)
 }
 
 // ViewPeer mocks base method.

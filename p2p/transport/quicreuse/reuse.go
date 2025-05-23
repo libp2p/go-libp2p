@@ -91,6 +91,8 @@ type refcountedTransport struct {
 	assocations map[any]struct{}
 }
 
+type connContextFunc = func(context.Context, *quic.ClientInfo) (context.Context, error)
+
 // associate an arbitrary value with this transport.
 // This lets us "tag" the refcountedTransport when listening so we can use it
 // later for dialing. Necessary for holepunching and learning about our own
@@ -181,21 +183,26 @@ type reuse struct {
 	// On Listen, transports are reused from this map if the requested port is 0, and then moved to globalListeners
 	globalDialers map[int]*refcountedTransport
 
-	statelessResetKey *quic.StatelessResetKey
-	tokenGeneratorKey *quic.TokenGeneratorKey
+	statelessResetKey   *quic.StatelessResetKey
+	tokenGeneratorKey   *quic.TokenGeneratorKey
+	connContext         connContextFunc
+	verifySourceAddress func(addr net.Addr) bool
 }
 
-func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey, listenUDP listenUDP, sourceIPSelectorFn func() (SourceIPSelector, error)) *reuse {
+func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey, listenUDP listenUDP, sourceIPSelectorFn func() (SourceIPSelector, error),
+	connContext connContextFunc, verifySourceAddress func(addr net.Addr) bool) *reuse {
 	r := &reuse{
-		unicast:            make(map[string]map[int]*refcountedTransport),
-		globalListeners:    make(map[int]*refcountedTransport),
-		globalDialers:      make(map[int]*refcountedTransport),
-		closeChan:          make(chan struct{}),
-		gcStopChan:         make(chan struct{}),
-		listenUDP:          listenUDP,
-		sourceIPSelectorFn: sourceIPSelectorFn,
-		statelessResetKey:  srk,
-		tokenGeneratorKey:  tokenKey,
+		unicast:             make(map[string]map[int]*refcountedTransport),
+		globalListeners:     make(map[int]*refcountedTransport),
+		globalDialers:       make(map[int]*refcountedTransport),
+		closeChan:           make(chan struct{}),
+		gcStopChan:          make(chan struct{}),
+		listenUDP:           listenUDP,
+		sourceIPSelectorFn:  sourceIPSelectorFn,
+		statelessResetKey:   srk,
+		tokenGeneratorKey:   tokenKey,
+		connContext:         connContext,
+		verifySourceAddress: verifySourceAddress,
 	}
 	go r.gc()
 	return r
@@ -341,16 +348,7 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	if err != nil {
 		return nil, err
 	}
-	tr := &refcountedTransport{
-		QUICTransport: &wrappedQUICTransport{
-			Transport: &quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: r.statelessResetKey,
-				TokenGeneratorKey: r.tokenGeneratorKey,
-			},
-		},
-		packetConn: conn,
-	}
+	tr := r.newTransport(conn)
 	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = tr
 	return tr, nil
 }
@@ -434,18 +432,10 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	if err != nil {
 		return nil, err
 	}
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	tr := &refcountedTransport{
-		QUICTransport: &wrappedQUICTransport{
-			Transport: &quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: r.statelessResetKey,
-			},
-		},
-		packetConn: conn,
-	}
+	tr := r.newTransport(conn)
 	tr.IncreaseCount()
 
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	// Deal with listen on a global address
 	if localAddr.IP.IsUnspecified() {
 		// The kernel already checked that the laddr is not already listen
@@ -466,6 +456,21 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	// so we need not check here (when we create ListenUDP).
 	r.unicast[localAddr.IP.String()][localAddr.Port] = tr
 	return tr, nil
+}
+
+func (r *reuse) newTransport(conn net.PacketConn) *refcountedTransport {
+	return &refcountedTransport{
+		QUICTransport: &wrappedQUICTransport{
+			Transport: newQuicTransport(
+				conn,
+				r.tokenGeneratorKey,
+				r.statelessResetKey,
+				r.connContext,
+				r.verifySourceAddress,
+			),
+		},
+		packetConn: conn,
+	}
 }
 
 func (r *reuse) Close() error {

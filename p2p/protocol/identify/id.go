@@ -20,9 +20,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	"github.com/libp2p/go-libp2p/p2p/internal/rate"
 	useragent "github.com/libp2p/go-libp2p/p2p/protocol/identify/internal/user-agent"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
+	"github.com/libp2p/go-libp2p/x/rate"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-msgio/pbio"

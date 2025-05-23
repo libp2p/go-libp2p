@@ -20,6 +20,7 @@ import (
 	"github.com/quic-go/quic-go"
 	quiclogging "github.com/quic-go/quic-go/logging"
 	quicmetrics "github.com/quic-go/quic-go/metrics"
+	"golang.org/x/time/rate"
 )
 
 type QUICListener interface {
@@ -38,7 +39,7 @@ type QUICTransport interface {
 	io.Closer
 }
 
-// ConnManager implements using the same listen address for both QUIC & WebTransport, reusing
+// ConnManager enables QUIC and WebTransport transports to listen on the same port, reusing
 // listen addresses for dialing, and provides a PacketConn for sharing the listen address
 // with other protocols like WebRTC.
 // Reusing the listen address for dialing helps with address discovery and hole punching. For details
@@ -62,8 +63,11 @@ type ConnManager struct {
 	quicListenersMu sync.Mutex
 	quicListeners   map[string]quicListenerEntry
 
-	srk      quic.StatelessResetKey
-	tokenKey quic.TokenGeneratorKey
+	srk         quic.StatelessResetKey
+	tokenKey    quic.TokenGeneratorKey
+	connContext connContextFunc
+
+	verifySourceAddress func(addr net.Addr) bool
 }
 
 type quicListenerEntry struct {
@@ -103,9 +107,24 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
+
+	// Verify source addresses when under high load.
+	// This is ensures that the number of spoofed/unverified addresses that are passed to downstream rate limiters
+	// are limited, which enables IP address based rate limiting.
+	sourceAddrRateLimiter := rate.NewLimiter(1000, 1000)
+	vsa := cm.verifySourceAddress
+	cm.verifySourceAddress = func(addr net.Addr) bool {
+		if sourceAddrRateLimiter.Allow() {
+			if vsa != nil {
+				return vsa(addr)
+			}
+			return false
+		}
+		return true
+	}
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
-		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, cm.verifySourceAddress)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, cm.verifySourceAddress)
 	}
 	return cm, nil
 }
@@ -290,16 +309,7 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{
-		packetConn: conn,
-		Transport: &wrappedQUICTransport{
-			&quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: &c.srk,
-				TokenGeneratorKey: &c.tokenKey,
-			},
-		},
-	}, nil
+	return c.newSingleOwnerTransport(conn), nil
 }
 
 type associationKey struct{}
@@ -378,11 +388,24 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
 	conn, err := c.listenUDP(network, laddr)
-
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{Transport: &wrappedQUICTransport{&quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, packetConn: conn}, nil
+	return c.newSingleOwnerTransport(conn), nil
+}
+
+func (c *ConnManager) newSingleOwnerTransport(conn net.PacketConn) *singleOwnerTransport {
+	return &singleOwnerTransport{
+		Transport: &wrappedQUICTransport{
+			Transport: newQuicTransport(
+				conn,
+				&c.tokenKey,
+				&c.srk,
+				c.connContext,
+				c.verifySourceAddress,
+			),
+		},
+		packetConn: conn}
 }
 
 // Protocols returns the supported QUIC protocols. The only supported protocol at the moment is /quic-v1.
@@ -413,4 +436,20 @@ var _ QUICTransport = (*wrappedQUICTransport)(nil)
 
 func (t *wrappedQUICTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
 	return t.Transport.Listen(tlsConf, conf)
+}
+
+func newQuicTransport(
+	conn net.PacketConn,
+	tokenGeneratorKey *quic.TokenGeneratorKey,
+	statelessResetKey *quic.StatelessResetKey,
+	connContext connContextFunc,
+	verifySourceAddress func(addr net.Addr) bool,
+) *quic.Transport {
+	return &quic.Transport{
+		Conn:                conn,
+		TokenGeneratorKey:   tokenGeneratorKey,
+		StatelessResetKey:   statelessResetKey,
+		ConnContext:         connContext,
+		VerifySourceAddress: verifySourceAddress,
+	}
 }
