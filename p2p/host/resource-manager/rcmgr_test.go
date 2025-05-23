@@ -1124,11 +1124,8 @@ func TestResourceManagerRateLimiting(t *testing.T) {
 	limiter := &rate.Limiter{
 		GlobalLimit: rate.Limit{RPS: 0.00001, Burst: 2},
 	}
-	sourceLimiter := &rate.Limiter{
-		GlobalLimit: rate.Limit{RPS: 0.00001, Burst: 1},
-	}
 
-	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithConnRateLimiters(limiter, sourceLimiter))
+	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithConnRateLimiters(limiter))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1144,16 +1141,35 @@ func TestResourceManagerRateLimiting(t *testing.T) {
 	require.NoError(t, err)
 	connScope.Done()
 
-	connScope, err = rcmgr.OpenConnection(network.DirInbound, true, addr)
+	_, err = rcmgr.OpenConnection(network.DirInbound, true, addr)
 	require.ErrorContains(t, err, "rate limit exceeded")
+}
 
-	netAddr := &net.UDPAddr{
+func TestVerifySourceAddressRateLimiter(t *testing.T) {
+	limits := DefaultLimits.AutoScale()
+	limits.allowlistedSystem.Conns = 100
+	limits.allowlistedSystem.ConnsInbound = 100
+	limits.allowlistedSystem.ConnsOutbound = 100
+
+	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithLimitPerSubnet([]ConnLimitPerSubnet{
+		{PrefixLength: 32, ConnCount: 2},
+	}, []ConnLimitPerSubnet{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rcmgr.Close()
+
+	na1 := &net.UDPAddr{
 		IP:   net.ParseIP("1.2.3.4"),
 		Port: 1234,
 	}
-	verify := rcmgr.VerifySourceAddress(netAddr)
-	require.False(t, verify)
+	require.False(t, rcmgr.VerifySourceAddress(na1))
+	require.True(t, rcmgr.VerifySourceAddress(na1))
 
-	verify = rcmgr.VerifySourceAddress(netAddr)
-	require.True(t, verify)
+	na2 := &net.UDPAddr{
+		IP:   net.ParseIP("1.2.3.5"),
+		Port: 1234,
+	}
+	require.False(t, rcmgr.VerifySourceAddress(na2))
+	require.True(t, rcmgr.VerifySourceAddress(na2))
 }

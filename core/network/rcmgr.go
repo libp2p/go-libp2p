@@ -317,7 +317,7 @@ func (n *NullResourceManager) OpenConnection(dir Direction, usefd bool, endpoint
 func (n *NullResourceManager) OpenStream(p peer.ID, dir Direction) (StreamManagementScope, error) {
 	return &NullScope{}, nil
 }
-func (*NullResourceManager) VerifySourceAddress(addr net.Addr) bool {
+func (*NullResourceManager) VerifySourceAddress(_ net.Addr) bool {
 	return false
 }
 
@@ -339,4 +339,4 @@ func (n *NullScope) ProtocolScope() ProtocolScope             { return &NullScop
 func (n *NullScope) SetProtocol(proto protocol.ID) error      { return nil }
 func (n *NullScope) ServiceScope() ServiceScope               { return &NullScope{} }
 func (n *NullScope) SetService(srv string) error              { return nil }
-func (n *NullScope) VerifySourceAddress(addr net.Addr) bool   { return false }
+func (n *NullScope) VerifySourceAddress(_ net.Addr) bool      { return false }

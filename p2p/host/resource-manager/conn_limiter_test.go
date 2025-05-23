@@ -5,7 +5,9 @@ import (
 	"net"
 	"net/netip"
 	"testing"
+	"time"
 
+	"github.com/libp2p/go-libp2p/x/rate"
 	"github.com/stretchr/testify/require"
 )
 
@@ -227,4 +229,164 @@ func TestSortedNetworkPrefixLimits(t *testing.T) {
 		},
 	}
 	require.EqualValues(t, sorted, npLimits)
+}
+
+func TestNewVerifySourceAddressRateLimiter(t *testing.T) {
+	testCases := []struct {
+		name     string
+		cl       *connLimiter
+		expected *rate.Limiter
+	}{
+		{
+			name: "basic configuration",
+			cl: &connLimiter{
+				networkPrefixLimitV4: []NetworkPrefixLimit{
+					{
+						Network:   netip.MustParsePrefix("192.168.0.0/16"),
+						ConnCount: 10,
+					},
+				},
+				networkPrefixLimitV6: []NetworkPrefixLimit{
+					{
+						Network:   netip.MustParsePrefix("2001:db8::/32"),
+						ConnCount: 20,
+					},
+				},
+				connLimitPerSubnetV4: []ConnLimitPerSubnet{
+					{
+						PrefixLength: 24,
+						ConnCount:    5,
+					},
+				},
+				connLimitPerSubnetV6: []ConnLimitPerSubnet{
+					{
+						PrefixLength: 56,
+						ConnCount:    8,
+					},
+				},
+			},
+			expected: &rate.Limiter{
+				NetworkPrefixLimits: []rate.PrefixLimit{
+					{
+						Prefix: netip.MustParsePrefix("192.168.0.0/16"),
+						Limit:  rate.Limit{RPS: sourceAddressRPS, Burst: 5},
+					},
+					{
+						Prefix: netip.MustParsePrefix("2001:db8::/32"),
+						Limit:  rate.Limit{RPS: sourceAddressRPS, Burst: 10},
+					},
+				},
+				SubnetRateLimiter: rate.SubnetLimiter{
+					IPv4SubnetLimits: []rate.SubnetLimit{
+						{
+							PrefixLength: 24,
+							Limit:        rate.Limit{RPS: sourceAddressRPS, Burst: 2},
+						},
+					},
+					IPv6SubnetLimits: []rate.SubnetLimit{
+						{
+							PrefixLength: 56,
+							Limit:        rate.Limit{RPS: sourceAddressRPS, Burst: 4},
+						},
+					},
+					GracePeriod: 1 * time.Minute,
+				},
+			},
+		},
+		{
+			name: "empty configuration",
+			cl:   &connLimiter{},
+			expected: &rate.Limiter{
+				NetworkPrefixLimits: []rate.PrefixLimit{},
+				SubnetRateLimiter: rate.SubnetLimiter{
+					IPv4SubnetLimits: []rate.SubnetLimit{},
+					IPv6SubnetLimits: []rate.SubnetLimit{},
+					GracePeriod:      1 * time.Minute,
+				},
+			},
+		},
+		{
+			name: "multiple network prefixes",
+			cl: &connLimiter{
+				networkPrefixLimitV4: []NetworkPrefixLimit{
+					{
+						Network:   netip.MustParsePrefix("192.168.0.0/16"),
+						ConnCount: 10,
+					},
+					{
+						Network:   netip.MustParsePrefix("10.0.0.0/8"),
+						ConnCount: 20,
+					},
+				},
+				connLimitPerSubnetV4: []ConnLimitPerSubnet{
+					{
+						PrefixLength: 24,
+						ConnCount:    5,
+					},
+					{
+						PrefixLength: 16,
+						ConnCount:    10,
+					},
+				},
+			},
+			expected: &rate.Limiter{
+				NetworkPrefixLimits: []rate.PrefixLimit{
+					{
+						Prefix: netip.MustParsePrefix("192.168.0.0/16"),
+						Limit:  rate.Limit{RPS: sourceAddressRPS, Burst: 5},
+					},
+					{
+						Prefix: netip.MustParsePrefix("10.0.0.0/8"),
+						Limit:  rate.Limit{RPS: sourceAddressRPS, Burst: 10},
+					},
+				},
+				SubnetRateLimiter: rate.SubnetLimiter{
+					IPv4SubnetLimits: []rate.SubnetLimit{
+						{
+							PrefixLength: 24,
+							Limit:        rate.Limit{RPS: sourceAddressRPS, Burst: 2},
+						},
+						{
+							PrefixLength: 16,
+							Limit:        rate.Limit{RPS: sourceAddressRPS, Burst: 5},
+						},
+					},
+					IPv6SubnetLimits: []rate.SubnetLimit{},
+					GracePeriod:      1 * time.Minute,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := newVerifySourceAddressRateLimiter(tc.cl)
+
+			require.Equal(t, len(tc.expected.NetworkPrefixLimits), len(actual.NetworkPrefixLimits))
+			for i, expected := range tc.expected.NetworkPrefixLimits {
+				actual := actual.NetworkPrefixLimits[i]
+				require.Equal(t, expected.Prefix, actual.Prefix)
+				require.Equal(t, expected.RPS, actual.RPS)
+				require.Equal(t, expected.Burst, actual.Burst)
+			}
+
+			require.Equal(t, len(tc.expected.SubnetRateLimiter.IPv4SubnetLimits), len(actual.SubnetRateLimiter.IPv4SubnetLimits))
+			for i, expected := range tc.expected.SubnetRateLimiter.IPv4SubnetLimits {
+				actual := actual.SubnetRateLimiter.IPv4SubnetLimits[i]
+				require.Equal(t, expected.PrefixLength, actual.PrefixLength)
+				require.Equal(t, expected.RPS, actual.RPS)
+				require.Equal(t, expected.Burst, actual.Burst)
+			}
+
+			require.Equal(t, len(tc.expected.SubnetRateLimiter.IPv6SubnetLimits), len(actual.SubnetRateLimiter.IPv6SubnetLimits))
+			for i, expected := range tc.expected.SubnetRateLimiter.IPv6SubnetLimits {
+				actual := actual.SubnetRateLimiter.IPv6SubnetLimits[i]
+				require.Equal(t, expected.PrefixLength, actual.PrefixLength)
+				require.Equal(t, expected.RPS, actual.RPS)
+				require.Equal(t, expected.Burst, actual.Burst)
+			}
+
+			require.Equal(t, tc.expected.SubnetRateLimiter.GracePeriod, actual.SubnetRateLimiter.GracePeriod)
+		})
+	}
 }
