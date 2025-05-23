@@ -139,14 +139,13 @@ type Option func(*resourceManager) error
 func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager, error) {
 	allowlist := newAllowlist()
 	r := &resourceManager{
-		limits:                         limits,
-		connLimiter:                    newConnLimiter(),
-		allowlist:                      &allowlist,
-		svc:                            make(map[string]*serviceScope),
-		proto:                          make(map[protocol.ID]*protocolScope),
-		peer:                           make(map[peer.ID]*peerScope),
-		connRateLimiter:                newConnRateLimiter(),
-		verifySourceAddressRateLimiter: newVerifySourceAddressRateLimiter(),
+		limits:          limits,
+		connLimiter:     newConnLimiter(),
+		allowlist:       &allowlist,
+		svc:             make(map[string]*serviceScope),
+		proto:           make(map[protocol.ID]*protocolScope),
+		peer:            make(map[peer.ID]*peerScope),
+		connRateLimiter: newConnRateLimiter(),
 	}
 
 	for _, opt := range opts {
@@ -176,6 +175,7 @@ func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager
 			})
 		}
 	}
+	r.verifySourceAddressRateLimiter = newVerifySourceAddressRateLimiter(r.connLimiter)
 
 	if !r.disableMetrics {
 		var sr TraceReporter

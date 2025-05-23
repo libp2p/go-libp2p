@@ -285,7 +285,9 @@ var transportsToTest = []TransportTestCase{
 			} else {
 				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
 				if !opts.NoRcmgr && opts.ResourceManager != nil {
-					qr = libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress))
+					qr = libp2p.QUICReuse(
+						quicreuse.NewConnManager,
+						quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress))
 				}
 				libp2pOpts = append(libp2pOpts,
 					qr,
@@ -320,7 +322,10 @@ var transportsToTest = []TransportTestCase{
 			} else {
 				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
 				if !opts.NoRcmgr && opts.ResourceManager != nil {
-					qr = libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress))
+					qr = libp2p.QUICReuse(
+						quicreuse.NewConnManager,
+						quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress),
+					)
 				}
 				libp2pOpts = append(libp2pOpts,
 					qr,
@@ -887,8 +892,9 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 // TestCloseConnWhenBlocked tests that the server closes the connection when the rcmgr blocks it.
 func TestCloseConnWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
+		// WebRTC doesn't have a connection when rcmgr blocks it, so there's nothing to close.
 		if tc.Name == "WebRTC" {
-			continue // WebRTC doesn't have a connection when we block so there's nothing to close
+			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)

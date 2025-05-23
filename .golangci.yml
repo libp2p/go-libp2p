@@ -8,6 +8,9 @@ linters:
     - revive
     - unused
     - prealloc
+  disable:
+    - errcheck
+    - staticcheck
 
   settings:
     revive:

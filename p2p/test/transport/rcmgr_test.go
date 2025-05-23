@@ -88,11 +88,9 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						connScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any())
 					}
 					connScope.EXPECT().Done().MinTimes(1)
+					// udp transports won't have FD
+					expectFd := !(strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport") || strings.Contains(tc.Name, "WebRTC"))
 
-					expectFd := true
-					if strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport") || strings.Contains(tc.Name, "WebRTC") {
-						expectFd = false
-					}
 					if !testDialer && (strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport")) {
 						rcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)
 					}
