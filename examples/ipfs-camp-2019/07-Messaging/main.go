@@ -29,7 +29,7 @@ type mdnsNotifee struct {
 }
 
 func (m *mdnsNotifee) HandlePeerFound(pi peer.AddrInfo) {
-	m.h.Connect(m.ctx, pi)
+	_ = m.h.Connect(m.ctx, pi)
 }
 
 func main() {
@@ -77,7 +77,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer topic.Close()
+	defer func() { _ = topic.Close() }()
 	sub, err := topic.Subscribe()
 	if err != nil {
 		panic(err)
@@ -126,9 +126,9 @@ func main() {
 
 	select {
 	case <-stop:
-		host.Close()
+		_ = host.Close()
 		os.Exit(0)
 	case <-donec:
-		host.Close()
+		_ = host.Close()
 	}
 }

@@ -41,11 +41,11 @@ func (e *EchoProtocol) onEchoRequest(s network.Stream) {
 	data := &pb.EchoRequest{}
 	buf, err := io.ReadAll(s)
 	if err != nil {
-		s.Reset()
+		_ = s.Reset()
 		log.Println(err)
 		return
 	}
-	s.Close()
+	_ = s.Close()
 
 	// unmarshal it
 	err = proto.Unmarshal(buf, data)
@@ -95,11 +95,11 @@ func (e *EchoProtocol) onEchoResponse(s network.Stream) {
 	data := &pb.EchoResponse{}
 	buf, err := io.ReadAll(s)
 	if err != nil {
-		s.Reset()
+		_ = s.Reset()
 		log.Println(err)
 		return
 	}
-	s.Close()
+	_ = s.Close()
 
 	// unmarshal it
 	err = proto.Unmarshal(buf, data)

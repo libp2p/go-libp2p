@@ -26,7 +26,7 @@ func run() {
 	if err != nil {
 		panic(err)
 	}
-	defer h.Close()
+	defer func() { _ = h.Close() }()
 
 	log.Printf("Hello World, my hosts ID is %s\n", h.ID())
 
@@ -88,7 +88,7 @@ func run() {
 	if err != nil {
 		panic(err)
 	}
-	defer h2.Close()
+	defer func() { _ = h2.Close() }()
 
 	// The last step to get fully up and running would be to connect to
 	// bootstrap peers (or any other peers). We leave this commented as

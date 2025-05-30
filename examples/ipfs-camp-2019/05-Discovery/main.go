@@ -78,9 +78,9 @@ func main() {
 
 	select {
 	case <-stop:
-		host.Close()
+		_ = host.Close()
 		os.Exit(0)
 	case <-donec:
-		host.Close()
+		_ = host.Close()
 	}
 }

@@ -100,7 +100,7 @@ func run() {
 		log.Println("Awesome! We're now communicating via the relay!")
 
 		// End the example
-		s.Close()
+		_ = s.Close()
 	})
 
 	// Hosts that want to have messages relayed on their behalf need to reserve a slot
@@ -156,5 +156,5 @@ func run() {
 		return
 	}
 
-	s.Read(make([]byte, 1)) // block until the handler closes the stream
+	_, _ = s.Read(make([]byte, 1)) // block until the handler closes the stream
 }

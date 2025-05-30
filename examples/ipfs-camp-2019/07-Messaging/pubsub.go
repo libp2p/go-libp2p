@@ -16,23 +16,21 @@ func pubsubMessageHandler(id peer.ID, msg *SendMessage) {
 	fmt.Printf("%s: %s\n", id.ShortString(), msg.Data)
 }
 
-func pubsubUpdateHandler(id peer.ID, msg *UpdatePeer) {
-
-}
+func pubsubUpdateHandler(_ peer.ID, _ *UpdatePeer) {}
 
 func pubsubHandler(ctx context.Context, sub *pubsub.Subscription) {
 	defer sub.Cancel()
 	for {
 		msg, err := sub.Next(ctx)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 
 		req := &Request{}
 		err = proto.Unmarshal(msg.Data, req)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 

@@ -22,5 +22,5 @@ func main() {
 
 	// TODO: with our host made, let's connect to our bootstrap peer
 
-	host.Close()
+	_ = host.Close()
 }

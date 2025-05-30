@@ -40,11 +40,11 @@ func (p *PingProtocol) onPingRequest(s network.Stream) {
 	data := &p2p.PingRequest{}
 	buf, err := io.ReadAll(s)
 	if err != nil {
-		s.Reset()
+		_ = s.Reset()
 		log.Println(err)
 		return
 	}
-	s.Close()
+	_ = s.Close()
 
 	// unmarshal it
 	err = proto.Unmarshal(buf, data)
@@ -92,11 +92,11 @@ func (p *PingProtocol) onPingResponse(s network.Stream) {
 	data := &p2p.PingResponse{}
 	buf, err := io.ReadAll(s)
 	if err != nil {
-		s.Reset()
+		_ = s.Reset()
 		log.Println(err)
 		return
 	}
-	s.Close()
+	_ = s.Close()
 
 	// unmarshal it
 	err = proto.Unmarshal(buf, data)

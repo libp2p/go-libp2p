@@ -81,7 +81,7 @@ func writeData(rw *bufio.ReadWriter) {
 
 func main() {
 	log.SetAllLoggers(log.LevelWarn)
-	log.SetLogLevel("rendezvous", "info")
+	_ = log.SetLogLevel("rendezvous", "info")
 	help := flag.Bool("h", false, "Display Help")
 	config, err := ParseFlags()
 	if err != nil {

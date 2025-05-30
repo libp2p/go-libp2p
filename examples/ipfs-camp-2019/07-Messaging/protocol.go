@@ -19,7 +19,7 @@ func chatInputLoop(ctx context.Context, topic *pubsub.Topic, donec chan struct{}
 		msgId := make([]byte, 10)
 		_, err := rand.Read(msgId)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 		now := time.Now().Unix()
@@ -33,12 +33,12 @@ func chatInputLoop(ctx context.Context, topic *pubsub.Topic, donec chan struct{}
 		}
 		msgBytes, err := proto.Marshal(req)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 		err = topic.Publish(ctx, msgBytes)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 	}

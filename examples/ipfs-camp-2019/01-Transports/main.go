@@ -13,5 +13,5 @@ func main() {
 		panic(err)
 	}
 
-	host.Close()
+	_ = host.Close()
 }

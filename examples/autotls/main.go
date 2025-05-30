@@ -26,12 +26,12 @@ func main() {
 	// Create a background context
 	ctx := context.Background()
 
-	log.SetLogLevel("*", "error")
-	log.SetLogLevel("autotls-example", "debug") // Set the log level for the example to debug
-	log.SetLogLevel("basichost", "info")        // Set the log level for the basichost package to info
-	log.SetLogLevel("autotls", "debug")         // Set the log level for the autotls-example package to debug
-	log.SetLogLevel("p2p-forge", "debug")       // Set the log level for the p2pforge package to debug
-	log.SetLogLevel("nat", "debug")             // Set the log level for the libp2p nat package to debug
+	_ = log.SetLogLevel("*", "error")
+	_ = log.SetLogLevel("autotls-example", "debug") // Set the log level for the example to debug
+	_ = log.SetLogLevel("basichost", "info")        // Set the log level for the basichost package to info
+	_ = log.SetLogLevel("autotls", "debug")         // Set the log level for the autotls-example package to debug
+	_ = log.SetLogLevel("p2p-forge", "debug")       // Set the log level for the p2pforge package to debug
+	_ = log.SetLogLevel("nat", "debug")             // Set the log level for the libp2p nat package to debug
 
 	certLoaded := make(chan bool, 1) // Create a channel to signal when the cert is loaded
 
@@ -72,7 +72,7 @@ func main() {
 	}
 
 	// Start the cert manager
-	certManager.Start()
+	_ = certManager.Start()
 	defer certManager.Stop()
 
 	// Load or generate a persistent peer identity key
@@ -131,7 +131,7 @@ func main() {
 		panic(err)
 	}
 
-	go dht.Bootstrap(ctx)
+	go func() { _ = dht.Bootstrap(ctx) }()
 
 	logger.Info("Addresses: ", h.Addrs())
 

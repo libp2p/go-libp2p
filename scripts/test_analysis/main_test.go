@@ -7,10 +7,10 @@ import (
 
 func TestFailsOnConsistentFailure(t *testing.T) {
 	tmpDir := t.TempDir() + "/"
-	os.WriteFile(tmpDir+"/main.go", []byte(`package main
+	_ = os.WriteFile(tmpDir+"/main.go", []byte(`package main
 func main() {}`), 0644)
 	// Add a test that fails consistently.
-	os.WriteFile(tmpDir+"/main_test.go", []byte(`package main
+	_ = os.WriteFile(tmpDir+"/main_test.go", []byte(`package main
 
 import (
 	"testing"
@@ -18,7 +18,7 @@ import (
 func TestConsistentFailure(t *testing.T) {
 	t.Fatal("consistent failure")
 }`), 0644)
-	os.WriteFile(tmpDir+"/go.mod", []byte(`module example.com/test`), 0644)
+	_ = os.WriteFile(tmpDir+"/go.mod", []byte(`module example.com/test`), 0644)
 
 	tstr := tester{Dir: tmpDir}
 	err := tstr.runTests(nil)
@@ -29,11 +29,11 @@ func TestConsistentFailure(t *testing.T) {
 
 func TestPassesOnFlakyFailure(t *testing.T) {
 	tmpDir := t.TempDir() + "/"
-	os.WriteFile(tmpDir+"/main.go", []byte(`package main
+	_ = os.WriteFile(tmpDir+"/main.go", []byte(`package main
 func main() {
 }`), 0644)
 	// Add a test that fails the first time.
-	os.WriteFile(tmpDir+"/main_test.go", []byte(`package main
+	_ = os.WriteFile(tmpDir+"/main_test.go", []byte(`package main
 import (
 	"os"
 	"testing"
@@ -41,11 +41,11 @@ import (
 func TestFlakyFailure(t *testing.T) {
 	_, err := os.Stat("foo")
 	if err != nil {
-		os.WriteFile("foo", []byte("hello"), 0644)
+		_ = os.WriteFile("foo", []byte("hello"), 0644)
 		t.Fatal("flaky failure")
 	}
 }`), 0644)
-	os.WriteFile(tmpDir+"/go.mod", []byte(`module example.com/test`), 0644)
+	_ = os.WriteFile(tmpDir+"/go.mod", []byte(`module example.com/test`), 0644)
 
 	// Run the test.
 	tstr := tester{Dir: tmpDir}

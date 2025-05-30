@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer host.Close()
+	defer func() { _ = host.Close() }()
 
 	for _, addr := range host.Addrs() {
 		fmt.Println("Listening on", addr)

@@ -36,14 +36,14 @@ func pubsubHandler(ctx context.Context, sub *pubsub.Subscription) {
 	for {
 		msg, err := sub.Next(ctx)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 
 		req := &Request{}
 		err = proto.Unmarshal(msg.Data, req)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 

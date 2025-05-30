@@ -32,7 +32,7 @@ type discoveryNotifee struct {
 func (m *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	if m.h.Network().Connectedness(pi.ID) != network.Connected {
 		fmt.Printf("Found %s!\n", pi.ID.ShortString())
-		m.h.Connect(m.ctx, pi)
+		_ = m.h.Connect(m.ctx, pi)
 	}
 }
 
@@ -93,7 +93,7 @@ func main() {
 
 	err = host.Connect(ctx, *targetInfo)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "connecting to bootstrap: %s", err)
+		_, _ = fmt.Fprintf(os.Stderr, "connecting to bootstrap: %s", err)
 	} else {
 		fmt.Println("Connected to", targetInfo.ID)
 	}
@@ -127,9 +127,9 @@ func main() {
 
 	select {
 	case <-stop:
-		host.Close()
+		_ = host.Close()
 		os.Exit(0)
 	case <-donec:
-		host.Close()
+		_ = host.Close()
 	}
 }

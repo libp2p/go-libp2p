@@ -69,7 +69,7 @@ func main() {
 		Password:    "",
 		DB:          0,
 	})
-	defer rClient.Close()
+	defer func() { _ = rClient.Close() }()
 
 	for {
 		if ctx.Err() != nil {
@@ -151,7 +151,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to instantiate libp2p instance: %s", err)
 	}
-	defer host.Close()
+	defer func() { _ = host.Close() }()
 
 	log.Println("My multiaddr is: ", host.Addrs())
 

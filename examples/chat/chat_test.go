@@ -64,8 +64,8 @@ func TestMain(t *testing.T) {
 				return
 			}
 
-			rw.WriteString("test message")
-			rw.Flush()
+			_, _ = rw.WriteString("test message")
+			_ = rw.Flush()
 		}()
 
 		<-ctx.Done()

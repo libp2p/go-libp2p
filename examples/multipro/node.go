@@ -144,13 +144,13 @@ func (n *Node) sendProtoMessage(id peer.ID, p protocol.ID, data proto.Message) b
 		log.Println(err)
 		return false
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	writer := ggio.NewFullWriter(s)
 	err = writer.WriteMsg(data)
 	if err != nil {
 		log.Println(err)
-		s.Reset()
+		_ = s.Reset()
 		return false
 	}
 	return true

@@ -65,7 +65,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer stmt.Close() // Ensure the statement is closed after use
+	defer func() { _ = stmt.Close() }() // Ensure the statement is closed after use
 
 	s := bufio.NewScanner(os.Stdin)
 	for s.Scan() {

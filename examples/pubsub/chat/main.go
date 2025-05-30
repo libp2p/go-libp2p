@@ -69,7 +69,7 @@ func main() {
 
 // printErr is like fmt.Printf, but writes to stderr.
 func printErr(m string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, m, args...)
+	_, _ = fmt.Fprintf(os.Stderr, m, args...)
 }
 
 // defaultNick generates a nickname based on the $USER environment variable and

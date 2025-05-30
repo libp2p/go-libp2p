@@ -139,9 +139,9 @@ func main() {
 		log.Println("Got a new stream!")
 		if err := doEcho(s); err != nil {
 			log.Println(err)
-			s.Reset()
+			_ = s.Reset()
 		} else {
-			s.Close()
+			_ = s.Close()
 		}
 	})
 

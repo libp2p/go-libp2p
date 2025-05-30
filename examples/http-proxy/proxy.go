@@ -81,7 +81,7 @@ func NewProxyService(h host.Host, proxyAddr ma.Multiaddr, dest peer.ID) *ProxySe
 // on the stream, before closing it.
 func streamHandler(stream network.Stream) {
 	// Remember to close the stream when we are done.
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	// Create a new buffered reader, as ReadRequest needs one.
 	// The buffered reader reads from our stream, on which we
@@ -90,11 +90,11 @@ func streamHandler(stream network.Stream) {
 	// Read the HTTP request from the buffer
 	req, err := http.ReadRequest(buf)
 	if err != nil {
-		stream.Reset()
+		_ = stream.Reset()
 		log.Println(err)
 		return
 	}
-	defer req.Body.Close()
+	defer func() { _ = req.Body.Close() }()
 
 	// We need to reset these fields in the request
 	// URL as they are not maintained.
@@ -114,14 +114,14 @@ func streamHandler(stream network.Stream) {
 	fmt.Printf("Making request to %s\n", req.URL)
 	resp, err := http.DefaultTransport.RoundTrip(outreq)
 	if err != nil {
-		stream.Reset()
+		_ = stream.Reset()
 		log.Println(err)
 		return
 	}
 
 	// resp.Write writes whatever response we obtained for our
 	// request back to the stream.
-	resp.Write(stream)
+	_ = resp.Write(stream)
 }
 
 // Serve listens on the ProxyService's proxy address. This effectively
@@ -130,7 +130,7 @@ func (p *ProxyService) Serve() {
 	_, serveArgs, _ := manet.DialArgs(p.proxyAddr)
 	fmt.Println("proxy listening on ", serveArgs)
 	if p.dest != "" {
-		http.ListenAndServe(serveArgs, p)
+		_ = http.ListenAndServe(serveArgs, p)
 	}
 }
 
@@ -154,12 +154,12 @@ func (p *ProxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	// r.Write() writes the HTTP request to the stream.
 	err = r.Write(stream)
 	if err != nil {
-		stream.Reset()
+		_ = stream.Reset()
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -170,7 +170,7 @@ func (p *ProxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	buf := bufio.NewReader(stream)
 	resp, err := http.ReadResponse(buf, r)
 	if err != nil {
-		stream.Reset()
+		_ = stream.Reset()
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -187,8 +187,8 @@ func (p *ProxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 
 	// Finally copy the body
-	io.Copy(w, resp.Body)
-	resp.Body.Close()
+	_, _ = io.Copy(w, resp.Body)
+	_ = resp.Body.Close()
 }
 
 // addAddrToPeerstore parses a peer multiaddress and adds
@@ -225,7 +225,7 @@ func addAddrToPeerstore(h host.Host, addr string) peer.ID {
 const help = `
 This example creates a simple HTTP Proxy using two libp2p peers. The first peer
 provides an HTTP server locally which tunnels the HTTP requests with libp2p
-to a remote peer. The remote peer performs the requests and 
+to a remote peer. The remote peer performs the requests and
 send the sends the response back.
 
 Usage: Start remote peer first with:   ./proxy

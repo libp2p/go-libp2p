@@ -125,7 +125,7 @@ func (ui *ChatUI) refreshPeers() {
 	ui.peersList.Clear()
 
 	for _, p := range peers {
-		fmt.Fprintln(ui.peersList, shortID(p))
+		_, _ = fmt.Fprintln(ui.peersList, shortID(p))
 	}
 
 	ui.app.Draw()
@@ -135,14 +135,14 @@ func (ui *ChatUI) refreshPeers() {
 // with the sender's nick highlighted in green.
 func (ui *ChatUI) displayChatMessage(cm *ChatMessage) {
 	prompt := withColor("green", fmt.Sprintf("<%s>:", cm.SenderNick))
-	fmt.Fprintf(ui.msgW, "%s %s\n", prompt, cm.Message)
+	_, _ = fmt.Fprintf(ui.msgW, "%s %s\n", prompt, cm.Message)
 }
 
 // displaySelfMessage writes a message from ourselves to the message window,
 // with our nick highlighted in yellow.
 func (ui *ChatUI) displaySelfMessage(msg string) {
 	prompt := withColor("yellow", fmt.Sprintf("<%s>:", ui.cr.nick))
-	fmt.Fprintf(ui.msgW, "%s %s\n", prompt, msg)
+	_, _ = fmt.Fprintf(ui.msgW, "%s %s\n", prompt, msg)
 }
 
 // handleEvents runs an event loop that sends user input to the chat room

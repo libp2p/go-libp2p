@@ -21,7 +21,7 @@ func sendMessage(ctx context.Context, topic *pubsub.Topic, msg string) {
 	_, err := rand.Read(msgId)
 	defer func() {
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 		}
 	}()
 	if err != nil {
@@ -58,12 +58,12 @@ func updatePeer(ctx context.Context, topic *pubsub.Topic, id peer.ID, handle str
 	}
 	reqBytes, err := proto.Marshal(req)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		return
 	}
 	err = topic.Publish(ctx, reqBytes)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		return
 	}
 

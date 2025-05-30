@@ -77,7 +77,7 @@ func newClient(serverInfo peer.AddrInfo, pings int) {
 		log.Fatal(err)
 	}
 
-	client.Connect(context.Background(), serverInfo)
+	_ = client.Connect(context.Background(), serverInfo)
 
 	p := ping.Ping(context.Background(), client, serverInfo.ID)
 

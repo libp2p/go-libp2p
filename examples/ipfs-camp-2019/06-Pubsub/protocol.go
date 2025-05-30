@@ -18,7 +18,7 @@ const chatProtocol = "/libp2p/chat/1.0.0"
 func chatHandler(s network.Stream) {
 	data, err := io.ReadAll(s)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 	}
 	fmt.Println("Received:", string(data))
 }
@@ -38,7 +38,7 @@ func chatSend(msg string, s network.Stream) error {
 	if err = w.Flush(); err != nil {
 		return err
 	}
-	s.Close()
+	_ = s.Close()
 	data, err := io.ReadAll(s)
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func chatInputLoop(ctx context.Context, h host.Host, donec chan struct{}) {
 				s, err := h.NewStream(ctx, peer, chatProtocol)
 				defer func() {
 					if err != nil {
-						fmt.Fprintln(os.Stderr, err)
+						_, _ = fmt.Fprintln(os.Stderr, err)
 					}
 				}()
 				if err != nil {
