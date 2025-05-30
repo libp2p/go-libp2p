@@ -3,7 +3,7 @@ name: Go Checks
 on:
   pull_request:
   push:
-    branches: ["master","release-v0[0-9][0-9]"]
+    branches: ["master","release-v0[0-9][0-9]", "golangci-lint"]
   workflow_dispatch:
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [  "1.23.x", "1.24.x" ]
+        go: [ "1.24.x" ]
     env:
       GOLANGCI_LINT_VERSION: v2.1.0
     name: golangci-lint (Go ${{ matrix.go }})
@@ -39,22 +39,3 @@ jobs:
         with:
           args: --timeout=5m
           version: ${{ env.GOLANGCI_LINT_VERSION }}
-          only-new-issues: true
-      - name: golangci-lint (Windows)
-        if: success() || failure() # run this step even if the previous one failed
-        uses: golangci/golangci-lint-action@v8
-        env:
-          GOOS: "windows"
-        with:
-          args: --timeout=5m
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-          only-new-issues: true
-      - name: golangci-lint (OSX)
-        if: success() || failure() # run this step even if the previous one failed
-        uses: golangci/golangci-lint-action@v8
-        env:
-          GOOS: "darwin"
-        with:
-          args: --timeout=5m
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-          only-new-issues: true
