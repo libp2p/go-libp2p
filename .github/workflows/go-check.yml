@@ -3,7 +3,7 @@ name: Go Checks
 on:
   pull_request:
   push:
-    branches: ["master","release-v0[0-9][0-9]"]
+    branches: ["master","release-v0[0-9][0-9]","uci-golangci-lint"]
   workflow_dispatch:
 
 permissions:
