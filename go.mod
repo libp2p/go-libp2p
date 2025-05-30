@@ -7,9 +7,9 @@ retract v0.26.1 // Tag was applied incorrectly due to a bug in the release workf
 retract v0.36.0 // Accidentally modified the tag.
 
 require (
+	github.com/benbjohnson/clock v1.3.5
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
-	github.com/filecoin-project/go-clock v0.1.0
 	github.com/flynn/noise v1.1.0
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.5.3
@@ -24,7 +24,7 @@ require (
 	github.com/klauspost/compress v1.18.0
 	github.com/koron/go-ssdp v0.0.5
 	github.com/libp2p/go-buffer-pool v0.1.0
-	github.com/libp2p/go-flow-metrics v0.3.0
+	github.com/libp2p/go-flow-metrics v0.2.0
 	github.com/libp2p/go-libp2p-asn-util v0.4.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0

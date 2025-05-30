@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -820,7 +820,7 @@ func (m mockConn) Scope() network.ConnScope                              { panic
 func (m mockConn) ConnState() network.ConnectionState                    { return network.ConnectionState{} }
 
 func makeSegmentsWithPeerInfos(peerInfos peerInfos) *segments {
-	s := func() *segments {
+	var s = func() *segments {
 		ret := segments{}
 		for i := range ret.buckets {
 			ret.buckets[i] = &segment{
@@ -858,14 +858,12 @@ func TestPeerInfoSorting(t *testing.T) {
 	})
 
 	t.Run("prefer peers with no streams", func(t *testing.T) {
-		p1 := &peerInfo{
-			id: peer.ID("peer1"),
+		p1 := &peerInfo{id: peer.ID("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 0}}: time.Now(),
 			},
 		}
-		p2 := &peerInfo{
-			id: peer.ID("peer2"),
+		p2 := &peerInfo{id: peer.ID("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 1}}: time.Now(),
 			},
