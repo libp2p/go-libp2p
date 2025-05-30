@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 )
@@ -25,19 +24,19 @@ func getSleepDurationAndRequestCount(rps float64) (time.Duration, int) {
 	return sleepDuration, requestCount
 }
 
-func assertLimiter(t *testing.T, rl *Limiter, addr ma.Multiaddr, allowed, errorMargin int) {
+func assertLimiter(t *testing.T, rl *Limiter, ipAddr netip.Addr, allowed, errorMargin int) {
 	t.Helper()
 	for i := 0; i < allowed; i++ {
-		require.True(t, rl.allow(addr))
+		require.True(t, rl.Allow(ipAddr))
 	}
 	for i := 0; i < errorMargin; i++ {
-		rl.allow(addr)
+		rl.Allow(ipAddr)
 	}
-	require.False(t, rl.allow(addr))
+	require.False(t, rl.Allow(ipAddr))
 }
 
 func TestLimiterGlobal(t *testing.T) {
-	addr := ma.StringCast("/ip4/127.0.0.1/udp/123/quic-v1")
+	addr := netip.MustParseAddr("127.0.0.1")
 	limits := []Limit{
 		{RPS: 0.0, Burst: 1},
 		{RPS: 0.8, Burst: 1},
@@ -53,7 +52,7 @@ func TestLimiterGlobal(t *testing.T) {
 			if limit.RPS == 0 {
 				// 0 implies no rate limiting, any large number would do
 				for i := 0; i < 1000; i++ {
-					require.True(t, rl.allow(addr))
+					require.True(t, rl.Allow(addr))
 				}
 				return
 			}
@@ -66,8 +65,8 @@ func TestLimiterGlobal(t *testing.T) {
 }
 
 func TestLimiterNetworkPrefix(t *testing.T) {
-	local := ma.StringCast("/ip4/127.0.0.1/udp/123/quic-v1")
-	public := ma.StringCast("/ip4/1.1.1.1/udp/123/quic-v1")
+	local := netip.MustParseAddr("127.0.0.1")
+	public := netip.MustParseAddr("1.1.1.1")
 	rl := &Limiter{
 		NetworkPrefixLimits: []PrefixLimit{
 			{Prefix: netip.MustParsePrefix("127.0.0.0/24"), Limit: Limit{}},
@@ -76,22 +75,22 @@ func TestLimiterNetworkPrefix(t *testing.T) {
 	}
 	// element within prefix is allowed even over the limit
 	for range rl.GlobalLimit.Burst + 100 {
-		require.True(t, rl.allow(local))
+		require.True(t, rl.Allow(local))
 	}
 	// rate limit public ips
 	assertLimiter(t, rl, public, rl.GlobalLimit.Burst, int(rl.GlobalLimit.RPS*rateLimitErrorTolerance))
 
 	// public ip rejected
-	require.False(t, rl.allow(public))
+	require.False(t, rl.Allow(public))
 	// local ip accepted
 	for range 100 {
-		require.True(t, rl.allow(local))
+		require.True(t, rl.Allow(local))
 	}
 }
 
 func TestLimiterNetworkPrefixWidth(t *testing.T) {
-	a1 := ma.StringCast("/ip4/1.1.1.1/udp/123/quic-v1")
-	a2 := ma.StringCast("/ip4/1.1.0.1/udp/123/quic-v1")
+	a1 := netip.MustParseAddr("1.1.1.1")
+	a2 := netip.MustParseAddr("1.1.0.1")
 
 	wideLimit := 20
 	narrowLimit := 10
@@ -102,13 +101,13 @@ func TestLimiterNetworkPrefixWidth(t *testing.T) {
 		},
 	}
 	for range 2 * wideLimit {
-		rl.allow(a1)
+		rl.Allow(a1)
 	}
 	// a1 rejected
-	require.False(t, rl.allow(a1))
+	require.False(t, rl.Allow(a1))
 	// a2 accepted
 	for range wideLimit - narrowLimit {
-		require.True(t, rl.allow(a2))
+		require.True(t, rl.Allow(a2))
 	}
 }
 

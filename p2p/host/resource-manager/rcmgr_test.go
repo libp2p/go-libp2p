@@ -1,6 +1,7 @@
 package rcmgr
 
 import (
+	"net"
 	"net/netip"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/test"
+	"github.com/libp2p/go-libp2p/x/rate"
 	"github.com/stretchr/testify/require"
 
 	"github.com/multiformats/go-multiaddr"
@@ -1110,4 +1112,64 @@ func TestAllowlistAndConnLimiterPlayNice(t *testing.T) {
 		// The connLimiter should use the limit we defined explicitly
 		require.Equal(t, 1, rcmgr.(*resourceManager).connLimiter.networkPrefixLimitV4[0].ConnCount)
 	})
+}
+
+func TestResourceManagerRateLimiting(t *testing.T) {
+	// Create a resource manager with very low rate limits
+	limits := DefaultLimits.AutoScale()
+	limits.system.Conns = 100 // High enough to not be the limiting factor
+	limits.transient.Conns = 100
+
+	// Create limiters with very low RPS
+	limiter := &rate.Limiter{
+		GlobalLimit: rate.Limit{RPS: 0.00001, Burst: 2},
+	}
+
+	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithConnRateLimiters(limiter))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rcmgr.Close()
+
+	addr := multiaddr.StringCast("/ip4/1.2.3.4")
+
+	connScope, err := rcmgr.OpenConnection(network.DirInbound, true, addr)
+	require.NoError(t, err)
+	connScope.Done()
+
+	connScope, err = rcmgr.OpenConnection(network.DirInbound, true, addr)
+	require.NoError(t, err)
+	connScope.Done()
+
+	_, err = rcmgr.OpenConnection(network.DirInbound, true, addr)
+	require.ErrorContains(t, err, "rate limit exceeded")
+}
+
+func TestVerifySourceAddressRateLimiter(t *testing.T) {
+	limits := DefaultLimits.AutoScale()
+	limits.allowlistedSystem.Conns = 100
+	limits.allowlistedSystem.ConnsInbound = 100
+	limits.allowlistedSystem.ConnsOutbound = 100
+
+	rcmgr, err := NewResourceManager(NewFixedLimiter(limits), WithLimitPerSubnet([]ConnLimitPerSubnet{
+		{PrefixLength: 32, ConnCount: 2},
+	}, []ConnLimitPerSubnet{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rcmgr.Close()
+
+	na1 := &net.UDPAddr{
+		IP:   net.ParseIP("1.2.3.4"),
+		Port: 1234,
+	}
+	require.False(t, rcmgr.VerifySourceAddress(na1))
+	require.True(t, rcmgr.VerifySourceAddress(na1))
+
+	na2 := &net.UDPAddr{
+		IP:   net.ParseIP("1.2.3.5"),
+		Port: 1234,
+	}
+	require.False(t, rcmgr.VerifySourceAddress(na2))
+	require.True(t, rcmgr.VerifySourceAddress(na2))
 }
