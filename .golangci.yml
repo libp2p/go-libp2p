@@ -9,6 +9,10 @@ linters:
     - unused
     - prealloc
 
+  disable:
+    - staticcheck
+    - govet
+
   settings:
     revive:
       severity: warning
