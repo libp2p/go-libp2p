@@ -132,6 +132,22 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "TCP / Noise / Yamux IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(noise.ID, noise.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "TCP / TLS / Yamux",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -141,6 +157,22 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP / TLS / Yamux IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -158,6 +190,23 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP-Shared / TLS / Yamux IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -183,6 +232,24 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "TCP-Shared-WithMetrics / TLS / Yamux IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(tcp.NewTCPTransport, tcp.WithMetrics()))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "TCP-WithMetrics / TLS / Yamux",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -200,6 +267,23 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "TCP-WithMetrics / TLS / Yamux IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(tcp.NewTCPTransport, tcp.WithMetrics()))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "WebSocket-Shared",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -208,6 +292,21 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/ws"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebSocket-Shared IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0/ws"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -232,6 +331,23 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "WebSocket-Secured-Shared IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.ShareTCPListener())
+			if opts.NoListen {
+				config := tls.Config{InsecureSkipVerify: true}
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.Transport(websocket.New, websocket.WithTLSClientConfig(&config)))
+			} else {
+				config := selfSignedTLSConfig(t)
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0/sni/localhost/tls/ws"), libp2p.Transport(websocket.New, websocket.WithTLSConfig(config)))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "WebSocket",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -239,6 +355,20 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0/ws"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebSocket IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0/ws"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -262,6 +392,22 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "WebSocket-Secured IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				config := tls.Config{InsecureSkipVerify: true}
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.Transport(websocket.New, websocket.WithTLSClientConfig(&config)))
+			} else {
+				config := selfSignedTLSConfig(t)
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0/sni/localhost/tls/ws"), libp2p.Transport(websocket.New, websocket.WithTLSConfig(config)))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "QUIC",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -269,6 +415,20 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "QUIC IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -290,6 +450,20 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "WebTransport IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1/webtransport"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "WebRTC",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -298,6 +472,21 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebRTC IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/webrtc-direct"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -844,7 +1033,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 // TestCloseConnWhenBlocked tests that the server closes the connection when the rcmgr blocks it.
 func TestCloseConnWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
-		if tc.Name == "WebRTC" {
+		if tc.Name == "WebRTC" || tc.Name == "WebRTC IP6" {
 			continue // WebRTC doesn't have a connection when we block so there's nothing to close
 		}
 		t.Run(tc.Name, func(t *testing.T) {
@@ -879,7 +1068,7 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 // connection attempt
 func TestConnDroppedWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
-		if tc.Name != "WebRTC" {
+		if tc.Name != "WebRTC" && tc.Name != "WebRTC IP6" {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
@@ -993,7 +1182,7 @@ func TestErrorCodes(t *testing.T) {
 			}
 
 			t.Run("StreamResetWithError", func(t *testing.T) {
-				if tc.Name == "WebTransport" {
+				if tc.Name == "WebTransport" || tc.Name == "WebTransport IP6" {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
@@ -1019,7 +1208,7 @@ func TestErrorCodes(t *testing.T) {
 				})
 			})
 			t.Run("StreamResetWithErrorByRemote", func(t *testing.T) {
-				if tc.Name == "WebTransport" {
+				if tc.Name == "WebTransport" || tc.Name == "WebTransport IP6" {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
@@ -1046,7 +1235,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
+				if tc.Name == "WebTransport" || tc.Name == "WebRTC" || tc.Name == "WebTransport IP6" || tc.Name == "WebRTC IP6" {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
@@ -1074,7 +1263,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("NewStreamErrorByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
+				if tc.Name == "WebTransport" || tc.Name == "WebRTC" || tc.Name == "WebTransport IP6" || tc.Name == "WebRTC IP6" {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
