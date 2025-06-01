@@ -284,9 +284,11 @@ func (p *peersMap) Delete(id peer.ID) {
 	if !ok {
 		return
 	}
+	n := len(p.peers)
+	lastPeer := p.peers[n-1]
+	p.peers[idx] = lastPeer
+	p.peerIdx[lastPeer] = idx
+	p.peers[n-1] = ""
+	p.peers = p.peers[:n-1]
 	delete(p.peerIdx, id)
-	p.peers[idx] = p.peers[len(p.peers)-1]
-	p.peerIdx[p.peers[idx]] = idx
-	p.peers[len(p.peers)-1] = ""
-	p.peers = p.peers[:len(p.peers)-1]
 }

@@ -660,6 +660,32 @@ func TestAreAddrsConsistency(t *testing.T) {
 	}
 }
 
+func TestPeerMap(t *testing.T) {
+	pm := newPeersMap()
+	// Add 1, 2, 3
+	pm.Put(peer.ID("1"))
+	pm.Put(peer.ID("2"))
+	pm.Put(peer.ID("3"))
+
+	// Remove 3, 2
+	pm.Delete(peer.ID("3"))
+	pm.Delete(peer.ID("2"))
+
+	// Add 4
+	pm.Put(peer.ID("4"))
+
+	// Remove 3, 2 again. Should be no op
+	pm.Delete(peer.ID("3"))
+	pm.Delete(peer.ID("2"))
+
+	contains := []peer.ID{"1", "4"}
+	elems := make([]peer.ID, 0)
+	for p := range pm.Shuffled() {
+		elems = append(elems, p)
+	}
+	require.ElementsMatch(t, contains, elems)
+}
+
 func FuzzClient(f *testing.F) {
 	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
 	c := newAutoNAT(f, nil)

@@ -42,12 +42,12 @@ type addrsReachabilityTracker struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	cli autonatv2Client
+	client autonatv2Client
 	// reachabilityUpdateCh is used to notify when reachability may have changed
 	reachabilityUpdateCh chan struct{}
 	maxConcurrency       int
 	newAddrsProbeDelay   time.Duration
-	addrTracker          *probeManager
+	probeManager         *probeManager
 	newAddrs             chan []ma.Multiaddr
 	clock                clock.Clock
 
@@ -66,9 +66,9 @@ func newAddrsReachabilityTracker(client autonatv2Client, reachabilityUpdateCh ch
 	return &addrsReachabilityTracker{
 		ctx:                  ctx,
 		cancel:               cancel,
-		cli:                  client,
+		client:               client,
 		reachabilityUpdateCh: reachabilityUpdateCh,
-		addrTracker:          newProbeManager(cl.Now),
+		probeManager:         newProbeManager(cl.Now),
 		newAddrsProbeDelay:   newAddrsProbeDelay,
 		maxConcurrency:       defaultMaxConcurrency,
 		newAddrs:             make(chan []ma.Multiaddr, 1),
@@ -134,15 +134,15 @@ func (r *addrsReachabilityTracker) background() {
 		select {
 		case <-probeTicker.C:
 			// don't start a probe if we have a scheduled probe
-			if task.RespCh == nil && nextProbeTime.IsZero() {
+			if task.BackoffCh == nil && nextProbeTime.IsZero() {
 				task = r.refreshReachability()
 			}
 		case <-probeTimer.C:
-			if task.RespCh == nil {
+			if task.BackoffCh == nil {
 				task = r.refreshReachability()
 			}
 			nextProbeTime = time.Time{}
-		case backoff := <-task.RespCh:
+		case backoff := <-task.BackoffCh:
 			task = reachabilityTask{}
 			// On completion, start the next probe immediately, or wait for backoff.
 			// In case there are no further probes, the reachability tracker will return an empty task,
@@ -154,9 +154,9 @@ func (r *addrsReachabilityTracker) background() {
 			}
 			nextProbeTime = r.clock.Now().Add(backoffInterval)
 		case addrs := <-r.newAddrs:
-			if task.RespCh != nil { // cancel running task.
+			if task.BackoffCh != nil { // cancel running task.
 				task.Cancel()
-				<-task.RespCh // ignore backoff from cancelled task
+				<-task.BackoffCh // ignore backoff from cancelled task
 				task = reachabilityTask{}
 			}
 			r.updateTrackedAddrs(addrs)
@@ -165,9 +165,9 @@ func (r *addrsReachabilityTracker) background() {
 				nextProbeTime = newAddrsNextTime
 			}
 		case <-r.ctx.Done():
-			if task.RespCh != nil {
+			if task.BackoffCh != nil {
 				task.Cancel()
-				<-task.RespCh
+				<-task.BackoffCh
 				task = reachabilityTask{}
 			}
 			return
@@ -197,7 +197,7 @@ func newBackoffInterval(current time.Duration) time.Duration {
 }
 
 func (r *addrsReachabilityTracker) appendConfirmedAddrs(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
-	reachable, unreachable = r.addrTracker.AppendConfirmedAddrs(reachable, unreachable)
+	reachable, unreachable = r.probeManager.AppendConfirmedAddrs(reachable, unreachable)
 	r.mx.Lock()
 	r.reachableAddrs = append(r.reachableAddrs[:0], reachable...)
 	r.unreachableAddrs = append(r.unreachableAddrs[:0], unreachable...)
@@ -220,30 +220,69 @@ func (r *addrsReachabilityTracker) updateTrackedAddrs(addrs []ma.Multiaddr) {
 		log.Errorf("too many addresses (%d) for addrs reachability tracker; dropping %d", len(addrs), len(addrs)-maxTrackedAddrs)
 		addrs = addrs[:maxTrackedAddrs]
 	}
-	r.addrTracker.UpdateAddrs(addrs)
+	r.probeManager.UpdateAddrs(addrs)
 }
+
+type probe = []autonatv2.Request
+
+const probeTimeout = 30 * time.Second
 
 // reachabilityTask is a task to refresh reachability.
 // Waiting on the zero value blocks forever.
 type reachabilityTask struct {
 	Cancel context.CancelFunc
-	RespCh chan bool
+	// BackoffCh returns whether the caller should backoff before
+	// refreshing reachability
+	BackoffCh chan bool
 }
 
 func (r *addrsReachabilityTracker) refreshReachability() reachabilityTask {
-	if len(r.addrTracker.GetProbe()) == 0 {
+	if len(r.probeManager.GetProbe()) == 0 {
 		return reachabilityTask{}
 	}
 	resCh := make(chan bool, 1)
 	ctx, cancel := context.WithTimeout(r.ctx, 5*time.Minute)
 	r.wg.Add(1)
+	// We run probes provided by addrsTracker. It stops probing when any
+	// of the following happens:
+	// - there are no more probes to run
+	// - context is completed
+	// - there are too many consecutive failures from the client
+	// - the client has no valid peers to probe
 	go func() {
 		defer r.wg.Done()
 		defer cancel()
-		backoff := runProbes(ctx, r.maxConcurrency, r.addrTracker, r.cli)
-		resCh <- backoff
+		client := &errCountingClient{autonatv2Client: r.client, MaxConsecutiveErrors: maxConsecutiveErrors}
+		var backoff atomic.Bool
+		var wg sync.WaitGroup
+		wg.Add(r.maxConcurrency)
+		for range r.maxConcurrency {
+			go func() {
+				defer wg.Done()
+				for {
+					if ctx.Err() != nil {
+						return
+					}
+					reqs := r.probeManager.GetProbe()
+					if len(reqs) == 0 {
+						return
+					}
+					r.probeManager.MarkProbeInProgress(reqs)
+					rctx, cancel := context.WithTimeout(ctx, probeTimeout)
+					res, err := client.GetReachability(rctx, reqs)
+					cancel()
+					r.probeManager.CompleteProbe(reqs, res, err)
+					if isErrorPersistent(err) {
+						backoff.Store(true)
+						return
+					}
+				}
+			}()
+		}
+		wg.Wait()
+		resCh <- backoff.Load()
 	}()
-	return reachabilityTask{Cancel: cancel, RespCh: resCh}
+	return reachabilityTask{Cancel: cancel, BackoffCh: resCh}
 }
 
 var errTooManyConsecutiveFailures = errors.New("too many consecutive failures")
@@ -257,7 +296,7 @@ type errCountingClient struct {
 	consecutiveErrors    int
 }
 
-func (c *errCountingClient) GetReachability(ctx context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+func (c *errCountingClient) GetReachability(ctx context.Context, reqs probe) (autonatv2.Result, error) {
 	res, err := c.autonatv2Client.GetReachability(ctx, reqs)
 	c.mx.Lock()
 	defer c.mx.Unlock()
@@ -276,44 +315,6 @@ func (c *errCountingClient) GetReachability(ctx context.Context, reqs []autonatv
 }
 
 const maxConsecutiveErrors = 20
-
-// runProbes runs probes provided by addrsTracker with the given client. It returns true if the caller should
-// backoff before retrying probes. It stops probing when any of the following happens:
-// - there are no more probes to run
-// - context is completed
-// - there are too many consecutive failures from the client
-// - the client has no valid peers to probe
-func runProbes(ctx context.Context, concurrency int, addrsTracker *probeManager, client autonatv2Client) bool {
-	client = &errCountingClient{autonatv2Client: client, MaxConsecutiveErrors: maxConsecutiveErrors}
-	var backoff atomic.Bool
-	var wg sync.WaitGroup
-	wg.Add(concurrency)
-	for range concurrency {
-		go func() {
-			defer wg.Done()
-			for {
-				if ctx.Err() != nil {
-					return
-				}
-				reqs := addrsTracker.GetProbe()
-				if len(reqs) == 0 {
-					return
-				}
-				rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				addrsTracker.MarkProbeInProgress(reqs)
-				res, err := client.GetReachability(rctx, reqs)
-				cancel()
-				addrsTracker.CompleteProbe(reqs, res, err)
-				if isErrorPersistent(err) {
-					backoff.Store(true)
-					return
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	return backoff.Load()
-}
 
 // isErrorPersistent returns whether the error will repeat on future probes for a while
 func isErrorPersistent(err error) bool {
@@ -419,29 +420,26 @@ func (m *probeManager) UpdateAddrs(addrs []ma.Multiaddr) {
 // GetProbe returns the next probe. Returns zero value in case there are no more probes.
 // Probes that are run against an autonatv2 client should be marked in progress with
 // `MarkProbeInProgress` before running.
-func (m *probeManager) GetProbe() []autonatv2.Request {
+func (m *probeManager) GetProbe() probe {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
 	now := m.now()
 	for i, a := range m.addrs {
-		ab := a.Bytes()
-		pc := m.statuses[string(ab)].RequiredProbeCount(now)
-		if pc == 0 {
+		ab := string(a.Bytes())
+		pc := m.statuses[ab].RequiredProbeCount(now)
+		if m.inProgressProbes[ab] >= pc {
 			continue
 		}
-		if m.inProgressProbes[string(ab)] >= pc {
-			continue
-		}
-		reqs := make([]autonatv2.Request, 0, maxAddrsPerRequest)
+		reqs := make(probe, 0, maxAddrsPerRequest)
 		reqs = append(reqs, autonatv2.Request{Addr: a, SendDialData: true})
 		// We have the first(primary) address. Append other addresses, ignoring inprogress probes
 		// on secondary addresses. The expectation is that the primary address will
 		// be dialed.
 		for j := 1; j < len(m.addrs); j++ {
 			k := (i + j) % len(m.addrs)
-			ab := m.addrs[k].Bytes()
-			pc := m.statuses[string(ab)].RequiredProbeCount(now)
+			ab := string(m.addrs[k].Bytes())
+			pc := m.statuses[ab].RequiredProbeCount(now)
 			if pc == 0 {
 				continue
 			}
@@ -457,7 +455,7 @@ func (m *probeManager) GetProbe() []autonatv2.Request {
 
 // MarkProbeInProgress should be called when a probe is started.
 // All in progress probes *MUST* be completed with `CompleteProbe`
-func (m *probeManager) MarkProbeInProgress(reqs []autonatv2.Request) {
+func (m *probeManager) MarkProbeInProgress(reqs probe) {
 	if len(reqs) == 0 {
 		return
 	}
@@ -475,7 +473,7 @@ func (m *probeManager) InProgressProbes() int {
 }
 
 // CompleteProbe should be called when a probe completes.
-func (m *probeManager) CompleteProbe(reqs []autonatv2.Request, res autonatv2.Result, err error) {
+func (m *probeManager) CompleteProbe(reqs probe, res autonatv2.Result, err error) {
 	now := m.now()
 
 	if len(reqs) == 0 {

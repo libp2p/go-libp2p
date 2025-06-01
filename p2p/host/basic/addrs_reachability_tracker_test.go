@@ -219,12 +219,12 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		tr := &addrsReachabilityTracker{
 			ctx:                  ctx,
 			cancel:               cancel,
-			cli:                  cli,
+			client:               cli,
 			newAddrs:             make(chan []ma.Multiaddr, 1),
 			reachabilityUpdateCh: make(chan struct{}, 1),
 			maxConcurrency:       3,
 			newAddrsProbeDelay:   0 * time.Second,
-			addrTracker:          newProbeManager(cl.Now),
+			probeManager:         newProbeManager(cl.Now),
 			clock:                cl,
 		}
 		err := tr.Start()
@@ -460,7 +460,6 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		cl.Add(1)
 		time.Sleep(100 * time.Millisecond)
 		require.True(t, drainNotify()) // check that we did receive probes
-
 		cl.Add(highConfidenceAddrProbeInterval / 2)
 		select {
 		case <-notify:
@@ -477,11 +476,22 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 	})
 }
 
-func TestRunProbes(t *testing.T) {
+func TestRefreshReachability(t *testing.T) {
 	pub1 := ma.StringCast("/ip4/1.1.1.1/tcp/1")
 	pub2 := ma.StringCast("/ip4/1.1.1.1/tcp/2")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	newTracker := func(client autonatv2Client, pm *probeManager) *addrsReachabilityTracker {
+		return &addrsReachabilityTracker{
+			probeManager:   pm,
+			client:         client,
+			clock:          clock.New(),
+			maxConcurrency: 3,
+			ctx:            ctx,
+			cancel:         cancel,
+		}
+	}
 	t.Run("backoff on ErrNoValidPeers", func(t *testing.T) {
 		mockClient := mockAutoNATClient{
 			F: func(_ context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
@@ -491,8 +501,9 @@ func TestRunProbes(t *testing.T) {
 
 		addrTracker := newProbeManager(time.Now)
 		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
-		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
-		require.True(t, result)
+		r := newTracker(mockClient, addrTracker)
+		res := r.refreshReachability()
+		require.True(t, <-res.BackoffCh)
 		require.Equal(t, addrTracker.InProgressProbes(), 0)
 	})
 
@@ -504,12 +515,12 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newProbeManager(time.Now)
-		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
-
-		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
-		require.True(t, result)
-		require.Equal(t, addrTracker.InProgressProbes(), 0)
+		pm := newProbeManager(time.Now)
+		pm.UpdateAddrs([]ma.Multiaddr{pub1})
+		r := newTracker(mockClient, pm)
+		result := r.refreshReachability()
+		require.True(t, <-result.BackoffCh)
+		require.Equal(t, pm.InProgressProbes(), 0)
 	})
 
 	t.Run("quits on cancellation", func(t *testing.T) {
@@ -522,15 +533,22 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		addrTracker := newProbeManager(time.Now)
-		addrTracker.UpdateAddrs([]ma.Multiaddr{pub1})
+		pm := newProbeManager(time.Now)
+		pm.UpdateAddrs([]ma.Multiaddr{pub1})
+		r := &addrsReachabilityTracker{
+			ctx:          ctx,
+			cancel:       cancel,
+			client:       mockClient,
+			probeManager: pm,
+			clock:        clock.New(),
+		}
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
-			assert.False(t, result)
-			assert.Equal(t, addrTracker.InProgressProbes(), 0)
+			result := r.refreshReachability()
+			assert.False(t, <-result.BackoffCh)
+			assert.Equal(t, pm.InProgressProbes(), 0)
 		}()
 
 		cancel()
@@ -555,9 +573,6 @@ func TestRunProbes(t *testing.T) {
 	t.Run("handles refusals", func(t *testing.T) {
 		pub1, _ := ma.NewMultiaddr("/ip4/1.1.1.1/tcp/1")
 
-		addrTracker := newProbeManager(time.Now)
-		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
-
 		mockClient := mockAutoNATClient{
 			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for i, req := range reqs {
@@ -569,19 +584,20 @@ func TestRunProbes(t *testing.T) {
 			},
 		}
 
-		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
-		require.False(t, result)
+		pm := newProbeManager(time.Now)
+		pm.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
+		r := newTracker(mockClient, pm)
 
-		reachable, unreachable := addrTracker.AppendConfirmedAddrs(nil, nil)
+		result := r.refreshReachability()
+		require.False(t, <-result.BackoffCh)
+
+		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Empty(t, unreachable)
-		require.Equal(t, addrTracker.InProgressProbes(), 0)
+		require.Equal(t, pm.InProgressProbes(), 0)
 	})
 
 	t.Run("handles completions", func(t *testing.T) {
-		addrTracker := newProbeManager(time.Now)
-		addrTracker.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
-
 		mockClient := mockAutoNATClient{
 			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				for i, req := range reqs {
@@ -595,14 +611,16 @@ func TestRunProbes(t *testing.T) {
 				return autonatv2.Result{AllAddrsRefused: true}, nil
 			},
 		}
+		pm := newProbeManager(time.Now)
+		pm.UpdateAddrs([]ma.Multiaddr{pub2, pub1})
+		r := newTracker(mockClient, pm)
+		result := r.refreshReachability()
+		require.False(t, <-result.BackoffCh)
 
-		result := runProbes(ctx, defaultMaxConcurrency, addrTracker, mockClient)
-		require.False(t, result)
-
-		reachable, unreachable := addrTracker.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Equal(t, unreachable, []ma.Multiaddr{pub2})
-		require.Equal(t, addrTracker.InProgressProbes(), 0)
+		require.Equal(t, pm.InProgressProbes(), 0)
 	})
 }
 

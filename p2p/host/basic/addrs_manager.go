@@ -294,6 +294,14 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, curre
 		}
 	}
 
+	// We *must* send both reachability changed and addrs changed events from the
+	// same goroutine to ensure correct ordering
+	// Consider the events:
+	// 	- addr x discovered
+	// 	- addr x is reachable
+	// 	- addr x removed
+	// We must send these events in the same order. It'll be confusing for consumers
+	// if the reachable event is received after the addr removed event.
 	if areAddrsDifferent(previous.reachableAddrs, current.reachableAddrs) ||
 		areAddrsDifferent(previous.unreachableAddrs, current.unreachableAddrs) {
 		log.Debugf("host reachable addrs updated: %s", current.localAddrs)
@@ -676,7 +684,7 @@ func removeNotInSource(addrs, source []ma.Multiaddr) []ma.Multiaddr {
 	j := 0
 	// mark entries not in source as nil
 	for i, a := range addrs {
-		// move right till a is greater
+		// move right as long as a > source[j]
 		for j < len(source) && a.Compare(source[j]) > 0 {
 			j++
 		}
