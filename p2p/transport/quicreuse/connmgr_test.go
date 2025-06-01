@@ -393,7 +393,7 @@ func TestAssociate(t *testing.T) {
 
 func TestConnContext(t *testing.T) {
 	for _, reuse := range []bool{true, false} {
-		t.Run(fmt.Sprintf("reuseport:%t", reuse), func(t *testing.T) {
+		t.Run(fmt.Sprintf("reuseport:%t_error", reuse), func(t *testing.T) {
 			opts := []Option{
 				ConnContext(func(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
 					return ctx, errors.New("test error")
@@ -433,6 +433,59 @@ func TestConnContext(t *testing.T) {
 
 			_, err = connectWithProtocol(t, ln1.Addr(), proto2)
 			require.ErrorContains(t, err, "CONNECTION_REFUSED")
+		})
+		t.Run(fmt.Sprintf("reuseport:%t_success", reuse), func(t *testing.T) {
+			type ctxKey struct{}
+			opts := []Option{
+				ConnContext(func(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
+					return context.WithValue(ctx, ctxKey{}, "success"), nil
+				})}
+			if !reuse {
+				opts = append(opts, DisableReuseport())
+			}
+			cm, err := NewConnManager(
+				quic.StatelessResetKey{},
+				quic.TokenGeneratorKey{},
+				opts...,
+			)
+			require.NoError(t, err)
+			defer func() { _ = cm.Close() }()
+
+			proto1 := "proto1"
+			_, proto1TLS := getTLSConfForProto(t, proto1)
+			ln1, err := cm.ListenQUIC(
+				ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+				proto1TLS,
+				nil,
+			)
+			require.NoError(t, err)
+			defer ln1.Close()
+
+			clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+			require.NoError(t, err)
+			clientIdentity, err := libp2ptls.NewIdentity(clientKey)
+			require.NoError(t, err)
+			tlsConf, peerChan := clientIdentity.ConfigForPeer("")
+			cconn, err := net.ListenUDP("udp4", nil)
+			tlsConf.NextProtos = []string{proto1}
+			require.NoError(t, err)
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			conn, err := quic.Dial(ctx, cconn, ln1.Addr(), tlsConf, nil)
+			cancel()
+			require.NoError(t, err)
+			defer conn.CloseWithError(0, "")
+
+			require.Equal(t, proto1, conn.ConnectionState().TLS.NegotiatedProtocol)
+			_, err = peer.IDFromPublicKey(<-peerChan)
+			require.NoError(t, err)
+
+			acceptCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			c, err := ln1.Accept(acceptCtx)
+			cancel()
+			require.NoError(t, err)
+			defer c.CloseWithError(0, "")
+
+			require.Equal(t, "success", c.Context().Value(ctxKey{}))
 		})
 	}
 }

@@ -351,16 +351,11 @@ func (r *resourceManager) VerifySourceAddress(addr net.Addr) bool {
 	if r.verifySourceAddressRateLimiter == nil {
 		return false
 	}
-	// Verify all non IP addr source addrs
-	host, _, err := net.SplitHostPort(addr.String())
+	ipPort, err := netip.ParseAddrPort(addr.String())
 	if err != nil {
 		return true
 	}
-	ipAddr, err := netip.ParseAddr(host)
-	if err != nil {
-		return true
-	}
-	return !r.verifySourceAddressRateLimiter.Allow(ipAddr)
+	return !r.verifySourceAddressRateLimiter.Allow(ipPort.Addr())
 }
 
 // OpenConnectionNoIP is deprecated and will be removed in the next release

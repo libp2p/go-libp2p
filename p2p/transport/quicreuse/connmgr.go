@@ -84,6 +84,11 @@ func defaultSourceIPSelectorFn() (SourceIPSelector, error) {
 	return &netrouteSourceIPSelector{routes: r}, err
 }
 
+const (
+	unverifiedAddressNewConnectionRPS   = 1000
+	unverifiedAddressNewConnectionBurst = 1000
+)
+
 // NewConnManager returns a new ConnManager
 func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
@@ -111,7 +116,7 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	// Verify source addresses when under high load.
 	// This is ensures that the number of spoofed/unverified addresses that are passed to downstream rate limiters
 	// are limited, which enables IP address based rate limiting.
-	sourceAddrRateLimiter := rate.NewLimiter(1000, 1000)
+	sourceAddrRateLimiter := rate.NewLimiter(unverifiedAddressNewConnectionRPS, unverifiedAddressNewConnectionBurst)
 	vsa := cm.verifySourceAddress
 	cm.verifySourceAddress = func(addr net.Addr) bool {
 		if sourceAddrRateLimiter.Allow() {
@@ -397,7 +402,7 @@ func (c *ConnManager) TransportWithAssociationForDial(association any, network s
 func (c *ConnManager) newSingleOwnerTransport(conn net.PacketConn) *singleOwnerTransport {
 	return &singleOwnerTransport{
 		Transport: &wrappedQUICTransport{
-			Transport: newQuicTransport(
+			Transport: newQUICTransport(
 				conn,
 				&c.tokenKey,
 				&c.srk,
@@ -438,7 +443,7 @@ func (t *wrappedQUICTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (Q
 	return t.Transport.Listen(tlsConf, conf)
 }
 
-func newQuicTransport(
+func newQUICTransport(
 	conn net.PacketConn,
 	tokenGeneratorKey *quic.TokenGeneratorKey,
 	statelessResetKey *quic.StatelessResetKey,

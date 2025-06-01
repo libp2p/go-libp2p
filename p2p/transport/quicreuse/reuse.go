@@ -461,7 +461,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 func (r *reuse) newTransport(conn net.PacketConn) *refcountedTransport {
 	return &refcountedTransport{
 		QUICTransport: &wrappedQUICTransport{
-			Transport: newQuicTransport(
+			Transport: newQUICTransport(
 				conn,
 				r.tokenGeneratorKey,
 				r.statelessResetKey,

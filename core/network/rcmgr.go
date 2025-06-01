@@ -1,6 +1,8 @@
 package network
 
 import (
+	"context"
+	"errors"
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -275,8 +277,24 @@ type ScopeStat struct {
 	Memory int64
 }
 
-// ScopeKey is the key to store Scope in contexts
-type ScopeKey struct{}
+// connManagementScopeKey is the key to store Scope in contexts
+type connManagementScopeKey struct{}
+
+func WithConnManagementScope(ctx context.Context, scope ConnManagementScope) context.Context {
+	return context.WithValue(ctx, connManagementScopeKey{}, scope)
+}
+
+func UnwrapConnManagementScope(ctx context.Context) (ConnManagementScope, error) {
+	v := ctx.Value(connManagementScopeKey{})
+	if v == nil {
+		return nil, errors.New("context has no ConnManagementScope")
+	}
+	scope, ok := v.(ConnManagementScope)
+	if !ok {
+		return nil, errors.New("context has no ConnManagementScope")
+	}
+	return scope, nil
+}
 
 // NullResourceManager is a stub for tests and initialization of default values
 type NullResourceManager struct{}

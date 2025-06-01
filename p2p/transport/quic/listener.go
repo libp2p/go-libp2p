@@ -88,19 +88,14 @@ func (l *listener) wrapConn(qconn quic.Connection) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	var connScope network.ConnManagementScope
-	scopeVal := qconn.Context().Value(network.ScopeKey{})
-	if scopeVal != nil {
-		s, ok := scopeVal.(network.ConnManagementScope)
-		if !ok {
-			log.Errorf("expected scope on context of type: %T to implement network.ConnManagementScope", scopeVal)
-		} else {
-			connScope = s
-		}
+	connScope, err := network.UnwrapConnManagementScope(qconn.Context())
+	if err != nil {
+		connScope = nil
+		// Don't error here.
+		// Setup scope if we don't have scope from quicreuse.
+		// This is better than failing so that users that don't use quicreuse.ConnContext option with the resource
+		// manager work correctly.
 	}
-	// Setup scope if we don't have scope from quicreuse.
-	// This is better than failing so that users that don't use quicreuse.ConnContext option with the resource
-	// manager still work correctly.
 	if connScope == nil {
 		connScope, err = l.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
 		if err != nil {

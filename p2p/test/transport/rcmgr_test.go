@@ -3,6 +3,7 @@ package transport_integration
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -89,7 +90,8 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					}
 					connScope.EXPECT().Done().MinTimes(1)
 					// udp transports won't have FD
-					expectFd := !(strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport") || strings.Contains(tc.Name, "WebRTC"))
+					udpTransportRegex := regexp.MustCompile(`QUIC|WebTransport|WebRTC`)
+					expectFd := !udpTransportRegex.MatchString(tc.Name)
 
 					if !testDialer && (strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport")) {
 						rcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)
@@ -97,7 +99,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
 
 					var allStreamsDone sync.WaitGroup
-					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(_ peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
 						allStreamsDone.Add(1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
 						// No need to track these memory reservations since we assert that Done is called

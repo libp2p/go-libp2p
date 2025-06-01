@@ -14,6 +14,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -900,12 +901,17 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
-			mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
-				// Block the connection
-				return nil, fmt.Errorf("connections blocked")
-			})
-			if strings.HasPrefix(tc.Name, "QUIC") || strings.HasPrefix(tc.Name, "WebTransport") {
-				mockRcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)
+			if matched, _ := regexp.MatchString(`^(QUIC|WebTransport)`, tc.Name); matched {
+				mockRcmgr.EXPECT().VerifySourceAddress(gomock.Any()).AnyTimes().Return(false)
+				// If the initial TLS ClientHello is split into two quic-go might call the transport multiple times to open a
+				// connection. This will only be called multiple times if the connection is rejected. If were were to accept
+				// the connection, this would have been called only once.
+				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).AnyTimes().Return(nil, fmt.Errorf("connection blocked"))
+			} else {
+				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
+					// Block the connection
+					return nil, fmt.Errorf("connections blocked")
+				})
 			}
 			mockRcmgr.EXPECT().Close().AnyTimes()
 

@@ -298,7 +298,7 @@ const sourceAddressRPS = float64(1.0*time.Second) / (2 * float64(handshakeDurati
 
 // newVerifySourceAddressRateLimiter returns a rate limiter for verifying source addresses.
 // The returned limiter allows maxAllowedConns / 2 unverified addresses to begin handshake.
-// This ensures that in the event someone is spoofing IPs 1/2 the maximum allowed connections
+// This ensures that in the event someone is spoofing IPs, 1/2 the maximum allowed connections
 // will be able to connect, although they will have increased latency because of address
 // verification.
 func newVerifySourceAddressRateLimiter(cl *connLimiter) *rate.Limiter {

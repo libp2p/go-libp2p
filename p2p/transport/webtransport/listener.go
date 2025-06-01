@@ -149,19 +149,14 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	var connScope network.ConnManagementScope
-	scopeVal := r.Context().Value(network.ScopeKey{})
-	if scopeVal != nil {
-		s, ok := scopeVal.(network.ConnManagementScope)
-		if !ok {
-			log.Errorf("expected scope on context of type: %T to implement network.ConnManagementScope", scopeVal)
-		} else {
-			connScope = s
-		}
+	connScope, err := network.UnwrapConnManagementScope(r.Context())
+	if err != nil {
+		connScope = nil
+		// Don't error here.
+		// Setup scope if we don't have scope from quicreuse.
+		// This is better than failing so that users that don't use quicreuse.ConnContext option with the resource
+		// manager still work correctly.
 	}
-	// Setup scope if we don't have scope from quicreuse.
-	// This is better than failing so that users that don't use quicreuse.ConnContext option with the resource
-	// manager still work correctly.
 	if connScope == nil {
 		connScope, err = l.transport.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
 		if err != nil {

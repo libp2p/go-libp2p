@@ -391,7 +391,7 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 						if err != nil {
 							return ctx, err
 						}
-						ctx = context.WithValue(ctx, network.ScopeKey{}, scope)
+						ctx = network.WithConnManagementScope(ctx, scope)
 						context.AfterFunc(ctx, func() {
 							scope.Done()
 						})
