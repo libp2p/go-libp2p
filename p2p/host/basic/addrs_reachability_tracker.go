@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -426,9 +426,9 @@ func (m *probeManager) GetProbe() probe {
 
 	now := m.now()
 	for i, a := range m.addrs {
-		ab := string(a.Bytes())
-		pc := m.statuses[ab].RequiredProbeCount(now)
-		if m.inProgressProbes[ab] >= pc {
+		ab := a.Bytes()
+		pc := m.statuses[string(ab)].RequiredProbeCount(now)
+		if m.inProgressProbes[string(ab)] >= pc {
 			continue
 		}
 		reqs := make(probe, 0, maxAddrsPerRequest)
@@ -438,8 +438,8 @@ func (m *probeManager) GetProbe() probe {
 		// be dialed.
 		for j := 1; j < len(m.addrs); j++ {
 			k := (i + j) % len(m.addrs)
-			ab := string(m.addrs[k].Bytes())
-			pc := m.statuses[ab].RequiredProbeCount(now)
+			ab := m.addrs[k].Bytes()
+			pc := m.statuses[string(ab)].RequiredProbeCount(now)
 			if pc == 0 {
 				continue
 			}
@@ -628,7 +628,7 @@ func (s *addrStatus) AddOutcome(at time.Time, rch network.Reachability, windowSi
 
 // RemoveBefore removes outcomes before t
 func (s *addrStatus) RemoveBefore(t time.Time) {
-	var end = 0
+	end := 0
 	for ; end < len(s.outcomes); end++ {
 		if !s.outcomes[end].At.Before(t) {
 			break

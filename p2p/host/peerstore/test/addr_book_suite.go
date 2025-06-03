@@ -10,7 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/core/test"
 
-	mockClock "github.com/benbjohnson/clock"
+	mockClock "github.com/filecoin-project/go-clock"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -289,7 +289,6 @@ func testUpdateTTLs(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
 			AssertAddressesEqual(t, addrs1[1:], m.Addrs(ids[0]))
 			AssertAddressesEqual(t, addrs2[1:], m.Addrs(ids[1]))
 		})
-
 	}
 }
 

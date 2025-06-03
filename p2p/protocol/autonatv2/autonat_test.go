@@ -33,7 +33,7 @@ func newAutoNAT(t testing.TB, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 	t.Helper()
 	b := eventbus.NewBus()
 	h := bhost.NewBlankHost(
-		swarmt.GenSwarm(t, swarmt.EventBus(b)), bhost.WithEventBus(b))
+		swarmt.GenSwarm(t, swarmt.EventBus(b), swarmt.OptDisableWebTransport, swarmt.OptDisableWebRTC), bhost.WithEventBus(b))
 	if dialer == nil {
 		dialer = bhost.NewBlankHost(
 			swarmt.GenSwarm(t,

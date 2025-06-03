@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mocks"
 	"github.com/libp2p/go-libp2p/p2p/discovery/util"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"

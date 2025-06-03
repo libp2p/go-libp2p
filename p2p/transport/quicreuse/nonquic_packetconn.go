@@ -10,7 +10,7 @@ import (
 // non-QUIC packets on a quic.Transport. This lets us reuse this UDP port for
 // other transports like WebRTC.
 type nonQUICPacketConn struct {
-	owningTransport refCountedQuicTransport
+	owningTransport RefCountedQUICTransport
 	tr              QUICTransport
 	ctx             context.Context
 	ctxCancel       context.CancelFunc

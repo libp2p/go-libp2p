@@ -10,7 +10,7 @@ import (
 	pt "github.com/libp2p/go-libp2p/p2p/host/peerstore/test"
 	"github.com/multiformats/go-multiaddr"
 
-	mockClock "github.com/benbjohnson/clock"
+	mockClock "github.com/filecoin-project/go-clock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 )
