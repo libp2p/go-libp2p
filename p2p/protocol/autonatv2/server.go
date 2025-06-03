@@ -59,10 +59,9 @@ type server struct {
 	allowPrivateAddrs bool
 }
 
-func newServer(host, dialer host.Host, s *autoNATSettings) *server {
+func newServer(dialer host.Host, s *autoNATSettings) *server {
 	return &server{
 		dialerHost:                           dialer,
-		host:                                 host,
 		dialDataRequestPolicy:                s.dataRequestPolicy,
 		amplificatonAttackPreventionDialWait: s.amplificatonAttackPreventionDialWait,
 		allowPrivateAddrs:                    s.allowPrivateAddrs,
@@ -79,7 +78,8 @@ func newServer(host, dialer host.Host, s *autoNATSettings) *server {
 }
 
 // Enable attaches the stream handler to the host.
-func (as *server) Start() {
+func (as *server) Start(h host.Host) {
+	as.host = h
 	as.host.SetStreamHandler(DialProtocol, as.handleDialRequest)
 }
 
