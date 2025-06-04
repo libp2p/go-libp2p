@@ -270,7 +270,6 @@ func (as *AmbientAutoNAT) scheduleProbe(forceProbe bool) time.Duration {
 		// retry very quicky if forceProbe is true *and* we don't know our reachability
 		// limit all peers fetch from peerstore to 1 per second.
 		nextProbeAfter = 2 * time.Second
-		nextProbeAfter = 2 * time.Second
 	case currentStatus == network.ReachabilityUnknown,
 		as.confidence < maxConfidence,
 		currentStatus != network.ReachabilityPublic && receivedInbound:

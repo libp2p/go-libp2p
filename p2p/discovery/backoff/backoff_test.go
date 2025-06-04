@@ -21,9 +21,7 @@ func TestFixedBackoff(t *testing.T) {
 	delay := startDelay
 
 	bkf := NewFixedBackoff(delay)
-	delay *= 2
 	b1 := bkf()
-	delay *= 2
 	b2 := bkf()
 
 	if b1.Delay() != startDelay || b2.Delay() != startDelay {

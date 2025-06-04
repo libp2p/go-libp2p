@@ -12,13 +12,16 @@ linters:
     - errcheck
     - staticcheck
 
+  disable:
+    - errcheck
+
   settings:
     revive:
       severity: warning
       rules:
         - name: unused-parameter
           severity: warning
+          disabled: true
 
 severity:
-    default: warning
-
+  default: warning

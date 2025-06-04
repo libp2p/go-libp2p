@@ -181,7 +181,7 @@ func ExampleHost_overLibp2pStreams() {
 	// Make an HTTP request using the Go standard library, but over libp2p
 	// streams. If the server were listening on an HTTP transport, this could
 	// also make the request over the HTTP transport.
-	httpClient, err := client.NamespacedClient("/echo/1.0.0", peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	httpClient, _ := client.NamespacedClient("/echo/1.0.0", peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
 
 	// Only need to Post to "/" because this client is namespaced to the "/echo/1.0.0" protocol.
 	resp, err := httpClient.Post("/", "application/octet-stream", strings.NewReader("Hello HTTP"))

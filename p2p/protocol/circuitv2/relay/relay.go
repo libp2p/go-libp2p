@@ -591,7 +591,7 @@ func makeReservationMsg(
 		return rsvp
 	}
 
-	var addrBytes [][]byte
+	addrBytes := make([][]byte, 0, len(selfAddrs))
 	for _, addr := range selfAddrs {
 		if !manet.IsPublicAddr(addr) {
 			continue
