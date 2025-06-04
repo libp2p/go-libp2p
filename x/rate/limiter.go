@@ -61,6 +61,8 @@ func (r *Limiter) init() {
 		} else {
 			r.globalBucket = rate.NewLimiter(rate.Limit(r.GlobalLimit.RPS), r.GlobalLimit.Burst)
 		}
+		// clone the slice in case it's shared with other limiters
+		r.NetworkPrefixLimits = slices.Clone(r.NetworkPrefixLimits)
 		// sort such that the widest prefix (smallest bit count) is last.
 		slices.SortFunc(r.NetworkPrefixLimits, func(a, b PrefixLimit) int { return b.Prefix.Bits() - a.Prefix.Bits() })
 		r.networkPrefixBuckets = make([]*rate.Limiter, 0, len(r.NetworkPrefixLimits))

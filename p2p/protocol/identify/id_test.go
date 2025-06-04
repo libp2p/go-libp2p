@@ -30,7 +30,7 @@ import (
 	useragent "github.com/libp2p/go-libp2p/p2p/protocol/identify/internal/user-agent"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
-	mockClock "github.com/filecoin-project/go-clock"
+	mockClock "github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"

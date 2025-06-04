@@ -9,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/benbjohnson/clock"
 )
 
 // DefaultResolution is the default resolution of the decay tracker.

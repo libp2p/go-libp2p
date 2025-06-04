@@ -13,6 +13,7 @@ type autoNATSettings struct {
 	now                                  func() time.Time
 	amplificatonAttackPreventionDialWait time.Duration
 	metricsTracer                        MetricsTracer
+	throttlePeerDuration                 time.Duration
 }
 
 func defaultSettings() *autoNATSettings {
@@ -25,6 +26,7 @@ func defaultSettings() *autoNATSettings {
 		dataRequestPolicy:                    amplificationAttackPrevention,
 		amplificatonAttackPreventionDialWait: 3 * time.Second,
 		now:                                  time.Now,
+		throttlePeerDuration:                 defaultThrottlePeerDuration,
 	}
 }
 
@@ -62,6 +64,13 @@ func allowPrivateAddrs(s *autoNATSettings) error {
 func withAmplificationAttackPreventionDialWait(d time.Duration) AutoNATOption {
 	return func(s *autoNATSettings) error {
 		s.amplificatonAttackPreventionDialWait = d
+		return nil
+	}
+}
+
+func withThrottlePeerDuration(d time.Duration) AutoNATOption {
+	return func(s *autoNATSettings) error {
+		s.throttlePeerDuration = d
 		return nil
 	}
 }

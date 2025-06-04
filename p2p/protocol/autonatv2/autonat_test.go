@@ -2,8 +2,13 @@ package autonatv2
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
+	"net"
+	"net/netip"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -36,11 +41,12 @@ func newAutoNAT(t testing.TB, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 					swarm.WithUDPBlackHoleSuccessCounter(nil),
 					swarm.WithIPv6BlackHoleSuccessCounter(nil))))
 	}
-	an, err := New(h, dialer, opts...)
+	opts = append([]AutoNATOption{withThrottlePeerDuration(0)}, opts...)
+	an, err := New(dialer, opts...)
 	if err != nil {
 		t.Error(err)
 	}
-	an.Start()
+	require.NoError(t, an.Start(h))
 	t.Cleanup(an.Close)
 	return an
 }
@@ -74,7 +80,7 @@ func waitForPeer(t testing.TB, a *AutoNAT) {
 	require.Eventually(t, func() bool {
 		a.mx.Lock()
 		defer a.mx.Unlock()
-		return a.peers.GetRand() != ""
+		return len(a.peers.peers) != 0
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
@@ -88,7 +94,7 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 	an := newAutoNAT(t, nil)
 	res, err := an.GetReachability(context.Background(), []Request{{Addr: ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")}})
 	require.Equal(t, res, Result{})
-	require.Contains(t, err.Error(), "private address cannot be verified by autonatv2")
+	require.ErrorIs(t, err, ErrPrivateAddrs)
 }
 
 func TestClientRequest(t *testing.T) {
@@ -153,19 +159,6 @@ func TestClientServerError(t *testing.T) {
 					&pb.Message{Msg: &pb.Message_DialRequest{DialRequest: &pb.DialRequest{}}}))
 			},
 			errorStr: "invalid msg type",
-		},
-		{
-			handler: func(s network.Stream) {
-				w := pbio.NewDelimitedWriter(s)
-				assert.NoError(t, w.WriteMsg(
-					&pb.Message{Msg: &pb.Message_DialResponse{
-						DialResponse: &pb.DialResponse{
-							Status: pb.DialResponse_E_DIAL_REFUSED,
-						},
-					}},
-				))
-			},
-			errorStr: ErrDialRefused.Error(),
 		},
 	}
 
@@ -296,6 +289,49 @@ func TestClientDataRequest(t *testing.T) {
 			require.NotNil(t, err)
 		})
 	}
+}
+
+func TestAutoNATPrivateAndPublicAddrs(t *testing.T) {
+	an := newAutoNAT(t, nil)
+	defer an.Close()
+	defer an.host.Close()
+
+	b := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer b.Close()
+	idAndConnect(t, an.host, b)
+	waitForPeer(t, an)
+
+	dialerHost := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer dialerHost.Close()
+	handler := func(s network.Stream) {
+		w := pbio.NewDelimitedWriter(s)
+		r := pbio.NewDelimitedReader(s, maxMsgSize)
+		var msg pb.Message
+		assert.NoError(t, r.ReadMsg(&msg))
+		w.WriteMsg(&pb.Message{
+			Msg: &pb.Message_DialResponse{
+				DialResponse: &pb.DialResponse{
+					Status:     pb.DialResponse_OK,
+					DialStatus: pb.DialStatus_E_DIAL_ERROR,
+					AddrIdx:    0,
+				},
+			},
+		})
+		s.Close()
+	}
+
+	b.SetStreamHandler(DialProtocol, handler)
+	privateAddr := ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")
+	publicAddr := ma.StringCast("/ip4/1.2.3.4/udp/10/quic-v1")
+	res, err := an.GetReachability(context.Background(),
+		[]Request{
+			{Addr: privateAddr},
+			{Addr: publicAddr},
+		})
+	require.NoError(t, err)
+	require.Equal(t, res.Addr, publicAddr, "%s\n%s", res.Addr, publicAddr)
+	require.Equal(t, res.Idx, 1)
+	require.Equal(t, res.Reachability, network.ReachabilityPrivate)
 }
 
 func TestClientDialBacks(t *testing.T) {
@@ -507,7 +543,6 @@ func TestClientDialBacks(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, res.Reachability, network.ReachabilityPublic)
-				require.Equal(t, res.Status, pb.DialStatus_OK)
 			}
 		})
 	}
@@ -549,46 +584,6 @@ func TestEventSubscription(t *testing.T) {
 		defer an.mx.Unlock()
 		return len(an.peers.peers) == 0
 	}, 5*time.Second, 100*time.Millisecond)
-}
-
-func TestPeersMap(t *testing.T) {
-	emptyPeerID := peer.ID("")
-
-	t.Run("single_item", func(t *testing.T) {
-		p := newPeersMap()
-		p.Put("peer1")
-		p.Delete("peer1")
-		p.Put("peer1")
-		require.Equal(t, peer.ID("peer1"), p.GetRand())
-		p.Delete("peer1")
-		require.Equal(t, emptyPeerID, p.GetRand())
-	})
-
-	t.Run("multiple_items", func(t *testing.T) {
-		p := newPeersMap()
-		require.Equal(t, emptyPeerID, p.GetRand())
-
-		allPeers := make(map[peer.ID]bool)
-		for i := 0; i < 20; i++ {
-			pid := peer.ID(fmt.Sprintf("peer-%d", i))
-			allPeers[pid] = true
-			p.Put(pid)
-		}
-		foundPeers := make(map[peer.ID]bool)
-		for i := 0; i < 1000; i++ {
-			pid := p.GetRand()
-			require.NotEqual(t, emptyPeerID, p)
-			require.True(t, allPeers[pid])
-			foundPeers[pid] = true
-			if len(foundPeers) == len(allPeers) {
-				break
-			}
-		}
-		for pid := range allPeers {
-			p.Delete(pid)
-		}
-		require.Equal(t, emptyPeerID, p.GetRand())
-	})
 }
 
 func TestAreAddrsConsistency(t *testing.T) {
@@ -645,6 +640,12 @@ func TestAreAddrsConsistency(t *testing.T) {
 			dialAddr:  ma.StringCast("/ip6/1::1/udp/123/quic-v1/"),
 			success:   false,
 		},
+		{
+			name:      "dns6",
+			localAddr: ma.StringCast("/dns6/lib.p2p/udp/12345/quic-v1"),
+			dialAddr:  ma.StringCast("/ip4/1.2.3.4/udp/123/quic-v1/"),
+			success:   false,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -657,4 +658,174 @@ func TestAreAddrsConsistency(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPeerMap(t *testing.T) {
+	pm := newPeersMap()
+	// Add 1, 2, 3
+	pm.Put(peer.ID("1"))
+	pm.Put(peer.ID("2"))
+	pm.Put(peer.ID("3"))
+
+	// Remove 3, 2
+	pm.Delete(peer.ID("3"))
+	pm.Delete(peer.ID("2"))
+
+	// Add 4
+	pm.Put(peer.ID("4"))
+
+	// Remove 3, 2 again. Should be no op
+	pm.Delete(peer.ID("3"))
+	pm.Delete(peer.ID("2"))
+
+	contains := []peer.ID{"1", "4"}
+	elems := make([]peer.ID, 0)
+	for p := range pm.Shuffled() {
+		elems = append(elems, p)
+	}
+	require.ElementsMatch(t, contains, elems)
+}
+
+func FuzzClient(f *testing.F) {
+	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
+	c := newAutoNAT(f, nil)
+	idAndWait(f, c, a)
+
+	// TODO: Move this to go-multiaddrs
+	getProto := func(protos []byte) ma.Multiaddr {
+		protoType := 0
+		if len(protos) > 0 {
+			protoType = int(protos[0])
+		}
+
+		port1, port2 := 0, 0
+		if len(protos) > 1 {
+			port1 = int(protos[1])
+		}
+		if len(protos) > 2 {
+			port2 = int(protos[2])
+		}
+		protoTemplates := []string{
+			"/tcp/%d/",
+			"/udp/%d/",
+			"/udp/%d/quic-v1/",
+			"/udp/%d/quic-v1/tcp/%d",
+			"/udp/%d/quic-v1/webtransport/",
+			"/udp/%d/webrtc/",
+			"/udp/%d/webrtc-direct/",
+			"/unix/hello/",
+		}
+		s := protoTemplates[protoType%len(protoTemplates)]
+		port1 %= (1 << 16)
+		if strings.Count(s, "%d") == 1 {
+			return ma.StringCast(fmt.Sprintf(s, port1))
+		}
+		port2 %= (1 << 16)
+		return ma.StringCast(fmt.Sprintf(s, port1, port2))
+	}
+
+	getIP := func(ips []byte) ma.Multiaddr {
+		ipType := 0
+		if len(ips) > 0 {
+			ipType = int(ips[0])
+		}
+		ips = ips[1:]
+		var x, y int64
+		split := 128 / 8
+		if len(ips) < split {
+			split = len(ips)
+		}
+		var b [8]byte
+		copy(b[:], ips[:split])
+		x = int64(binary.LittleEndian.Uint64(b[:]))
+		clear(b[:])
+		copy(b[:], ips[split:])
+		y = int64(binary.LittleEndian.Uint64(b[:]))
+
+		var ip netip.Addr
+		switch ipType % 3 {
+		case 0:
+			ip = netip.AddrFrom4([4]byte{byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24)})
+			return ma.StringCast(fmt.Sprintf("/ip4/%s/", ip))
+		case 1:
+			pubIP := net.ParseIP("2005::") // Public IP address
+			x := int64(binary.LittleEndian.Uint64(pubIP[0:8]))
+			ip = netip.AddrFrom16([16]byte{
+				byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24),
+				byte(x >> 32), byte(x >> 40), byte(x >> 48), byte(x >> 56),
+				byte(y), byte(y >> 8), byte(y >> 16), byte(y >> 24),
+				byte(y >> 32), byte(y >> 40), byte(y >> 48), byte(y >> 56),
+			})
+			return ma.StringCast(fmt.Sprintf("/ip6/%s/", ip))
+		default:
+			ip := netip.AddrFrom16([16]byte{
+				byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24),
+				byte(x >> 32), byte(x >> 40), byte(x >> 48), byte(x >> 56),
+				byte(y), byte(y >> 8), byte(y >> 16), byte(y >> 24),
+				byte(y >> 32), byte(y >> 40), byte(y >> 48), byte(y >> 56),
+			})
+			return ma.StringCast(fmt.Sprintf("/ip6/%s/", ip))
+		}
+	}
+
+	getAddr := func(addrType int, ips, protos []byte) ma.Multiaddr {
+		switch addrType % 4 {
+		case 0:
+			return getIP(ips).Encapsulate(getProto(protos))
+		case 1:
+			return getProto(protos)
+		case 2:
+			return nil
+		default:
+			return getIP(ips).Encapsulate(getProto(protos))
+		}
+	}
+
+	getDNSAddr := func(hostNameBytes, protos []byte) ma.Multiaddr {
+		hostName := strings.ReplaceAll(string(hostNameBytes), "\\", "")
+		hostName = strings.ReplaceAll(hostName, "/", "")
+		if hostName == "" {
+			hostName = "localhost"
+		}
+		dnsType := 0
+		if len(hostNameBytes) > 0 {
+			dnsType = int(hostNameBytes[0])
+		}
+		dnsProtos := []string{"dns", "dns4", "dns6", "dnsaddr"}
+		da := ma.StringCast(fmt.Sprintf("/%s/%s/", dnsProtos[dnsType%len(dnsProtos)], hostName))
+		return da.Encapsulate(getProto(protos))
+	}
+
+	const maxAddrs = 100
+	getAddrs := func(numAddrs int, ips, protos, hostNames []byte) []ma.Multiaddr {
+		if len(ips) == 0 || len(protos) == 0 || len(hostNames) == 0 {
+			return nil
+		}
+		numAddrs = ((numAddrs % maxAddrs) + maxAddrs) % maxAddrs
+		addrs := make([]ma.Multiaddr, numAddrs)
+		ipIdx := 0
+		protoIdx := 0
+		for i := range numAddrs {
+			addrs[i] = getAddr(i, ips[ipIdx:], protos[protoIdx:])
+			ipIdx = (ipIdx + 1) % len(ips)
+			protoIdx = (protoIdx + 1) % len(protos)
+		}
+		maxDNSAddrs := 10
+		protoIdx = 0
+		for i := 0; i < len(hostNames) && i < maxDNSAddrs; i += 2 {
+			ed := min(i+2, len(hostNames))
+			addrs = append(addrs, getDNSAddr(hostNames[i:ed], protos[protoIdx:]))
+			protoIdx = (protoIdx + 1) % len(protos)
+		}
+		return addrs
+	}
+	// reduce the streamTimeout before running this. TODO: fix this
+	f.Fuzz(func(_ *testing.T, numAddrs int, ips, protos, hostNames []byte) {
+		addrs := getAddrs(numAddrs, ips, protos, hostNames)
+		reqs := make([]Request, len(addrs))
+		for i, addr := range addrs {
+			reqs[i] = Request{Addr: addr, SendDialData: true}
+		}
+		c.GetReachability(context.Background(), reqs)
+	})
 }

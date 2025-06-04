@@ -99,7 +99,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
 
 					var allStreamsDone sync.WaitGroup
-					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(_ peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(_ peer.ID, _ network.Direction) (network.StreamManagementScope, error) {
 						allStreamsDone.Add(1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
 						// No need to track these memory reservations since we assert that Done is called
