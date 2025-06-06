@@ -54,6 +54,7 @@ type addrsReachabilityTracker struct {
 	mx               sync.Mutex
 	reachableAddrs   []ma.Multiaddr
 	unreachableAddrs []ma.Multiaddr
+	unknownAddrs     []ma.Multiaddr
 }
 
 // newAddrsReachabilityTracker returns a new addrsReachabilityTracker.
@@ -83,10 +84,10 @@ func (r *addrsReachabilityTracker) UpdateAddrs(addrs []ma.Multiaddr) {
 	}
 }
 
-func (r *addrsReachabilityTracker) ConfirmedAddrs() (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
+func (r *addrsReachabilityTracker) ConfirmedAddrs() (reachableAddrs, unreachableAddrs, unknownAddrs []ma.Multiaddr) {
 	r.mx.Lock()
 	defer r.mx.Unlock()
-	return slices.Clone(r.reachableAddrs), slices.Clone(r.unreachableAddrs)
+	return slices.Clone(r.reachableAddrs), slices.Clone(r.unreachableAddrs), slices.Clone(r.unknownAddrs)
 }
 
 func (r *addrsReachabilityTracker) Start() error {
@@ -129,7 +130,7 @@ func (r *addrsReachabilityTracker) background() {
 
 	var task reachabilityTask
 	var backoffInterval time.Duration
-	var currReachable, currUnreachable, prevReachable, prevUnreachable []ma.Multiaddr
+	var currReachable, currUnreachable, currUnknown, prevReachable, prevUnreachable, prevUnknown []ma.Multiaddr
 	for {
 		select {
 		case <-probeTicker.C:
@@ -173,12 +174,13 @@ func (r *addrsReachabilityTracker) background() {
 			return
 		}
 
-		currReachable, currUnreachable = r.appendConfirmedAddrs(currReachable[:0], currUnreachable[:0])
-		if areAddrsDifferent(prevReachable, currReachable) || areAddrsDifferent(prevUnreachable, currUnreachable) {
+		currReachable, currUnreachable, currUnknown = r.appendConfirmedAddrs(currReachable[:0], currUnreachable[:0], currUnknown[:0])
+		if areAddrsDifferent(prevReachable, currReachable) || areAddrsDifferent(prevUnreachable, currUnreachable) || areAddrsDifferent(prevUnknown, currUnknown) {
 			r.notify()
 		}
 		prevReachable = append(prevReachable[:0], currReachable...)
 		prevUnreachable = append(prevUnreachable[:0], currUnreachable...)
+		prevUnknown = append(prevUnknown[:0], currUnknown...)
 		if !nextProbeTime.IsZero() {
 			probeTimer.Reset(nextProbeTime.Sub(r.clock.Now()))
 		}
@@ -196,13 +198,14 @@ func newBackoffInterval(current time.Duration) time.Duration {
 	return current
 }
 
-func (r *addrsReachabilityTracker) appendConfirmedAddrs(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
-	reachable, unreachable = r.probeManager.AppendConfirmedAddrs(reachable, unreachable)
+func (r *addrsReachabilityTracker) appendConfirmedAddrs(reachable, unreachable, unknown []ma.Multiaddr) (reachableAddrs, unreachableAddrs, unknownAddrs []ma.Multiaddr) {
+	reachable, unreachable, unknown = r.probeManager.AppendConfirmedAddrs(reachable, unreachable, unknown)
 	r.mx.Lock()
 	r.reachableAddrs = append(r.reachableAddrs[:0], reachable...)
 	r.unreachableAddrs = append(r.unreachableAddrs[:0], unreachable...)
+	r.unknownAddrs = append(r.unknownAddrs[:0], unknown...)
 	r.mx.Unlock()
-	return reachable, unreachable
+	return reachable, unreachable, unknown
 }
 
 func (r *addrsReachabilityTracker) notify() {
@@ -381,7 +384,7 @@ func newProbeManager(now func() time.Time) *probeManager {
 }
 
 // AppendConfirmedAddrs appends the current confirmed reachable and unreachable addresses.
-func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
+func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable, unknown []ma.Multiaddr) (reachableAddrs, unreachableAddrs, unknownAddrs []ma.Multiaddr) {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
@@ -393,9 +396,11 @@ func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable []ma.Multiadd
 			reachable = append(reachable, a)
 		case network.ReachabilityPrivate:
 			unreachable = append(unreachable, a)
+		case network.ReachabilityUnknown:
+			unknown = append(unknown, a)
 		}
 	}
-	return reachable, unreachable
+	return reachable, unreachable, unknown
 }
 
 // UpdateAddrs updates the tracked addrs

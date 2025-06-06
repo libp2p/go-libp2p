@@ -54,11 +54,11 @@ func TestProbeManager(t *testing.T) {
 			}
 			pm.CompleteProbe(reqs, autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 		}
-		reachable, _ := pm.AppendConfirmedAddrs(nil, nil)
+		reachable, _, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1, pub2})
 		pm.UpdateAddrs([]ma.Multiaddr{pub3})
 
-		reachable, _ = pm.AppendConfirmedAddrs(nil, nil)
+		reachable, _, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Empty(t, reachable)
 		require.Len(t, pm.statuses, 1)
 	})
@@ -173,7 +173,7 @@ func TestProbeManager(t *testing.T) {
 			}
 		}
 
-		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Equal(t, unreachable, []ma.Multiaddr{pub2})
 	})
@@ -184,12 +184,12 @@ func TestProbeManager(t *testing.T) {
 			pm.CompleteProbe(reqs, autonatv2.Result{Addr: pub1, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 		}
 
-		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Empty(t, unreachable)
 
 		cl.Add(maxProbeResultTTL + 1*time.Second)
-		reachable, unreachable = pm.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Empty(t, reachable)
 		require.Empty(t, unreachable)
 	})
@@ -210,6 +210,18 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 	pub2 := ma.StringCast("/ip4/1.1.1.2/tcp/1")
 	pub3 := ma.StringCast("/ip4/1.1.1.3/tcp/1")
 	pri := ma.StringCast("/ip4/192.168.1.1/tcp/1")
+
+	assertFirstEvent := func(t *testing.T, tr *addrsReachabilityTracker, addrs []ma.Multiaddr) {
+		select {
+		case <-tr.reachabilityUpdateCh:
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("expected first event quickly")
+		}
+		reachable, unreachable, unknown := tr.ConfirmedAddrs()
+		require.Empty(t, reachable)
+		require.Empty(t, unreachable)
+		require.ElementsMatch(t, unknown, addrs, "%s %s", unknown, addrs)
+	}
 
 	newTracker := func(cli mockAutoNATClient, cl clock.Clock) *addrsReachabilityTracker {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -247,29 +259,34 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 						return autonatv2.Result{Addr: pub2, Idx: i, Reachability: network.ReachabilityPrivate}, nil
 					}
 				}
-				return autonatv2.Result{}, autonatv2.ErrNoPeers
+				return autonatv2.Result{AllAddrsRefused: true}, nil
 			},
 		}
 		tr := newTracker(mockClient, nil)
 		tr.UpdateAddrs([]ma.Multiaddr{pub2, pub1, pri})
+		assertFirstEvent(t, tr, []ma.Multiaddr{pub1, pub2})
+
 		select {
 		case <-tr.reachabilityUpdateCh:
 		case <-time.After(2 * time.Second):
 			t.Fatal("expected reachability update")
 		}
-		reachable, unreachable := tr.ConfirmedAddrs()
+		reachable, unreachable, unknown := tr.ConfirmedAddrs()
 		require.Equal(t, reachable, []ma.Multiaddr{pub1}, "%s %s", reachable, pub1)
 		require.Equal(t, unreachable, []ma.Multiaddr{pub2}, "%s %s", unreachable, pub2)
+		require.Empty(t, unknown)
 
-		tr.UpdateAddrs([]ma.Multiaddr{pub3, pub1, pri})
+		tr.UpdateAddrs([]ma.Multiaddr{pub3, pub1, pub2, pri})
 		select {
 		case <-tr.reachabilityUpdateCh:
 		case <-time.After(2 * time.Second):
 			t.Fatal("expected reachability update")
 		}
-		reachable, unreachable = tr.ConfirmedAddrs()
+		reachable, unreachable, unknown = tr.ConfirmedAddrs()
+		t.Logf("Second probe - Reachable: %v, Unreachable: %v, Unknown: %v", reachable, unreachable, unknown)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1}, "%s %s", reachable, pub1)
-		require.Empty(t, unreachable)
+		require.Equal(t, unreachable, []ma.Multiaddr{pub2}, "%s %s", unreachable, pub2)
+		require.Equal(t, unknown, []ma.Multiaddr{pub3}, "%s %s", unknown, pub3)
 	})
 
 	t.Run("confirmed addrs ordering", func(t *testing.T) {
@@ -285,12 +302,14 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		}
 		slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return -a.Compare(b) }) // sort in reverse order
 		tr.UpdateAddrs(addrs)
+		assertFirstEvent(t, tr, addrs)
+
 		select {
 		case <-tr.reachabilityUpdateCh:
 		case <-time.After(2 * time.Second):
 			t.Fatal("expected reachability update")
 		}
-		reachable, unreachable := tr.ConfirmedAddrs()
+		reachable, unreachable, _ := tr.ConfirmedAddrs()
 		require.Empty(t, unreachable)
 
 		orderedAddrs := slices.Clone(addrs)
@@ -334,6 +353,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 
 		// update addrs and wait for initial checks
 		tr.UpdateAddrs([]ma.Multiaddr{pub1})
+		assertFirstEvent(t, tr, []ma.Multiaddr{pub1})
 		// need to update clock after the background goroutine processes the new addrs
 		time.Sleep(100 * time.Millisecond)
 		cl.Add(1)
@@ -356,7 +376,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 			case <-time.After(1 * time.Second):
 				t.Fatal("expected probe")
 			}
-			reachable, unreachable := tr.ConfirmedAddrs()
+			reachable, unreachable, _ := tr.ConfirmedAddrs()
 			require.Empty(t, reachable)
 			require.Empty(t, unreachable)
 		}
@@ -368,7 +388,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		case <-time.After(1 * time.Second):
 			t.Fatal("unexpected reachability update")
 		}
-		reachable, unreachable := tr.ConfirmedAddrs()
+		reachable, unreachable, _ := tr.ConfirmedAddrs()
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Empty(t, unreachable)
 	})
@@ -391,6 +411,8 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 
 		tr := newTracker(mockClient, nil)
 		tr.UpdateAddrs([]ma.Multiaddr{pub1})
+		assertFirstEvent(t, tr, []ma.Multiaddr{pub1})
+
 		for i := 0; i < minConfidence; i++ {
 			select {
 			case <-notify:
@@ -400,7 +422,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		}
 		select {
 		case <-tr.reachabilityUpdateCh:
-			reachable, unreachable := tr.ConfirmedAddrs()
+			reachable, unreachable, _ := tr.ConfirmedAddrs()
 			require.Equal(t, reachable, []ma.Multiaddr{pub1})
 			require.Empty(t, unreachable)
 		case <-time.After(1 * time.Second):
@@ -415,7 +437,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		tr.UpdateAddrs([]ma.Multiaddr{pub2})
 		select {
 		case <-tr.reachabilityUpdateCh:
-			reachable, unreachable := tr.ConfirmedAddrs()
+			reachable, unreachable, _ := tr.ConfirmedAddrs()
 			require.Empty(t, reachable)
 			require.Empty(t, unreachable)
 		case <-time.After(1 * time.Second):
@@ -455,6 +477,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 
 		// update addrs and wait for initial checks
 		tr.UpdateAddrs([]ma.Multiaddr{pub1})
+		assertFirstEvent(t, tr, []ma.Multiaddr{pub1})
 		// need to update clock after the background goroutine processes the new addrs
 		time.Sleep(100 * time.Millisecond)
 		cl.Add(1)
@@ -591,7 +614,7 @@ func TestRefreshReachability(t *testing.T) {
 		result := r.refreshReachability()
 		require.False(t, <-result.BackoffCh)
 
-		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Empty(t, unreachable)
 		require.Equal(t, pm.InProgressProbes(), 0)
@@ -617,7 +640,7 @@ func TestRefreshReachability(t *testing.T) {
 		result := r.refreshReachability()
 		require.False(t, <-result.BackoffCh)
 
-		reachable, unreachable := pm.AppendConfirmedAddrs(nil, nil)
+		reachable, unreachable, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Equal(t, reachable, []ma.Multiaddr{pub1})
 		require.Equal(t, unreachable, []ma.Multiaddr{pub2})
 		require.Equal(t, pm.InProgressProbes(), 0)

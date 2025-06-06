@@ -752,14 +752,14 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	return h.addressManager.DirectAddrs()
 }
 
-// ReachableAddrs returns all addresses of the host that are reachable from the internet
+// ConfirmedAddrs returns all addresses of the host grouped by their reachability
 // as verified by autonatv2.
 //
 // Experimental: This API may change in the future without deprecation.
 //
 // Requires AutoNATv2 to be enabled.
-func (h *BasicHost) ReachableAddrs() []ma.Multiaddr {
-	return h.addressManager.ReachableAddrs()
+func (h *BasicHost) ConfirmedAddrs() (reachable []ma.Multiaddr, unreachable []ma.Multiaddr, unknown []ma.Multiaddr) {
+	return h.addressManager.ConfirmedAddrs()
 }
 
 func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
