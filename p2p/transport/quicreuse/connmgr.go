@@ -1,7 +1,3 @@
-// Package quicreuse provides `quicreuse.ConnManager`, which provides functionality
-// for reusing QUIC transports for various purposes, like listening & dialing, having
-// multiple QUIC listeners on the same address with different ALPNs, and sharing the
-// same address with non QUIC transports like WebRTC.
 package quicreuse
 
 import (
@@ -12,6 +8,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
@@ -68,6 +65,9 @@ type ConnManager struct {
 	connContext connContextFunc
 
 	verifySourceAddress func(addr net.Addr) bool
+	
+	// Counter for generating unique listener IDs within this ConnManager instance
+	listenerIDCounter uint64
 }
 
 type quicListenerEntry struct {
@@ -221,10 +221,13 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
+	// Generate unique listener ID for association tracking
+	listenerID := fmt.Sprintf("listener-%d", atomic.AddUint64(&c.listenerIDCounter, 1))
+
 	key := laddr.String()
 	entry, ok := c.quicListeners[key]
 	if !ok {
-		tr, err := c.transportForListen(association, netw, laddr)
+		tr, err := c.transportForListen(netw, laddr)
 		if err != nil {
 			return nil, err
 		}
@@ -234,6 +237,13 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
+		
+		// Associate the transport with this listener for new transports
+		if association != nil {
+			if refTr, ok := tr.(*refcountedTransport); ok {
+				refTr.associateForListener(association, listenerID)
+			}
+		}
 	} else if c.enableReuseport && association != nil {
 		reuse, err := c.getReuse(netw)
 		if err != nil {
@@ -244,10 +254,10 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 			return nil, fmt.Errorf("reuse assert transport failed: %w", err)
 		}
 		if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
-			tr.associate(association)
+			tr.associateForListener(association, listenerID)
 		}
 	}
-	l, err := entry.ln.Add(tlsConf, allowWindowIncrease, func() { c.onListenerClosed(key) })
+	l, err := entry.ln.Add(tlsConf, allowWindowIncrease, func() { c.onListenerClosed(key, listenerID) })
 	if err != nil {
 		if entry.refCount <= 0 {
 			entry.ln.Close()
@@ -259,12 +269,18 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 	return l, nil
 }
 
-func (c *ConnManager) onListenerClosed(key string) {
+func (c *ConnManager) onListenerClosed(key string, listenerID string) {
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
 	entry := c.quicListeners[key]
 	entry.refCount = entry.refCount - 1
+	
+	// Clean up associations for this specific listener
+	if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
+		tr.disassociateListener(listenerID)
+	}
+	
 	if entry.refCount <= 0 {
 		delete(c.quicListeners, key)
 		entry.ln.Close()
@@ -296,7 +312,7 @@ func (c *ConnManager) SharedNonQUICPacketConn(_ string, laddr *net.UDPAddr) (net
 	return nil, errors.New("expected to be able to share with a QUIC listener, but the QUIC listener is not using a refcountedTransport. `DisableReuseport` should not be set")
 }
 
-func (c *ConnManager) transportForListen(association any, network string, laddr *net.UDPAddr) (RefCountedQUICTransport, error) {
+func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (RefCountedQUICTransport, error) {
 	if c.enableReuseport {
 		reuse, err := c.getReuse(network)
 		if err != nil {
@@ -306,7 +322,7 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 		if err != nil {
 			return nil, err
 		}
-		tr.associate(association)
+		// Association will be handled in ListenQUICAndAssociate with the proper listener key
 		return tr, nil
 	}
 

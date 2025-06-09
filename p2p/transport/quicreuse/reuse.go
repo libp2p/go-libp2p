@@ -89,15 +89,18 @@ type refcountedTransport struct {
 	borrowDoneSignal chan struct{}
 
 	assocations map[any]struct{}
+	// Track which listener added which associations for proper cleanup
+	listenerAssociations map[string][]any // listener key -> associations added by that listener
 }
 
 type connContextFunc = func(context.Context, *quic.ClientInfo) (context.Context, error)
 
-// associate an arbitrary value with this transport.
+
+// associateForListener associates an arbitrary value with this transport for a specific listener.
 // This lets us "tag" the refcountedTransport when listening so we can use it
-// later for dialing. Necessary for holepunching and learning about our own
-// observed listening address.
-func (c *refcountedTransport) associate(a any) {
+// later for dialing. The listenerKey allows proper cleanup when the listener closes.
+// Necessary for holepunching and learning about our own observed listening address.
+func (c *refcountedTransport) associateForListener(a any, listenerKey string) {
 	if a == nil {
 		return
 	}
@@ -106,7 +109,31 @@ func (c *refcountedTransport) associate(a any) {
 	if c.assocations == nil {
 		c.assocations = make(map[any]struct{})
 	}
+	if c.listenerAssociations == nil {
+		c.listenerAssociations = make(map[string][]any)
+	}
 	c.assocations[a] = struct{}{}
+	c.listenerAssociations[listenerKey] = append(c.listenerAssociations[listenerKey], a)
+}
+
+
+// disassociateListener removes ALL associations added by a specific listener
+func (c *refcountedTransport) disassociateListener(listenerKey string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	associations, exists := c.listenerAssociations[listenerKey]
+	if !exists {
+		return
+	}
+	
+	// Remove each association that was added by this listener
+	for _, assoc := range associations {
+		delete(c.assocations, assoc)
+	}
+	
+	// Remove the listener's association tracking
+	delete(c.listenerAssociations, listenerKey)
 }
 
 // hasAssociation returns true if the transport has the given association.
