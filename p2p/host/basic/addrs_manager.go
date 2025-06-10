@@ -34,6 +34,7 @@ type hostAddrs struct {
 	localAddrs       []ma.Multiaddr
 	reachableAddrs   []ma.Multiaddr
 	unreachableAddrs []ma.Multiaddr
+	unknownAddrs     []ma.Multiaddr
 	relayAddrs       []ma.Multiaddr
 }
 
@@ -250,9 +251,9 @@ func (a *addrsManager) updateAddrs(updateRelayAddrs bool, relayAddrs []ma.Multia
 	defer a.addrsMx.Unlock()
 
 	localAddrs := a.getLocalAddrs()
-	var currReachableAddrs, currUnreachableAddrs []ma.Multiaddr
+	var currReachableAddrs, currUnreachableAddrs, currUnknownAddrs []ma.Multiaddr
 	if a.addrsReachabilityTracker != nil {
-		currReachableAddrs, currUnreachableAddrs = a.getConfirmedAddrs(localAddrs)
+		currReachableAddrs, currUnreachableAddrs, currUnknownAddrs = a.getConfirmedAddrs(localAddrs)
 	}
 	if !updateRelayAddrs {
 		relayAddrs = a.currentAddrs.relayAddrs
@@ -267,6 +268,7 @@ func (a *addrsManager) updateAddrs(updateRelayAddrs bool, relayAddrs []ma.Multia
 		localAddrs:       append(a.currentAddrs.localAddrs[:0], localAddrs...),
 		reachableAddrs:   append(a.currentAddrs.reachableAddrs[:0], currReachableAddrs...),
 		unreachableAddrs: append(a.currentAddrs.unreachableAddrs[:0], currUnreachableAddrs...),
+		unknownAddrs:     append(a.currentAddrs.unknownAddrs[:0], currUnknownAddrs...),
 		relayAddrs:       append(a.currentAddrs.relayAddrs[:0], relayAddrs...),
 	}
 
@@ -275,6 +277,7 @@ func (a *addrsManager) updateAddrs(updateRelayAddrs bool, relayAddrs []ma.Multia
 		addrs:            currAddrs,
 		reachableAddrs:   currReachableAddrs,
 		unreachableAddrs: currUnreachableAddrs,
+		unknownAddrs:     currUnknownAddrs,
 		relayAddrs:       relayAddrs,
 	}
 }
@@ -303,11 +306,13 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, curre
 	// We must send these events in the same order. It'll be confusing for consumers
 	// if the reachable event is received after the addr removed event.
 	if areAddrsDifferent(previous.reachableAddrs, current.reachableAddrs) ||
-		areAddrsDifferent(previous.unreachableAddrs, current.unreachableAddrs) {
+		areAddrsDifferent(previous.unreachableAddrs, current.unreachableAddrs) ||
+		areAddrsDifferent(previous.unknownAddrs, current.unknownAddrs) {
 		log.Debugf("host reachable addrs updated: %s", current.localAddrs)
 		if err := emitter.Emit(event.EvtHostReachableAddrsChanged{
 			Reachable:   slices.Clone(current.reachableAddrs),
 			Unreachable: slices.Clone(current.unreachableAddrs),
+			Unknown:     slices.Clone(current.unknownAddrs),
 		}); err != nil {
 			log.Errorf("error sending host reachable addrs changed event: %s", err)
 		}
@@ -365,16 +370,16 @@ func (a *addrsManager) DirectAddrs() []ma.Multiaddr {
 	return slices.Clone(a.currentAddrs.localAddrs)
 }
 
-// ReachableAddrs returns all addresses of the host that are reachable from the internet
-func (a *addrsManager) ReachableAddrs() []ma.Multiaddr {
+// ConfirmedAddrs returns all addresses of the host that are reachable from the internet
+func (a *addrsManager) ConfirmedAddrs() (reachable []ma.Multiaddr, unreachable []ma.Multiaddr, unknown []ma.Multiaddr) {
 	a.addrsMx.RLock()
 	defer a.addrsMx.RUnlock()
-	return slices.Clone(a.currentAddrs.reachableAddrs)
+	return slices.Clone(a.currentAddrs.reachableAddrs), slices.Clone(a.currentAddrs.unreachableAddrs), slices.Clone(a.currentAddrs.unknownAddrs)
 }
 
-func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAddrs, unreachableAddrs []ma.Multiaddr) {
-	reachableAddrs, unreachableAddrs = a.addrsReachabilityTracker.ConfirmedAddrs()
-	return removeNotInSource(reachableAddrs, localAddrs), removeNotInSource(unreachableAddrs, localAddrs)
+func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAddrs, unreachableAddrs, unknownAddrs []ma.Multiaddr) {
+	reachableAddrs, unreachableAddrs, unknownAddrs = a.addrsReachabilityTracker.ConfirmedAddrs()
+	return removeNotInSource(reachableAddrs, localAddrs), removeNotInSource(unreachableAddrs, localAddrs), removeNotInSource(unknownAddrs, localAddrs)
 }
 
 var p2pCircuitAddr = ma.StringCast("/p2p-circuit")

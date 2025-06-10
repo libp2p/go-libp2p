@@ -14,10 +14,11 @@ type EvtLocalReachabilityChanged struct {
 }
 
 // EvtHostReachableAddrsChanged is sent when host's reachable or unreachable addresses change
-// Reachable and Unreachable both contain only Public IP or DNS addresses
+// Reachable, Unreachable, and Unknown only contain Public IP or DNS addresses
 //
 // Experimental: This API is unstable. Any changes to this event will be done without a deprecation notice.
 type EvtHostReachableAddrsChanged struct {
 	Reachable   []ma.Multiaddr
 	Unreachable []ma.Multiaddr
+	Unknown     []ma.Multiaddr
 }

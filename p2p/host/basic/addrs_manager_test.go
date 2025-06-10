@@ -462,6 +462,20 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 		},
 	})
 
+	initialUnknownAddrs := []ma.Multiaddr{publicQUIC, publicTCP, publicQUIC2}
+
+	// First event: all addresses are initially unknown
+	select {
+	case e := <-sub.Out():
+		evt := e.(event.EvtHostReachableAddrsChanged)
+		require.Empty(t, evt.Reachable)
+		require.Empty(t, evt.Unreachable)
+		require.ElementsMatch(t, initialUnknownAddrs, evt.Unknown)
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected initial event for reachability change")
+	}
+
+	// Wait for probes to complete and addresses to be classified
 	reachableAddrs := []ma.Multiaddr{publicQUIC}
 	unreachableAddrs := []ma.Multiaddr{publicTCP, publicQUIC2}
 	select {
@@ -469,9 +483,13 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 		evt := e.(event.EvtHostReachableAddrsChanged)
 		require.ElementsMatch(t, reachableAddrs, evt.Reachable)
 		require.ElementsMatch(t, unreachableAddrs, evt.Unreachable)
-		require.ElementsMatch(t, reachableAddrs, am.ReachableAddrs())
+		require.Empty(t, evt.Unknown)
+		reachable, unreachable, unknown := am.ConfirmedAddrs()
+		require.ElementsMatch(t, reachable, reachableAddrs)
+		require.ElementsMatch(t, unreachable, unreachableAddrs)
+		require.Empty(t, unknown)
 	case <-time.After(5 * time.Second):
-		t.Fatal("expected event for reachability change")
+		t.Fatal("expected final event for reachability change after probing")
 	}
 }
 
