@@ -24,6 +24,7 @@ type client struct {
 	host               host.Host
 	dialData           []byte
 	normalizeMultiaddr func(ma.Multiaddr) ma.Multiaddr
+	metricsTracer      MetricsTracer
 
 	mu sync.Mutex
 	// dialBackQueues maps nonce to the channel for providing the local multiaddr of the connection
@@ -35,10 +36,11 @@ type normalizeMultiaddrer interface {
 	NormalizeMultiaddr(ma.Multiaddr) ma.Multiaddr
 }
 
-func newClient() *client {
+func newClient(s *autoNATSettings) *client {
 	return &client{
 		dialData:       make([]byte, 4000),
 		dialBackQueues: make(map[uint64]chan ma.Multiaddr),
+		metricsTracer:  s.metricsTracer,
 	}
 }
 
@@ -58,6 +60,17 @@ func (ac *client) Close() {
 
 // GetReachability verifies address reachability with a AutoNAT v2 server p.
 func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
+	result, err := ac.getReachability(ctx, p, reqs)
+
+	// Track metrics
+	if ac.metricsTracer != nil {
+		ac.metricsTracer.ClientCompletedRequest(reqs, result, err)
+	}
+
+	return result, err
+}
+
+func (ac *client) getReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 

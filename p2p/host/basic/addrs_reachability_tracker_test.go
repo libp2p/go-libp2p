@@ -925,7 +925,7 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 
 	cl := clock.NewMock()
 	f.Fuzz(func(t *testing.T, numAddrs int, ips, protos, hostNames, autonatResponses []byte) {
-		tr := newAddrsReachabilityTracker(newMockClient(autonatResponses), nil, cl)
+		tr := newAddrsReachabilityTracker(newMockClient(autonatResponses), nil, cl, nil)
 		require.NoError(t, tr.Start())
 		tr.UpdateAddrs(getAddrs(numAddrs, ips, protos, hostNames))
 
