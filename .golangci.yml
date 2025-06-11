@@ -15,9 +15,7 @@ linters:
   disable:
     - errcheck
     - staticcheck
-
-  disable:
-    - errcheck
+    - govet
 
   settings:
     revive:

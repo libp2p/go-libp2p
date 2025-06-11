@@ -804,20 +804,20 @@ type mockConn struct {
 	stats network.ConnStats
 }
 
-func (m mockConn) Close() error                                          { panic("implement me") }
-func (m mockConn) CloseWithError(_ network.ConnErrorCode) error    { panic("implement me") }
-func (m mockConn) LocalPeer() peer.ID                                    { panic("implement me") }
-func (m mockConn) RemotePeer() peer.ID                                   { panic("implement me") }
-func (m mockConn) RemotePublicKey() crypto.PubKey                        { panic("implement me") }
-func (m mockConn) LocalMultiaddr() ma.Multiaddr                          { panic("implement me") }
-func (m mockConn) RemoteMultiaddr() ma.Multiaddr                         { panic("implement me") }
-func (m mockConn) Stat() network.ConnStats                               { return m.stats }
-func (m mockConn) ID() string                                            { panic("implement me") }
-func (m mockConn) IsClosed() bool                                        { panic("implement me") }
+func (m mockConn) Close() error                                        { panic("implement me") }
+func (m mockConn) CloseWithError(_ network.ConnErrorCode) error        { panic("implement me") }
+func (m mockConn) LocalPeer() peer.ID                                  { panic("implement me") }
+func (m mockConn) RemotePeer() peer.ID                                 { panic("implement me") }
+func (m mockConn) RemotePublicKey() crypto.PubKey                      { panic("implement me") }
+func (m mockConn) LocalMultiaddr() ma.Multiaddr                        { panic("implement me") }
+func (m mockConn) RemoteMultiaddr() ma.Multiaddr                       { panic("implement me") }
+func (m mockConn) Stat() network.ConnStats                             { return m.stats }
+func (m mockConn) ID() string                                          { panic("implement me") }
+func (m mockConn) IsClosed() bool                                      { panic("implement me") }
 func (m mockConn) NewStream(_ context.Context) (network.Stream, error) { panic("implement me") }
-func (m mockConn) GetStreams() []network.Stream                          { panic("implement me") }
-func (m mockConn) Scope() network.ConnScope                              { panic("implement me") }
-func (m mockConn) ConnState() network.ConnectionState                    { return network.ConnectionState{} }
+func (m mockConn) GetStreams() []network.Stream                        { panic("implement me") }
+func (m mockConn) Scope() network.ConnScope                            { panic("implement me") }
+func (m mockConn) ConnState() network.ConnectionState                  { return network.ConnectionState{} }
 
 func makeSegmentsWithPeerInfos(peerInfos peerInfos) *segments {
 	var s = func() *segments {

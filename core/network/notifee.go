@@ -61,7 +61,7 @@ type NoopNotifiee struct{}
 
 var _ Notifiee = (*NoopNotifiee)(nil)
 
-func (nn *NoopNotifiee) Connected(_ Network, _ Conn)              {}
-func (nn *NoopNotifiee) Disconnected(_ Network, _ Conn)           {}
+func (nn *NoopNotifiee) Connected(_ Network, _ Conn)           {}
+func (nn *NoopNotifiee) Disconnected(_ Network, _ Conn)        {}
 func (nn *NoopNotifiee) Listen(_ Network, _ ma.Multiaddr)      {}
 func (nn *NoopNotifiee) ListenClose(_ Network, _ ma.Multiaddr) {}

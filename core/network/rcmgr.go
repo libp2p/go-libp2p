@@ -343,18 +343,18 @@ func (n *NullResourceManager) Close() error {
 	return nil
 }
 
-func (n *NullScope) ReserveMemory(_ int, _ uint8) error { return nil }
+func (n *NullScope) ReserveMemory(_ int, _ uint8) error    { return nil }
 func (n *NullScope) ReleaseMemory(_ int)                   {}
-func (n *NullScope) Stat() ScopeStat                          { return ScopeStat{} }
-func (n *NullScope) BeginSpan() (ResourceScopeSpan, error)    { return &NullScope{}, nil }
-func (n *NullScope) Done()                                    {}
-func (n *NullScope) Name() string                             { return "" }
-func (n *NullScope) Protocol() protocol.ID                    { return "" }
-func (n *NullScope) Peer() peer.ID                            { return "" }
-func (n *NullScope) PeerScope() PeerScope                     { return &NullScope{} }
-func (n *NullScope) SetPeer(peer.ID) error                    { return nil }
-func (n *NullScope) ProtocolScope() ProtocolScope             { return &NullScope{} }
-func (n *NullScope) SetProtocol(_ protocol.ID) error      { return nil }
-func (n *NullScope) ServiceScope() ServiceScope               { return &NullScope{} }
-func (n *NullScope) SetService(_ string) error              { return nil }
-func (n *NullScope) VerifySourceAddress(_ net.Addr) bool      { return false }
+func (n *NullScope) Stat() ScopeStat                       { return ScopeStat{} }
+func (n *NullScope) BeginSpan() (ResourceScopeSpan, error) { return &NullScope{}, nil }
+func (n *NullScope) Done()                                 {}
+func (n *NullScope) Name() string                          { return "" }
+func (n *NullScope) Protocol() protocol.ID                 { return "" }
+func (n *NullScope) Peer() peer.ID                         { return "" }
+func (n *NullScope) PeerScope() PeerScope                  { return &NullScope{} }
+func (n *NullScope) SetPeer(peer.ID) error                 { return nil }
+func (n *NullScope) ProtocolScope() ProtocolScope          { return &NullScope{} }
+func (n *NullScope) SetProtocol(_ protocol.ID) error       { return nil }
+func (n *NullScope) ServiceScope() ServiceScope            { return &NullScope{} }
+func (n *NullScope) SetService(_ string) error             { return nil }
+func (n *NullScope) VerifySourceAddress(_ net.Addr) bool   { return false }
