@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,7 +96,7 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 
 	_, err = cm.ListenQUIC(raddr, &tls.Config{NextProtos: []string{"proto"}}, nil)
 	require.NoError(t, err)
-	quicTr, err := cm.transportForListen(nil, netw, naddr)
+	quicTr, err := cm.transportForListen(netw, naddr)
 	require.NoError(t, err)
 	defer quicTr.Close()
 	if _, ok := quicTr.(*singleOwnerTransport).Transport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
@@ -488,4 +489,157 @@ func TestConnContext(t *testing.T) {
 			require.Equal(t, "success", c.Context().Value(ctxKey{}))
 		})
 	}
+}
+
+func TestAssociationCleanup(t *testing.T) {
+	cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	defer cm.Close()
+
+	// Create a listener with an association
+	lp2pTLS := &tls.Config{NextProtos: []string{"libp2p"}}
+	assoc := "test-association"
+	ln, err := cm.ListenQUICAndAssociate(assoc, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	
+	// Get the transport to verify associations
+	cm.quicListenersMu.Lock()
+	key := ln.Addr().String()
+	entry := cm.quicListeners[key]
+	tr, ok := entry.ln.transport.(*refcountedTransport)
+	require.True(t, ok)
+	
+	// Verify association exists
+	require.True(t, tr.hasAssociation(assoc))
+	tr.mutex.Lock()
+	require.Contains(t, tr.assocations, assoc)
+	require.Len(t, tr.listenerAssociations, 1)
+	tr.mutex.Unlock()
+	cm.quicListenersMu.Unlock()
+	
+	// Close the listener
+	ln.Close()
+	
+	// Verify association is cleaned up
+	tr.mutex.Lock()
+	require.NotContains(t, tr.assocations, assoc)
+	require.Len(t, tr.listenerAssociations, 0)
+	tr.mutex.Unlock()
+	
+	// Verify hasAssociation returns false
+	require.False(t, tr.hasAssociation(assoc))
+}
+
+func TestMultipleListenerAssociationCleanup(t *testing.T) {
+	cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	defer cm.Close()
+
+	// Create first listener with an association
+	lp2pTLS := &tls.Config{NextProtos: []string{"libp2p"}}
+	h3TLS := &tls.Config{NextProtos: []string{"h3"}}
+	assoc1 := "test-association-1"
+	assoc2 := "test-association-2"
+	
+	ln1, err := cm.ListenQUICAndAssociate(assoc1, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	
+	// Create second listener on the same address (different protocol) with different association
+	addr := ln1.Multiaddrs()[0]
+	ln2, err := cm.ListenQUICAndAssociate(assoc2, addr, h3TLS, nil)
+	require.NoError(t, err)
+	
+	// Both listeners should share the same transport
+	cm.quicListenersMu.Lock()
+	key := ln1.Addr().String()
+	entry := cm.quicListeners[key]
+	tr, ok := entry.ln.transport.(*refcountedTransport)
+	require.True(t, ok)
+	
+	// Verify both associations exist
+	require.True(t, tr.hasAssociation(assoc1))
+	require.True(t, tr.hasAssociation(assoc2))
+	tr.mutex.Lock()
+	require.Contains(t, tr.assocations, assoc1)
+	require.Contains(t, tr.assocations, assoc2)
+	// Should have two different listener IDs
+	require.Len(t, tr.listenerAssociations, 2)
+	tr.mutex.Unlock()
+	cm.quicListenersMu.Unlock()
+	
+	// Close first listener
+	ln1.Close()
+	
+	// Verify only the first association is cleaned up
+	tr.mutex.Lock()
+	require.NotContains(t, tr.assocations, assoc1)
+	require.Contains(t, tr.assocations, assoc2)
+	require.Len(t, tr.listenerAssociations, 1)
+	tr.mutex.Unlock()
+	
+	// Verify hasAssociation works correctly
+	require.False(t, tr.hasAssociation(assoc1))
+	require.True(t, tr.hasAssociation(assoc2))
+	
+	// Close second listener
+	ln2.Close()
+	
+	// Verify all associations are cleaned up
+	tr.mutex.Lock()
+	require.NotContains(t, tr.assocations, assoc1)
+	require.NotContains(t, tr.assocations, assoc2)
+	require.Len(t, tr.listenerAssociations, 0)
+	tr.mutex.Unlock()
+	
+	// Verify hasAssociation returns false for both
+	require.False(t, tr.hasAssociation(assoc1))
+	require.False(t, tr.hasAssociation(assoc2))
+}
+
+func TestConnManagerIsolation(t *testing.T) {
+	// Create two separate ConnManager instances
+	cm1, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	defer cm1.Close()
+
+	cm2, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	defer cm2.Close()
+
+	// Create listeners in both ConnManagers
+	lp2pTLS := &tls.Config{NextProtos: []string{"libp2p"}}
+	assoc1 := "cm1-association"
+	assoc2 := "cm2-association"
+
+	ln1, err := cm1.ListenQUICAndAssociate(assoc1, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	defer ln1.Close()
+
+	ln2, err := cm2.ListenQUICAndAssociate(assoc2, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	defer ln2.Close()
+
+	// Verify that each ConnManager has its own isolated counter and associations
+	// Both should start from listener-1 since they're separate instances
+	require.Equal(t, uint64(1), atomic.LoadUint64(&cm1.listenerIDCounter))
+	require.Equal(t, uint64(1), atomic.LoadUint64(&cm2.listenerIDCounter))
+
+	// Verify associations are isolated
+	cm1.quicListenersMu.Lock()
+	key1 := ln1.Addr().String()
+	entry1 := cm1.quicListeners[key1]
+	tr1, ok := entry1.ln.transport.(*refcountedTransport)
+	require.True(t, ok)
+	require.True(t, tr1.hasAssociation(assoc1))
+	require.False(t, tr1.hasAssociation(assoc2))
+	cm1.quicListenersMu.Unlock()
+
+	cm2.quicListenersMu.Lock()
+	key2 := ln2.Addr().String()
+	entry2 := cm2.quicListeners[key2]
+	tr2, ok := entry2.ln.transport.(*refcountedTransport)
+	require.True(t, ok)
+	require.True(t, tr2.hasAssociation(assoc2))
+	require.False(t, tr2.hasAssociation(assoc1))
+	cm2.quicListenersMu.Unlock()
 }
