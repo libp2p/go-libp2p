@@ -153,6 +153,8 @@ type HostOpts struct {
 	EnableMetrics bool
 	// PrometheusRegisterer is the PrometheusRegisterer used for metrics
 	PrometheusRegisterer prometheus.Registerer
+	// AutoNATv2MetricsTracker tracks AutoNATv2 address reachability metrics
+	AutoNATv2MetricsTracker MetricsTracker
 
 	// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses in identify
 	DisableIdentifyAddressDiscovery bool
@@ -245,7 +247,18 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if h.autonatv2 != nil {
 		autonatv2Client = h.autonatv2
 	}
-	h.addressManager, err = newAddrsManager(h.eventbus, natmgr, addrFactory, h.Network().ListenAddresses, tfl, h.ids, h.addrsUpdatedChan, autonatv2Client)
+	h.addressManager, err = newAddrsManager(
+		h.eventbus,
+		natmgr,
+		addrFactory,
+		h.Network().ListenAddresses,
+		tfl,
+		h.ids,
+		h.addrsUpdatedChan,
+		autonatv2Client,
+		opts.EnableMetrics,
+		opts.PrometheusRegisterer,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}

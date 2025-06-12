@@ -50,6 +50,7 @@ type addrsReachabilityTracker struct {
 	probeManager         *probeManager
 	newAddrs             chan []ma.Multiaddr
 	clock                clock.Clock
+	metricsTracker       MetricsTracker
 
 	mx               sync.Mutex
 	reachableAddrs   []ma.Multiaddr
@@ -59,7 +60,7 @@ type addrsReachabilityTracker struct {
 
 // newAddrsReachabilityTracker returns a new addrsReachabilityTracker.
 // reachabilityUpdateCh is notified when reachability for any of the tracked address changes.
-func newAddrsReachabilityTracker(client autonatv2Client, reachabilityUpdateCh chan struct{}, cl clock.Clock) *addrsReachabilityTracker {
+func newAddrsReachabilityTracker(client autonatv2Client, reachabilityUpdateCh chan struct{}, cl clock.Clock, metricsTracker MetricsTracker) *addrsReachabilityTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	if cl == nil {
 		cl = clock.New()
@@ -74,6 +75,7 @@ func newAddrsReachabilityTracker(client autonatv2Client, reachabilityUpdateCh ch
 		maxConcurrency:       defaultMaxConcurrency,
 		newAddrs:             make(chan []ma.Multiaddr, 1),
 		clock:                cl,
+		metricsTracker:       metricsTracker,
 	}
 }
 
@@ -171,11 +173,17 @@ func (r *addrsReachabilityTracker) background() {
 				<-task.BackoffCh
 				task = reachabilityTask{}
 			}
+			if r.metricsTracker != nil {
+				r.metricsTracker.ReachabilityTrackerClosed()
+			}
 			return
 		}
 
 		currReachable, currUnreachable, currUnknown = r.appendConfirmedAddrs(currReachable[:0], currUnreachable[:0], currUnknown[:0])
 		if areAddrsDifferent(prevReachable, currReachable) || areAddrsDifferent(prevUnreachable, currUnreachable) || areAddrsDifferent(prevUnknown, currUnknown) {
+			if r.metricsTracker != nil {
+				r.metricsTracker.ConfirmedAddrsChanged(currReachable, currUnreachable, currUnknown)
+			}
 			r.notify()
 		}
 		prevReachable = append(prevReachable[:0], currReachable...)
@@ -205,6 +213,7 @@ func (r *addrsReachabilityTracker) appendConfirmedAddrs(reachable, unreachable, 
 	r.unreachableAddrs = append(r.unreachableAddrs[:0], unreachable...)
 	r.unknownAddrs = append(r.unknownAddrs[:0], unknown...)
 	r.mx.Unlock()
+
 	return reachable, unreachable, unknown
 }
 

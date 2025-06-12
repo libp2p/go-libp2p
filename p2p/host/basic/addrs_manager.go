@@ -20,6 +20,7 @@ import (
 	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const maxObservedAddrsPerListenAddr = 5
@@ -75,6 +76,8 @@ func newAddrsManager(
 	observedAddrsManager observedAddrsManager,
 	addrsUpdatedChan chan struct{},
 	client autonatv2Client,
+	enableMetrics bool,
+	registerer prometheus.Registerer,
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	as := &addrsManager{
@@ -95,7 +98,11 @@ func newAddrsManager(
 	as.hostReachability.Store(&unknownReachability)
 
 	if client != nil {
-		as.addrsReachabilityTracker = newAddrsReachabilityTracker(client, as.triggerReachabilityUpdate, nil)
+		var metricsTracker MetricsTracker
+		if enableMetrics {
+			metricsTracker = newMetricsTracker(withRegisterer(registerer))
+		}
+		as.addrsReachabilityTracker = newAddrsReachabilityTracker(client, as.triggerReachabilityUpdate, nil, metricsTracker)
 	}
 	return as, nil
 }
