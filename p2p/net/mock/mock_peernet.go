@@ -361,6 +361,11 @@ func (pn *peernet) BandwidthTotals() (in uint64, out uint64) {
 // Listen tells the network to start listening on given multiaddrs.
 func (pn *peernet) Listen(addrs ...ma.Multiaddr) error {
 	pn.Peerstore().AddAddrs(pn.LocalPeer(), addrs, peerstore.PermanentAddrTTL)
+	for _, a := range addrs {
+		pn.notifyAll(func(n network.Notifiee) {
+			n.Listen(pn, a)
+		})
+	}
 	return nil
 }
 
