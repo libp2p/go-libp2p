@@ -2,8 +2,6 @@ module github.com/libp2p/go-libp2p
 
 go 1.23.8
 
-toolchain go1.24.3
-
 retract v0.26.1 // Tag was applied incorrectly due to a bug in the release workflow.
 
 retract v0.36.0 // Accidentally modified the tag.

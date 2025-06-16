@@ -2,8 +2,6 @@ module github.com/libp2p/go-libp2p/test-plans/m/v2
 
 go 1.23.8
 
-toolchain go1.24.3
-
 require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/libp2p/go-libp2p v0.0.0
