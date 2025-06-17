@@ -107,7 +107,7 @@ Some notable users of go-libp2p are:
 - [Flow](https://github.com/onflow/flow-go) - A blockchain built to support games, apps, and digital assets built by [Dapper Labs](https://www.dapperlabs.com/)
 - [Swarm Bee](https://github.com/ethersphere/bee) - A client for connecting to the [Swarm network](https://www.ethswarm.org/)
 - [MultiversX Node](https://github.com/multiversx/mx-chain-go) - The Go implementation of the MultiversX network protocol
-- [Sonr](https://github.com/sonr-io/sonr) - A platform to integrate DID Documents, WebAuthn, and IPFS and manage digital identity and assets.
+- [Sonr](https://github.com/sonr-io/snrd) - A platform to integrate DID Documents, WebAuthn, and IPFS and manage digital identity and assets.
 - [EdgeVPN](https://github.com/mudler/edgevpn) - A decentralized, immutable, portable VPN and reverse proxy over p2p.
 - [Kairos](https://github.com/kairos-io/kairos) - A Kubernetes-focused, Cloud Native Linux meta-distribution.
 - [Oasis Core](https://github.com/oasisprotocol/oasis-core) - The consensus and runtime layers of the [Oasis protocol](https://oasisprotocol.org/).
