@@ -24,7 +24,7 @@ func (addr *Addr) Network() string {
 
 // NewAddr creates an Addr with `ws` scheme (insecure).
 //
-// Deprecated. Use NewAddrWithScheme.
+// Deprecated: Use NewAddrWithScheme.
 func NewAddr(host string) *Addr {
 	// Older versions of the transport only supported insecure connections (i.e.
 	// WS instead of WSS). Assume that is the case here.
