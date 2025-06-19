@@ -47,6 +47,7 @@ func TestDialBadAddrs(t *testing.T) {
 
 	test(m("/ip6/fe80::1"))                // link local
 	test(m("/ip6/fe80::100"))              // link local
+	test(m("/ip6zone/eth0/ip6/fe80::100")) // ip6zone
 	test(m("/ip4/127.0.0.1/udp/1234/utp")) // utp
 }
 
