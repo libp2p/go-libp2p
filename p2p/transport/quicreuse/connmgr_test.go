@@ -501,14 +501,14 @@ func TestAssociationCleanup(t *testing.T) {
 	assoc := "test-association"
 	ln, err := cm.ListenQUICAndAssociate(assoc, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
 	require.NoError(t, err)
-	
+
 	// Get the transport to verify associations
 	cm.quicListenersMu.Lock()
 	key := ln.Addr().String()
 	entry := cm.quicListeners[key]
 	tr, ok := entry.ln.transport.(*refcountedTransport)
 	require.True(t, ok)
-	
+
 	// Verify association exists
 	require.True(t, tr.hasAssociation(assoc))
 	tr.mutex.Lock()
@@ -516,16 +516,16 @@ func TestAssociationCleanup(t *testing.T) {
 	require.Len(t, tr.listenerAssociations, 1)
 	tr.mutex.Unlock()
 	cm.quicListenersMu.Unlock()
-	
+
 	// Close the listener
 	ln.Close()
-	
+
 	// Verify association is cleaned up
 	tr.mutex.Lock()
 	require.NotContains(t, tr.assocations, assoc)
 	require.Len(t, tr.listenerAssociations, 0)
 	tr.mutex.Unlock()
-	
+
 	// Verify hasAssociation returns false
 	require.False(t, tr.hasAssociation(assoc))
 }
@@ -540,22 +540,22 @@ func TestMultipleListenerAssociationCleanup(t *testing.T) {
 	h3TLS := &tls.Config{NextProtos: []string{"h3"}}
 	assoc1 := "test-association-1"
 	assoc2 := "test-association-2"
-	
+
 	ln1, err := cm.ListenQUICAndAssociate(assoc1, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
 	require.NoError(t, err)
-	
+
 	// Create second listener on the same address (different protocol) with different association
 	addr := ln1.Multiaddrs()[0]
 	ln2, err := cm.ListenQUICAndAssociate(assoc2, addr, h3TLS, nil)
 	require.NoError(t, err)
-	
+
 	// Both listeners should share the same transport
 	cm.quicListenersMu.Lock()
 	key := ln1.Addr().String()
 	entry := cm.quicListeners[key]
 	tr, ok := entry.ln.transport.(*refcountedTransport)
 	require.True(t, ok)
-	
+
 	// Verify both associations exist
 	require.True(t, tr.hasAssociation(assoc1))
 	require.True(t, tr.hasAssociation(assoc2))
@@ -566,31 +566,31 @@ func TestMultipleListenerAssociationCleanup(t *testing.T) {
 	require.Len(t, tr.listenerAssociations, 2)
 	tr.mutex.Unlock()
 	cm.quicListenersMu.Unlock()
-	
+
 	// Close first listener
 	ln1.Close()
-	
+
 	// Verify only the first association is cleaned up
 	tr.mutex.Lock()
 	require.NotContains(t, tr.assocations, assoc1)
 	require.Contains(t, tr.assocations, assoc2)
 	require.Len(t, tr.listenerAssociations, 1)
 	tr.mutex.Unlock()
-	
+
 	// Verify hasAssociation works correctly
 	require.False(t, tr.hasAssociation(assoc1))
 	require.True(t, tr.hasAssociation(assoc2))
-	
+
 	// Close second listener
 	ln2.Close()
-	
+
 	// Verify all associations are cleaned up
 	tr.mutex.Lock()
 	require.NotContains(t, tr.assocations, assoc1)
 	require.NotContains(t, tr.assocations, assoc2)
 	require.Len(t, tr.listenerAssociations, 0)
 	tr.mutex.Unlock()
-	
+
 	// Verify hasAssociation returns false for both
 	require.False(t, tr.hasAssociation(assoc1))
 	require.False(t, tr.hasAssociation(assoc2))

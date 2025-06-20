@@ -70,7 +70,7 @@ type ConnManager struct {
 	connContext connContextFunc
 
 	verifySourceAddress func(addr net.Addr) bool
-	
+
 	// Counter for generating unique listener IDs within this ConnManager instance
 	listenerIDCounter uint64
 }
@@ -242,7 +242,7 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
-		
+
 		// Associate the transport with this listener for new transports
 		if association != nil {
 			if refTr, ok := tr.(*refcountedTransport); ok {
@@ -280,12 +280,12 @@ func (c *ConnManager) onListenerClosed(key string, listenerID string) {
 
 	entry := c.quicListeners[key]
 	entry.refCount = entry.refCount - 1
-	
+
 	// Clean up associations for this specific listener
 	if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
 		tr.disassociateListener(listenerID)
 	}
-	
+
 	if entry.refCount <= 0 {
 		delete(c.quicListeners, key)
 		entry.ln.Close()

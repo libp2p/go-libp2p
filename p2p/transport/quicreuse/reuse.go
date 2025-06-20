@@ -95,7 +95,6 @@ type refcountedTransport struct {
 
 type connContextFunc = func(context.Context, *quic.ClientInfo) (context.Context, error)
 
-
 // associateForListener associates an arbitrary value with this transport for a specific listener.
 // This lets us "tag" the refcountedTransport when listening so we can use it
 // later for dialing. The listenerKey allows proper cleanup when the listener closes.
@@ -116,22 +115,21 @@ func (c *refcountedTransport) associateForListener(a any, listenerKey string) {
 	c.listenerAssociations[listenerKey] = append(c.listenerAssociations[listenerKey], a)
 }
 
-
 // disassociateListener removes ALL associations added by a specific listener
 func (c *refcountedTransport) disassociateListener(listenerKey string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	associations, exists := c.listenerAssociations[listenerKey]
 	if !exists {
 		return
 	}
-	
+
 	// Remove each association that was added by this listener
 	for _, assoc := range associations {
 		delete(c.assocations, assoc)
 	}
-	
+
 	// Remove the listener's association tracking
 	delete(c.listenerAssociations, listenerKey)
 }
