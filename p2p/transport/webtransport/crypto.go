@@ -2,6 +2,7 @@ package libp2pwebtransport
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
@@ -16,6 +17,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/hkdf"
+
+	"filippo.io/keygen"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 
@@ -71,11 +74,16 @@ func generateCert(key ic.PrivKey, start, end time.Time) (*x509.Certificate, *ecd
 		BasicConstraintsValid: true,
 	}
 
-	caPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
+	ecdsaSeed := make([]byte, 192/8) // 192 bits of entropy required for P256
+	if _, err := io.ReadFull(deterministicHKDFReader, ecdsaSeed); err != nil {
+		return nil, nil, err
+	}
+
+	caPrivateKey, err := keygen.ECDSA(elliptic.P256(), ecdsaSeed)
 	if err != nil {
 		return nil, nil, err
 	}
-	caBytes, err := x509.CreateCertificate(deterministicHKDFReader, certTempl, certTempl, caPrivateKey.Public(), caPrivateKey)
+	caBytes, err := x509.CreateCertificate(deterministicHKDFReader, certTempl, certTempl, caPrivateKey.Public(), deterministicSigner{caPrivateKey})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -136,29 +144,26 @@ func verifyRawCerts(rawCerts [][]byte, certHashes []multihash.DecodedMultihash) 
 	return nil
 }
 
-// deterministicReader is a hack. It counter-acts the Go library's attempt at
-// making ECDSA signatures non-deterministic. Go adds non-determinism by
-// randomly dropping a singly byte from the reader stream. This counteracts this
-// by detecting when a read is a single byte and using a different reader
-// instead.
-type deterministicReader struct {
-	reader           io.Reader
-	singleByteReader io.Reader
-}
-
 func newDeterministicReader(seed []byte, salt []byte, info string) io.Reader {
-	reader := hkdf.New(sha256.New, seed, salt, []byte(info))
-	singleByteReader := hkdf.New(sha256.New, seed, salt, []byte(info+" single byte"))
-
-	return &deterministicReader{
-		reader:           reader,
-		singleByteReader: singleByteReader,
-	}
+	return hkdf.New(sha256.New, seed, salt, []byte(info))
 }
 
-func (r *deterministicReader) Read(p []byte) (n int, err error) {
-	if len(p) == 1 {
-		return r.singleByteReader.Read(p)
-	}
-	return r.reader.Read(p)
+// deterministicSigner wraps an ecdsa.PrivateKey and exposes a `Sign` method
+// that will produce deterministic signatures by ignoring the rand reader.
+// Go 1.24 produces deterministic ecdsa signatures when passed a nil random source.
+// See: https://go.dev/doc/go1.24#cryptoecdsapkgcryptoecdsa
+type deterministicSigner struct {
+	priv *ecdsa.PrivateKey
+}
+
+var _ crypto.Signer = deterministicSigner{}
+
+func (ds deterministicSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	// Ignore the rand reader to produce deterministic signatures.
+	_ = rand
+	return ds.priv.Sign(nil, digest, opts)
+}
+
+func (ds deterministicSigner) Public() crypto.PublicKey {
+	return ds.priv.Public()
 }
