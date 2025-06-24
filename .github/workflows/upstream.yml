@@ -25,7 +25,7 @@ jobs:
     runs-on: ${{ matrix.os }}-latest
     name: ${{ matrix.upstream }} unit tests (${{ matrix.os }}, Go ${{ matrix.go }})
     steps:
-      - uses: actions/setup-go@v2
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
       - name: Go information
