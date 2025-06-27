@@ -50,7 +50,7 @@ type transport struct {
 	rnd   rand.Rand
 
 	connMx sync.Mutex
-	conns  map[quic.Connection]*conn
+	conns  map[*quic.Conn]*conn
 
 	listenersMu sync.Mutex
 	// map of UDPAddr as string to a virtualListeners
@@ -95,7 +95,7 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		connManager:  connManager,
 		gater:        gater,
 		rcmgr:        rcmgr,
-		conns:        make(map[quic.Connection]*conn),
+		conns:        make(map[*quic.Conn]*conn),
 		holePunching: make(map[holePunchKey]*activeHolePunch),
 		rnd:          *rand.New(rand.NewSource(time.Now().UnixNano())),
 
@@ -174,13 +174,13 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	return c, nil
 }
 
-func (t *transport) addConn(conn quic.Connection, c *conn) {
+func (t *transport) addConn(conn *quic.Conn, c *conn) {
 	t.connMx.Lock()
 	t.conns[conn] = c
 	t.connMx.Unlock()
 }
 
-func (t *transport) removeConn(conn quic.Connection) {
+func (t *transport) removeConn(conn *quic.Conn) {
 	t.connMx.Lock()
 	delete(t.conns, conn)
 	t.connMx.Unlock()
@@ -344,7 +344,7 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	return l, nil
 }
 
-func (t *transport) allowWindowIncrease(conn quic.Connection, size uint64) bool {
+func (t *transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
 	// If the QUIC connection tries to increase the window before we've inserted it
 	// into our connections map (which we do right after dialing / accepting it),
 	// we have no way to account for that memory. This should be very rare.

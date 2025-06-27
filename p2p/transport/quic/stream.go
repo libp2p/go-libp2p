@@ -14,7 +14,7 @@ const (
 )
 
 type stream struct {
-	quic.Stream
+	*quic.Stream
 }
 
 var _ network.MuxedStream = &stream{}

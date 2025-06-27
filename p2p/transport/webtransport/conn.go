@@ -32,12 +32,12 @@ type conn struct {
 	session   *webtransport.Session
 
 	scope network.ConnManagementScope
-	qconn quic.Connection
+	qconn *quic.Conn
 }
 
 var _ tpt.CapableConn = &conn{}
 
-func newConn(tr *transport, sess *webtransport.Session, sconn *connSecurityMultiaddrs, scope network.ConnManagementScope, qconn quic.Connection) *conn {
+func newConn(tr *transport, sess *webtransport.Session, sconn *connSecurityMultiaddrs, scope network.ConnManagementScope, qconn *quic.Conn) *conn {
 	return &conn{
 		connSecurityMultiaddrs: sconn,
 		transport:              tr,
