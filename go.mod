@@ -54,7 +54,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/quic-go/quic-go v0.53.0
-	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66
+	github.com/quic-go/webtransport-go v0.9.0
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/goleak v1.3.0
@@ -108,9 +108,4 @@ require (
 	golang.org/x/text v0.26.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
-)
-
-replace (
-	github.com/quic-go/quic-go => ../quic-go
-	github.com/quic-go/webtransport-go => ../webtransport-go
 )

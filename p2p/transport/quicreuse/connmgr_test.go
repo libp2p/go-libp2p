@@ -295,7 +295,7 @@ func TestExternalTransport(t *testing.T) {
 		"quic",
 		ma.StringCast(fmt.Sprintf("/ip4/0.0.0.0/udp/%d", port)),
 		&tls.Config{NextProtos: []string{"libp2p"}},
-		func(quic.Connection, uint64) bool { return false },
+		func(*quic.Conn, uint64) bool { return false },
 	)
 	require.NoError(t, err)
 	defer ln.Close()
@@ -316,7 +316,7 @@ func TestExternalTransport(t *testing.T) {
 		ctx,
 		ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", udpLn.LocalAddr().(*net.UDPAddr).Port)),
 		&tls.Config{NextProtos: []string{"libp2p"}},
-		func(quic.Connection, uint64) bool { return false },
+		func(*quic.Conn, uint64) bool { return false },
 	)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 
