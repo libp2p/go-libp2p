@@ -25,11 +25,11 @@ const handshakeTimeout = 10 * time.Second
 
 type connKey struct{}
 
-// negotiatingConn is a wrapper around a quic.Connection that lets us wrap it in
+// negotiatingConn is a wrapper around a *quic.Conn that lets us wrap it in
 // our own context for the duration of the upgrade process. Upgrading a quic
 // connection to an h3 connection to a webtransport session.
 type negotiatingConn struct {
-	quic.Connection
+	*quic.Conn
 	ctx    context.Context
 	cancel context.CancelFunc
 	// stopClose is a function that stops the connection from being closed when
@@ -39,7 +39,7 @@ type negotiatingConn struct {
 	err       error
 }
 
-func (c *negotiatingConn) Unwrap() (quic.Connection, error) {
+func (c *negotiatingConn) Unwrap() (*quic.Conn, error) {
 	defer c.cancel()
 	if c.stopClose != nil {
 		// unwrap the first time
@@ -51,20 +51,20 @@ func (c *negotiatingConn) Unwrap() (quic.Connection, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.Connection, nil
+	return c.Conn, nil
 }
 
-func wrapConn(ctx context.Context, c quic.Connection, handshakeTimeout time.Duration) *negotiatingConn {
+func wrapConn(ctx context.Context, c *quic.Conn, handshakeTimeout time.Duration) *negotiatingConn {
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	stopClose := context.AfterFunc(ctx, func() {
 		log.Debugf("failed to handshake on conn: %s", c.RemoteAddr())
 		c.CloseWithError(1, "")
 	})
 	return &negotiatingConn{
-		Connection: c,
-		ctx:        ctx,
-		cancel:     cancel,
-		stopClose:  stopClose,
+		Conn:      c,
+		ctx:       ctx,
+		cancel:    cancel,
+		stopClose: stopClose,
 	}
 }
 
@@ -106,7 +106,7 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 		multiaddr:       localMultiaddr,
 		server: webtransport.Server{
 			H3: http3.Server{
-				ConnContext: func(ctx context.Context, c quic.Connection) context.Context {
+				ConnContext: func(ctx context.Context, c *quic.Conn) context.Context {
 					return context.WithValue(ctx, connKey{}, c)
 				},
 			},

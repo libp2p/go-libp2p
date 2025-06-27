@@ -53,7 +53,7 @@ require (
 	github.com/pion/webrtc/v4 v4.1.2
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
-	github.com/quic-go/quic-go v0.52.0
+	github.com/quic-go/quic-go v0.53.0
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/fx v1.24.0
@@ -73,8 +73,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
-	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
-	github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -83,7 +81,6 @@ require (
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/ginkgo/v2 v2.23.4 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
 	github.com/pion/dtls/v3 v3.0.6 // indirect
 	github.com/pion/interceptor v0.1.40 // indirect
@@ -103,7 +100,6 @@ require (
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
@@ -112,4 +108,9 @@ require (
 	golang.org/x/text v0.26.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
+)
+
+replace (
+	github.com/quic-go/quic-go => ../quic-go
+	github.com/quic-go/webtransport-go => ../webtransport-go
 )

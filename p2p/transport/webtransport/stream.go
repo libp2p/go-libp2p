@@ -14,7 +14,7 @@ const (
 )
 
 type webtransportStream struct {
-	webtransport.Stream
+	*webtransport.Stream
 	wsess *webtransport.Session
 }
 
@@ -29,7 +29,7 @@ func (s *webtransportStream) RemoteAddr() net.Addr {
 }
 
 type stream struct {
-	webtransport.Stream
+	*webtransport.Stream
 }
 
 var _ network.MuxedStream = &stream{}
