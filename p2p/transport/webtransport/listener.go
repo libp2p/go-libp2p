@@ -85,16 +85,19 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 				log.Debugw("serving failed", "addr", ln.Addr(), "error", err)
 				return
 			}
-			ln.startHandshake(conn)
+			err = ln.startHandshake(conn)
+			if err != nil {
+				log.Debugf("failed to start handshake: %s", err)
+				continue
+			}
 			go ln.server.ServeQUICConn(conn)
 		}
 	}()
 	return ln, nil
 }
 
-func (l *listener) startHandshake(conn *quic.Conn) {
+func (l *listener) startHandshake(conn *quic.Conn) error {
 	ctx, cancel := context.WithTimeout(l.ctx, handshakeTimeout)
-	l.mx.Lock()
 	stopHandshakeTimeout := context.AfterFunc(ctx, func() {
 		log.Debugf("failed to handshake on conn: %s", conn.RemoteAddr())
 		conn.CloseWithError(1, "")
@@ -102,13 +105,20 @@ func (l *listener) startHandshake(conn *quic.Conn) {
 		delete(l.pendingConns, conn)
 		l.mx.Unlock()
 	})
+	l.mx.Lock()
+	defer l.mx.Unlock()
+	// don't add to map if the context is already cancelled
+	if ctx.Err() != nil {
+		cancel()
+		return ctx.Err()
+	}
 	l.pendingConns[conn] = &negotiatingConn{
 		Conn:                 conn,
 		ctx:                  ctx,
 		cancel:               cancel,
 		stopHandshakeTimeout: stopHandshakeTimeout,
 	}
-	l.mx.Unlock()
+	return nil
 }
 
 // negotiatingConn is a wrapper around a *quic.Conn that lets us wrap it in
@@ -280,7 +290,7 @@ func (l *listener) handshake(ctx context.Context, sess *webtransport.Session) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Noise session: %w", err)
 	}
-	c, err := n.SecureInbound(ctx, &webtransportStream{Stream: str, wsess: sess}, "")
+	c, err := n.SecureInbound(ctx, webtransportStream{Stream: str, wsess: sess}, "")
 	if err != nil {
 		return nil, err
 	}
