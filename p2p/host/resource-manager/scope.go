@@ -302,21 +302,36 @@ func (rc *resources) removeConn(dir network.Direction, usefd bool) {
 }
 
 func (rc *resources) removeConns(incount, outcount, fdcount int) {
-	rc.nconnsIn -= incount
-	rc.nconnsOut -= outcount
-	rc.nfd -= fdcount
+	if incount < 0 || outcount < 0 || fdcount < 0 {
+		log.Errorf("BUG: negative count in removeConns: in=%d out=%d fd=%d", incount, outcount, fdcount)
+		return
+	}
 
-	if rc.nconnsIn < 0 {
-		log.Warn("BUG: too many inbound connections released")
+
+	newConnsIn := rc.nconnsIn - incount
+	newConnsOut := rc.nconnsOut - outcount  
+	newFd := rc.nfd - fdcount
+
+	
+	if newConnsIn < 0 {
+		log.Errorf("BUG: inbound connection count would underflow: current=%d release=%d", rc.nconnsIn, incount)
 		rc.nconnsIn = 0
+	} else {
+		rc.nconnsIn = newConnsIn
 	}
-	if rc.nconnsOut < 0 {
-		log.Warn("BUG: too many outbound connections released")
+
+	if newConnsOut < 0 {
+		log.Errorf("BUG: outbound connection count would underflow: current=%d release=%d", rc.nconnsOut, outcount)
 		rc.nconnsOut = 0
+	} else {
+		rc.nconnsOut = newConnsOut
 	}
-	if rc.nfd < 0 {
-		log.Warn("BUG: too many file descriptors released")
+
+	if newFd < 0 {
+		log.Errorf("BUG: file descriptor count would underflow: current=%d release=%d", rc.nfd, fdcount)
 		rc.nfd = 0
+	} else {
+		rc.nfd = newFd
 	}
 }
 
@@ -344,6 +359,16 @@ func (s *resourceScope) ReserveMemory(size int, prio uint8) error {
 		return s.wrapError(network.ErrResourceScopeClosed)
 	}
 
+	
+	var needsCleanup bool
+	defer func() {
+		if needsCleanup {
+			s.rc.releaseMemory(int64(size))
+			s.metrics.BlockMemory(size)
+			s.trace.ReleaseMemory(s.name, int64(size), s.rc.memory)
+		}
+	}()
+
 	if err := s.rc.reserveMemory(int64(size), prio); err != nil {
 		log.Debugw("blocked memory reservation", logValuesMemoryLimit(s.name, "", s.rc.stat(), err)...)
 		s.trace.BlockReserveMemory(s.name, prio, int64(size), s.rc.memory)
@@ -351,12 +376,13 @@ func (s *resourceScope) ReserveMemory(size int, prio uint8) error {
 		return s.wrapError(err)
 	}
 
+	needsCleanup = true
+
 	if err := s.reserveMemoryForEdges(size, prio); err != nil {
-		s.rc.releaseMemory(int64(size))
-		s.metrics.BlockMemory(size)
 		return s.wrapError(err)
 	}
 
+	needsCleanup = false 
 	s.trace.ReserveMemory(s.name, prio, int64(size), s.rc.memory)
 	s.metrics.AllowMemory(size)
 	return nil

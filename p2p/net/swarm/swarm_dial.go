@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -86,9 +87,52 @@ func (errQUICDraft29) Unwrap() error {
 // add loop back in Dial(.)
 const DialAttempts = 1
 
+// DefaultConcurrentFdDials is the default number of concurrent outbound dials over transports
+// that consume file descriptors. This can be overridden by setting ConcurrentFdDials.
+const DefaultConcurrentFdDials = 160
+
 // ConcurrentFdDials is the number of concurrent outbound dials over transports
-// that consume file descriptors
-const ConcurrentFdDials = 160
+
+var ConcurrentFdDials = calculateDefaultFdLimit()
+
+
+func calculateDefaultFdLimit() int {
+	
+	limit := DefaultConcurrentFdDials
+
+	switch runtime.GOOS {
+	case "windows":
+		
+		limit = 512
+	case "darwin":
+	
+		limit = 256
+	default:
+	
+		limit = DefaultConcurrentFdDials
+	}
+
+	
+	if runtime.GOMAXPROCS(0) < 4 {
+	
+		limit = limit / 2
+	}
+
+
+	const minLimit = 32
+	if limit < minLimit {
+		limit = minLimit
+	}
+
+	return limit
+}
+
+
+func SetConcurrentFdDials(limit int) {
+	if limit > 0 {
+		ConcurrentFdDials = limit
+	}
+}
 
 // DefaultPerPeerRateLimit is the number of concurrent outbound dials to make
 // per peer
