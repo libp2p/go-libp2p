@@ -11,6 +11,8 @@ package rcmgr
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"math"
 
@@ -294,4 +296,91 @@ func (l *fixedLimiter) GetStreamLimits(_ peer.ID) Limit {
 
 func (l *fixedLimiter) GetConnLimits() Limit {
 	return &l.conn
+}
+
+
+func ValidateLimit(limit Limit) error {
+	if limit == nil {
+		return errors.New("limit cannot be nil")
+	}
+
+
+	if limit.GetMemoryLimit() < 0 {
+		return fmt.Errorf("invalid memory limit: %d", limit.GetMemoryLimit())
+	}
+
+	
+	if limit.GetStreamTotalLimit() < 0 {
+		return fmt.Errorf("invalid total stream limit: %d", limit.GetStreamTotalLimit())
+	}
+	if limit.GetStreamLimit(network.DirInbound) < 0 {
+		return fmt.Errorf("invalid inbound stream limit: %d", limit.GetStreamLimit(network.DirInbound))
+	}
+	if limit.GetStreamLimit(network.DirOutbound) < 0 {
+		return fmt.Errorf("invalid outbound stream limit: %d", limit.GetStreamLimit(network.DirOutbound))
+	}
+
+
+	if limit.GetConnTotalLimit() < 0 {
+		return fmt.Errorf("invalid total connection limit: %d", limit.GetConnTotalLimit())
+	}
+	if limit.GetConnLimit(network.DirInbound) < 0 {
+		return fmt.Errorf("invalid inbound connection limit: %d", limit.GetConnLimit(network.DirInbound))
+	}
+	if limit.GetConnLimit(network.DirOutbound) < 0 {
+		return fmt.Errorf("invalid outbound connection limit: %d", limit.GetConnLimit(network.DirOutbound))
+	}
+
+	
+	if limit.GetFDLimit() < 0 {
+		return fmt.Errorf("invalid file descriptor limit: %d", limit.GetFDLimit())
+	}
+
+	
+	if limit.GetStreamTotalLimit() > 0 {
+		inbound := limit.GetStreamLimit(network.DirInbound)
+		outbound := limit.GetStreamLimit(network.DirOutbound)
+		if inbound > 0 && outbound > 0 && inbound+outbound > limit.GetStreamTotalLimit() {
+			return fmt.Errorf("directional stream limits (%d + %d) exceed total limit (%d)",
+				inbound, outbound, limit.GetStreamTotalLimit())
+		}
+	}
+
+	if limit.GetConnTotalLimit() > 0 {
+		inbound := limit.GetConnLimit(network.DirInbound)
+		outbound := limit.GetConnLimit(network.DirOutbound)
+		if inbound > 0 && outbound > 0 && inbound+outbound > limit.GetConnTotalLimit() {
+			return fmt.Errorf("directional connection limits (%d + %d) exceed total limit (%d)",
+				inbound, outbound, limit.GetConnTotalLimit())
+		}
+	}
+
+	return nil
+}
+
+
+func ValidateLimiter(limiter Limiter) error {
+	if limiter == nil {
+		return errors.New("limiter cannot be nil")
+	}
+
+
+	if err := ValidateLimit(limiter.GetSystemLimits()); err != nil {
+		return fmt.Errorf("invalid system limits: %w", err)
+	}
+
+	
+	if err := ValidateLimit(limiter.GetTransientLimits()); err != nil {
+		return fmt.Errorf("invalid transient limits: %w", err)
+	}
+
+	
+	if err := ValidateLimit(limiter.GetAllowlistedSystemLimits()); err != nil {
+		return fmt.Errorf("invalid allowlisted system limits: %w", err)
+	}
+	if err := ValidateLimit(limiter.GetAllowlistedTransientLimits()); err != nil {
+		return fmt.Errorf("invalid allowlisted transient limits: %w", err)
+	}
+
+	return nil
 }
