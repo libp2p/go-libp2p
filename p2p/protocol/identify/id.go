@@ -303,6 +303,7 @@ func (ids *idService) loop(ctx context.Context) {
 	// That way, we can end up with
 	// * this Go routine busy looping over all peers in sendPushes
 	// * another push being queued in the triggerPush channel
+	// and we'll only send one push at a time.
 	triggerPush := make(chan struct{}, 1)
 	ids.refCount.Add(1)
 	go func() {
@@ -753,31 +754,28 @@ func (ids *idService) getSignedRecord(snapshot *identifySnapshot) []byte {
 
 // diff takes two slices of strings (a and b) and computes which elements were added and removed in b
 func diff(a, b []protocol.ID) (added, removed []protocol.ID) {
-	// This is O(n^2), but it's fine because the slices are small.
-	for _, x := range b {
-		var found bool
-		for _, y := range a {
-			if x == y {
-				found = true
-				break
-			}
-		}
-		if !found {
-			added = append(added, x)
-		}
-	}
+
+	seen := make(map[protocol.ID]struct{}, len(a))
+	
+
 	for _, x := range a {
-		var found bool
-		for _, y := range b {
-			if x == y {
-				found = true
-				break
-			}
-		}
-		if !found {
-			removed = append(removed, x)
+		seen[x] = struct{}{}
+	}
+	
+
+	for _, x := range b {
+		if _, exists := seen[x]; !exists {
+			added = append(added, x)
+
+			delete(seen, x)
 		}
 	}
+	
+
+	for x := range seen {
+		removed = append(removed, x)
+	}
+	
 	return
 }
 
