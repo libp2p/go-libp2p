@@ -18,7 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
@@ -232,12 +231,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if opts.NATManager != nil {
 		natmgr = opts.NATManager(h.Network())
 	}
-	var tfl func(ma.Multiaddr) transport.Transport
-	if s, ok := h.Network().(interface {
-		TransportForListening(ma.Multiaddr) transport.Transport
-	}); ok {
-		tfl = s.TransportForListening
-	}
 
 	if opts.AutoNATv2 != nil {
 		h.autonatv2 = opts.AutoNATv2
@@ -247,12 +240,23 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if h.autonatv2 != nil {
 		autonatv2Client = h.autonatv2
 	}
+
+	// Create addCertHashes function with interface assertion for swarm
+	addCertHashesFunc := func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		return addrs
+	}
+	if swarm, ok := h.Network().(interface {
+		AddCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr
+	}); ok {
+		addCertHashesFunc = swarm.AddCertHashes
+	}
+
 	h.addressManager, err = newAddrsManager(
 		h.eventbus,
 		natmgr,
 		addrFactory,
 		h.Network().ListenAddresses,
-		tfl,
+		addCertHashesFunc,
 		h.ids,
 		h.addrsUpdatedChan,
 		autonatv2Client,

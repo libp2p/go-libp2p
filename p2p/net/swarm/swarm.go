@@ -961,3 +961,31 @@ func (r ResolverFromMaDNS) ResolveDNSComponent(ctx context.Context, maddr ma.Mul
 	}
 	return addrs, nil
 }
+
+// AddCertHashes adds certificate hashes to relevant transport addresses, if there
+// are no certhashes already present on the method. It mutates `listenAddrs`.
+// This method is useful for adding certhashes to public addresses discovered
+// via identify, nat mapping, or provided by the user.
+func (s *Swarm) AddCertHashes(listenAddrs []ma.Multiaddr) []ma.Multiaddr {
+	type addCertHasher interface {
+		AddCertHashes(m ma.Multiaddr) (ma.Multiaddr, bool)
+	}
+
+	for i, addr := range listenAddrs {
+		t := s.TransportForListening(addr)
+		if t == nil {
+			continue
+		}
+		tpt, ok := t.(addCertHasher)
+		if !ok {
+			continue
+		}
+		addrWithCerthash, added := tpt.AddCertHashes(addr)
+		if !added {
+			log.Warnf("Couldn't add certhashes to multiaddr: %s", addr)
+			continue
+		}
+		listenAddrs[i] = addrWithCerthash
+	}
+	return listenAddrs
+}

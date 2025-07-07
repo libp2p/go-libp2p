@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -566,4 +567,62 @@ func TestListenCloseCount(t *testing.T) {
 	require.Len(t, remainingAddrs, 1)
 	_, err := remainingAddrs[0].ValueForProtocol(ma.P_TCP)
 	require.NoError(t, err, "expected the TCP address to still be present")
+}
+
+func TestAddCertHashes(t *testing.T) {
+	s := GenSwarm(t)
+
+	listenAddrs := s.ListenAddresses()
+	splitCertHashes := func(a ma.Multiaddr) (prefix, certhashes ma.Multiaddr, ok bool) {
+		for i, c := range a {
+			if c.Protocol().Code == ma.P_CERTHASH {
+				return prefix, a[i:], true
+			}
+			prefix = append(prefix, c)
+		}
+		return prefix, certhashes, false
+	}
+	addrWithNewIPPort := func(addr ma.Multiaddr, newIPPort ma.Multiaddr) ma.Multiaddr {
+		a := slices.Clone(addr)
+		a[0] = newIPPort[0]
+		a[1] = newIPPort[1]
+		return a
+	}
+	publicIPPort := []ma.Multiaddr{
+		ma.StringCast("/ip4/1.1.1.1/udp/1"),
+		ma.StringCast("/ip4/1.2.3.4/udp/1"),
+		ma.StringCast("/ip6/2005::/udp/1"),
+	}
+
+	certHashComponent := ma.StringCast("/certhash/uEgNmb28")
+	for _, a := range listenAddrs {
+		prefix, certhashes, ok := splitCertHashes(a)
+		if !ok {
+			continue
+		}
+		var publicAddrs []ma.Multiaddr
+		for _, tc := range publicIPPort {
+			publicAddrs = append(publicAddrs, addrWithNewIPPort(prefix, tc))
+		}
+		finalAddrs := s.AddCertHashes(publicAddrs)
+		for _, a := range finalAddrs {
+			_, certhash2, ok := splitCertHashes(a)
+			require.True(t, ok)
+			require.Equal(t, certhashes, certhash2)
+		}
+
+		// if the addr has a certhash already, check it isn't modified
+		publicAddrs = nil
+		for _, tc := range publicIPPort {
+			a := addrWithNewIPPort(prefix, tc)
+			a = append(a, certHashComponent...)
+			publicAddrs = append(publicAddrs, a)
+		}
+		finalAddrs = s.AddCertHashes(publicAddrs)
+		for _, a := range finalAddrs {
+			_, certhash2, ok := splitCertHashes(a)
+			require.True(t, ok)
+			require.Equal(t, certHashComponent, certhash2)
+		}
+	}
 }
