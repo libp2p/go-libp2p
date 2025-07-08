@@ -13,7 +13,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"sync/atomic"
 
 	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
@@ -70,9 +69,6 @@ type ConnManager struct {
 	connContext connContextFunc
 
 	verifySourceAddress func(addr net.Addr) bool
-
-	// Counter for generating unique listener IDs within this ConnManager instance
-	listenerIDCounter uint64
 }
 
 type quicListenerEntry struct {
@@ -226,9 +222,6 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
-	// Generate unique listener ID for association tracking
-	listenerID := fmt.Sprintf("listener-%d", atomic.AddUint64(&c.listenerIDCounter, 1))
-
 	key := laddr.String()
 	entry, ok := c.quicListeners[key]
 	if !ok {
@@ -242,14 +235,7 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
-
-		// Associate the transport with this listener for new transports
-		if association != nil {
-			if refTr, ok := tr.(*refcountedTransport); ok {
-				refTr.associateForListener(association, listenerID)
-			}
-		}
-	} else if c.enableReuseport && association != nil {
+	} else if c.enableReuseport {
 		reuse, err := c.getReuse(netw)
 		if err != nil {
 			return nil, fmt.Errorf("reuse error: %w", err)
@@ -258,23 +244,31 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		if err != nil {
 			return nil, fmt.Errorf("reuse assert transport failed: %w", err)
 		}
-		if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
-			tr.associateForListener(association, listenerID)
-		}
 	}
-	l, err := entry.ln.Add(tlsConf, allowWindowIncrease, func() { c.onListenerClosed(key, listenerID) })
+	var l Listener
+	l, err = entry.ln.Add(tlsConf, allowWindowIncrease, func() {
+		c.onListenerClosed(key, l.(*listener))
+	})
 	if err != nil {
 		if entry.refCount <= 0 {
 			entry.ln.Close()
 		}
 		return nil, err
 	}
+
+	// Associate the listener with the transport after creation
+	if association != nil {
+		if refTr, ok := entry.ln.transport.(*refcountedTransport); ok {
+			refTr.associateForListener(association, l.(*listener))
+		}
+	}
+
 	entry.refCount++
 	c.quicListeners[key] = entry
 	return l, nil
 }
 
-func (c *ConnManager) onListenerClosed(key string, listenerID string) {
+func (c *ConnManager) onListenerClosed(key string, ln *listener) {
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
@@ -283,7 +277,7 @@ func (c *ConnManager) onListenerClosed(key string, listenerID string) {
 
 	// Clean up associations for this specific listener
 	if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
-		tr.disassociateListener(listenerID)
+		tr.RemoveAssociationsForListener(ln)
 	}
 
 	if entry.refCount <= 0 {

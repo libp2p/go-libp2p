@@ -88,50 +88,44 @@ type refcountedTransport struct {
 	// channel to signal to the owner that we are done with it.
 	borrowDoneSignal chan struct{}
 
-	assocations map[any]struct{}
-	// Track which listener added which associations for proper cleanup
-	listenerAssociations map[string][]any // listener key -> associations added by that listener
+	// Store associations as association -> set of listener objects
+	associations map[any]map[*listener]struct{}
 }
 
 type connContextFunc = func(context.Context, *quic.ClientInfo) (context.Context, error)
 
 // associateForListener associates an arbitrary value with this transport for a specific listener.
 // This lets us "tag" the refcountedTransport when listening so we can use it
-// later for dialing. The listenerKey allows proper cleanup when the listener closes.
+// later for dialing. The listener parameter allows proper cleanup when the listener closes.
 // Necessary for holepunching and learning about our own observed listening address.
-func (c *refcountedTransport) associateForListener(a any, listenerKey string) {
+func (c *refcountedTransport) associateForListener(a any, ln *listener) {
 	if a == nil {
 		return
 	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if c.assocations == nil {
-		c.assocations = make(map[any]struct{})
+	if c.associations == nil {
+		c.associations = make(map[any]map[*listener]struct{})
 	}
-	if c.listenerAssociations == nil {
-		c.listenerAssociations = make(map[string][]any)
+	if c.associations[a] == nil {
+		c.associations[a] = make(map[*listener]struct{})
 	}
-	c.assocations[a] = struct{}{}
-	c.listenerAssociations[listenerKey] = append(c.listenerAssociations[listenerKey], a)
+	c.associations[a][ln] = struct{}{}
 }
 
-// disassociateListener removes ALL associations added by a specific listener
-func (c *refcountedTransport) disassociateListener(listenerKey string) {
+// RemoveAssociationsForListener removes ALL associations added by a specific listener
+func (c *refcountedTransport) RemoveAssociationsForListener(ln *listener) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	associations, exists := c.listenerAssociations[listenerKey]
-	if !exists {
-		return
+	// Remove this listener from all associations
+	for association, listeners := range c.associations {
+		delete(listeners, ln)
+		// If no listeners remain for this association, remove the association entirely
+		if len(listeners) == 0 {
+			delete(c.associations, association)
+		}
 	}
-
-	// Remove each association that was added by this listener
-	for _, assoc := range associations {
-		delete(c.assocations, assoc)
-	}
-
-	// Remove the listener's association tracking
-	delete(c.listenerAssociations, listenerKey)
 }
 
 // hasAssociation returns true if the transport has the given association.
@@ -142,8 +136,8 @@ func (c *refcountedTransport) hasAssociation(a any) bool {
 	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	_, ok := c.assocations[a]
-	return ok
+	listeners, ok := c.associations[a]
+	return ok && len(listeners) > 0
 }
 
 func (c *refcountedTransport) IncreaseCount() {

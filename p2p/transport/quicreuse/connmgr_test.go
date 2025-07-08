@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -512,8 +511,8 @@ func TestAssociationCleanup(t *testing.T) {
 	// Verify association exists
 	require.True(t, tr.hasAssociation(assoc))
 	tr.mutex.Lock()
-	require.Contains(t, tr.assocations, assoc)
-	require.Len(t, tr.listenerAssociations, 1)
+	require.Contains(t, tr.associations, assoc)
+	require.Len(t, tr.associations[assoc], 1)
 	tr.mutex.Unlock()
 	cm.quicListenersMu.Unlock()
 
@@ -522,8 +521,8 @@ func TestAssociationCleanup(t *testing.T) {
 
 	// Verify association is cleaned up
 	tr.mutex.Lock()
-	require.NotContains(t, tr.assocations, assoc)
-	require.Len(t, tr.listenerAssociations, 0)
+	require.NotContains(t, tr.associations, assoc)
+	require.Len(t, tr.associations, 0)
 	tr.mutex.Unlock()
 
 	// Verify hasAssociation returns false
@@ -560,10 +559,12 @@ func TestMultipleListenerAssociationCleanup(t *testing.T) {
 	require.True(t, tr.hasAssociation(assoc1))
 	require.True(t, tr.hasAssociation(assoc2))
 	tr.mutex.Lock()
-	require.Contains(t, tr.assocations, assoc1)
-	require.Contains(t, tr.assocations, assoc2)
-	// Should have two different listener IDs
-	require.Len(t, tr.listenerAssociations, 2)
+	require.Contains(t, tr.associations, assoc1)
+	require.Contains(t, tr.associations, assoc2)
+	// Should have two associations, each with one listener
+	require.Len(t, tr.associations, 2)
+	require.Len(t, tr.associations[assoc1], 1)
+	require.Len(t, tr.associations[assoc2], 1)
 	tr.mutex.Unlock()
 	cm.quicListenersMu.Unlock()
 
@@ -572,9 +573,9 @@ func TestMultipleListenerAssociationCleanup(t *testing.T) {
 
 	// Verify only the first association is cleaned up
 	tr.mutex.Lock()
-	require.NotContains(t, tr.assocations, assoc1)
-	require.Contains(t, tr.assocations, assoc2)
-	require.Len(t, tr.listenerAssociations, 1)
+	require.NotContains(t, tr.associations, assoc1)
+	require.Contains(t, tr.associations, assoc2)
+	require.Len(t, tr.associations, 1)
 	tr.mutex.Unlock()
 
 	// Verify hasAssociation works correctly
@@ -586,9 +587,9 @@ func TestMultipleListenerAssociationCleanup(t *testing.T) {
 
 	// Verify all associations are cleaned up
 	tr.mutex.Lock()
-	require.NotContains(t, tr.assocations, assoc1)
-	require.NotContains(t, tr.assocations, assoc2)
-	require.Len(t, tr.listenerAssociations, 0)
+	require.NotContains(t, tr.associations, assoc1)
+	require.NotContains(t, tr.associations, assoc2)
+	require.Len(t, tr.associations, 0)
 	tr.mutex.Unlock()
 
 	// Verify hasAssociation returns false for both
@@ -619,10 +620,7 @@ func TestConnManagerIsolation(t *testing.T) {
 	require.NoError(t, err)
 	defer ln2.Close()
 
-	// Verify that each ConnManager has its own isolated counter and associations
-	// Both should start from listener-1 since they're separate instances
-	require.Equal(t, uint64(1), atomic.LoadUint64(&cm1.listenerIDCounter))
-	require.Equal(t, uint64(1), atomic.LoadUint64(&cm2.listenerIDCounter))
+	// Verify that each ConnManager has its own isolated associations
 
 	// Verify associations are isolated
 	cm1.quicListenersMu.Lock()
