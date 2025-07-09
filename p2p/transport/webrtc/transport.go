@@ -537,7 +537,7 @@ func (t *WebRTCTransport) AddCertHashes(addr ma.Multiaddr) (ma.Multiaddr, bool) 
 	if err != nil {
 		return nil, false
 	}
-	return addr.AppendComponent(certComp), true
+	return addr.Encapsulate(certComp), true
 }
 
 type netConnWrapper struct {
