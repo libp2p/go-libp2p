@@ -1,4 +1,4 @@
-package identify
+package basichost
 
 import (
 	"context"
@@ -88,8 +88,8 @@ type connMultiaddrs interface {
 }
 
 // observerSetCacheSize is the number of transport sharing the same thinwaist (tcp, ws, wss), (quic, webtransport, webrtc-direct)
-// This is 3 in practice right now, but keep a buffer of 3 extra elements
-const observerSetCacheSize = 5
+// This is 3 in practice right now, but keep a buffer of few extra elements
+const observerSetCacheSize = 10
 
 // observerSet is the set of observers who have observed ThinWaistAddr
 type observerSet struct {
@@ -138,20 +138,12 @@ type observation struct {
 	observed ma.Multiaddr
 }
 
-// ObservedAddrManager maps connection's local multiaddrs to their externally observable multiaddress
-type ObservedAddrManager struct {
+// ObservedAddrsManager maps connection's local multiaddrs to their externally observable multiaddress
+type ObservedAddrsManager struct {
 	// Our listen addrs
 	listenAddrs func() []ma.Multiaddr
-	// Our listen addrs with interface addrs for unspecified addrs
-	interfaceListenAddrs func() ([]ma.Multiaddr, error)
-	// All host addrs
-	hostAddrs func() []ma.Multiaddr
-	// Any normalization required before comparing. Useful to remove certhash
-	normalize func(ma.Multiaddr) ma.Multiaddr
 	// worker channel for new observations
 	wch chan observation
-	// notified on recording an observation
-	addrRecordedNotif chan struct{}
 
 	// for closing
 	wg        sync.WaitGroup
@@ -165,42 +157,39 @@ type ObservedAddrManager struct {
 	connObservedTWAddrs map[connMultiaddrs]ma.Multiaddr
 	// localMultiaddr => thin waist form with the count of the connections the multiaddr
 	// was seen on for tracking our local listen addresses
+	// TODO: remove this map. There's no need for tracking this. We can get all the info
+	// from the listenAddrs func
 	localAddrs map[string]*thinWaistWithCount
 }
 
 // NewObservedAddrManager returns a new address manager using peerstore.OwnObservedAddressTTL as the TTL.
-func NewObservedAddrManager(listenAddrs, hostAddrs func() []ma.Multiaddr,
-	interfaceListenAddrs func() ([]ma.Multiaddr, error), normalize func(ma.Multiaddr) ma.Multiaddr) (*ObservedAddrManager, error) {
-	if normalize == nil {
-		normalize = func(addr ma.Multiaddr) ma.Multiaddr { return addr }
-	}
-	o := &ObservedAddrManager{
-		externalAddrs:        make(map[string]map[string]*observerSet),
-		connObservedTWAddrs:  make(map[connMultiaddrs]ma.Multiaddr),
-		localAddrs:           make(map[string]*thinWaistWithCount),
-		wch:                  make(chan observation, observedAddrManagerWorkerChannelSize),
-		addrRecordedNotif:    make(chan struct{}, 1),
-		listenAddrs:          listenAddrs,
-		interfaceListenAddrs: interfaceListenAddrs,
-		hostAddrs:            hostAddrs,
-		normalize:            normalize,
+func NewObservedAddrManager(listenAddrs func() []ma.Multiaddr) (*ObservedAddrsManager, error) {
+	o := &ObservedAddrsManager{
+		externalAddrs:       make(map[string]map[string]*observerSet),
+		connObservedTWAddrs: make(map[connMultiaddrs]ma.Multiaddr),
+		localAddrs:          make(map[string]*thinWaistWithCount),
+		wch:                 make(chan observation, observedAddrManagerWorkerChannelSize),
+		listenAddrs:         listenAddrs,
 	}
 	o.ctx, o.ctxCancel = context.WithCancel(context.Background())
 
+	return o, nil
+}
+
+func (o *ObservedAddrsManager) Start() {
 	o.wg.Add(1)
 	go o.worker()
-	return o, nil
 }
 
 // AddrsFor return all activated observed addresses associated with the given
 // (resolved) listen address.
-func (o *ObservedAddrManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr) {
+func (o *ObservedAddrsManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr) {
 	if addr == nil {
 		return nil
 	}
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	tw, err := thinWaistForm(o.normalize(addr))
+	tw, err := thinWaistForm(addr)
 	if err != nil {
 		return nil
 	}
@@ -219,19 +208,14 @@ func (o *ObservedAddrManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr)
 // e.g. If we have observations for a QUIC address on port 9000, and we are
 // listening on the same interface and port 9000 for WebTransport, we can infer
 // the external WebTransport address.
-func (o *ObservedAddrManager) appendInferredAddrs(twToObserverSets map[string][]*observerSet, addrs []ma.Multiaddr) []ma.Multiaddr {
+func (o *ObservedAddrsManager) appendInferredAddrs(twToObserverSets map[string][]*observerSet, addrs []ma.Multiaddr) []ma.Multiaddr {
 	if twToObserverSets == nil {
 		twToObserverSets = make(map[string][]*observerSet)
 		for localTWStr := range o.externalAddrs {
 			twToObserverSets[localTWStr] = append(twToObserverSets[localTWStr], o.getTopExternalAddrs(localTWStr)...)
 		}
 	}
-	lAddrs, err := o.interfaceListenAddrs()
-	if err != nil {
-		log.Warnw("failed to get interface resolved listen addrs. Using just the listen addrs", "error", err)
-		lAddrs = nil
-	}
-	lAddrs = append(lAddrs, o.listenAddrs()...)
+	lAddrs := o.listenAddrs()
 	seenTWs := make(map[string]struct{})
 	for _, a := range lAddrs {
 		if _, ok := o.localAddrs[string(a.Bytes())]; ok {
@@ -243,7 +227,6 @@ func (o *ObservedAddrManager) appendInferredAddrs(twToObserverSets map[string][]
 			continue
 		}
 		seenTWs[string(a.Bytes())] = struct{}{}
-		a = o.normalize(a)
 		t, err := thinWaistForm(a)
 		if err != nil {
 			continue
@@ -256,7 +239,7 @@ func (o *ObservedAddrManager) appendInferredAddrs(twToObserverSets map[string][]
 }
 
 // Addrs return all activated observed addresses
-func (o *ObservedAddrManager) Addrs() []ma.Multiaddr {
+func (o *ObservedAddrsManager) Addrs() []ma.Multiaddr {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
@@ -275,7 +258,7 @@ func (o *ObservedAddrManager) Addrs() []ma.Multiaddr {
 	return addrs
 }
 
-func (o *ObservedAddrManager) getTopExternalAddrs(localTWStr string) []*observerSet {
+func (o *ObservedAddrsManager) getTopExternalAddrs(localTWStr string) []*observerSet {
 	observerSets := make([]*observerSet, 0, len(o.externalAddrs[localTWStr]))
 	for _, v := range o.externalAddrs[localTWStr] {
 		if len(v.ObservedBy) >= ActivationThresh {
@@ -289,16 +272,7 @@ func (o *ObservedAddrManager) getTopExternalAddrs(localTWStr string) []*observer
 		}
 		// In case we have elements with equal counts,
 		// keep the address list stable by using the lexicographically smaller address
-		as := a.ObservedTWAddr.String()
-		bs := b.ObservedTWAddr.String()
-		if as < bs {
-			return -1
-		} else if as > bs {
-			return 1
-		} else {
-			return 0
-		}
-
+		return a.ObservedTWAddr.Compare(b.ObservedTWAddr)
 	})
 	n := len(observerSets)
 	if n > maxExternalThinWaistAddrsPerLocalAddr {
@@ -308,7 +282,7 @@ func (o *ObservedAddrManager) getTopExternalAddrs(localTWStr string) []*observer
 }
 
 // Record enqueues an observation for recording
-func (o *ObservedAddrManager) Record(conn connMultiaddrs, observed ma.Multiaddr) {
+func (o *ObservedAddrsManager) Record(conn connMultiaddrs, observed ma.Multiaddr) {
 	select {
 	case o.wch <- observation{
 		conn:     conn,
@@ -322,7 +296,7 @@ func (o *ObservedAddrManager) Record(conn connMultiaddrs, observed ma.Multiaddr)
 	}
 }
 
-func (o *ObservedAddrManager) worker() {
+func (o *ObservedAddrsManager) worker() {
 	defer o.wg.Done()
 
 	for {
@@ -340,7 +314,7 @@ func isRelayedAddress(a ma.Multiaddr) bool {
 	return err == nil
 }
 
-func (o *ObservedAddrManager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) (shouldRecord bool, localTW thinWaist, observedTW thinWaist) {
+func (o *ObservedAddrsManager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) (shouldRecord bool, localTW thinWaist, observedTW thinWaist) {
 	if conn == nil || observed == nil {
 		return false, thinWaist{}, thinWaist{}
 	}
@@ -361,62 +335,35 @@ func (o *ObservedAddrManager) shouldRecordObservation(conn connMultiaddrs, obser
 		return false, thinWaist{}, thinWaist{}
 	}
 
-	// we should only use ObservedAddr when our connection's LocalAddr is one
-	// of our ListenAddrs. If we Dial out using an ephemeral addr, knowing that
-	// address's external mapping is not very useful because the port will not be
-	// the same as the listen addr.
-	ifaceaddrs, err := o.interfaceListenAddrs()
+	localTW, err := thinWaistForm(conn.LocalMultiaddr())
 	if err != nil {
-		log.Infof("failed to get interface listen addrs", err)
 		return false, thinWaist{}, thinWaist{}
 	}
 
-	for i, a := range ifaceaddrs {
-		ifaceaddrs[i] = o.normalize(a)
-	}
-
-	local := o.normalize(conn.LocalMultiaddr())
-
 	listenAddrs := o.listenAddrs()
 	for i, a := range listenAddrs {
-		listenAddrs[i] = o.normalize(a)
+		tw, _ := thinWaistForm(a) // tw is empty if zero is non nil
+		listenAddrs[i] = tw.TW
 	}
 
-	if !ma.Contains(ifaceaddrs, local) && !ma.Contains(listenAddrs, local) {
+	if !ma.Contains(listenAddrs, localTW.TW) {
 		// not in our list
 		return false, thinWaist{}, thinWaist{}
 	}
 
-	localTW, err = thinWaistForm(local)
+	observedTW, err = thinWaistForm(observed)
 	if err != nil {
 		return false, thinWaist{}, thinWaist{}
 	}
-	observedTW, err = thinWaistForm(o.normalize(observed))
-	if err != nil {
-		return false, thinWaist{}, thinWaist{}
-	}
-
-	hostAddrs := o.hostAddrs()
-	for i, a := range hostAddrs {
-		hostAddrs[i] = o.normalize(a)
-	}
-
-	// We should reject the connection if the observation doesn't match the
-	// transports of one of our advertised addresses.
-	if !HasConsistentTransport(observed, hostAddrs) &&
-		!HasConsistentTransport(observed, listenAddrs) {
-		log.Debugw(
-			"observed multiaddr doesn't match the transports of any announced addresses",
-			"from", conn.RemoteMultiaddr(),
-			"observed", observed,
-		)
-		return false, thinWaist{}, thinWaist{}
+	if !hasConsistentTransport(localTW.TW, observedTW.TW) {
+		log.Debugf("invalid observed address %s for local address %s", observed, localTW.Addr)
+		return
 	}
 
 	return true, localTW, observedTW
 }
 
-func (o *ObservedAddrManager) maybeRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) {
+func (o *ObservedAddrsManager) maybeRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) {
 	shouldRecord, localTW, observedTW := o.shouldRecordObservation(conn, observed)
 	if !shouldRecord {
 		return
@@ -426,13 +373,9 @@ func (o *ObservedAddrManager) maybeRecordObservation(conn connMultiaddrs, observ
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.recordObservationUnlocked(conn, localTW, observedTW)
-	select {
-	case o.addrRecordedNotif <- struct{}{}:
-	default:
-	}
 }
 
-func (o *ObservedAddrManager) recordObservationUnlocked(conn connMultiaddrs, localTW, observedTW thinWaist) {
+func (o *ObservedAddrsManager) recordObservationUnlocked(conn connMultiaddrs, localTW, observedTW thinWaist) {
 	if conn.IsClosed() {
 		// dont record if the connection is already closed. Any previous observations will be removed in
 		// the disconnected callback
@@ -468,7 +411,7 @@ func (o *ObservedAddrManager) recordObservationUnlocked(conn connMultiaddrs, loc
 	o.addExternalAddrsUnlocked(observedTW.TW, observer, localTWStr, observedTWStr)
 }
 
-func (o *ObservedAddrManager) removeExternalAddrsUnlocked(observer, localTWStr, observedTWStr string) {
+func (o *ObservedAddrsManager) removeExternalAddrsUnlocked(observer, localTWStr, observedTWStr string) {
 	s, ok := o.externalAddrs[localTWStr][observedTWStr]
 	if !ok {
 		return
@@ -485,7 +428,7 @@ func (o *ObservedAddrManager) removeExternalAddrsUnlocked(observer, localTWStr, 
 	}
 }
 
-func (o *ObservedAddrManager) addExternalAddrsUnlocked(observedTWAddr ma.Multiaddr, observer, localTWStr, observedTWStr string) {
+func (o *ObservedAddrsManager) addExternalAddrsUnlocked(observedTWAddr ma.Multiaddr, observer, localTWStr, observedTWStr string) {
 	s, ok := o.externalAddrs[localTWStr][observedTWStr]
 	if !ok {
 		s = &observerSet{
@@ -500,7 +443,7 @@ func (o *ObservedAddrManager) addExternalAddrsUnlocked(observedTWAddr ma.Multiad
 	s.ObservedBy[observer]++
 }
 
-func (o *ObservedAddrManager) removeConn(conn connMultiaddrs) {
+func (o *ObservedAddrsManager) removeConn(conn connMultiaddrs) {
 	if conn == nil {
 		return
 	}
@@ -515,7 +458,7 @@ func (o *ObservedAddrManager) removeConn(conn connMultiaddrs) {
 
 	// normalize before obtaining the thinWaist so that we are always dealing
 	// with the normalized form of the address
-	localTW, err := thinWaistForm(o.normalize(conn.LocalMultiaddr()))
+	localTW, err := thinWaistForm(conn.LocalMultiaddr())
 	if err != nil {
 		return
 	}
@@ -534,13 +477,9 @@ func (o *ObservedAddrManager) removeConn(conn connMultiaddrs) {
 	}
 
 	o.removeExternalAddrsUnlocked(observer, string(localTW.TW.Bytes()), string(observedTWAddr.Bytes()))
-	select {
-	case o.addrRecordedNotif <- struct{}{}:
-	default:
-	}
 }
 
-func (o *ObservedAddrManager) getNATType() (tcpNATType, udpNATType network.NATDeviceType) {
+func (o *ObservedAddrsManager) getNATType() (tcpNATType, udpNATType network.NATDeviceType) {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
@@ -578,6 +517,9 @@ func (o *ObservedAddrManager) getNATType() (tcpNATType, udpNATType network.NATDe
 
 	// If the top elements cover more than 1/2 of all the observations, there's a > 50% chance that
 	// hole punching based on outputs of observed address manager will succeed
+	//
+	// The `3*maxExternalThinWaistAddrsPerLocalAddr` is a magic number, we just want sufficient
+	// observations to decide about NAT Type
 	if tcpTotal >= 3*maxExternalThinWaistAddrsPerLocalAddr {
 		if tcpTopCounts >= tcpTotal/2 {
 			tcpNATType = network.NATDeviceTypeCone
@@ -595,8 +537,22 @@ func (o *ObservedAddrManager) getNATType() (tcpNATType, udpNATType network.NATDe
 	return
 }
 
-func (o *ObservedAddrManager) Close() error {
+func (o *ObservedAddrsManager) Close() error {
 	o.ctxCancel()
 	o.wg.Wait()
 	return nil
+}
+
+// hasConsistentTransport returns true if the address `a` shares the same
+// protocols with `b`
+func hasConsistentTransport(a, b ma.Multiaddr) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, ac := range a {
+		if b[i].Code() != ac.Code() {
+			return false
+		}
+	}
+	return true
 }

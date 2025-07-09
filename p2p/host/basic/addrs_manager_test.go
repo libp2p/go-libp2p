@@ -126,7 +126,7 @@ func TestAppendNATAddrs(t *testing.T) {
 					},
 				},
 				observedAddrsManager: &mockObservedAddrs{
-					ObservedAddrsForFunc: tc.ObsAddrFunc,
+					AddrsForFunc: tc.ObsAddrFunc,
 				},
 			}
 			res := as.appendNATAddrs(nil, []ma.Multiaddr{tc.Listen}, ifaceAddrs)
@@ -158,17 +158,36 @@ func (*mockNatManager) HasDiscoveredNAT() bool {
 var _ NATManager = &mockNatManager{}
 
 type mockObservedAddrs struct {
-	OwnObservedAddrsFunc func() []ma.Multiaddr
-	ObservedAddrsForFunc func(ma.Multiaddr) []ma.Multiaddr
+	AddrsFunc    func() []ma.Multiaddr
+	AddrsForFunc func(ma.Multiaddr) []ma.Multiaddr
 }
 
-func (m *mockObservedAddrs) OwnObservedAddrs() []ma.Multiaddr {
-	return m.OwnObservedAddrsFunc()
+// Record implements observedAddrsManager.
+func (m *mockObservedAddrs) Record(conn connMultiaddrs, observed ma.Multiaddr) {
 }
 
-func (m *mockObservedAddrs) ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr {
-	return m.ObservedAddrsForFunc(local)
+// Start implements observedAddrsManager.
+func (m *mockObservedAddrs) Start() {
 }
+
+// getNATType implements observedAddrsManager.
+func (m *mockObservedAddrs) getNATType() (network.NATDeviceType, network.NATDeviceType) {
+	return network.NATDeviceTypeUnknown, network.NATDeviceTypeUnknown
+}
+
+// removeConn implements observedAddrsManager.
+func (m *mockObservedAddrs) removeConn(conn connMultiaddrs) {
+}
+
+func (m *mockObservedAddrs) Addrs() []ma.Multiaddr {
+	return m.AddrsFunc()
+}
+
+func (m *mockObservedAddrs) AddrsFor(local ma.Multiaddr) []ma.Multiaddr {
+	return m.AddrsForFunc(local)
+}
+
+var _ observedAddrsManager = &mockObservedAddrs{}
 
 type addrsManagerArgs struct {
 	NATManager           NATManager
@@ -266,7 +285,7 @@ func TestAddrsManager(t *testing.T) {
 				},
 			},
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
+				AddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
 					if _, err := addr.ValueForProtocol(ma.P_TCP); err == nil {
 						return []ma.Multiaddr{publicTCP}
 					}
@@ -294,7 +313,7 @@ func TestAddrsManager(t *testing.T) {
 				},
 			},
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
+				AddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
 					if addr.Equal(lhquic) {
 						return []ma.Multiaddr{quicPort1}
 					}
@@ -311,7 +330,7 @@ func TestAddrsManager(t *testing.T) {
 	t.Run("only observed addrs", func(t *testing.T) {
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
+				AddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
 					if addr.Equal(lhtcp) {
 						return []ma.Multiaddr{publicTCP}
 					}
@@ -345,7 +364,7 @@ func TestAddrsManager(t *testing.T) {
 		}
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
+				AddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
 					return quicAddrs
 				},
 			},
@@ -361,7 +380,7 @@ func TestAddrsManager(t *testing.T) {
 	t.Run("public addrs removed when private", func(t *testing.T) {
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
+				AddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
 					return []ma.Multiaddr{publicQUIC}
 				},
 			},
@@ -403,7 +422,7 @@ func TestAddrsManager(t *testing.T) {
 				return nil
 			},
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
+				AddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
 					return []ma.Multiaddr{publicQUIC}
 				},
 			},
