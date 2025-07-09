@@ -14,6 +14,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -321,12 +323,29 @@ func (ac *client) handleDialBack(s network.Stream) {
 	}
 }
 
+// NormalizeMultiaddr returns a multiaddr suitable for equality checks.
+// If the multiaddr is a webtransport component, it removes the certhashes.
+func NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
+	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
+	if !ok {
+		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
+	}
+	if ok && n > 0 {
+		out := addr
+		for i := 0; i < n; i++ {
+			out, _ = ma.SplitLast(out)
+		}
+		return out
+	}
+	return addr
+}
+
 func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) bool {
 	if len(connLocalAddr) == 0 || len(dialedAddr) == 0 {
 		return false
 	}
-	connLocalAddr = ac.normalizeMultiaddr(connLocalAddr)
-	dialedAddr = ac.normalizeMultiaddr(dialedAddr)
+	connLocalAddr = NormalizeMultiaddr(connLocalAddr)
+	dialedAddr = NormalizeMultiaddr(dialedAddr)
 
 	localProtos := connLocalAddr.Protocols()
 	externalProtos := dialedAddr.Protocols()
