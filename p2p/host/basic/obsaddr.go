@@ -282,7 +282,6 @@ func (o *ObservedAddrsManager) Record(conn connMultiaddrs, observed ma.Multiaddr
 
 func (o *ObservedAddrsManager) worker() {
 	defer o.wg.Done()
-
 	for {
 		select {
 		case obs := <-o.wch:
