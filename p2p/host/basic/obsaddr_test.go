@@ -91,7 +91,7 @@ func TestObservedAddrsManager(t *testing.T) {
 	}
 
 	checkAllEntriesRemoved := func(o *ObservedAddrsManager) bool {
-		return len(o.Addrs()) == 0 && len(o.externalAddrs) == 0 && len(o.connObservedTWAddrs) == 0 && len(o.localAddrs) == 0
+		return len(o.Addrs()) == 0 && len(o.externalAddrs) == 0 && len(o.connObservedTWAddrs) == 0
 	}
 	t.Run("Single Observation", func(t *testing.T) {
 		o := newObservedAddrMgr()
@@ -132,7 +132,6 @@ func TestObservedAddrsManager(t *testing.T) {
 		o.Record(c4, observedWebTransport)
 		require.EventuallyWithT(t, func(t *assert.CollectT) {
 			matest.AssertEqualMultiaddrs(t, o.Addrs(), []ma.Multiaddr{observedQuic, observedWebTransport})
-			matest.AssertEqualMultiaddrs(t, o.appendInferredAddrs(nil, nil), []ma.Multiaddr{})
 		}, 1*time.Second, 100*time.Millisecond)
 		o.removeConn(c1)
 		o.removeConn(c2)
@@ -158,7 +157,6 @@ func TestObservedAddrsManager(t *testing.T) {
 		o.Record(c4, observedQuic)
 		require.EventuallyWithT(t, func(t *assert.CollectT) {
 			matest.AssertEqualMultiaddrs(t, o.Addrs(), []ma.Multiaddr{observedQuic, inferredWebTransport})
-			matest.AssertEqualMultiaddrs(t, o.appendInferredAddrs(nil, nil), []ma.Multiaddr{inferredWebTransport})
 		}, 1*time.Second, 100*time.Millisecond)
 		o.removeConn(c1)
 		o.removeConn(c2)
@@ -194,7 +192,6 @@ func TestObservedAddrsManager(t *testing.T) {
 		o.Record(ob2[N-1], observedQuic)
 		require.EventuallyWithT(t, func(t *assert.CollectT) {
 			matest.AssertEqualMultiaddrs(t, o.Addrs(), []ma.Multiaddr{observedQuic, inferredWebTransport})
-			matest.AssertEqualMultiaddrs(t, o.appendInferredAddrs(nil, nil), []ma.Multiaddr{inferredWebTransport})
 		}, 2*time.Second, 100*time.Millisecond)
 
 		// Now disconnect first observer group
@@ -242,7 +239,6 @@ func TestObservedAddrsManager(t *testing.T) {
 		o.Record(ob2[N-1], observedQuic2)
 		require.EventuallyWithT(t, func(t *assert.CollectT) {
 			matest.AssertEqualMultiaddrs(t, o.Addrs(), []ma.Multiaddr{observedQuic1, observedQuic2, inferredWebTransport1, inferredWebTransport2})
-			matest.AssertEqualMultiaddrs(t, o.appendInferredAddrs(nil, nil), []ma.Multiaddr{inferredWebTransport1, inferredWebTransport2})
 		}, 2*time.Second, 100*time.Millisecond)
 
 		// Now disconnect first observer group
@@ -394,7 +390,7 @@ func TestObservedAddrsManager(t *testing.T) {
 		o.Record(c3, observedWebTransport)
 		o.Record(c4, observedWebTransport)
 		require.EventuallyWithT(t, func(t *assert.CollectT) {
-			matest.AssertEqualMultiaddrs(t, o.Addrs(), []ma.Multiaddr{observedWebTransportWithCerthash, inferredQUIC})
+			matest.AssertMultiaddrsMatch(t, o.Addrs(), []ma.Multiaddr{observedWebTransportWithCerthash, inferredQUIC})
 		}, 1*time.Second, 100*time.Millisecond)
 		o.removeConn(c1)
 		o.removeConn(c2)
@@ -444,8 +440,13 @@ func TestObservedAddrsManager(t *testing.T) {
 		// At this point we have 20 groups with 5 observations for every connection
 		// The output should remain stable
 		require.EventuallyWithT(t, func(t *assert.CollectT) {
-			require.Equal(t, len(subtractFrom(o.Addrs(), o.appendInferredAddrs(nil, nil))), 2*maxExternalThinWaistAddrsPerLocalAddr)
+			require.Equal(t, len(o.Addrs()), 3*maxExternalThinWaistAddrsPerLocalAddr)
 		}, 1*time.Second, 100*time.Millisecond)
+		addrs := o.Addrs()
+		for i := 0; i < 10; i++ {
+			require.ElementsMatch(t, o.Addrs(), addrs, "%s %s", o.Addrs(), addrs)
+			time.Sleep(50 * time.Millisecond)
+		}
 
 		tcpNAT, udpNAT := o.getNATType()
 		require.Equal(t, tcpNAT, network.NATDeviceTypeEndpointDependent)
