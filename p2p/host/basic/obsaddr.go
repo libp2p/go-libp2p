@@ -155,11 +155,6 @@ type ObservedAddrsManager struct {
 	externalAddrs map[string]map[string]*observerSet
 	// connObservedTWAddrs maps the connection to the last observed thin waist multiaddr on that connection
 	connObservedTWAddrs map[connMultiaddrs]ma.Multiaddr
-	// localMultiaddr => thin waist form with the count of the connections the multiaddr
-	// was seen on for tracking our local listen addresses
-	// TODO: remove this map. There's no need for tracking this. We can get all the info
-	// from the listenAddrs func
-	localAddrs map[string]*thinWaistWithCount
 }
 
 // NewObservedAddrManager returns a new address manager using peerstore.OwnObservedAddressTTL as the TTL.
@@ -167,7 +162,6 @@ func NewObservedAddrManager(listenAddrs func() []ma.Multiaddr) (*ObservedAddrsMa
 	o := &ObservedAddrsManager{
 		externalAddrs:       make(map[string]map[string]*observerSet),
 		connObservedTWAddrs: make(map[connMultiaddrs]ma.Multiaddr),
-		localAddrs:          make(map[string]*thinWaistWithCount),
 		wch:                 make(chan observation, observedAddrManagerWorkerChannelSize),
 		listenAddrs:         listenAddrs,
 	}
@@ -202,8 +196,8 @@ func (o *ObservedAddrsManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr
 	return res
 }
 
-// appendInferredAddrs infers the external address of other transports that
-// share the local thin waist with a transport that we have do observations for.
+// appendInferredAddrs infers the external address of addresses for the addresses
+// that we are listening on using the thin waist mapping.
 //
 // e.g. If we have observations for a QUIC address on port 9000, and we are
 // listening on the same interface and port 9000 for WebTransport, we can infer
@@ -218,10 +212,6 @@ func (o *ObservedAddrsManager) appendInferredAddrs(twToObserverSets map[string][
 	lAddrs := o.listenAddrs()
 	seenTWs := make(map[string]struct{})
 	for _, a := range lAddrs {
-		if _, ok := o.localAddrs[string(a.Bytes())]; ok {
-			// We already have this address in the list
-			continue
-		}
 		if _, ok := seenTWs[string(a.Bytes())]; ok {
 			// We've already added this
 			continue
@@ -248,12 +238,6 @@ func (o *ObservedAddrsManager) Addrs() []ma.Multiaddr {
 		m[localTWStr] = append(m[localTWStr], o.getTopExternalAddrs(localTWStr)...)
 	}
 	addrs := make([]ma.Multiaddr, 0, maxExternalThinWaistAddrsPerLocalAddr*5) // assume 5 transports
-	for _, t := range o.localAddrs {
-		for _, s := range m[string(t.TW.Bytes())] {
-			addrs = append(addrs, s.cacheMultiaddr(t.Rest))
-		}
-	}
-
 	addrs = o.appendInferredAddrs(m, addrs)
 	return addrs
 }
@@ -389,23 +373,14 @@ func (o *ObservedAddrsManager) recordObservationUnlocked(conn connMultiaddrs, lo
 	}
 
 	prevObservedTWAddr, ok := o.connObservedTWAddrs[conn]
-	if !ok {
-		t, ok := o.localAddrs[string(localTW.Addr.Bytes())]
-		if !ok {
-			t = &thinWaistWithCount{
-				thinWaist: localTW,
-			}
-			o.localAddrs[string(localTW.Addr.Bytes())] = t
-		}
-		t.Count++
-	} else {
+	if ok {
 		if prevObservedTWAddr.Equal(observedTW.TW) {
 			// we have received the same observation again, nothing to do
 			return
+		} else {
+			// if we have a previous entry remove it from externalAddrs
+			o.removeExternalAddrsUnlocked(observer, localTWStr, string(prevObservedTWAddr.Bytes()))
 		}
-		// if we have a previous entry remove it from externalAddrs
-		o.removeExternalAddrsUnlocked(observer, localTWStr, string(prevObservedTWAddr.Bytes()))
-		// no need to change the localAddrs map here
 	}
 	o.connObservedTWAddrs[conn] = observedTW.TW
 	o.addExternalAddrsUnlocked(observedTW.TW, observer, localTWStr, observedTWStr)
@@ -461,14 +436,6 @@ func (o *ObservedAddrsManager) removeConn(conn connMultiaddrs) {
 	localTW, err := thinWaistForm(conn.LocalMultiaddr())
 	if err != nil {
 		return
-	}
-	t, ok := o.localAddrs[string(localTW.Addr.Bytes())]
-	if !ok {
-		return
-	}
-	t.Count--
-	if t.Count <= 0 {
-		delete(o.localAddrs, string(localTW.Addr.Bytes()))
 	}
 
 	observer, err := getObserver(conn.RemoteMultiaddr())
