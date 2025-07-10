@@ -18,6 +18,7 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	holepunch_pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/marcopolo/simnet"
@@ -63,6 +64,14 @@ func (m mockMaddrFilter) FilterRemote(remoteID peer.ID, maddrs []ma.Multiaddr) [
 }
 
 var _ holepunch.AddrFilter = &mockMaddrFilter{}
+
+func newIDService(t *testing.T, h host.Host) identify.IDService {
+	ids, err := identify.NewIDService(h)
+	require.NoError(t, err)
+	ids.Start()
+	t.Cleanup(func() { ids.Close() })
+	return ids
+}
 
 func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 	router := &simnet.SimpleFirewallRouter{}
@@ -634,7 +643,7 @@ func quicSimnet(isPubliclyReachably bool, router *simnet.SimpleFirewallRouter) l
 
 func addHolePunchService(t *testing.T, h host.Host, extraAddrs []ma.Multiaddr, opts ...holepunch.Option) *holepunch.Service {
 	t.Helper()
-	hps, err := holepunch.NewService(h, newMockIDService(t, h), func() []ma.Multiaddr {
+	hps, err := holepunch.NewService(h, newIDService(t, h), func() []ma.Multiaddr {
 		addrs := h.Addrs()
 		addrs = append(addrs, extraAddrs...)
 		return addrs

@@ -85,6 +85,7 @@ func newAddrsManager(
 	addrsFactory AddrsFactory,
 	listenAddrs func() []ma.Multiaddr,
 	addCertHashes func([]ma.Multiaddr) []ma.Multiaddr,
+	disableObservedAddrs bool,
 	observedAddrsManager observedAddrsManager,
 	addrsUpdatedChan chan struct{},
 	client autonatv2Client,
@@ -96,7 +97,6 @@ func newAddrsManager(
 		bus:                       bus,
 		listenAddrs:               listenAddrs,
 		addCertHashes:             addCertHashes,
-		observedAddrsManager:      observedAddrsManager,
 		natManager:                natmgr,
 		addrsFactory:              addrsFactory,
 		triggerAddrsUpdateChan:    make(chan chan struct{}, 1),
@@ -109,19 +109,23 @@ func newAddrsManager(
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
 
-	if as.observedAddrsManager == nil {
-		om, err := NewObservedAddrManager(func() []ma.Multiaddr {
-			l := as.listenAddrs()
-			r, err := manet.ResolveUnspecifiedAddresses(l, as.interfaceAddrs.All())
+	if !disableObservedAddrs {
+		if observedAddrsManager != nil {
+			as.observedAddrsManager = observedAddrsManager
+		} else {
+			om, err := NewObservedAddrManager(func() []ma.Multiaddr {
+				l := as.listenAddrs()
+				r, err := manet.ResolveUnspecifiedAddresses(l, as.interfaceAddrs.All())
+				if err != nil {
+					return l
+				}
+				return append(l, r...)
+			})
 			if err != nil {
-				return l
+				return nil, fmt.Errorf("failed to create observed addrs manager: %w", err)
 			}
-			return append(l, r...)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create observed addrs manager: %w", err)
+			as.observedAddrsManager = om
 		}
-		as.observedAddrsManager = om
 	}
 
 	if client != nil {
@@ -603,14 +607,14 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Mul
 	return dst
 }
 
-func (a *addrsManager) notifyNATTypeChanged(emitter event.Emitter, newUDPNAT, newTCPNAT, udpNATType, tcpNATType network.NATDeviceType) {
-	if newUDPNAT != udpNATType {
+func (a *addrsManager) notifyNATTypeChanged(emitter event.Emitter, newUDPNAT, newTCPNAT, oldUDPNAT, oldTCPNAT network.NATDeviceType) {
+	if newUDPNAT != oldUDPNAT {
 		emitter.Emit(event.EvtNATDeviceTypeChanged{
 			TransportProtocol: network.NATTransportUDP,
 			NatDeviceType:     newUDPNAT,
 		})
 	}
-	if newTCPNAT != tcpNATType {
+	if newTCPNAT != oldTCPNAT {
 		emitter.Emit(event.EvtNATDeviceTypeChanged{
 			TransportProtocol: network.NATTransportTCP,
 			NatDeviceType:     newTCPNAT,

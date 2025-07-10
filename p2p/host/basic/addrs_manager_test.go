@@ -207,7 +207,7 @@ type addrsManagerTestCase struct {
 	PushReachability func(rch network.Reachability)
 }
 
-func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTestCase {
+func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerTestCase {
 	eb := args.Bus
 	if eb == nil {
 		eb = eventbus.NewBus()
@@ -224,27 +224,37 @@ func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTe
 		addCertHashes = args.AddCertHashes
 	}
 	am, err := newAddrsManager(
-		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, addCertHashes, args.ObservedAddrsManager, addrsUpdatedChan, args.AutoNATClient, true, prometheus.DefaultRegisterer,
+		eb,
+		args.NATManager,
+		args.AddrsFactory,
+		args.ListenAddrs,
+		addCertHashes,
+		false,
+		args.ObservedAddrsManager,
+		addrsUpdatedChan,
+		args.AutoNATClient,
+		true,
+		prometheus.DefaultRegisterer,
 	)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
-	require.NoError(t, am.Start())
+	require.NoError(tb, am.Start())
 	raEm, err := eb.Emitter(new(event.EvtAutoRelayAddrsUpdated), eventbus.Stateful)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	rchEm, err := eb.Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
-	t.Cleanup(am.Close)
+	tb.Cleanup(am.Close)
 	return addrsManagerTestCase{
 		addrsManager: am,
 		PushRelay: func(relayAddrs []ma.Multiaddr) {
 			err := raEm.Emit(event.EvtAutoRelayAddrsUpdated{RelayAddrs: relayAddrs})
-			require.NoError(t, err)
+			require.NoError(tb, err)
 		},
 		PushReachability: func(rch network.Reachability) {
 			err := rchEm.Emit(event.EvtLocalReachabilityChanged{Reachability: rch})
-			require.NoError(t, err)
+			require.NoError(tb, err)
 		},
 	}
 }
@@ -593,5 +603,23 @@ func BenchmarkRemoveIfNotInSource(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		removeNotInSource(slices.Clone(addrs[:5]), addrs[:])
+	}
+}
+
+func BenchmarkUpdateAddrs(b *testing.B) {
+	publicQUIC, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1")
+	publicQUIC2, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1235/quic-v1")
+	publicTCP, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
+	am := newAddrsManagerTestCase(b, addrsManagerArgs{
+		ListenAddrs: func() []ma.Multiaddr {
+			return []ma.Multiaddr{publicQUIC, publicQUIC2, publicTCP}
+		},
+	})
+	am.Close()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		am.updateAddrs(false, nil)
 	}
 }
