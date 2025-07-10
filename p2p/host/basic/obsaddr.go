@@ -39,31 +39,16 @@ type thinWaistWithCount struct {
 }
 
 func thinWaistForm(a ma.Multiaddr) (thinWaist, error) {
-	i := 0
-	tw, rest := ma.SplitFunc(a, func(c ma.Component) bool {
-		if i > 1 {
-			return true
-		}
-		switch i {
-		case 0:
-			if c.Protocol().Code == ma.P_IP4 || c.Protocol().Code == ma.P_IP6 {
-				i++
-				return false
-			}
-			return true
-		case 1:
-			if c.Protocol().Code == ma.P_TCP || c.Protocol().Code == ma.P_UDP {
-				i++
-				return false
-			}
-			return true
-		}
-		return false
-	})
-	if i <= 1 {
+	if len(a) < 2 {
 		return thinWaist{}, fmt.Errorf("not a thinwaist address: %s", a)
 	}
-	return thinWaist{Addr: a, TW: tw, Rest: rest}, nil
+	// we don't care about link local ipv6 addresses here
+	hasIP := a[0].Code() == ma.P_IP4 || a[0].Code() == ma.P_IP6
+	hasProtocol := a[1].Code() == ma.P_TCP || a[1].Code() == ma.P_UDP
+	if !hasIP || !hasProtocol {
+		return thinWaist{}, fmt.Errorf("not a thinwaist address: %s", a)
+	}
+	return thinWaist{Addr: a, TW: a[:2], Rest: a[2:]}, nil
 }
 
 // getObserver returns the observer for the multiaddress
