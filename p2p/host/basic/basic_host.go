@@ -252,6 +252,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		addrFactory,
 		h.Network().ListenAddresses,
 		addCertHashesFunc,
+		opts.DisableIdentifyAddressDiscovery,
 		nil,
 		h.addrsUpdatedChan,
 		autonatv2Client,
