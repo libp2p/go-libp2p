@@ -184,10 +184,6 @@ type idService struct {
 	rateLimiter *rate.Limiter
 }
 
-type normalizer interface {
-	NormalizeMultiaddr(ma.Multiaddr) ma.Multiaddr
-}
-
 // NewIDService constructs a new *idService and activates it by
 // attaching its stream handler to the given host.Host.
 func NewIDService(h host.Host, opts ...Option) (*idService, error) {
