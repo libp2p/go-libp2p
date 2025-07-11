@@ -165,12 +165,10 @@ type mockObservedAddrs struct {
 }
 
 // Record implements observedAddrsManager.
-func (m *mockObservedAddrs) Record(conn connMultiaddrs, observed ma.Multiaddr) {
-}
+func (m *mockObservedAddrs) Record(conn connMultiaddrs, observed ma.Multiaddr) {}
 
 // Start implements observedAddrsManager.
-func (m *mockObservedAddrs) Start() {
-}
+func (m *mockObservedAddrs) Start() {}
 
 // getNATType implements observedAddrsManager.
 func (m *mockObservedAddrs) getNATType() (network.NATDeviceType, network.NATDeviceType) {
@@ -178,16 +176,13 @@ func (m *mockObservedAddrs) getNATType() (network.NATDeviceType, network.NATDevi
 }
 
 // removeConn implements observedAddrsManager.
-func (m *mockObservedAddrs) removeConn(conn connMultiaddrs) {
-}
+func (m *mockObservedAddrs) removeConn(conn connMultiaddrs) {}
 
-func (m *mockObservedAddrs) Addrs() []ma.Multiaddr {
-	return m.AddrsFunc()
-}
+func (m *mockObservedAddrs) Addrs(int) []ma.Multiaddr { return m.AddrsFunc() }
 
-func (m *mockObservedAddrs) AddrsFor(local ma.Multiaddr) []ma.Multiaddr {
-	return m.AddrsForFunc(local)
-}
+func (m *mockObservedAddrs) AddrsFor(local ma.Multiaddr) []ma.Multiaddr { return m.AddrsForFunc(local) }
+
+func (m *mockObservedAddrs) Close() error { return nil }
 
 var _ observedAddrsManager = &mockObservedAddrs{}
 
@@ -311,9 +306,8 @@ func TestAddrsManager(t *testing.T) {
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
 		}, 5*time.Second, 50*time.Millisecond)
 	})
-	t.Run("nat returns unspecified addr", func(t *testing.T) {
+	t.Run("nat returns private addr addr", func(t *testing.T) {
 		quicPort1 := ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1")
-		quicPort2 := ma.StringCast("/ip4/3.3.3.3/udp/2/quic-v1")
 		// port from nat, IP from observed addr
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
 			NATManager: &mockNatManager{
@@ -334,7 +328,7 @@ func TestAddrsManager(t *testing.T) {
 			},
 			ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{lhquic} },
 		})
-		expected := []ma.Multiaddr{lhquic, quicPort2}
+		expected := []ma.Multiaddr{lhquic, quicPort1}
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
 		}, 5*time.Second, 50*time.Millisecond)
@@ -384,7 +378,7 @@ func TestAddrsManager(t *testing.T) {
 		})
 		am.updateAddrsSync()
 		expected := []ma.Multiaddr{lhquic}
-		expected = append(expected, quicAddrs[:maxObservedAddrsPerListenAddr]...)
+		expected = append(expected, quicAddrs[:maxExternalThinWaistAddrsPerLocalAddr]...)
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
 		}, 5*time.Second, 50*time.Millisecond)

@@ -32,12 +32,6 @@ type thinWaist struct {
 	Addr, TW, Rest ma.Multiaddr
 }
 
-// thinWaistWithCount is a thinWaist along with the count of the connection that have it as the local address
-type thinWaistWithCount struct {
-	thinWaist
-	Count int
-}
-
 func thinWaistForm(a ma.Multiaddr) (thinWaist, error) {
 	if len(a) < 2 {
 		return thinWaist{}, fmt.Errorf("not a thinwaist address: %s", a)
@@ -173,7 +167,7 @@ func (o *ObservedAddrsManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr
 		return nil
 	}
 
-	observerSets := o.getTopExternalAddrs(string(tw.TW.Bytes()))
+	observerSets := o.getTopExternalAddrs(string(tw.TW.Bytes()), ActivationThresh)
 	res := make([]ma.Multiaddr, 0, len(observerSets))
 	for _, s := range observerSets {
 		res = append(res, s.cacheMultiaddr(tw.Rest))
@@ -191,7 +185,7 @@ func (o *ObservedAddrsManager) appendInferredAddrs(twToObserverSets map[string][
 	if twToObserverSets == nil {
 		twToObserverSets = make(map[string][]*observerSet)
 		for localTWStr := range o.externalAddrs {
-			twToObserverSets[localTWStr] = append(twToObserverSets[localTWStr], o.getTopExternalAddrs(localTWStr)...)
+			twToObserverSets[localTWStr] = append(twToObserverSets[localTWStr], o.getTopExternalAddrs(localTWStr, ActivationThresh)...)
 		}
 	}
 	lAddrs := o.listenAddrs()
@@ -213,24 +207,29 @@ func (o *ObservedAddrsManager) appendInferredAddrs(twToObserverSets map[string][
 	return addrs
 }
 
-// Addrs return all activated observed addresses
-func (o *ObservedAddrsManager) Addrs() []ma.Multiaddr {
+// Addrs return all observed addresses with at least minObservers observers
+// If minObservers <= 0, it will return all addresses with at least ActivationThresh observers.
+func (o *ObservedAddrsManager) Addrs(minObservers int) []ma.Multiaddr {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
+	if minObservers <= 0 {
+		minObservers = ActivationThresh
+	}
+
 	m := make(map[string][]*observerSet)
 	for localTWStr := range o.externalAddrs {
-		m[localTWStr] = append(m[localTWStr], o.getTopExternalAddrs(localTWStr)...)
+		m[localTWStr] = append(m[localTWStr], o.getTopExternalAddrs(localTWStr, minObservers)...)
 	}
 	addrs := make([]ma.Multiaddr, 0, maxExternalThinWaistAddrsPerLocalAddr*5) // assume 5 transports
 	addrs = o.appendInferredAddrs(m, addrs)
 	return addrs
 }
 
-func (o *ObservedAddrsManager) getTopExternalAddrs(localTWStr string) []*observerSet {
+func (o *ObservedAddrsManager) getTopExternalAddrs(localTWStr string, minObservers int) []*observerSet {
 	observerSets := make([]*observerSet, 0, len(o.externalAddrs[localTWStr]))
 	for _, v := range o.externalAddrs[localTWStr] {
-		if len(v.ObservedBy) >= ActivationThresh {
+		if len(v.ObservedBy) >= minObservers {
 			observerSets = append(observerSets, v)
 		}
 	}
