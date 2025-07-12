@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"slices"
 	"sync"
@@ -20,11 +21,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const maxObservedAddrsPerListenAddr = 5
+var (
+	// addrChangeTickrInterval is the interval to recompute host addrs.
+	addrChangeTickrInterval = 5 * time.Second
+	// natTypeChageTickrInterval is the interval to recompute host nat type.
+	natTypeChangeTickrInterval = time.Minute
+)
 
 type observedAddrsManager interface {
-	OwnObservedAddrs() []ma.Multiaddr
-	ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr
+	Addrs(minObservers int) []ma.Multiaddr
+	AddrsFor(local ma.Multiaddr) []ma.Multiaddr
+
+	Record(conn connMultiaddrs, observed ma.Multiaddr)
+	removeConn(conn connMultiaddrs)
+	Start()
+	getNATType() (network.NATDeviceType, network.NATDeviceType)
+	io.Closer
 }
 
 type hostAddrs struct {
@@ -70,6 +82,7 @@ func newAddrsManager(
 	addrsFactory AddrsFactory,
 	listenAddrs func() []ma.Multiaddr,
 	addCertHashes func([]ma.Multiaddr) []ma.Multiaddr,
+	disableObservedAddrs bool,
 	observedAddrsManager observedAddrsManager,
 	addrsUpdatedChan chan struct{},
 	client autonatv2Client,
@@ -81,7 +94,6 @@ func newAddrsManager(
 		bus:                       bus,
 		listenAddrs:               listenAddrs,
 		addCertHashes:             addCertHashes,
-		observedAddrsManager:      observedAddrsManager,
 		natManager:                natmgr,
 		addrsFactory:              addrsFactory,
 		triggerAddrsUpdateChan:    make(chan struct{}, 1),
@@ -93,6 +105,25 @@ func newAddrsManager(
 	}
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
+
+	if !disableObservedAddrs {
+		if observedAddrsManager != nil {
+			as.observedAddrsManager = observedAddrsManager
+		} else {
+			om, err := NewObservedAddrManager(func() []ma.Multiaddr {
+				l := as.listenAddrs()
+				r, err := manet.ResolveUnspecifiedAddresses(l, as.interfaceAddrs.All())
+				if err != nil {
+					return l
+				}
+				return append(l, r...)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create observed addrs manager: %w", err)
+			}
+			as.observedAddrsManager = om
+		}
+	}
 
 	if client != nil {
 		var metricsTracker MetricsTracker
@@ -112,6 +143,9 @@ func (a *addrsManager) Start() error {
 			return fmt.Errorf("error starting addrs reachability tracker: %s", err)
 		}
 	}
+	if a.observedAddrsManager != nil {
+		a.observedAddrsManager.Start()
+	}
 
 	return a.startBackgroundWorker()
 }
@@ -130,6 +164,12 @@ func (a *addrsManager) Close() {
 			log.Warnf("error closing addrs reachability tracker: %s", err)
 		}
 	}
+	if a.observedAddrsManager != nil {
+		err := a.observedAddrsManager.Close()
+		if err != nil {
+			log.Warnf("error closing observed addrs manager: %s", err)
+		}
+	}
 	a.wg.Wait()
 }
 
@@ -137,8 +177,9 @@ func (a *addrsManager) NetNotifee() network.Notifiee {
 	// Updating addrs in sync provides the nice property that
 	// host.Addrs() just after host.Network().Listen(x) will return x
 	return &network.NotifyBundle{
-		ListenF:      func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
-		ListenCloseF: func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
+		ListenF:       func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
+		ListenCloseF:  func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
+		DisconnectedF: func(_ network.Network, conn network.Conn) { a.observedAddrsManager.removeConn(conn) },
 	}
 }
 
@@ -150,34 +191,45 @@ func (a *addrsManager) triggerAddrsUpdate() {
 	}
 }
 
-func (a *addrsManager) startBackgroundWorker() error {
+func closeIfError(err error, closer io.Closer, name string) error {
+	if err != nil {
+		err1 := closer.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("error closing %s: %w", name, err)
+		}
+		return errors.Join(err, err1)
+	}
+	return nil
+}
+
+func (a *addrsManager) startBackgroundWorker() (retErr error) {
 	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("addrs-manager"))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
 	}
+	defer func() { retErr = closeIfError(retErr, autoRelayAddrsSub, "autorelay subscription") }()
 
 	autonatReachabilitySub, err := a.bus.Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("addrs-manager"))
 	if err != nil {
-		err1 := autoRelayAddrsSub.Close()
-		if err1 != nil {
-			err1 = fmt.Errorf("error closign autorelaysub: %w", err1)
-		}
-		err = fmt.Errorf("error subscribing to autonat reachability: %s", err)
-		return errors.Join(err, err1)
+		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
 	}
+	defer func() { retErr = closeIfError(retErr, autonatReachabilitySub, "autonatReachability subscription") }()
+
+	identifySub, err := a.bus.Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.Name("addrs-manager"))
+	if err != nil {
+		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
+	}
+	defer func() { retErr = closeIfError(retErr, identifySub, "identify subscription") }()
 
 	emitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
 	if err != nil {
-		err1 := autoRelayAddrsSub.Close()
-		if err1 != nil {
-			err1 = fmt.Errorf("error closing autorelaysub: %w", err1)
-		}
-		err2 := autonatReachabilitySub.Close()
-		if err2 != nil {
-			err2 = fmt.Errorf("error closing autonat reachability: %w", err1)
-		}
-		err = fmt.Errorf("error subscribing to autonat reachability: %s", err)
-		return errors.Join(err, err1, err2)
+		return fmt.Errorf("error creating reachability subscriber: %s", err)
+	}
+	defer func() { retErr = closeIfError(retErr, identifySub, "identify subscription") }()
+
+	natTypeEmitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
+	if err != nil {
+		return fmt.Errorf("error creating nat type emitter: %s", err)
 	}
 
 	var relayAddrs []ma.Multiaddr
@@ -203,11 +255,18 @@ func (a *addrsManager) startBackgroundWorker() error {
 
 	a.wg.Add(1)
 	go a.background(autoRelayAddrsSub, autonatReachabilitySub, emitter, relayAddrs)
+	if a.observedAddrsManager != nil {
+		a.wg.Add(1)
+		go a.observedAddrsWorker(identifySub, natTypeEmitter)
+	}
 	return nil
 }
 
-func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub event.Subscription,
-	emitter event.Emitter, relayAddrs []ma.Multiaddr,
+func (a *addrsManager) background(
+	autoRelayAddrsSub,
+	autonatReachabilitySub event.Subscription,
+	emitter event.Emitter,
+	relayAddrs []ma.Multiaddr,
 ) {
 	defer a.wg.Done()
 	defer func() {
@@ -218,6 +277,10 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 		err = autonatReachabilitySub.Close()
 		if err != nil {
 			log.Warnf("error closing autonat reachability sub: %s", err)
+		}
+		err = emitter.Close()
+		if err != nil {
+			log.Warnf("error closing host reachability emitter: %s", err)
 		}
 	}()
 
@@ -239,6 +302,43 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 		case e := <-autonatReachabilitySub.Out():
 			if evt, ok := e.(event.EvtLocalReachabilityChanged); ok {
 				a.hostReachability.Store(&evt.Reachability)
+			}
+		case <-a.ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *addrsManager) observedAddrsWorker(identifySub event.Subscription, natTypeEmitter event.Emitter) {
+	defer a.wg.Done()
+	defer func() {
+		err := identifySub.Close()
+		if err != nil {
+			log.Warnf("error closing identify sub: %s", err)
+		}
+		err = natTypeEmitter.Close()
+		if err != nil {
+			log.Warnf("error closing nat emitter: %s", err)
+		}
+	}()
+	natTypeTicker := time.NewTicker(natTypeChangeTickrInterval)
+	defer natTypeTicker.Stop()
+	var udpNATType, tcpNATType network.NATDeviceType
+	pendingNATUpdate := false
+	for {
+		select {
+		case e := <-identifySub.Out():
+			evt := e.(event.EvtPeerIdentificationCompleted)
+			if a.observedAddrsManager != nil {
+				a.observedAddrsManager.Record(evt.Conn, evt.ObservedAddr)
+				pendingNATUpdate = true
+			}
+		case <-natTypeTicker.C:
+			if pendingNATUpdate && *a.hostReachability.Load() == network.ReachabilityPrivate {
+				newUDPNAT, newTCPNAT := a.observedAddrsManager.getNATType()
+				a.notifyNATTypeChanged(natTypeEmitter, newUDPNAT, newTCPNAT, udpNATType, tcpNATType)
+				udpNATType, tcpNATType = newUDPNAT, newTCPNAT
+				pendingNATUpdate = false
 			}
 		case <-a.ctx.Done():
 			return
@@ -358,10 +458,9 @@ func (a *addrsManager) getAddrs(localAddrs []ma.Multiaddr, relayAddrs []ma.Multi
 func (a *addrsManager) HolePunchAddrs() []ma.Multiaddr {
 	addrs := a.DirectAddrs()
 	addrs = slices.Clone(a.addrsFactory(addrs))
-	// AllAddrs may ignore observed addresses in favour of NAT mappings.
-	// Use both for hole punching.
 	if a.observedAddrsManager != nil {
-		addrs = append(addrs, a.observedAddrsManager.OwnObservedAddrs()...)
+		// For holepunching, include all the best addresses we know even ones with only 1 observer.
+		addrs = append(addrs, a.observedAddrsManager.Addrs(1)...)
 	}
 	addrs = ma.Unique(addrs)
 	return slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
@@ -437,36 +536,20 @@ func (a *addrsManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenAdd
 //
 // TODO: Merge the natmgr and identify.ObservedAddrManager in to one NatMapper module.
 func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
-	var obsAddrs []ma.Multiaddr
 	for _, listenAddr := range listenAddrs {
 		var natAddr ma.Multiaddr
 		if a.natManager != nil {
 			natAddr = a.natManager.GetMapping(listenAddr)
 		}
-
-		// The order of the cases below is important.
-		switch {
-		case natAddr == nil: // no nat mapping
-			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
-		case manet.IsIPUnspecified(natAddr):
-			log.Infof("NAT device reported an unspecified IP as it's external address: %s", natAddr)
-			_, natRest := ma.SplitFirst(natAddr)
-			obsAddrs = a.appendObservedAddrs(obsAddrs[:0], listenAddr, ifaceAddrs)
-			for _, addr := range obsAddrs {
-				obsIP, _ := ma.SplitFirst(addr)
-				if obsIP != nil && manet.IsPublicAddr(obsIP.Multiaddr()) {
-					dst = append(dst, obsIP.Encapsulate(natRest))
-				}
-			}
+		if natAddr != nil {
+			dst = append(dst, natAddr)
+		}
 		// This is !Public as opposed to IsPrivate intentionally.
 		// Public is a more restrictive classification in some cases, like IPv6 addresses which only
 		// consider unicast IPv6 addresses allocated so far as public(2000::/3).
-		case !manet.IsPublicAddr(natAddr): // nat reported non public addr(maybe CGNAT?)
-			// use both NAT and observed addr
-			dst = append(dst, natAddr)
+		if !manet.IsPublicAddr(natAddr) {
+			// nat reported non public addr(maybe CGNAT?), add observed addrs too.
 			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
-		default: // public addr
-			dst = append(dst, natAddr)
 		}
 	}
 	return dst
@@ -479,10 +562,7 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Mul
 	// Add it for the listenAddr first.
 	// listenAddr maybe unspecified. That's okay as connections on UDP transports
 	// will have the unspecified address as the local address.
-	obsAddrs := a.observedAddrsManager.ObservedAddrsFor(listenAddr)
-	if len(obsAddrs) > maxObservedAddrsPerListenAddr {
-		obsAddrs = obsAddrs[:maxObservedAddrsPerListenAddr]
-	}
+	obsAddrs := a.observedAddrsManager.AddrsFor(listenAddr)
 	dst = append(dst, obsAddrs...)
 
 	// if it can be resolved into more addresses, add them too
@@ -492,13 +572,25 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Mul
 		return dst
 	}
 	for _, addr := range resolved {
-		obsAddrs = a.observedAddrsManager.ObservedAddrsFor(addr)
-		if len(obsAddrs) > maxObservedAddrsPerListenAddr {
-			obsAddrs = obsAddrs[:maxObservedAddrsPerListenAddr]
-		}
+		obsAddrs = a.observedAddrsManager.AddrsFor(addr)
 		dst = append(dst, obsAddrs...)
 	}
 	return dst
+}
+
+func (a *addrsManager) notifyNATTypeChanged(emitter event.Emitter, newUDPNAT, newTCPNAT, oldUDPNAT, oldTCPNAT network.NATDeviceType) {
+	if newUDPNAT != oldUDPNAT {
+		emitter.Emit(event.EvtNATDeviceTypeChanged{
+			TransportProtocol: network.NATTransportUDP,
+			NatDeviceType:     newUDPNAT,
+		})
+	}
+	if newTCPNAT != oldTCPNAT {
+		emitter.Emit(event.EvtNATDeviceTypeChanged{
+			TransportProtocol: network.NATTransportTCP,
+			NatDeviceType:     newTCPNAT,
+		})
+	}
 }
 
 func areAddrsDifferent(prev, current []ma.Multiaddr) bool {
