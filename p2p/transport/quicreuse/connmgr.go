@@ -246,7 +246,7 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 	}
 	var l Listener
-	l, err = entry.ln.Add(tlsConf, allowWindowIncrease, func() {
+	l, err = entry.ln.Add(association, tlsConf, allowWindowIncrease, func() {
 		c.onListenerClosed(key, l.(*listener))
 	})
 	if err != nil {
@@ -254,13 +254,6 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 			entry.ln.Close()
 		}
 		return nil, err
-	}
-
-	// Associate the listener with the transport after creation
-	if association != nil {
-		if refTr, ok := entry.ln.transport.(*refcountedTransport); ok {
-			refTr.associateForListener(association, l.(*listener))
-		}
 	}
 
 	entry.refCount++
@@ -321,7 +314,6 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (Re
 		if err != nil {
 			return nil, err
 		}
-		// Association will be handled in ListenQUICAndAssociate with the proper listener key
 		return tr, nil
 	}
 

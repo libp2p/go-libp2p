@@ -91,7 +91,8 @@ func (l *quicListener) allowWindowIncrease(conn quic.Connection, delta uint64) b
 	return conf.allowWindowIncrease(conn, delta)
 }
 
-func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (Listener, error) {
+func (l *quicListener) Add(association any, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (*listener, error) {
+
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
@@ -105,14 +106,32 @@ func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 		}
 	}
 
-	ln := newSingleListener(l.l.Addr(), l.addrs, func() {
+	ln := &listener{
+		queue:             make(chan quic.Connection, queueLen),
+		acceptLoopRunning: l.running,
+		addr:              l.l.Addr(),
+		addrs:             l.addrs,
+	}
+	if association != nil {
+		if tr, ok := l.transport.(*refcountedTransport); ok {
+			tr.associateForListener(association, ln)
+		}
+	}
+
+	ln.remove = func() {
+		if association != nil {
+			if tr, ok := l.transport.(*refcountedTransport); ok {
+				tr.RemoveAssociationsForListener(ln)
+			}
+		}
 		l.protocolsMu.Lock()
 		for _, proto := range tlsConf.NextProtos {
 			delete(l.protocols, proto)
 		}
 		l.protocolsMu.Unlock()
 		onRemove()
-	}, l.running)
+	}
+
 	for _, proto := range tlsConf.NextProtos {
 		l.protocols[proto] = protoConf{
 			ln:                  ln,
