@@ -869,7 +869,6 @@ func peerRecordFromEnvelope(t *testing.T, ev *record.Envelope) *peer.PeerRecord 
 	return peerRec
 }
 
-
 func TestTrimHostAddrList(t *testing.T) {
 	type testCase struct {
 		name      string

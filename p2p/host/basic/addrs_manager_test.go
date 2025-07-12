@@ -163,7 +163,7 @@ type mockObservedAddrs struct {
 }
 
 // Record implements observedAddrsManager.
-func (m *mockObservedAddrs) Record(conn connMultiaddrs, observed ma.Multiaddr) {}
+func (m *mockObservedAddrs) Record(_ connMultiaddrs, _ ma.Multiaddr) {}
 
 // Start implements observedAddrsManager.
 func (m *mockObservedAddrs) Start() {}
@@ -174,7 +174,7 @@ func (m *mockObservedAddrs) getNATType() (network.NATDeviceType, network.NATDevi
 }
 
 // removeConn implements observedAddrsManager.
-func (m *mockObservedAddrs) removeConn(conn connMultiaddrs) {}
+func (m *mockObservedAddrs) removeConn(_ connMultiaddrs) {}
 
 func (m *mockObservedAddrs) Addrs(int) []ma.Multiaddr { return m.AddrsFunc() }
 
