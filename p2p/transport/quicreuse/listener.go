@@ -91,8 +91,7 @@ func (l *quicListener) allowWindowIncrease(conn *quic.Conn, delta uint64) bool {
 	return conf.allowWindowIncrease(conn, delta)
 }
 
-
-func (l *quicListener) Add(association any, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (*listener, error) {
+func (l *quicListener) Add(association any, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool, onRemove func()) (*listener, error) {
 
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
@@ -108,7 +107,7 @@ func (l *quicListener) Add(association any, tlsConf *tls.Config, allowWindowIncr
 	}
 
 	ln := &listener{
-		queue:             make(chan quic.Connection, queueLen),
+		queue:             make(chan *quic.Conn, queueLen),
 		acceptLoopRunning: l.running,
 		addr:              l.l.Addr(),
 		addrs:             l.addrs,
@@ -186,16 +185,6 @@ type listener struct {
 }
 
 var _ Listener = &listener{}
-
-func newSingleListener(addr net.Addr, addrs []ma.Multiaddr, remove func(), running chan struct{}) *listener {
-	return &listener{
-		queue:             make(chan *quic.Conn, queueLen),
-		acceptLoopRunning: running,
-		remove:            remove,
-		addr:              addr,
-		addrs:             addrs,
-	}
-}
 
 func (l *listener) add(c *quic.Conn) {
 	select {
