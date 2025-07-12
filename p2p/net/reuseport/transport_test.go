@@ -207,7 +207,7 @@ func TestGlobalToGlobal(t *testing.T) {
 	testUseFirst(t, globalV6, globalV6, loopbackV6)
 }
 
-func testUseFirst(t *testing.T, listen, use, never ma.Multiaddr) {
+func testUseFirst(t *testing.T, _, _, _ ma.Multiaddr) {
 	var trA Transport
 	var trB Transport
 	listenerA, err := trA.Listen(globalV4)

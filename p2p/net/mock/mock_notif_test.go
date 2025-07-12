@@ -191,15 +191,15 @@ func newNetNotifiee(t *testing.T, buffer int) *netNotifiee {
 	return nn
 }
 
-func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr) {
+func (nn *netNotifiee) Listen(_ network.Network, a ma.Multiaddr) {
 	nn.listen <- a
 }
-func (nn *netNotifiee) ListenClose(n network.Network, a ma.Multiaddr) {
+func (nn *netNotifiee) ListenClose(_ network.Network, a ma.Multiaddr) {
 	nn.listenClose <- a
 }
-func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
+func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	nn.connected <- v
 }
-func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
+func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn) {
 	nn.disconnected <- v
 }

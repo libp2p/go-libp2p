@@ -20,7 +20,7 @@ func setupMockNAT(t *testing.T) (mockNAT *MockNAT, reset func()) {
 	ctrl := gomock.NewController(t)
 	mockNAT = NewMockNAT(ctrl)
 	origDiscoverNAT := discoverNAT
-	discoverNAT = func(ctx context.Context) (nat, error) { return mockNAT, nil }
+	discoverNAT = func(_ context.Context) (nat, error) { return mockNAT, nil }
 	return mockNAT, func() {
 		discoverNAT = origDiscoverNAT
 		ctrl.Finish()

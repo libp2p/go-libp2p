@@ -624,7 +624,7 @@ func newWebRTCConnection(settings webrtc.SettingEngine, config webrtc.Configurat
 	})
 
 	connectionClosedCh := make(chan struct{}, 1)
-	pc.SCTP().OnClose(func(err error) {
+	pc.SCTP().OnClose(func(_ error) {
 		// We only need one message. Closing a connection is a problem as pion might invoke the callback more than once.
 		select {
 		case connectionClosedCh <- struct{}{}:

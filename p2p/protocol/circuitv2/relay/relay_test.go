@@ -30,7 +30,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func getNetHosts(t *testing.T, ctx context.Context, n int) (hosts []host.Host, upgraders []transport.Upgrader) {
+func getNetHosts(t *testing.T, _ context.Context, n int) (hosts []host.Host, upgraders []transport.Upgrader) {
 	for i := 0; i < n; i++ {
 		privk, pubk, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
 		if err != nil {

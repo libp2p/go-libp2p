@@ -318,7 +318,7 @@ func FuzzServerHandshakeNoPanic(f *testing.F) {
 	zeroBytes := [32]byte{}
 	hmac := hmac.New(sha256.New, zeroBytes[:])
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		hmac.Reset()
 		h := PeerIDAuthHandshakeServer{
 			Hostname: "example.com",
@@ -380,7 +380,7 @@ func BenchmarkOpaqueStateRead(b *testing.B) {
 func FuzzParsePeerIDAuthSchemeParamsNoPanic(f *testing.F) {
 	p := params{}
 	// Just check that we don't panic
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		p.parsePeerIDAuthSchemeParams(data)
 	})
 }

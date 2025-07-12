@@ -194,7 +194,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 	stallChan := make(chan struct{})
 	an := newAutoNAT(t, nil, allowPrivateAddrs, withDataRequestPolicy(
 		// stall all allowed requests
-		func(_, dialAddr ma.Multiaddr) bool {
+		func(_, _ ma.Multiaddr) bool {
 			<-stallChan
 			return true
 		}),
@@ -624,7 +624,7 @@ func FuzzServerDialRequest(f *testing.F) {
 }
 
 func FuzzReadDialData(f *testing.F) {
-	f.Fuzz(func(t *testing.T, numBytes int, data []byte) {
+	f.Fuzz(func(_ *testing.T, numBytes int, data []byte) {
 		readDialData(numBytes, bytes.NewReader(data))
 	})
 }

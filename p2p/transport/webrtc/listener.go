@@ -333,7 +333,7 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection) <-chan error {
 	errC := make(chan error, 1)
 	var once sync.Once
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+	pc.OnConnectionStateChange(func(_ webrtc.PeerConnectionState) {
 		switch pc.ConnectionState() {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(errC) })

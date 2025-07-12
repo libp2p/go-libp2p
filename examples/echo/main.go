@@ -96,7 +96,7 @@ func getHostAddress(ha host.Host) string {
 	return addr.Encapsulate(hostAddr).String()
 }
 
-func startListener(ctx context.Context, ha host.Host, listenPort int, insecure bool) {
+func startListener(_ context.Context, ha host.Host, listenPort int, insecure bool) {
 	fullAddr := getHostAddress(ha)
 	log.Printf("I am %s\n", fullAddr)
 
@@ -121,7 +121,7 @@ func startListener(ctx context.Context, ha host.Host, listenPort int, insecure b
 	}
 }
 
-func runSender(ctx context.Context, ha host.Host, targetPeer string) {
+func runSender(_ context.Context, ha host.Host, targetPeer string) {
 	fullAddr := getHostAddress(ha)
 	log.Printf("I am %s\n", fullAddr)
 

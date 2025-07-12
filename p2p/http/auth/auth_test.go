@@ -250,7 +250,7 @@ func TestConcurrentAuth(t *testing.T) {
 		},
 		TokenTTL: time.Hour,
 		NoTLS:    true,
-		Next: func(peer peer.ID, w http.ResponseWriter, r *http.Request) {
+		Next: func(_ peer.ID, w http.ResponseWriter, r *http.Request) {
 			reqBody, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
 			_, err = w.Write(reqBody)

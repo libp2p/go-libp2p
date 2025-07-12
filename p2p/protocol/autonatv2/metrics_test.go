@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,6 +32,11 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1"),
 		ma.StringCast("/ip4/1.1.1.1/tcp/1/"),
 	}
+	reqs := [][]Request{
+		{{Addr: addrs[0]}, {Addr: addrs[1], SendDialData: true}},
+		{{Addr: addrs[1]}, {Addr: addrs[2]}},
+	}
+
 	tests := map[string]func(){
 		"CompletedRequest": func() {
 			mt.CompletedRequest(EventDialRequestCompleted{
@@ -40,6 +46,9 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 				DialDataRequired: rand.Intn(2) == 1,
 				DialedAddr:       addrs[rand.Intn(len(addrs))],
 			})
+		},
+		"CompletedClientRequest": func() {
+			mt.ClientCompletedRequest(reqs[rand.Intn(len(reqs))], Result{AllAddrsRefused: rand.Intn(2) == 1, Reachability: network.Reachability(rand.Intn(2)), Addr: addrs[rand.Intn(len(addrs))]}, errs[rand.Intn(len(errs))])
 		},
 	}
 	for method, f := range tests {

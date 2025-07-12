@@ -669,7 +669,7 @@ func TestHandshakeTimeout(t *testing.T) {
 	fastWSDialer := gws.Dialer{
 		HandshakeTimeout: 10 * handshakeTimeout,
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true},
-		NetDial: func(network, addr string) (net.Conn, error) {
+		NetDial: func(_, addr string) (net.Conn, error) {
 			tcpConn, err := net.Dial("tcp", addr)
 			if !assert.NoError(t, err) {
 				return nil, err
@@ -680,7 +680,7 @@ func TestHandshakeTimeout(t *testing.T) {
 
 	slowWSDialer := gws.Dialer{
 		HandshakeTimeout: 10 * handshakeTimeout,
-		NetDial: func(network, addr string) (net.Conn, error) {
+		NetDial: func(_, addr string) (net.Conn, error) {
 			tcpConn, err := net.Dial("tcp", addr)
 			if !assert.NoError(t, err) {
 				return nil, err

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func mapDBStore(tb testing.TB) (ds.Batching, func()) {
+func mapDBStore(_ testing.TB) (ds.Batching, func()) {
 	store := ds.NewMapDatastore()
 	closer := func() {
 		store.Close()

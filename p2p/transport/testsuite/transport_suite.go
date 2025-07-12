@@ -16,7 +16,7 @@ import (
 
 var testData = []byte("this is some test data")
 
-func SubtestProtocols(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestProtocols(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, _ peer.ID) {
 	rawIPAddr, _ := ma.NewMultiaddr("/ip4/1.2.3.4")
 	if ta.CanDial(rawIPAddr) || tb.CanDial(rawIPAddr) {
 		t.Error("nothing should be able to dial raw IP")

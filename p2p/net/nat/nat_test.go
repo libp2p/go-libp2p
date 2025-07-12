@@ -20,7 +20,7 @@ func setupMockNAT(t *testing.T) (mockNAT *MockNAT, reset func()) {
 	mockNAT = NewMockNAT(ctrl)
 	mockNAT.EXPECT().GetDeviceAddress().Return(nil, errors.New("nope")) // is only used for logging
 	origDiscoverGateway := discoverGateway
-	discoverGateway = func(ctx context.Context) (nat.NAT, error) { return mockNAT, nil }
+	discoverGateway = func(_ context.Context) (nat.NAT, error) { return mockNAT, nil }
 	return mockNAT, func() {
 		discoverGateway = origDiscoverGateway
 		ctrl.Finish()

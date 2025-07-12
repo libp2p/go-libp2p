@@ -17,21 +17,21 @@ type noopCache[K comparable, V any] struct {
 
 var _ cache[int, int] = (*noopCache[int, int])(nil)
 
-func (*noopCache[K, V]) Get(key K) (value V, ok bool) {
+func (*noopCache[K, V]) Get(_ K) (value V, ok bool) {
 	return *new(V), false
 }
 
-func (*noopCache[K, V]) Add(key K, value V) {
+func (*noopCache[K, V]) Add(_ K, _ V) {
 }
 
-func (*noopCache[K, V]) Remove(key K) {
+func (*noopCache[K, V]) Remove(_ K) {
 }
 
-func (*noopCache[K, V]) Contains(key K) bool {
+func (*noopCache[K, V]) Contains(_ K) bool {
 	return false
 }
 
-func (*noopCache[K, V]) Peek(key K) (value V, ok bool) {
+func (*noopCache[K, V]) Peek(_ K) (value V, ok bool) {
 	return *new(V), false
 }
 

@@ -23,7 +23,7 @@ type cyclicBatch struct {
 	pending int
 }
 
-func newCyclicBatch(ds ds.Batching, threshold int) (ds.Batch, error) {
+func newCyclicBatch(ds ds.Batching, _ int) (ds.Batch, error) {
 	batch, err := ds.Batch(context.TODO())
 	if err != nil {
 		return nil, err

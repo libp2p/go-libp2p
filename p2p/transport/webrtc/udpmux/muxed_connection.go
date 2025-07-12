@@ -103,17 +103,17 @@ func (c *muxedConnection) close() {
 
 func (c *muxedConnection) LocalAddr() net.Addr { return c.mux.socket.LocalAddr() }
 
-func (*muxedConnection) SetDeadline(t time.Time) error {
+func (*muxedConnection) SetDeadline(_ time.Time) error {
 	// no deadline is desired here
 	return nil
 }
 
-func (*muxedConnection) SetReadDeadline(t time.Time) error {
+func (*muxedConnection) SetReadDeadline(_ time.Time) error {
 	// no read deadline is desired here
 	return nil
 }
 
-func (*muxedConnection) SetWriteDeadline(t time.Time) error {
+func (*muxedConnection) SetWriteDeadline(_ time.Time) error {
 	// no write deadline is desired here
 	return nil
 }

@@ -58,7 +58,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					}
 
 					peerScope := mocknetwork.NewMockPeerScope(ctrl)
-					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, pri uint8) {
+					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, _ uint8) {
 						reservedMemory.Add(int32(amount))
 					})
 					peerScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes().Do(func(amount int) {

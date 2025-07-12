@@ -606,7 +606,7 @@ func TestEarlyDataRejected(t *testing.T) {
 
 func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 	clientEDH := &earlyDataHandler{
-		send: func(ctx context.Context, conn net.Conn, id peer.ID) *pb.NoiseExtensions {
+		send: func(_ context.Context, _ net.Conn, _ peer.ID) *pb.NoiseExtensions {
 			return &pb.NoiseExtensions{WebtransportCerthashes: [][]byte{[]byte("foobar")}}
 		},
 	}

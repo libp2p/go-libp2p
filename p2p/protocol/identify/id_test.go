@@ -837,7 +837,7 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 	ids2.Start()
 
 	// remote stream handler will just hang and not send back an identify response
-	h2.SetStreamHandler(identify.ID, func(s network.Stream) {
+	h2.SetStreamHandler(identify.ID, func(_ network.Stream) {
 		time.Sleep(100 * time.Second)
 	})
 
@@ -910,7 +910,7 @@ func TestOutOfOrderConnectedNotifs(t *testing.T) {
 
 	// This callback may be called before identify's Connnected callback completes. If it does, the IdentifyWait should still finish successfully.
 	h1.Network().Notify(&network.NotifyBundle{
-		ConnectedF: func(n network.Network, c network.Conn) {
+		ConnectedF: func(_ network.Network, c network.Conn) {
 			idChan := h1.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(c)
 			go func() {
 				<-idChan
@@ -958,7 +958,7 @@ func waitForDisconnectNotification(swarm *swarm.Swarm) <-chan struct{} {
 	var once sync.Once
 	var nb *network.NotifyBundle
 	nb = &network.NotifyBundle{
-		DisconnectedF: func(n network.Network, c network.Conn) {
+		DisconnectedF: func(_ network.Network, _ network.Conn) {
 			once.Do(func() {
 				go func() {
 					swarm.StopNotify(nb)

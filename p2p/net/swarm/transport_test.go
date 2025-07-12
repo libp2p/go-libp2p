@@ -19,15 +19,15 @@ type dummyTransport struct {
 	closed    bool
 }
 
-func (dt *dummyTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (dt *dummyTransport) Dial(_ context.Context, _ ma.Multiaddr, _ peer.ID) (transport.CapableConn, error) {
 	panic("unimplemented")
 }
 
-func (dt *dummyTransport) CanDial(addr ma.Multiaddr) bool {
+func (dt *dummyTransport) CanDial(_ ma.Multiaddr) bool {
 	panic("unimplemented")
 }
 
-func (dt *dummyTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
+func (dt *dummyTransport) Listen(_ ma.Multiaddr) (transport.Listener, error) {
 	panic("unimplemented")
 }
 

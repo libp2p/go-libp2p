@@ -174,15 +174,15 @@ func (s *stream) Conn() network.Conn {
 	return s.conn
 }
 
-func (s *stream) SetDeadline(t time.Time) error {
+func (s *stream) SetDeadline(_ time.Time) error {
 	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 
-func (s *stream) SetReadDeadline(t time.Time) error {
+func (s *stream) SetReadDeadline(_ time.Time) error {
 	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 
-func (s *stream) SetWriteDeadline(t time.Time) error {
+func (s *stream) SetWriteDeadline(_ time.Time) error {
 	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 

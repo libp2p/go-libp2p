@@ -63,7 +63,7 @@ type loggerFactory struct{}
 // NewLogger returns pLog for all new logger instances. Internally pion creates lots of
 // separate logging objects unnecessarily. To avoid the allocations we use a single log
 // object for all of pion logging.
-func (loggerFactory) NewLogger(scope string) pionLogging.LeveledLogger {
+func (loggerFactory) NewLogger(_ string) pionLogging.LeveledLogger {
 	return pLog
 }
 

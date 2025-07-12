@@ -33,7 +33,7 @@ func TestGracePeriod(t *testing.T) {
 	require.NoError(t, err)
 	start := time.Now()
 	removed := make(chan struct{})
-	pstore.EXPECT().RemovePeer(peer.ID("foobar")).DoAndReturn(func(p peer.ID) {
+	pstore.EXPECT().RemovePeer(peer.ID("foobar")).DoAndReturn(func(_ peer.ID) {
 		defer close(removed)
 		// make sure the call happened after the grace period
 		require.GreaterOrEqual(t, time.Since(start), gracePeriod)

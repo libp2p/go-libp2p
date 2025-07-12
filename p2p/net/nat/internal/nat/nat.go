@@ -29,7 +29,7 @@ func (e ErrNoNATFound) Unwrap() []error {
 }
 
 func (e ErrNoNATFound) Error() string {
-	var errStrs []string
+	errStrs := make([]string, 0, len(e.Errs))
 	for _, err := range e.Errs {
 		errStrs = append(errStrs, err.Error())
 	}

@@ -466,7 +466,7 @@ func TestObservedAddrManager(t *testing.T) {
 			return checkAllEntriesRemoved(o)
 		}, 1*time.Second, 100*time.Millisecond)
 	})
-	t.Run("Nil Input", func(t *testing.T) {
+	t.Run("Nil Input", func(_ *testing.T) {
 		o := newObservedAddrMgr()
 		defer o.Close()
 		o.maybeRecordObservation(nil, nil)
@@ -655,7 +655,7 @@ func FuzzObservedAddrManager(f *testing.F) {
 		return o
 	}
 
-	f.Fuzz(func(t *testing.T, port uint16) {
+	f.Fuzz(func(_ *testing.T, port uint16) {
 		addrs := []ma.Multiaddr{genIPMultiaddr(true), genIPMultiaddr(false)}
 		n := len(addrs)
 		for i := 0; i < n; i++ {

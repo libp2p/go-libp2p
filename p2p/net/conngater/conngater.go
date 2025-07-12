@@ -282,7 +282,7 @@ func (cg *BasicConnectionGater) InterceptPeerDial(p peer.ID) (allow bool) {
 	return !block
 }
 
-func (cg *BasicConnectionGater) InterceptAddrDial(p peer.ID, a ma.Multiaddr) (allow bool) {
+func (cg *BasicConnectionGater) InterceptAddrDial(_ peer.ID, a ma.Multiaddr) (allow bool) {
 	// we have already filtered blocked peers in InterceptPeerDial, so we just check the IP
 	cg.RLock()
 	defer cg.RUnlock()
@@ -333,7 +333,7 @@ func (cg *BasicConnectionGater) InterceptAccept(cma network.ConnMultiaddrs) (all
 	return true
 }
 
-func (cg *BasicConnectionGater) InterceptSecured(dir network.Direction, p peer.ID, cma network.ConnMultiaddrs) (allow bool) {
+func (cg *BasicConnectionGater) InterceptSecured(dir network.Direction, p peer.ID, _ network.ConnMultiaddrs) (allow bool) {
 	if dir == network.DirOutbound {
 		// we have already filtered those in InterceptPeerDial/InterceptAddrDial
 		return true

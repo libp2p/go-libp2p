@@ -25,7 +25,7 @@ type RefCountedQUICTransport interface {
 	DecreaseCount()
 	IncreaseCount()
 
-	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error)
+	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
 }
 
@@ -45,7 +45,7 @@ func (c *singleOwnerTransport) LocalAddr() net.Addr {
 	return c.packetConn.LocalAddr()
 }
 
-func (c *singleOwnerTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error) {
+func (c *singleOwnerTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 	return c.Transport.Dial(ctx, addr, tlsConf, conf)
 }
 

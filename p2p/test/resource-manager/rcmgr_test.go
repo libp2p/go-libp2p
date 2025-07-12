@@ -291,7 +291,7 @@ func waitForChannel(ready chan struct{}, timeout time.Duration) func() error {
 	}
 }
 
-func TestReadmeExample(t *testing.T) {
+func TestReadmeExample(_ *testing.T) {
 	// Start with the default scaling limits.
 	scalingLimits := rcmgr.DefaultLimits
 

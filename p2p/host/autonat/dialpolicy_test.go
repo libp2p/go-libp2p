@@ -28,11 +28,11 @@ type mockT struct {
 	addr   multiaddr.Multiaddr
 }
 
-func (m *mockT) Dial(ctx context.Context, a multiaddr.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (m *mockT) Dial(_ context.Context, _ multiaddr.Multiaddr, _ peer.ID) (transport.CapableConn, error) {
 	return nil, nil
 }
 func (m *mockT) CanDial(_ multiaddr.Multiaddr) bool { return true }
-func (m *mockT) Listen(a multiaddr.Multiaddr) (transport.Listener, error) {
+func (m *mockT) Listen(_ multiaddr.Multiaddr) (transport.Listener, error) {
 	return &mockL{m.ctx, m.cancel, m.addr}, nil
 }
 func (m *mockT) Protocols() []int { return []int{multiaddr.P_IP4} }

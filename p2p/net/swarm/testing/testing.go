@@ -270,15 +270,15 @@ type MockConnectionGater struct {
 
 func DefaultMockConnectionGater() *MockConnectionGater {
 	m := &MockConnectionGater{}
-	m.Dial = func(p peer.ID, addr ma.Multiaddr) bool {
+	m.Dial = func(_ peer.ID, _ ma.Multiaddr) bool {
 		return true
 	}
 
-	m.PeerDial = func(p peer.ID) bool {
+	m.PeerDial = func(_ peer.ID) bool {
 		return true
 	}
 
-	m.Accept = func(c network.ConnMultiaddrs) bool {
+	m.Accept = func(_ network.ConnMultiaddrs) bool {
 		return true
 	}
 
@@ -286,7 +286,7 @@ func DefaultMockConnectionGater() *MockConnectionGater {
 		return true
 	}
 
-	m.Upgraded = func(c network.Conn) (bool, control.DisconnectReason) {
+	m.Upgraded = func(_ network.Conn) (bool, control.DisconnectReason) {
 		return true, 0
 	}
 

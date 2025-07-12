@@ -59,7 +59,7 @@ func (n *nonQUICPacketConn) SetReadDeadline(t time.Time) error {
 }
 
 // SetWriteDeadline implements net.PacketConn.
-func (n *nonQUICPacketConn) SetWriteDeadline(t time.Time) error {
+func (n *nonQUICPacketConn) SetWriteDeadline(_ time.Time) error {
 	// Unused. quic-go doesn't support deadlines for writes.
 	return nil
 }

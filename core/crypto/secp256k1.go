@@ -19,7 +19,7 @@ type Secp256k1PrivateKey secp256k1.PrivateKey
 type Secp256k1PublicKey secp256k1.PublicKey
 
 // GenerateSecp256k1Key generates a new Secp256k1 private and public key pair
-func GenerateSecp256k1Key(src io.Reader) (PrivKey, PubKey, error) {
+func GenerateSecp256k1Key(_ io.Reader) (PrivKey, PubKey, error) {
 	privk, err := secp256k1.GeneratePrivateKey()
 	if err != nil {
 		return nil, nil, err

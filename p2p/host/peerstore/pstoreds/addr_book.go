@@ -470,7 +470,7 @@ func (ab *dsAddrBook) ClearAddrs(p peer.ID) {
 	}
 }
 
-func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration, mode ttlWriteMode, signed bool) (err error) {
+func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration, mode ttlWriteMode, _ bool) (err error) {
 	if len(addrs) == 0 {
 		return nil
 	}

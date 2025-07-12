@@ -14,10 +14,10 @@ const (
 )
 
 type stream struct {
-	quic.Stream
+	*quic.Stream
 }
 
-var _ network.MuxedStream = &stream{}
+var _ network.MuxedStream = stream{}
 
 func parseStreamError(err error) error {
 	if err == nil {
@@ -54,38 +54,38 @@ func parseStreamError(err error) error {
 	return err
 }
 
-func (s *stream) Read(b []byte) (n int, err error) {
+func (s stream) Read(b []byte) (n int, err error) {
 	n, err = s.Stream.Read(b)
 	return n, parseStreamError(err)
 }
 
-func (s *stream) Write(b []byte) (n int, err error) {
+func (s stream) Write(b []byte) (n int, err error) {
 	n, err = s.Stream.Write(b)
 	return n, parseStreamError(err)
 }
 
-func (s *stream) Reset() error {
+func (s stream) Reset() error {
 	s.Stream.CancelRead(reset)
 	s.Stream.CancelWrite(reset)
 	return nil
 }
 
-func (s *stream) ResetWithError(errCode network.StreamErrorCode) error {
+func (s stream) ResetWithError(errCode network.StreamErrorCode) error {
 	s.Stream.CancelRead(quic.StreamErrorCode(errCode))
 	s.Stream.CancelWrite(quic.StreamErrorCode(errCode))
 	return nil
 }
 
-func (s *stream) Close() error {
+func (s stream) Close() error {
 	s.Stream.CancelRead(reset)
 	return s.Stream.Close()
 }
 
-func (s *stream) CloseRead() error {
+func (s stream) CloseRead() error {
 	s.Stream.CancelRead(reset)
 	return nil
 }
 
-func (s *stream) CloseWrite() error {
+func (s stream) CloseWrite() error {
 	return s.Stream.Close()
 }

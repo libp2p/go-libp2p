@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func setupPSKConns(ctx context.Context, t *testing.T) (net.Conn, net.Conn) {
+func setupPSKConns(_ context.Context, t *testing.T) (net.Conn, net.Conn) {
 	testPSK := make([]byte, 32) // null bytes are as good test key as any other key
 	conn1, conn2 := net.Pipe()
 

@@ -211,7 +211,7 @@ type errDialer struct {
 	err error
 }
 
-func (d errDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+func (d errDialer) DialContext(_ context.Context, _, _ string) (net.Conn, error) {
 	return nil, d.err
 }
 
@@ -230,7 +230,7 @@ func TestCustomOverrideTCPDialer(t *testing.T) {
 		ub, err := tptu.New(ib, muxers, nil, nil, nil)
 		require.NoError(t, err)
 		called := false
-		customDialer := func(raddr ma.Multiaddr) (ContextDialer, error) {
+		customDialer := func(_ ma.Multiaddr) (ContextDialer, error) {
 			called = true
 			return &net.Dialer{}, nil
 		}
@@ -260,7 +260,7 @@ func TestCustomOverrideTCPDialer(t *testing.T) {
 				ub, err := tptu.New(ib, muxers, nil, nil, nil)
 				require.NoError(t, err)
 				customErr := errors.New("custom dialer error")
-				customDialer := func(raddr ma.Multiaddr) (ContextDialer, error) {
+				customDialer := func(_ ma.Multiaddr) (ContextDialer, error) {
 					if test == "error in factory" {
 						return nil, customErr
 					} else {

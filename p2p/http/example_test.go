@@ -181,7 +181,7 @@ func ExampleHost_overLibp2pStreams() {
 	// Make an HTTP request using the Go standard library, but over libp2p
 	// streams. If the server were listening on an HTTP transport, this could
 	// also make the request over the HTTP transport.
-	httpClient, err := client.NamespacedClient("/echo/1.0.0", peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	httpClient, _ := client.NamespacedClient("/echo/1.0.0", peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
 
 	// Only need to Post to "/" because this client is namespaced to the "/echo/1.0.0" protocol.
 	resp, err := httpClient.Post("/", "application/octet-stream", strings.NewReader("Hello HTTP"))
@@ -225,7 +225,7 @@ func ExampleHost_SetHTTPHandler() {
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
-	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "text/plain")
 		w.Write([]byte("Hello World"))
 	}))
@@ -259,7 +259,7 @@ func ExampleHost_SetHTTPHandlerAtPath() {
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
-	server.SetHTTPHandlerAtPath("/hello/1", "/other-place/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.SetHTTPHandlerAtPath("/hello/1", "/other-place/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "text/plain")
 		w.Write([]byte("Hello World"))
 	}))
@@ -296,7 +296,7 @@ func ExampleHost_NamespacedClient() {
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
-	server.SetHTTPHandlerAtPath("/hello/1", "/other-place/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.SetHTTPHandlerAtPath("/hello/1", "/other-place/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "text/plain")
 		w.Write([]byte("Hello World"))
 	}))
@@ -334,7 +334,7 @@ func ExampleHost_NamespaceRoundTripper() {
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
-	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "text/plain")
 		w.Write([]byte("Hello World"))
 	}))
@@ -378,7 +378,7 @@ func ExampleHost_NewConstrainedRoundTripper() {
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
-	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "text/plain")
 		w.Write([]byte("Hello World"))
 	}))
@@ -446,7 +446,7 @@ func ExampleHost_RoundTrip() {
 	}
 	go server.Serve()
 	defer server.Close()
-	server.SetHTTPHandlerAtPath("/hello/", "/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.SetHTTPHandlerAtPath("/hello/", "/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("Hello World"))
 	}))
 

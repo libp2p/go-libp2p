@@ -121,7 +121,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		wsurl:    wsurl,
 		wsUpgrader: ws.Upgrader{
 			// Allow requests from *all* origins.
-			CheckOrigin: func(r *http.Request) bool {
+			CheckOrigin: func(_ *http.Request) bool {
 				return true
 			},
 			HandshakeTimeout: handshakeTimeout,

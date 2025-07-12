@@ -33,28 +33,28 @@ func (t *testGater) BlockSecured(block bool) {
 	t.blockSecured = block
 }
 
-func (t *testGater) InterceptPeerDial(p peer.ID) (allow bool) {
+func (t *testGater) InterceptPeerDial(_ peer.ID) (allow bool) {
 	panic("not implemented")
 }
 
-func (t *testGater) InterceptAddrDial(id peer.ID, multiaddr ma.Multiaddr) (allow bool) {
+func (t *testGater) InterceptAddrDial(_ peer.ID, _ ma.Multiaddr) (allow bool) {
 	panic("not implemented")
 }
 
-func (t *testGater) InterceptAccept(multiaddrs network.ConnMultiaddrs) (allow bool) {
+func (t *testGater) InterceptAccept(_ network.ConnMultiaddrs) (allow bool) {
 	t.Lock()
 	defer t.Unlock()
 
 	return !t.blockAccept
 }
 
-func (t *testGater) InterceptSecured(direction network.Direction, id peer.ID, multiaddrs network.ConnMultiaddrs) (allow bool) {
+func (t *testGater) InterceptSecured(_ network.Direction, _ peer.ID, _ network.ConnMultiaddrs) (allow bool) {
 	t.Lock()
 	defer t.Unlock()
 
 	return !t.blockSecured
 }
 
-func (t *testGater) InterceptUpgraded(conn network.Conn) (allow bool, reason control.DisconnectReason) {
+func (t *testGater) InterceptUpgraded(_ network.Conn) (allow bool, reason control.DisconnectReason) {
 	panic("not implemented")
 }

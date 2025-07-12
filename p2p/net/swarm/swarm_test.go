@@ -249,7 +249,7 @@ func TestConnectionGating(t *testing.T) {
 		},
 		"p1 gates outbound peer dial": {
 			p1Gater: func(c *MockConnectionGater) *MockConnectionGater {
-				c.PeerDial = func(p peer.ID) bool { return false }
+				c.PeerDial = func(_ peer.ID) bool { return false }
 				return c
 			},
 			p1ConnectednessToP2: network.NotConnected,
@@ -258,7 +258,7 @@ func TestConnectionGating(t *testing.T) {
 		},
 		"p1 gates outbound addr dialing": {
 			p1Gater: func(c *MockConnectionGater) *MockConnectionGater {
-				c.Dial = func(p peer.ID, addr ma.Multiaddr) bool { return false }
+				c.Dial = func(_ peer.ID, _ ma.Multiaddr) bool { return false }
 				return c
 			},
 			p1ConnectednessToP2: network.NotConnected,
@@ -276,7 +276,7 @@ func TestConnectionGating(t *testing.T) {
 		},
 		"p2 gates inbound peer dial before securing": {
 			p2Gater: func(c *MockConnectionGater) *MockConnectionGater {
-				c.Accept = func(c network.ConnMultiaddrs) bool { return false }
+				c.Accept = func(_ network.ConnMultiaddrs) bool { return false }
 				return c
 			},
 			p1ConnectednessToP2: network.NotConnected,
@@ -296,7 +296,7 @@ func TestConnectionGating(t *testing.T) {
 		},
 		"p2 gates inbound peer dial after upgrading": {
 			p1Gater: func(c *MockConnectionGater) *MockConnectionGater {
-				c.Upgraded = func(c network.Conn) (bool, control.DisconnectReason) { return false, 0 }
+				c.Upgraded = func(_ network.Conn) (bool, control.DisconnectReason) { return false, 0 }
 				return c
 			},
 			p1ConnectednessToP2: network.NotConnected,
@@ -305,7 +305,7 @@ func TestConnectionGating(t *testing.T) {
 		},
 		"p2 gates outbound dials": {
 			p2Gater: func(c *MockConnectionGater) *MockConnectionGater {
-				c.PeerDial = func(p peer.ID) bool { return false }
+				c.PeerDial = func(_ peer.ID) bool { return false }
 				return c
 			},
 			p1ConnectednessToP2: network.Connected,
@@ -521,7 +521,7 @@ func TestResourceManagerAcceptStream(t *testing.T) {
 	rcmgr2 := mocknetwork.NewMockResourceManager(ctrl)
 	s2 := GenSwarm(t, WithSwarmOpts(swarm.WithResourceManager(rcmgr2)))
 	defer s2.Close()
-	s2.SetStreamHandler(func(str network.Stream) { t.Fatal("didn't expect to accept a stream") })
+	s2.SetStreamHandler(func(_ network.Stream) { t.Fatal("didn't expect to accept a stream") })
 
 	connectSwarms(t, context.Background(), []*swarm.Swarm{s1, s2})
 

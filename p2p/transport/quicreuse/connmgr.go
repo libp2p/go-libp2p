@@ -25,7 +25,7 @@ import (
 )
 
 type QUICListener interface {
-	Accept(ctx context.Context) (quic.Connection, error)
+	Accept(ctx context.Context) (*quic.Conn, error)
 	Close() error
 	Addr() net.Addr
 }
@@ -34,7 +34,7 @@ var _ QUICListener = &quic.Listener{}
 
 type QUICTransport interface {
 	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
-	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error)
+	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 	WriteTo(b []byte, addr net.Addr) (int, error)
 	ReadNonQUICPacket(ctx context.Context, b []byte) (int, net.Addr, error)
 	io.Closer
@@ -136,7 +136,7 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 }
 
 func (c *ConnManager) getTracer() func(context.Context, quiclogging.Perspective, quic.ConnectionID) *quiclogging.ConnectionTracer {
-	return func(ctx context.Context, p quiclogging.Perspective, ci quic.ConnectionID) *quiclogging.ConnectionTracer {
+	return func(_ context.Context, p quiclogging.Perspective, ci quic.ConnectionID) *quiclogging.ConnectionTracer {
 		var promTracer *quiclogging.ConnectionTracer
 		if c.enableMetrics {
 			switch p {
@@ -199,7 +199,7 @@ func (c *ConnManager) LendTransport(network string, tr QUICTransport, conn net.P
 
 // ListenQUIC listens for quic connections with the provided `tlsConf.NextProtos` ALPNs on `addr`. The same addr can be shared between
 // different ALPNs.
-func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
+func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool) (Listener, error) {
 	return c.ListenQUICAndAssociate(nil, addr, tlsConf, allowWindowIncrease)
 }
 
@@ -209,7 +209,7 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 // or `DialQUIC` calls with the same `association` will reuse the QUIC Transport used by this method.
 // A common use of associations is to ensure /quic dials use the quic listening address and /webtransport dials use the
 // WebTransport listening address.
-func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
+func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool) (Listener, error) {
 	netw, host, err := manet.DialArgs(addr)
 	if err != nil {
 		return nil, err
@@ -339,7 +339,7 @@ func WithAssociation(ctx context.Context, association any) context.Context {
 // - Any other listening transport
 // - Any transport previously used for dialing
 // If none of these are available, it'll create a new transport.
-func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (quic.Connection, error) {
+func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool) (*quic.Conn, error) {
 	naddr, v, err := FromQuicMultiaddr(raddr)
 	if err != nil {
 		return nil, err

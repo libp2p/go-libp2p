@@ -1104,8 +1104,8 @@ func (nn *netNotifiee) Disconnected(_ network.Network, c network.Conn) {
 	ids.Host.Peerstore().UpdateAddrs(c.RemotePeer(), peerstore.TempAddrTTL, 0)
 }
 
-func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)      {}
-func (nn *netNotifiee) ListenClose(n network.Network, a ma.Multiaddr) {}
+func (nn *netNotifiee) Listen(_ network.Network, _ ma.Multiaddr)      {}
+func (nn *netNotifiee) ListenClose(_ network.Network, _ ma.Multiaddr) {}
 
 // filterAddrs filters the address slice based on the remote multiaddr:
 //   - if it's a localhost address, no filtering is applied

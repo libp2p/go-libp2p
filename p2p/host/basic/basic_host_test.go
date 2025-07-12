@@ -171,9 +171,9 @@ func TestProtocolHandlerEvents(t *testing.T) {
 		}
 	}
 
-	h.SetStreamHandler(protocol.TestingID, func(s network.Stream) {})
+	h.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
 	assert([]protocol.ID{protocol.TestingID}, nil)
-	h.SetStreamHandler("foo", func(s network.Stream) {})
+	h.SetStreamHandler("foo", func(_ network.Stream) {})
 	assert([]protocol.ID{"foo"}, nil)
 	h.RemoveStreamHandler(protocol.TestingID)
 	assert(nil, []protocol.ID{protocol.TestingID})
@@ -181,7 +181,7 @@ func TestProtocolHandlerEvents(t *testing.T) {
 
 func TestHostAddrsFactory(t *testing.T) {
 	maddr := ma.StringCast("/ip4/1.2.3.4/tcp/1234")
-	addrsFactory := func(addrs []ma.Multiaddr) []ma.Multiaddr {
+	addrsFactory := func(_ []ma.Multiaddr) []ma.Multiaddr {
 		return []ma.Multiaddr{maddr}
 	}
 
@@ -242,7 +242,7 @@ func TestAllAddrsUnique(t *testing.T) {
 	}()
 	sendNewAddrs := make(chan struct{})
 	opts := HostOpts{
-		AddrsFactory: func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		AddrsFactory: func(_ []ma.Multiaddr) []ma.Multiaddr {
 			select {
 			case <-sendNewAddrs:
 				return []ma.Multiaddr{
@@ -708,7 +708,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 
 	var lk sync.Mutex
 	currentAddrSet := 0
-	addrsFactory := func(addrs []ma.Multiaddr) []ma.Multiaddr {
+	addrsFactory := func(_ []ma.Multiaddr) []ma.Multiaddr {
 		lk.Lock()
 		defer lk.Unlock()
 		return addrSets[currentAddrSet]

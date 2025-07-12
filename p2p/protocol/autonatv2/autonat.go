@@ -108,7 +108,7 @@ func New(dialerHost host.Host, opts ...AutoNATOption) (*AutoNAT, error) {
 		ctx:                  ctx,
 		cancel:               cancel,
 		srv:                  newServer(dialerHost, s),
-		cli:                  newClient(),
+		cli:                  newClient(s),
 		allowPrivateAddrs:    s.allowPrivateAddrs,
 		peers:                newPeersMap(),
 		throttlePeer:         make(map[peer.ID]time.Time),
