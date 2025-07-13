@@ -146,6 +146,18 @@ func WithReadOnlyBlackHoleDetector() Option {
 	}
 }
 
+// WithQUICBlackHoleDetection enables or disables QUIC-specific blackhole detection
+func WithQUICBlackHoleDetection(enabled bool) Option {
+	return func(s *Swarm) error {
+		if enabled {
+			s.quicBHD = NewQUICBlackHoleDetector(s.metricsTracer)
+		} else {
+			s.quicBHD = nil
+		}
+		return nil
+	}
+}
+
 // Swarm is a connection muxer, allowing connections to other peers to
 // be opened and closed, while still using the same Chan for all
 // communication. The Chan sends/receives Messages, which note the
@@ -221,6 +233,7 @@ type Swarm struct {
 	udpBHF                    *BlackHoleSuccessCounter
 	ipv6BHF                   *BlackHoleSuccessCounter
 	bhd                       *blackHoleDetector
+	quicBHD                   *QUICBlackHoleDetector
 	readOnlyBHD               bool
 }
 
@@ -276,6 +289,8 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 		mt:       s.metricsTracer,
 		readOnly: s.readOnlyBHD,
 	}
+
+	s.quicBHD = NewQUICBlackHoleDetector(s.metricsTracer)
 	return s, nil
 }
 

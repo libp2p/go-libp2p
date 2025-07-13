@@ -534,32 +534,15 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAdd
 		addrErrs = append(addrErrs, TransportError{Address: a, Cause: ErrDialRefusedBlackHole})
 	}
 
-	return ma.FilterAddrs(addrs,
-		// Linux and BSD treat an unspecified address when dialing as a localhost address.
-		// Windows doesn't support this. We filter all such addresses out because peers
-		// listening on unspecified addresses will advertise more specific addresses.
-		// https://unix.stackexchange.com/a/419881
-		// https://superuser.com/a/1755455
-		func(addr ma.Multiaddr) bool {
-			return !manet.IsIPUnspecified(addr)
-		},
-		func(addr ma.Multiaddr) bool {
-			if ma.Contains(ourAddrs, addr) {
-				addrErrs = append(addrErrs, TransportError{Address: addr, Cause: ErrDialToSelf})
-				return false
-			}
-			return true
-		},
-		// TODO: Consider allowing link-local addresses
-		func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },
-		func(addr ma.Multiaddr) bool {
-			if s.gater != nil && !s.gater.InterceptAddrDial(p, addr) {
-				addrErrs = append(addrErrs, TransportError{Address: addr, Cause: ErrGaterDisallowedConnection})
-				return false
-			}
-			return true
-		},
-	), addrErrs
+	// remove QUIC black holed addrs
+	if s.quicBHD != nil {
+		addrs, quicBlackHoledAddrs := s.quicBHD.FilterAddrs(addrs)
+		for _, a := range quicBlackHoledAddrs {
+			addrErrs = append(addrErrs, TransportError{Address: a, Cause: ErrDialRefusedBlackHole})
+		}
+	}
+
+	return addrs, addrErrs
 }
 
 // limitedDial will start a dial to the given peer when
@@ -597,7 +580,12 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, updC
 		return nil, ErrNoTransport
 	}
 
+	// Start recording QUIC attempt if applicable
+	if s.quicBHD != nil {
+		s.quicBHD.RecordAttempt(addr)
+	}
 	start := time.Now()
+
 	var connC transport.CapableConn
 	var err error
 	if du, ok := tpt.(transport.DialUpdater); ok {
@@ -606,10 +594,11 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, updC
 		connC, err = tpt.Dial(ctx, addr, p)
 	}
 
-	// We're recording any error as a failure here.
-	// Notably, this also applies to cancellations (i.e. if another dial attempt was faster).
-	// This is ok since the black hole detector uses a very low threshold (5%).
+	// Record both general blackhole and QUIC-specific results
 	s.bhd.RecordResult(addr, err == nil)
+	if s.quicBHD != nil {
+		s.quicBHD.RecordResult(addr, err == nil, time.Since(start))
+	}
 
 	if err != nil {
 		if s.metricsTracer != nil {
