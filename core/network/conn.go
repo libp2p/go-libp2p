@@ -87,6 +87,20 @@ type Conn interface {
 	// IsClosed returns whether a connection is fully closed, so it can
 	// be garbage collected.
 	IsClosed() bool
+
+	// As finds the first conn in Conn's wrapped types that matches target, and
+	// if one is found, sets target to that conn value and returns true.
+	// Otherwise, it returns false. Similar to errors.As.
+	//
+	// target must be a pointer to the type you are matching against.
+	//
+	// This is an EXPERIMENTAL API. Getting access to the underlying type can
+	// lead to hard to debug issues. For example, if you mutate connection state
+	// on the underlying type, hooks that relied on only mutating that state
+	// from the wrapped connection would never be called.
+	//
+	// You very likely do not need to use this method.
+	As(target any) bool
 }
 
 // ConnectionState holds information about the connection.
