@@ -13,6 +13,14 @@ type conn yamux.Session
 
 var _ network.MuxedConn = &conn{}
 
+func (c *conn) As(target any) bool {
+	if t, ok := target.(**yamux.Session); ok {
+		*t = (*yamux.Session)(c)
+		return true
+	}
+	return false
+}
+
 // NewMuxedConn constructs a new MuxedConn from a yamux.Session.
 func NewMuxedConn(m *yamux.Session) network.MuxedConn {
 	return (*conn)(m)

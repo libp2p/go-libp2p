@@ -818,6 +818,7 @@ func (m mockConn) NewStream(_ context.Context) (network.Stream, error) { panic("
 func (m mockConn) GetStreams() []network.Stream                        { panic("implement me") }
 func (m mockConn) Scope() network.ConnScope                            { panic("implement me") }
 func (m mockConn) ConnState() network.ConnectionState                  { return network.ConnectionState{} }
+func (m mockConn) As(_ any) bool                                       { return false }
 
 func makeSegmentsWithPeerInfos(peerInfos peerInfos) *segments {
 	var s = func() *segments {

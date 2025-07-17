@@ -25,6 +25,15 @@ type conn struct {
 	remoteMultiaddr ma.Multiaddr
 }
 
+func (c *conn) As(target any) bool {
+	if t, ok := target.(**quic.Conn); ok {
+		*t = c.quicConn
+		return true
+	}
+
+	return false
+}
+
 var _ tpt.CapableConn = &conn{}
 
 // Close closes the connection.

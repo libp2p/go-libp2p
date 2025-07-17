@@ -40,6 +40,10 @@ import (
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
+	"github.com/libp2p/go-yamux/v5"
+	"github.com/pion/webrtc/v4"
+	quicgo "github.com/quic-go/quic-go"
+	wtgo "github.com/quic-go/webtransport-go"
 	"go.uber.org/goleak"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -840,5 +844,78 @@ func BenchmarkAllAddrs(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		addrsHost.AllAddrs()
+	}
+}
+
+func TestConnAs(t *testing.T) {
+	type testCase struct {
+		name       string
+		listenAddr string
+		testAs     func(t *testing.T, c network.Conn)
+	}
+
+	testCases := []testCase{
+		{
+			"QUIC",
+			"/ip4/0.0.0.0/udp/0/quic-v1",
+			func(t *testing.T, c network.Conn) {
+				var quicConn *quicgo.Conn
+				require.True(t, c.As(&quicConn))
+			},
+		},
+		{
+			"TCP+Yamux",
+			"/ip4/0.0.0.0/tcp/0",
+			func(t *testing.T, c network.Conn) {
+				var yamuxSession *yamux.Session
+				require.True(t, c.As(&yamuxSession))
+			},
+		},
+		{
+			"WebRTC",
+			"/ip4/0.0.0.0/udp/0/webrtc-direct",
+			func(t *testing.T, c network.Conn) {
+				var webrtcPC *webrtc.PeerConnection
+				require.True(t, c.As(&webrtcPC))
+			},
+		},
+		{
+			"WebTransport Session",
+			"/ip4/0.0.0.0/udp/0/quic-v1/webtransport",
+			func(t *testing.T, c network.Conn) {
+				var s *wtgo.Session
+				require.True(t, c.As(&s))
+			},
+		},
+		{
+			"WebTransport QUIC Conn",
+			"/ip4/0.0.0.0/udp/0/quic-v1/webtransport",
+			func(t *testing.T, c network.Conn) {
+				var quicConn *quicgo.Conn
+				require.True(t, c.As(&quicConn))
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h1, err := New(ListenAddrStrings(
+				tc.listenAddr,
+			))
+			require.NoError(t, err)
+			defer h1.Close()
+			h2, err := New(ListenAddrStrings(
+				tc.listenAddr,
+			))
+			require.NoError(t, err)
+			defer h2.Close()
+			err = h1.Connect(context.Background(), peer.AddrInfo{
+				ID:    h2.ID(),
+				Addrs: h2.Addrs(),
+			})
+			require.NoError(t, err)
+			c := h1.Network().ConnsToPeer(h2.ID())[0]
+			tc.testAs(t, c)
+		})
 	}
 }

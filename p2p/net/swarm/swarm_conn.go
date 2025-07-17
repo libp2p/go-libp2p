@@ -42,6 +42,10 @@ type Conn struct {
 
 var _ network.Conn = &Conn{}
 
+func (c *Conn) As(target any) bool {
+	return c.conn.As(target)
+}
+
 func (c *Conn) IsClosed() bool {
 	return c.conn.IsClosed()
 }

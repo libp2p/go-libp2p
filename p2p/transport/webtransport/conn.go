@@ -89,3 +89,15 @@ func (c *conn) Transport() tpt.Transport { return c.transport }
 func (c *conn) ConnState() network.ConnectionState {
 	return network.ConnectionState{Transport: "webtransport"}
 }
+
+func (c *conn) As(target any) bool {
+	if target, ok := target.(**quic.Conn); ok {
+		*target = c.qconn
+		return true
+	}
+	if target, ok := target.(**webtransport.Session); ok {
+		*target = c.session
+		return true
+	}
+	return false
+}

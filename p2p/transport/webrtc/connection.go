@@ -132,6 +132,14 @@ func (c *connection) Close() error {
 	return nil
 }
 
+func (c *connection) As(target any) bool {
+	if target, ok := target.(**webrtc.PeerConnection); ok {
+		*target = c.pc
+		return true
+	}
+	return false
+}
+
 // CloseWithError closes the connection ignoring the error code. As there's no way to signal
 // the remote peer on closing the underlying peerconnection, we ignore the error code.
 func (c *connection) CloseWithError(_ network.ConnErrorCode) error {
