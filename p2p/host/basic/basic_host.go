@@ -735,10 +735,10 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 	return h.cmgr
 }
 
-// Addrs returns listening addresses. The output is the same as AllAddrs, but
-// processed by AddrsFactory.
+// Addrs returns listening addresses.
 // When used with AutoRelay, and if the host is not publicly reachable,
-// this will only have host's private, relay, and no public addresses.
+// this will not have the host's direct public addresses, it'll only have
+// the relay addresses and private addresses.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
 	return h.addressManager.Addrs()
 }
