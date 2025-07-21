@@ -587,17 +587,7 @@ func TestEventSubscription(t *testing.T) {
 }
 
 func TestAreAddrsConsistency(t *testing.T) {
-	c := &client{
-		normalizeMultiaddr: func(a ma.Multiaddr) ma.Multiaddr {
-			for {
-				rest, l := ma.SplitLast(a)
-				if _, err := l.ValueForProtocol(ma.P_CERTHASH); err != nil {
-					return a
-				}
-				a = rest
-			}
-		},
-	}
+	c := &client{}
 	tests := []struct {
 		name      string
 		localAddr ma.Multiaddr
@@ -833,6 +823,6 @@ func FuzzClient(f *testing.F) {
 func TestNormalizeMultiaddr(t *testing.T) {
 	require.Equal(t,
 		"/ip4/1.2.3.4/udp/9999/quic-v1/webtransport",
-		NormalizeMultiaddr(ma.StringCast("/ip4/1.2.3.4/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")).String(),
+		normalizeMultiaddr(ma.StringCast("/ip4/1.2.3.4/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")).String(),
 	)
 }
