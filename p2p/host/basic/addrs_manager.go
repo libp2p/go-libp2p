@@ -225,9 +225,9 @@ func (a *addrsManager) startBackgroundWorker() (retErr error) {
 	if err != nil {
 		return fmt.Errorf("error creating reachability subscriber: %s", err)
 	}
-	defer func() { retErr = closeIfError(retErr, identifySub, "identify subscription") }()
+	defer func() { retErr = closeIfError(retErr, emitter, "host reachable addrs changed emitter") }()
 
-	natTypeEmitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
+	natTypeEmitter, err := a.bus.Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
 	if err != nil {
 		return fmt.Errorf("error creating nat type emitter: %s", err)
 	}

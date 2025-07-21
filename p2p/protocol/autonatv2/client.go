@@ -23,19 +23,14 @@ import (
 // client implements the client for making dial requests for AutoNAT v2. It verifies successful
 // dials and provides an option to send data for dial requests.
 type client struct {
-	host               host.Host
-	dialData           []byte
-	normalizeMultiaddr func(ma.Multiaddr) ma.Multiaddr
-	metricsTracer      MetricsTracer
+	host          host.Host
+	dialData      []byte
+	metricsTracer MetricsTracer
 
 	mu sync.Mutex
 	// dialBackQueues maps nonce to the channel for providing the local multiaddr of the connection
 	// the nonce was received on
 	dialBackQueues map[uint64]chan ma.Multiaddr
-}
-
-type normalizeMultiaddrer interface {
-	NormalizeMultiaddr(ma.Multiaddr) ma.Multiaddr
 }
 
 func newClient(s *autoNATSettings) *client {
@@ -47,12 +42,7 @@ func newClient(s *autoNATSettings) *client {
 }
 
 func (ac *client) Start(h host.Host) {
-	normalizeMultiaddr := func(a ma.Multiaddr) ma.Multiaddr { return a }
-	if hn, ok := h.(normalizeMultiaddrer); ok {
-		normalizeMultiaddr = hn.NormalizeMultiaddr
-	}
 	ac.host = h
-	ac.normalizeMultiaddr = normalizeMultiaddr
 	ac.host.SetStreamHandler(DialBackProtocol, ac.handleDialBack)
 }
 
@@ -323,9 +313,9 @@ func (ac *client) handleDialBack(s network.Stream) {
 	}
 }
 
-// NormalizeMultiaddr returns a multiaddr suitable for equality checks.
+// normalizeMultiaddr returns a multiaddr suitable for equality checks.
 // If the multiaddr is a webtransport component, it removes the certhashes.
-func NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
+func normalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
 	if !ok {
 		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
@@ -344,8 +334,8 @@ func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) boo
 	if len(connLocalAddr) == 0 || len(dialedAddr) == 0 {
 		return false
 	}
-	connLocalAddr = NormalizeMultiaddr(connLocalAddr)
-	dialedAddr = NormalizeMultiaddr(dialedAddr)
+	connLocalAddr = normalizeMultiaddr(connLocalAddr)
+	dialedAddr = normalizeMultiaddr(dialedAddr)
 
 	localProtos := connLocalAddr.Protocols()
 	externalProtos := dialedAddr.Protocols()
