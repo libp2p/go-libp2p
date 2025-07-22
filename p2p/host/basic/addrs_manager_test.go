@@ -10,6 +10,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -17,6 +19,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockAddrStore implements addrStore for testing
+type mockAddrStore struct{}
+
+func (m *mockAddrStore) SetAddrs(peer.ID, []ma.Multiaddr, time.Duration) {}
+
+// mockSignedRecordStore implements signedRecordStore for testing
+type mockSignedRecordStore struct{}
+
+func (m *mockSignedRecordStore) ConsumePeerRecord(*record.Envelope, time.Duration) (bool, error) {
+	return true, nil
+}
 
 type mockNatManager struct {
 	GetMappingFunc func(addr ma.Multiaddr) ma.Multiaddr
@@ -90,7 +104,6 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 	if args.AddrsFactory == nil {
 		args.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 	}
-	addrsUpdatedChan := make(chan struct{}, 1)
 
 	addCertHashes := func(addrs []ma.Multiaddr) []ma.Multiaddr {
 		return addrs
@@ -106,10 +119,13 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		addCertHashes,
 		false,
 		args.ObservedAddrsManager,
-		addrsUpdatedChan,
 		args.AutoNATClient,
 		true,
 		prometheus.DefaultRegisterer,
+		true,             // disableSignedPeerRecord - disable for tests
+		nil,              // signKey - not needed for tests
+		&mockAddrStore{}, // addrStore mock
+		"",               // hostID - not needed for tests
 	)
 	require.NoError(tb, err)
 
