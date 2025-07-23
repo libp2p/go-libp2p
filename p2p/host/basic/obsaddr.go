@@ -242,6 +242,8 @@ func (o *ObservedAddrsManager) getTopExternalAddrs(localTWStr string, minObserve
 		// keep the address list stable by using the lexicographically smaller address
 		return a.ObservedTWAddr.Compare(b.ObservedTWAddr)
 	})
+	// TODO(sukunrt): Improve this logic. Return only if the addresses have a
+	// threshold fraction of the maximum observations
 	n := len(observerSets)
 	if n > maxExternalThinWaistAddrsPerLocalAddr {
 		n = maxExternalThinWaistAddrsPerLocalAddr
@@ -277,8 +279,12 @@ func (o *ObservedAddrsManager) worker() {
 }
 
 func isRelayedAddress(a ma.Multiaddr) bool {
-	_, err := a.ValueForProtocol(ma.P_CIRCUIT)
-	return err == nil
+	for _, c := range a {
+		if c.Code() == ma.P_CIRCUIT {
+			return true
+		}
+	}
+	return false
 }
 
 func (o *ObservedAddrsManager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) (shouldRecord bool, localTW thinWaist, observedTW thinWaist) {
@@ -309,7 +315,11 @@ func (o *ObservedAddrsManager) shouldRecordObservation(conn connMultiaddrs, obse
 
 	listenAddrs := o.listenAddrs()
 	for i, a := range listenAddrs {
-		tw, _ := thinWaistForm(a) // tw is empty if zero is non nil
+		tw, err := thinWaistForm(a)
+		if err != nil {
+			listenAddrs[i] = nil
+			continue
+		}
 		listenAddrs[i] = tw.TW
 	}
 
@@ -401,7 +411,7 @@ func (o *ObservedAddrsManager) addExternalAddrsUnlocked(observedTWAddr ma.Multia
 	s.ObservedBy[observer]++
 }
 
-func (o *ObservedAddrsManager) removeConn(conn connMultiaddrs) {
+func (o *ObservedAddrsManager) RemoveConn(conn connMultiaddrs) {
 	if conn == nil {
 		return
 	}
@@ -414,8 +424,6 @@ func (o *ObservedAddrsManager) removeConn(conn connMultiaddrs) {
 	}
 	delete(o.connObservedTWAddrs, conn)
 
-	// normalize before obtaining the thinWaist so that we are always dealing
-	// with the normalized form of the address
 	localTW, err := thinWaistForm(conn.LocalMultiaddr())
 	if err != nil {
 		return
