@@ -439,7 +439,7 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, localAddrsEmitt
 		log.Debugf("host addresses updated: %s", current.addrs)
 
 		// Emit EvtLocalAddressesUpdated event and handle peerstore operations
-		a.emitAddrChange(localAddrsEmitter, current.addrs, previous.addrs)
+		a.handleHostAddrsUpdated(localAddrsEmitter, current.addrs, previous.addrs)
 	}
 
 	// We *must* send both reachability changed and addrs changed events from the
@@ -750,8 +750,8 @@ func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
 	return addrs
 }
 
-// emitAddrChange emits an EvtLocalAddressesUpdated event and handles peerstore operations
-func (a *addrsManager) emitAddrChange(emitter event.Emitter, currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
+// handleHostAddrsUpdated emits an EvtLocalAddressesUpdated event and updates the addresses in the peerstore.
+func (a *addrsManager) handleHostAddrsUpdated(emitter event.Emitter, currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
 	added, maintained, removed := a.diffAddrs(lastAddrs, currentAddrs)
 	if len(added) == 0 && len(removed) == 0 {
 		return
@@ -761,10 +761,29 @@ func (a *addrsManager) emitAddrChange(emitter event.Emitter, currentAddrs []ma.M
 	a.addrStore.SetAddrs(a.hostID, currentAddrs, peerstore.PermanentAddrTTL)
 	a.addrStore.SetAddrs(a.hostID, removed, 0)
 
+	var sr *record.Envelope
+	// Our addresses have changed.
+	// store the signed peer record in the peer store.
+	if a.signedRecordStore != nil {
+		var err error
+		// add signed peer record to the event
+		// in case of an error drop this event.
+		sr, err = a.makeSignedPeerRecord(currentAddrs)
+		if err != nil {
+			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
+			return
+		}
+		if _, err := a.signedRecordStore.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
+			log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+			return
+		}
+	}
+
 	evt := &event.EvtLocalAddressesUpdated{
-		Diffs:   true,
-		Current: make([]event.UpdatedAddress, 0, len(currentAddrs)),
-		Removed: make([]event.UpdatedAddress, 0, len(removed)),
+		Diffs:            true,
+		Current:          make([]event.UpdatedAddress, 0, len(currentAddrs)),
+		Removed:          make([]event.UpdatedAddress, 0, len(removed)),
+		SignedPeerRecord: sr,
 	}
 
 	for _, addr := range maintained {
@@ -786,23 +805,6 @@ func (a *addrsManager) emitAddrChange(emitter event.Emitter, currentAddrs []ma.M
 			Address: addr,
 			Action:  event.Removed,
 		})
-	}
-
-	// Our addresses have changed.
-	// store the signed peer record in the peer store.
-	if a.signedRecordStore != nil {
-		// add signed peer record to the event
-		sr, err := a.makeSignedPeerRecord(currentAddrs)
-		if err != nil {
-			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
-			// drop this change without sending the event.
-			return
-		}
-		if _, err := a.signedRecordStore.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
-			log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
-			return
-		}
-		evt.SignedPeerRecord = sr
 	}
 
 	// emit addr change event
