@@ -436,7 +436,7 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, localAddrsEmitt
 		}
 	}
 	if areAddrsDifferent(previous.addrs, current.addrs) {
-		log.Debugf("host addresses updated: %s", current.localAddrs)
+		log.Debugf("host addresses updated: %s", current.addrs)
 
 		// Emit EvtLocalAddressesUpdated event and handle peerstore operations
 		a.emitAddrChange(localAddrsEmitter, current.addrs, previous.addrs)
@@ -644,9 +644,9 @@ func areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	return false
 }
 
-// makeUpdatedAddrEvent creates an EvtLocalAddressesUpdated event from previous and current addresses
+// diffAddrs diffs prev and current addrs and returns added, maintained, and removed addrs.
 // Both prev and current are expected to be sorted using ma.Compare()
-func (a *addrsManager) makeUpdatedAddrEvent(prev, current []ma.Multiaddr) (added, maintained, removed []ma.Multiaddr) {
+func (a *addrsManager) diffAddrs(prev, current []ma.Multiaddr) (added, maintained, removed []ma.Multiaddr) {
 	i, j := 0, 0
 	for i < len(prev) && j < len(current) {
 		cmp := prev[i].Compare(current[j])
@@ -681,9 +681,13 @@ func (a *addrsManager) makeSignedPeerRecord(addrs []ma.Multiaddr) (*record.Envel
 	// Limit the length of currentAddrs to ensure that our signed peer records aren't rejected
 	peerRecordSize := 64 // HostID
 	k, err := a.signKey.Raw()
-	if err != nil {
-		peerRecordSize += 2 * len(k) // 1 for signature, 1 for public key
+	var nk int
+	if err == nil {
+		nk = len(k)
+	} else {
+		nk = 1024 // In case of error, use a large enough value.
 	}
+	peerRecordSize += 2 * nk // 1 for signature, 1 for public key
 	// we want the final address list to be small for keeping the signed peer record in size
 	addrs = trimHostAddrList(addrs, maxPeerRecordSize-peerRecordSize-256) // 256 B of buffer
 	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
@@ -748,20 +752,18 @@ func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
 
 // emitAddrChange emits an EvtLocalAddressesUpdated event and handles peerstore operations
 func (a *addrsManager) emitAddrChange(emitter event.Emitter, currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
-	added, maintained, removed := a.makeUpdatedAddrEvent(lastAddrs, currentAddrs)
+	added, maintained, removed := a.diffAddrs(lastAddrs, currentAddrs)
 	if len(added) == 0 && len(removed) == 0 {
 		return
 	}
 
-	current := append(added, maintained...)
-
 	// update host addresses in the peer store
-	a.addrStore.SetAddrs(a.hostID, current, peerstore.PermanentAddrTTL)
+	a.addrStore.SetAddrs(a.hostID, currentAddrs, peerstore.PermanentAddrTTL)
 	a.addrStore.SetAddrs(a.hostID, removed, 0)
 
 	evt := &event.EvtLocalAddressesUpdated{
 		Diffs:   true,
-		Current: make([]event.UpdatedAddress, 0, len(current)),
+		Current: make([]event.UpdatedAddress, 0, len(currentAddrs)),
 		Removed: make([]event.UpdatedAddress, 0, len(removed)),
 	}
 
@@ -790,7 +792,7 @@ func (a *addrsManager) emitAddrChange(emitter event.Emitter, currentAddrs []ma.M
 	// store the signed peer record in the peer store.
 	if a.signedRecordStore != nil {
 		// add signed peer record to the event
-		sr, err := a.makeSignedPeerRecord(current)
+		sr, err := a.makeSignedPeerRecord(currentAddrs)
 		if err != nil {
 			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
 			// drop this change without sending the event.
