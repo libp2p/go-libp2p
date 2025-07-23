@@ -145,6 +145,11 @@ func (a *addrsManager) Start() error {
 	}
 	if a.observedAddrsManager != nil {
 		a.observedAddrsManager.Start()
+		err := a.startObservedAddrsWorker()
+		if err != nil {
+			a.observedAddrsManager.Close()
+			return fmt.Errorf("error starting observed addrs worker: %s", err)
+		}
 	}
 
 	return a.startBackgroundWorker()
@@ -206,6 +211,23 @@ func closeIfError(err error, closer io.Closer, name string) error {
 	return nil
 }
 
+func (a *addrsManager) startObservedAddrsWorker() (retErr error) {
+	identifySub, err := a.bus.Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.Name("addrs-manager"))
+	if err != nil {
+		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
+	}
+	defer func() { retErr = closeIfError(retErr, identifySub, "identify subscription") }()
+
+	natTypeEmitter, err := a.bus.Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
+	if err != nil {
+		return fmt.Errorf("error creating nat type emitter: %s", err)
+	}
+
+	a.wg.Add(1)
+	go a.observedAddrsWorker(identifySub, natTypeEmitter)
+	return nil
+}
+
 func (a *addrsManager) startBackgroundWorker() (retErr error) {
 	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("addrs-manager"))
 	if err != nil {
@@ -219,21 +241,9 @@ func (a *addrsManager) startBackgroundWorker() (retErr error) {
 	}
 	defer func() { retErr = closeIfError(retErr, autonatReachabilitySub, "autonatReachability subscription") }()
 
-	identifySub, err := a.bus.Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.Name("addrs-manager"))
-	if err != nil {
-		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
-	}
-	defer func() { retErr = closeIfError(retErr, identifySub, "identify subscription") }()
-
 	emitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
 	if err != nil {
 		return fmt.Errorf("error creating reachability subscriber: %s", err)
-	}
-	defer func() { retErr = closeIfError(retErr, emitter, "host reachable addrs changed emitter") }()
-
-	natTypeEmitter, err := a.bus.Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
-	if err != nil {
-		return fmt.Errorf("error creating nat type emitter: %s", err)
 	}
 
 	var relayAddrs []ma.Multiaddr
@@ -259,10 +269,6 @@ func (a *addrsManager) startBackgroundWorker() (retErr error) {
 
 	a.wg.Add(1)
 	go a.background(autoRelayAddrsSub, autonatReachabilitySub, emitter, relayAddrs)
-	if a.observedAddrsManager != nil {
-		a.wg.Add(1)
-		go a.observedAddrsWorker(identifySub, natTypeEmitter)
-	}
 	return nil
 }
 
@@ -328,19 +334,16 @@ func (a *addrsManager) observedAddrsWorker(identifySub event.Subscription, natTy
 	natTypeTicker := time.NewTicker(natTypeChangeTickrInterval)
 	defer natTypeTicker.Stop()
 	var udpNATType, tcpNATType network.NATDeviceType
-	pendingNATUpdate := false
 	for {
 		select {
 		case e := <-identifySub.Out():
 			evt := e.(event.EvtPeerIdentificationCompleted)
 			a.observedAddrsManager.Record(evt.Conn, evt.ObservedAddr)
-			pendingNATUpdate = true
 		case <-natTypeTicker.C:
-			if pendingNATUpdate && *a.hostReachability.Load() == network.ReachabilityPrivate {
+			if *a.hostReachability.Load() == network.ReachabilityPrivate {
 				newUDPNAT, newTCPNAT := a.observedAddrsManager.getNATType()
 				a.notifyNATTypeChanged(natTypeEmitter, newUDPNAT, newTCPNAT, udpNATType, tcpNATType)
 				udpNATType, tcpNATType = newUDPNAT, newTCPNAT
-				pendingNATUpdate = false
 			}
 		case <-a.ctx.Done():
 			return
