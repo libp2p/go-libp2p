@@ -15,128 +15,10 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multiaddr/matest"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestAppendNATAddrs(t *testing.T) {
-	if1, if2 := ma.StringCast("/ip4/192.168.0.100"), ma.StringCast("/ip4/1.1.1.1")
-	ifaceAddrs := []ma.Multiaddr{if1, if2}
-	tcpListenAddr, udpListenAddr := ma.StringCast("/ip4/0.0.0.0/tcp/1"), ma.StringCast("/ip4/0.0.0.0/udp/2/quic-v1")
-	cases := []struct {
-		Name        string
-		Listen      ma.Multiaddr
-		Nat         ma.Multiaddr
-		ObsAddrFunc func(ma.Multiaddr) []ma.Multiaddr
-		Expected    []ma.Multiaddr
-	}{
-		{
-			Name: "nat map success",
-			// nat mapping success, obsaddress ignored
-			Listen: ma.StringCast("/ip4/0.0.0.0/udp/1/quic-v1"),
-			Nat:    ma.StringCast("/ip4/1.1.1.1/udp/10/quic-v1"),
-			ObsAddrFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
-				return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/udp/100/quic-v1")}
-			},
-			Expected: []ma.Multiaddr{ma.StringCast("/ip4/1.1.1.1/udp/10/quic-v1")},
-		},
-		{
-			Name: "nat map failure",
-			// nat mapping fails, obs addresses added
-			Listen: ma.StringCast("/ip4/0.0.0.0/tcp/1"),
-			Nat:    nil,
-			ObsAddrFunc: func(a ma.Multiaddr) []ma.Multiaddr {
-				ipC, _ := ma.SplitFirst(a)
-				ip := ipC.Multiaddr()
-				switch {
-				case ip.Equal(if1):
-					return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/tcp/100")}
-				case ip.Equal(if2):
-					return []ma.Multiaddr{ma.StringCast("/ip4/3.3.3.3/tcp/100")}
-				default:
-					return []ma.Multiaddr{}
-				}
-			},
-			Expected: []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/tcp/100"), ma.StringCast("/ip4/3.3.3.3/tcp/100")},
-		},
-		{
-			Name: "if addrs ignored if not listening on unspecified",
-			// nat mapping fails, obs addresses added
-			Listen: ma.StringCast("/ip4/192.168.1.1/tcp/1"),
-			Nat:    nil,
-			ObsAddrFunc: func(a ma.Multiaddr) []ma.Multiaddr {
-				ipC, _ := ma.SplitFirst(a)
-				ip := ipC.Multiaddr()
-				switch {
-				case ip.Equal(if1):
-					return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/tcp/100")}
-				case ip.Equal(if2):
-					return []ma.Multiaddr{ma.StringCast("/ip4/3.3.3.3/tcp/100")}
-				case ip.Equal(ma.StringCast("/ip4/192.168.1.1")):
-					return []ma.Multiaddr{ma.StringCast("/ip4/4.4.4.4/tcp/100")}
-				default:
-					return []ma.Multiaddr{}
-				}
-			},
-			Expected: []ma.Multiaddr{ma.StringCast("/ip4/4.4.4.4/tcp/100")},
-		},
-		{
-			Name: "nat map success but CGNAT",
-			// nat addr added, obs address added with nat provided port
-			Listen: tcpListenAddr,
-			Nat:    ma.StringCast("/ip4/100.100.1.1/tcp/100"),
-			ObsAddrFunc: func(a ma.Multiaddr) []ma.Multiaddr {
-				ipC, _ := ma.SplitFirst(a)
-				ip := ipC.Multiaddr()
-				if ip.Equal(if1) {
-					return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/tcp/20")}
-				}
-				return []ma.Multiaddr{ma.StringCast("/ip4/3.3.3.3/tcp/30")}
-			},
-			Expected: []ma.Multiaddr{
-				ma.StringCast("/ip4/100.100.1.1/tcp/100"),
-				ma.StringCast("/ip4/2.2.2.2/tcp/20"),
-				ma.StringCast("/ip4/3.3.3.3/tcp/30"),
-			},
-		},
-		{
-			Name: "uses unspecified address for obs address",
-			// observed address manager should be queries with both specified and unspecified addresses
-			// udp observed addresses are mapped to unspecified addresses
-			Listen: udpListenAddr,
-			Nat:    nil,
-			ObsAddrFunc: func(a ma.Multiaddr) []ma.Multiaddr {
-				if manet.IsIPUnspecified(a) {
-					return []ma.Multiaddr{ma.StringCast("/ip4/3.3.3.3/udp/20/quic-v1")}
-				}
-				return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/udp/20/quic-v1")}
-			},
-			Expected: []ma.Multiaddr{
-				ma.StringCast("/ip4/2.2.2.2/udp/20/quic-v1"),
-				ma.StringCast("/ip4/3.3.3.3/udp/20/quic-v1"),
-			},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.Name, func(t *testing.T) {
-			as := &addrsManager{
-				natManager: &mockNatManager{
-					GetMappingFunc: func(_ ma.Multiaddr) ma.Multiaddr {
-						return tc.Nat
-					},
-				},
-				observedAddrsManager: &mockObservedAddrs{
-					AddrsForFunc: tc.ObsAddrFunc,
-				},
-			}
-			res := as.appendNATAddrs(nil, []ma.Multiaddr{tc.Listen}, ifaceAddrs)
-			res = ma.Unique(res)
-			require.ElementsMatch(t, tc.Expected, res, "%s\n%s", tc.Expected, res)
-		})
-	}
-}
 
 type mockNatManager struct {
 	GetMappingFunc func(addr ma.Multiaddr) ma.Multiaddr
@@ -176,7 +58,7 @@ func (m *mockObservedAddrs) getNATType() (network.NATDeviceType, network.NATDevi
 }
 
 // removeConn implements observedAddrsManager.
-func (m *mockObservedAddrs) removeConn(_ connMultiaddrs) {}
+func (m *mockObservedAddrs) RemoveConn(_ connMultiaddrs) {}
 
 func (m *mockObservedAddrs) Addrs(int) []ma.Multiaddr { return m.AddrsFunc() }
 
@@ -259,6 +141,7 @@ func TestAddrsManager(t *testing.T) {
 	lhtcp := ma.StringCast("/ip4/127.0.0.1/tcp/1")
 
 	publicQUIC := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
+	publicQUIC2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 	publicTCP := ma.StringCast("/ip4/1.2.3.4/tcp/1")
 
 	t.Run("only nat", func(t *testing.T) {
@@ -296,13 +179,16 @@ func TestAddrsManager(t *testing.T) {
 					if _, err := addr.ValueForProtocol(ma.P_TCP); err == nil {
 						return []ma.Multiaddr{publicTCP}
 					}
+					if _, err := addr.ValueForProtocol(ma.P_UDP); err == nil {
+						return []ma.Multiaddr{publicQUIC2}
+					}
 					return nil
 				},
 			},
 			ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{lhquic, lhtcp} },
 		})
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			expected := []ma.Multiaddr{lhquic, lhtcp, publicQUIC, publicTCP}
+			expected := []ma.Multiaddr{lhquic, lhtcp, publicQUIC, publicTCP, publicQUIC2}
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
 		}, 5*time.Second, 50*time.Millisecond)
 	})
