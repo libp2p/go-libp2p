@@ -298,6 +298,9 @@ func (a *addrsManager) startBackgroundWorker() (retErr error) {
 	// update addresses before starting the worker loop. This ensures that any address updates
 	// before calling addrsManager.Start are correctly reported after Start returns.
 	a.updateAddrs(true, relayAddrs)
+	a.addrsMx.RLock()
+	a.updatePeerStore(a.currentAddrs.addrs, nil)
+	a.addrsMx.RUnlock()
 
 	a.wg.Add(1)
 	go a.background(autoRelayAddrsSub, autonatReachabilitySub, emitter, localAddrsEmitter, relayAddrs)
@@ -757,27 +760,7 @@ func (a *addrsManager) handleHostAddrsUpdated(emitter event.Emitter, currentAddr
 		return
 	}
 
-	// update host addresses in the peer store
-	a.addrStore.SetAddrs(a.hostID, currentAddrs, peerstore.PermanentAddrTTL)
-	a.addrStore.SetAddrs(a.hostID, removed, 0)
-
-	var sr *record.Envelope
-	// Our addresses have changed.
-	// store the signed peer record in the peer store.
-	if a.signedRecordStore != nil {
-		var err error
-		// add signed peer record to the event
-		// in case of an error drop this event.
-		sr, err = a.makeSignedPeerRecord(currentAddrs)
-		if err != nil {
-			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
-			return
-		}
-		if _, err := a.signedRecordStore.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
-			log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
-			return
-		}
-	}
+	sr := a.updatePeerStore(currentAddrs, removed)
 
 	evt := &event.EvtLocalAddressesUpdated{
 		Diffs:            true,
@@ -811,6 +794,33 @@ func (a *addrsManager) handleHostAddrsUpdated(emitter event.Emitter, currentAddr
 	if err := emitter.Emit(*evt); err != nil {
 		log.Warnf("error emitting event for updated addrs: %s", err)
 	}
+}
+
+// updatePeerStore updates the peer store and returns the signed peer record.
+// If the signed peer record is not created, it returns nil.
+func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs []ma.Multiaddr) *record.Envelope {
+	// update host addresses in the peer store
+	a.addrStore.SetAddrs(a.hostID, currentAddrs, peerstore.PermanentAddrTTL)
+	a.addrStore.SetAddrs(a.hostID, removedAddrs, 0)
+
+	var sr *record.Envelope
+	// Our addresses have changed.
+	// store the signed peer record in the peer store.
+	if a.signedRecordStore != nil {
+		var err error
+		// add signed peer record to the event
+		// in case of an error drop this event.
+		sr, err = a.makeSignedPeerRecord(currentAddrs)
+		if err != nil {
+			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
+			return nil
+		}
+		if _, err := a.signedRecordStore.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
+			log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+			return nil
+		}
+	}
+	return sr
 }
 
 const interfaceAddrsCacheTTL = time.Minute
