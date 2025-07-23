@@ -177,9 +177,13 @@ func (a *addrsManager) NetNotifee() network.Notifiee {
 	// Updating addrs in sync provides the nice property that
 	// host.Addrs() just after host.Network().Listen(x) will return x
 	return &network.NotifyBundle{
-		ListenF:       func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
-		ListenCloseF:  func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
-		DisconnectedF: func(_ network.Network, conn network.Conn) { a.observedAddrsManager.removeConn(conn) },
+		ListenF:      func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
+		ListenCloseF: func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
+		DisconnectedF: func(_ network.Network, conn network.Conn) {
+			if a.observedAddrsManager != nil {
+				a.observedAddrsManager.removeConn(conn)
+			}
+		},
 	}
 }
 
@@ -195,7 +199,7 @@ func closeIfError(err error, closer io.Closer, name string) error {
 	if err != nil {
 		err1 := closer.Close()
 		if err1 != nil {
-			err1 = fmt.Errorf("error closing %s: %w", name, err)
+			err1 = fmt.Errorf("error closing %s: %w", name, err1)
 		}
 		return errors.Join(err, err1)
 	}
@@ -329,10 +333,8 @@ func (a *addrsManager) observedAddrsWorker(identifySub event.Subscription, natTy
 		select {
 		case e := <-identifySub.Out():
 			evt := e.(event.EvtPeerIdentificationCompleted)
-			if a.observedAddrsManager != nil {
-				a.observedAddrsManager.Record(evt.Conn, evt.ObservedAddr)
-				pendingNATUpdate = true
-			}
+			a.observedAddrsManager.Record(evt.Conn, evt.ObservedAddr)
+			pendingNATUpdate = true
 		case <-natTypeTicker.C:
 			if pendingNATUpdate && *a.hostReachability.Load() == network.ReachabilityPrivate {
 				newUDPNAT, newTCPNAT := a.observedAddrsManager.getNATType()
@@ -547,7 +549,7 @@ func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multi
 		// This is !Public as opposed to IsPrivate intentionally.
 		// Public is a more restrictive classification in some cases, like IPv6 addresses which only
 		// consider unicast IPv6 addresses allocated so far as public(2000::/3).
-		if !manet.IsPublicAddr(natAddr) {
+		if a.observedAddrsManager != nil && !manet.IsPublicAddr(natAddr) {
 			// nat reported non public addr(maybe CGNAT?), add observed addrs too.
 			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
 		}
@@ -556,9 +558,6 @@ func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multi
 }
 
 func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
-	if a.observedAddrsManager == nil {
-		return dst
-	}
 	// Add it for the listenAddr first.
 	// listenAddr maybe unspecified. That's okay as connections on UDP transports
 	// will have the unspecified address as the local address.
