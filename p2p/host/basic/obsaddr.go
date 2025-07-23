@@ -438,10 +438,12 @@ func (o *ObservedAddrsManager) getNATType() (tcpNATType, udpNATType network.NATD
 	for _, m := range o.externalAddrs {
 		isTCP := false
 		for _, v := range m {
-			if _, err := v.ObservedTWAddr.ValueForProtocol(ma.P_TCP); err == nil {
-				isTCP = true
+			for _, c := range v.ObservedTWAddr {
+				if c.Code() == ma.P_TCP {
+					isTCP = true
+					break
+				}
 			}
-			break
 		}
 		for _, v := range m {
 			if isTCP {
