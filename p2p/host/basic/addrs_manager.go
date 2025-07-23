@@ -33,7 +33,7 @@ type observedAddrsManager interface {
 	AddrsFor(local ma.Multiaddr) []ma.Multiaddr
 
 	Record(conn connMultiaddrs, observed ma.Multiaddr)
-	removeConn(conn connMultiaddrs)
+	RemoveConn(conn connMultiaddrs)
 	Start()
 	getNATType() (network.NATDeviceType, network.NATDeviceType)
 	io.Closer
@@ -179,20 +179,20 @@ func (a *addrsManager) Close() {
 }
 
 func (a *addrsManager) NetNotifee() network.Notifiee {
-	// Updating addrs in sync provides the nice property that
-	// host.Addrs() just after host.Network().Listen(x) will return x
 	return &network.NotifyBundle{
 		ListenF:      func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
 		ListenCloseF: func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
 		DisconnectedF: func(_ network.Network, conn network.Conn) {
 			if a.observedAddrsManager != nil {
-				a.observedAddrsManager.removeConn(conn)
+				a.observedAddrsManager.RemoveConn(conn)
 			}
 		},
 	}
 }
 
 func (a *addrsManager) triggerAddrsUpdate() {
+	// Updating addrs in sync provides the nice property that
+	// host.Addrs() just after host.Network().Listen(x) will return x
 	a.updateAddrs(false, nil)
 	select {
 	case a.triggerAddrsUpdateChan <- struct{}{}:
@@ -500,7 +500,12 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 
 	finalAddrs := make([]ma.Multiaddr, 0, 8)
 	finalAddrs = a.appendPrimaryInterfaceAddrs(finalAddrs, listenAddrs)
-	finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs, a.interfaceAddrs.All())
+	if a.natManager != nil {
+		finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs)
+	}
+	if a.observedAddrsManager != nil {
+		finalAddrs = a.appendObservedAddrs(finalAddrs, listenAddrs, a.interfaceAddrs.All())
+	}
 
 	// Remove "/p2p-circuit" addresses from the list.
 	// The p2p-circuit listener reports its address as just /p2p-circuit. This is
@@ -540,42 +545,33 @@ func (a *addrsManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenAdd
 // Inferring WebTransport from QUIC depends on the observed address manager.
 //
 // TODO: Merge the natmgr and identify.ObservedAddrManager in to one NatMapper module.
-func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
+func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr) []ma.Multiaddr {
 	for _, listenAddr := range listenAddrs {
-		var natAddr ma.Multiaddr
-		if a.natManager != nil {
-			natAddr = a.natManager.GetMapping(listenAddr)
-		}
+		natAddr := a.natManager.GetMapping(listenAddr)
 		if natAddr != nil {
 			dst = append(dst, natAddr)
-		}
-		// This is !Public as opposed to IsPrivate intentionally.
-		// Public is a more restrictive classification in some cases, like IPv6 addresses which only
-		// consider unicast IPv6 addresses allocated so far as public(2000::/3).
-		if a.observedAddrsManager != nil && !manet.IsPublicAddr(natAddr) {
-			// nat reported non public addr(maybe CGNAT?), add observed addrs too.
-			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
 		}
 	}
 	return dst
 }
 
-func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
-	// Add it for the listenAddr first.
+func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddrs, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
+	// Add it for all the listenAddr first.
 	// listenAddr maybe unspecified. That's okay as connections on UDP transports
 	// will have the unspecified address as the local address.
-	obsAddrs := a.observedAddrsManager.AddrsFor(listenAddr)
-	dst = append(dst, obsAddrs...)
+	for _, la := range listenAddrs {
+		obsAddrs := a.observedAddrsManager.AddrsFor(la)
+		dst = append(dst, obsAddrs...)
+	}
 
 	// if it can be resolved into more addresses, add them too
-	resolved, err := manet.ResolveUnspecifiedAddress(listenAddr, ifaceAddrs)
+	resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, ifaceAddrs)
 	if err != nil {
-		log.Warnf("failed to resolve listen addr %s, %s: %s", listenAddr, ifaceAddrs, err)
+		log.Warnf("failed to resolve listen addr %s, %s: %s", listenAddrs, ifaceAddrs, err)
 		return dst
 	}
 	for _, addr := range resolved {
-		obsAddrs = a.observedAddrsManager.AddrsFor(addr)
-		dst = append(dst, obsAddrs...)
+		dst = append(dst, a.observedAddrsManager.AddrsFor(addr)...)
 	}
 	return dst
 }
