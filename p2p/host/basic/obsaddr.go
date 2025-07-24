@@ -2,7 +2,7 @@ package basichost
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net"
 	"slices"
 	"sort"
@@ -32,15 +32,14 @@ type thinWaist struct {
 	Addr, TW, Rest ma.Multiaddr
 }
 
+var twErr = errors.New("not a thinwaist address")
+
 func thinWaistForm(a ma.Multiaddr) (thinWaist, error) {
 	if len(a) < 2 {
-		return thinWaist{}, fmt.Errorf("not a thinwaist address: %s", a)
+		return thinWaist{}, twErr
 	}
-	// we don't care about link local ipv6 addresses here
-	hasIP := a[0].Code() == ma.P_IP4 || a[0].Code() == ma.P_IP6
-	hasProtocol := a[1].Code() == ma.P_TCP || a[1].Code() == ma.P_UDP
-	if !hasIP || !hasProtocol {
-		return thinWaist{}, fmt.Errorf("not a thinwaist address: %s", a)
+	if c0, c1 := a[0].Code(), a[1].Code(); (c0 != ma.P_IP4 && c0 != ma.P_IP6) || (c1 != ma.P_TCP && c1 != ma.P_UDP) {
+		return thinWaist{}, twErr
 	}
 	return thinWaist{Addr: a, TW: a[:2], Rest: a[2:]}, nil
 }
@@ -503,14 +502,14 @@ func (o *ObservedAddrsManager) Close() error {
 	return nil
 }
 
-// hasConsistentTransport returns true if the address `a` shares the same
-// protocols with `b`
-func hasConsistentTransport(a, b ma.Multiaddr) bool {
-	if len(a) != len(b) {
+// hasConsistentTransport returns true if the thin waist address `aTW` shares the same
+// protocols with `bTW`
+func hasConsistentTransport(aTW, bTW ma.Multiaddr) bool {
+	if len(aTW) != len(bTW) {
 		return false
 	}
-	for i, ac := range a {
-		if b[i].Code() != ac.Code() {
+	for i, a := range aTW {
+		if bTW[i].Code() != a.Code() {
 			return false
 		}
 	}
