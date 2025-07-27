@@ -3,6 +3,7 @@ package autonat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -15,6 +16,9 @@ import (
 	"github.com/libp2p/go-msgio/pbio"
 
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/libp2p/go-libp2p/p2p/net/manet"
+	"google.golang.org/protobuf/proto"
+	"github.com/libp2p/go-msgio/protoio"
 )
 
 var streamTimeout = 60 * time.Second
@@ -23,6 +27,9 @@ const (
 	ServiceName = "libp2p.autonat"
 
 	maxMsgSize = 4096
+
+	maxAddresses = 100
+	dialTimeout  = 30 * time.Second
 )
 
 // AutoNATService provides NAT autodetection services to other peers
@@ -50,59 +57,119 @@ func newAutoNATService(c *config) (*autoNATService, error) {
 	}, nil
 }
 
-func (as *autoNATService) handleStream(s network.Stream) {
-	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to autonat service: %s", err)
-		s.Reset()
-		return
+func (s *autoNATService) handleStream(stream network.Stream) {
+	defer stream.Close()
+
+	if err := s.handleStreamRequest(stream); err != nil {
+		log.Debugf("error handling autonat request: %s", err)
+		resp := &pb.Message{
+			Type:    pb.Message_DIAL_RESPONSE.Enum(),
+			Status:  pb.Message_E_DIAL_ERROR.Enum(),
+			Version: proto.Int32(autoNATProtocolVersion),
+		}
+		s.writeResponse(stream, resp)
+	}
+}
+
+func (s *autoNATService) handleStreamRequest(stream network.Stream) error {
+	rd := protoio.NewDelimitedReader(stream, network.MessageSizeMax)
+	wr := protoio.NewDelimitedWriter(stream)
+
+	req := &pb.Message{}
+	if err := rd.ReadMsg(req); err != nil {
+		return err
 	}
 
-	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for autonat stream: %s", err)
-		s.Reset()
-		return
-	}
-	defer s.Scope().ReleaseMemory(maxMsgSize)
-
-	s.SetDeadline(time.Now().Add(streamTimeout))
-	defer s.Close()
-
-	pid := s.Conn().RemotePeer()
-	log.Debugf("New stream from %s", pid)
-
-	r := pbio.NewDelimitedReader(s, maxMsgSize)
-	w := pbio.NewDelimitedWriter(s)
-
-	var req pb.Message
-	var res pb.Message
-
-	err := r.ReadMsg(&req)
-	if err != nil {
-		log.Debugf("Error reading message from %s: %s", pid, err.Error())
-		s.Reset()
-		return
+	if req.GetType() != pb.Message_DIAL {
+		return fmt.Errorf("unknown message type: %d", req.GetType())
 	}
 
-	t := req.GetType()
-	if t != pb.Message_DIAL {
-		log.Debugf("Unexpected message from %s: %s (%d)", pid, t.String(), t)
-		s.Reset()
-		return
+	if req.GetVersion() != autoNATProtocolVersion {
+		return fmt.Errorf("unknown protocol version: %d", req.GetVersion())
 	}
 
-	dr := as.handleDial(pid, s.Conn().RemoteMultiaddr(), req.GetDial().GetPeer())
-	res.Type = pb.Message_DIAL_RESPONSE.Enum()
-	res.DialResponse = dr
+	p := stream.Conn().RemotePeer()
+	pi := peer.AddrInfo{ID: p}
+	addrs := req.GetAddresses()
+	if len(addrs) == 0 {
+		return fmt.Errorf("no addresses provided")
+	}
 
-	err = w.WriteMsg(&res)
-	if err != nil {
-		log.Debugf("Error writing response to %s: %s", pid, err.Error())
-		s.Reset()
-		return
+	// Limit the number of addresses to check
+	if len(addrs) > maxAddresses {
+		addrs = addrs[:maxAddresses]
 	}
-	if as.config.metricsTracer != nil {
-		as.config.metricsTracer.OutgoingDialResponse(res.GetDialResponse().GetStatus())
+
+	// Convert addresses to multiaddrs
+	maddrs := make([]ma.Multiaddr, 0, len(addrs))
+	indices := make([]int32, 0, len(addrs))
+	for _, a := range addrs {
+		addr, err := ma.NewMultiaddrBytes(a.GetAddress())
+		if err != nil {
+			continue
+		}
+
+		// Check if this is a shared TCP listener address
+		protos := addr.Protocols()
+		isSharedTCP := false
+		if len(protos) > 0 && protos[len(protos)-1].Code == ma.P_TCP {
+			for _, comp := range addr.Components() {
+				if comp.Protocol().Code == ma.P_TCP {
+					isSharedTCP = true
+					break
+				}
+			}
+		}
+
+		// Include the address for dialing if it's public or using a shared TCP listener
+		if manet.IsPublicAddr(addr) || isSharedTCP {
+			maddrs = append(maddrs, addr)
+			indices = append(indices, a.GetIdx())
+		}
 	}
+
+	if len(maddrs) == 0 {
+		return fmt.Errorf("no public addresses provided")
+	}
+
+	pi.Addrs = maddrs
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+
+	// Try to connect to the peer
+	if err := s.host.Connect(ctx, pi); err != nil {
+		var status pb.Message_ResponseStatus
+		if isDialRefused(err) {
+			status = pb.Message_E_DIAL_REFUSED
+		} else {
+			status = pb.Message_E_DIAL_ERROR
+		}
+		resp := &pb.Message{
+			Type:    pb.Message_DIAL_RESPONSE.Enum(),
+			Status:  status.Enum(),
+			Version: proto.Int32(autoNATProtocolVersion),
+		}
+		return s.writeResponse(stream, resp)
+	}
+
+	// Successfully connected
+	addr := maddrs[0]
+	idx := indices[0]
+	resp := &pb.Message{
+		Type:    pb.Message_DIAL_RESPONSE.Enum(),
+		Status:  pb.Message_OK.Enum(),
+		Version: proto.Int32(autoNATProtocolVersion),
+		Address: &pb.Message_Address{
+			Address: addr.Bytes(),
+			Idx:     proto.Int32(idx),
+		},
+	}
+	return s.writeResponse(stream, resp)
+}
+
+func (s *autoNATService) writeResponse(stream network.Stream, resp *pb.Message) error {
+	wr := protoio.NewDelimitedWriter(stream)
+	return wr.WriteMsg(resp)
 }
 
 func (as *autoNATService) handleDial(p peer.ID, obsaddr ma.Multiaddr, mpi *pb.Message_PeerInfo) *pb.Message_DialResponse {

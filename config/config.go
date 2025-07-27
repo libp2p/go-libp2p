@@ -149,6 +149,10 @@ type Config struct {
 	UserFxOptions []fx.Option
 
 	ShareTCPListener bool
+	// AllowSharedTCPReachability indicates whether shared TCP listeners should be considered
+	// for reachability detection. When true, addresses using shared TCP listeners will be
+	// included in reachability checks. Defaults to true when ShareTCPListener is enabled.
+	AllowSharedTCPReachability bool
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -746,4 +750,27 @@ func (cfg *Config) Apply(opts ...Option) error {
 		}
 	}
 	return nil
+}
+
+// NewConfig creates a new config with the given options.
+func NewConfig(opts ...Option) (*Config, error) {
+	cfg := &Config{
+		UserAgent:                 "github.com/libp2p/go-libp2p",
+		ProtocolVersion:          identify.DefaultProtocolVersion,
+		QUICReuse:                []fx.Option{},
+		Transports:               []fx.Option{},
+		Muxers:                   []tptu.StreamMuxer{},
+		SecurityTransports:       []Security{},
+		RelayCustom:              false,
+		Relay:                    true,
+		ListenAddrs:              []ma.Multiaddr{},
+		SwarmOpts:                []swarm.Option{},
+		UserFxOptions:            []fx.Option{},
+		EnableAutoNATv2:          true,
+		AllowSharedTCPReachability: true, // Enable by default when ShareTCPListener is used
+	}
+	if err := cfg.Apply(opts...); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }

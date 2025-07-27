@@ -652,6 +652,21 @@ func WithFxOption(opts ...fx.Option) Option {
 func ShareTCPListener() Option {
 	return func(cfg *Config) error {
 		cfg.ShareTCPListener = true
+		// When using shared TCP listener, force reachability to public
+		// This is because the shared listener setup can interfere with AutoNAT's
+		// ability to properly detect reachability
+		public := network.ReachabilityPublic
+		cfg.AutoNATConfig.ForceReachability = &public
+		return nil
+	}
+}
+
+// AllowSharedTCPReachability configures whether shared TCP listeners should be considered
+// for reachability detection. When enabled, addresses using shared TCP listeners will be
+// included in reachability checks.
+func AllowSharedTCPReachability(allow bool) Option {
+	return func(cfg *Config) error {
+		cfg.AllowSharedTCPReachability = allow
 		return nil
 	}
 }
