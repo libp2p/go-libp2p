@@ -182,6 +182,10 @@ func (c *ConnManager) LendTransport(network string, tr QUICTransport, conn net.P
 		return nil, errors.New("expected a conn.LocalAddr() to return a *net.UDPAddr")
 	}
 
+	if tr == nil {
+		return nil, errors.New("transport is nil")
+	}
+
 	refCountedTr := &refcountedTransport{
 		QUICTransport:    tr,
 		packetConn:       conn,
