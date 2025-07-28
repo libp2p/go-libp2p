@@ -630,3 +630,13 @@ func TestObserver(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkThinWaist(b *testing.B) {
+	addr := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+	for i := 0; i < b.N; i++ {
+		_, err := thinWaistForm(addr)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
