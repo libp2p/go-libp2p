@@ -412,6 +412,15 @@ func (m *probeManager) AppendConfirmedAddrs(reachable, unreachable, unknown []ma
 	return reachable, unreachable, unknown
 }
 
+func hasProto(a ma.Multiaddr, code int) bool {
+	for _, c := range a {
+		if c.Code() == code {
+			return true
+		}
+	}
+	return false
+}
+
 // UpdateAddrs updates the tracked addrs
 func (m *probeManager) UpdateAddrs(addrs []ma.Multiaddr) {
 	m.mx.Lock()
@@ -427,6 +436,40 @@ func (m *probeManager) UpdateAddrs(addrs []ma.Multiaddr) {
 			statuses[k] = m.statuses[k]
 		}
 	}
+	/*
+		- First check if it's a TCP address. Then handle that case
+		- Handle the same case for UDP
+	*/
+	for _, s := range statuses {
+		if hasProto(s.Addr, ma.P_TCP) {
+			n := len(s.Addr) - 1
+			if s.Addr[n].Code() == ma.P_TCP {
+				continue
+			}
+			for i, v := range s.Addr {
+				if v.Code() == ma.P_TCP {
+					if a, ok := statuses[string(s.Addr[:i].Bytes())]; ok {
+						s.primaryAddr = a
+					}
+					break
+				}
+			}
+		} else if hasProto(s.Addr, ma.P_UDP) {
+			n := len(s.Addr) - 1
+			if s.Addr[n].Code() == ma.P_QUIC_V1 {
+				continue
+			}
+			for i, v := range s.Addr {
+				if v.Code() == ma.P_UDP {
+					qAddr := s.Addr[:i].Encapsulate(ma.StringCast("/quic-v1"))
+					if a, ok := statuses[string(qAddr.Bytes())]; ok {
+						s.primaryAddr = a
+					}
+					break
+				}
+			}
+		}
+	}
 	m.addrs = addrs
 	m.statuses = statuses
 }
@@ -439,9 +482,50 @@ func (m *probeManager) GetProbe() probe {
 	defer m.mx.Unlock()
 
 	now := m.now()
+	reqs := make(probe, 0, maxAddrsPerRequest)
 	for i, a := range m.addrs {
 		ab := a.Bytes()
-		pc := m.statuses[string(ab)].RequiredProbeCount(now)
+		s := m.statuses[string(ab)]
+		if s.primaryAddr != nil {
+			continue
+		}
+		pc := s.RequiredProbeCount(now)
+		if m.inProgressProbes[string(ab)] >= pc {
+			continue
+		}
+		reqs = append(reqs, autonatv2.Request{Addr: a, SendDialData: true})
+		// We have the first(primary) address. Append other addresses, ignoring inprogress probes
+		// on secondary addresses. The expectation is that the primary address will
+		// be dialed.
+		for j := 1; j < len(m.addrs); j++ {
+			k := (i + j) % len(m.addrs)
+			ab := m.addrs[k].Bytes()
+			s := m.statuses[string(ab)]
+			if s.primaryAddr != nil {
+				continue
+			}
+			pc := s.RequiredProbeCount(now)
+			if pc == 0 {
+				continue
+			}
+			reqs = append(reqs, autonatv2.Request{Addr: m.addrs[k], SendDialData: true})
+			if len(reqs) >= maxAddrsPerRequest {
+				break
+			}
+		}
+		break
+	}
+	if len(reqs) >= maxAddrsPerRequest {
+		reqs = reqs[:maxAddrsPerRequest]
+		return reqs
+	}
+	for i, a := range m.addrs {
+		ab := a.Bytes()
+		s := m.statuses[string(ab)]
+		pc := s.RequiredProbeCount(now)
+		if s.primaryAddr == nil {
+			continue
+		}
 		if m.inProgressProbes[string(ab)] >= pc {
 			continue
 		}
@@ -453,7 +537,11 @@ func (m *probeManager) GetProbe() probe {
 		for j := 1; j < len(m.addrs); j++ {
 			k := (i + j) % len(m.addrs)
 			ab := m.addrs[k].Bytes()
-			pc := m.statuses[string(ab)].RequiredProbeCount(now)
+			s := m.statuses[string(ab)]
+			if s.primaryAddr == nil {
+				continue
+			}
+			pc := s.RequiredProbeCount(now)
 			if pc == 0 {
 				continue
 			}
@@ -462,9 +550,12 @@ func (m *probeManager) GetProbe() probe {
 				break
 			}
 		}
-		return reqs
+		break
 	}
-	return nil
+	if len(reqs) >= maxAddrsPerRequest {
+		reqs = reqs[:maxAddrsPerRequest]
+	}
+	return reqs
 }
 
 // MarkProbeInProgress should be called when a probe is started.
@@ -530,6 +621,10 @@ func (m *probeManager) CompleteProbe(reqs probe, res autonatv2.Result, err error
 	if s, ok := m.statuses[dialAddrKey]; ok {
 		s.AddOutcome(now, res.Reachability, maxRecentDialsWindow)
 	}
+	fmt.Println("processed:", reqs[0].Addr, res.Addr, res.Reachability)
+	for _, s := range m.statuses {
+		fmt.Println("required", s.Addr, s.Reachability(), s.RequiredProbeCount(now), s.requiredProbeCountForConfirmation(now))
+	}
 }
 
 type dialOutcome struct {
@@ -539,6 +634,7 @@ type dialOutcome struct {
 
 type addrStatus struct {
 	Addr                ma.Multiaddr
+	primaryAddr         *addrStatus
 	lastRefusalTime     time.Time
 	consecutiveRefusals int
 	dialTimes           []time.Time
@@ -668,6 +764,15 @@ func (s *addrStatus) reachabilityAndCounts() (rch network.Reachability, successe
 			successes++
 		} else {
 			failures++
+		}
+	}
+	if s.primaryAddr != nil {
+		prch, _, _ := s.primaryAddr.reachabilityAndCounts()
+		switch prch {
+		case network.ReachabilityPublic:
+			successes *= 3
+		case network.ReachabilityPrivate:
+			failures *= 3
 		}
 	}
 	if successes-failures >= minConfidence {
