@@ -190,6 +190,7 @@ func (r *addrsReachabilityTracker) background() {
 		prevUnreachable = append(prevUnreachable[:0], currUnreachable...)
 		prevUnknown = append(prevUnknown[:0], currUnknown...)
 		if !nextProbeTime.IsZero() {
+			fmt.Println("sleeping for: ", nextProbeTime.Sub(r.clock.Now()))
 			probeTimer.Reset(nextProbeTime.Sub(r.clock.Now()))
 		}
 	}
@@ -529,6 +530,11 @@ func (m *probeManager) CompleteProbe(reqs probe, res autonatv2.Result, err error
 	// record the result for the dialed address
 	if s, ok := m.statuses[dialAddrKey]; ok {
 		s.AddOutcome(now, res.Reachability, maxRecentDialsWindow)
+	}
+
+	fmt.Println("processed result: ", "req", reqs[0].Addr, "res", res.Addr, "rch", res.Reachability, "error", err)
+	for _, a := range m.statuses {
+		fmt.Println(a.Addr, a.RequiredProbeCount(m.now()))
 	}
 }
 
