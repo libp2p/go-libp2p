@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/matest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -192,6 +193,87 @@ func TestProbeManager(t *testing.T) {
 		reachable, unreachable, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
 		require.Empty(t, reachable)
 		require.Empty(t, unreachable)
+	})
+
+	t.Run("primary secondary", func(t *testing.T) {
+		quic := ma.StringCast("/ip4/1.1.1.1/udp/1/quic-v1")
+		webrtc := ma.StringCast("/ip4/1.1.1.1/udp/1/webrtc-direct")
+		tcp := ma.StringCast("/ip4/1.1.1.1/tcp/1")
+		websocket := ma.StringCast("/ip4/1.1.1.1/tcp/1/ws")
+		pm := makeNewProbeManager([]ma.Multiaddr{tcp, websocket, webrtc, quic})
+
+		extractAddrs := func(reqs probe) []ma.Multiaddr {
+			var res []ma.Multiaddr
+			for _, r := range reqs {
+				res = append(res, r.Addr)
+			}
+			return res
+		}
+		// tcp private
+		for range targetConfidence {
+			reqs := nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, websocket, webrtc}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+		}
+		// quic public
+		for range targetConfidence {
+			reqs := nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, websocket, webrtc}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+		}
+		// only 1 check now required for websocket
+		for range 1 {
+			reqs := nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{websocket, webrtc}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: websocket, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+		}
+		// 3 checks required for webrtc to make its reachability different from quic.
+		for range targetConfidence {
+			reqs := nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+		}
+
+		reachable, unreachable, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
+		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{quic}, reachable)
+		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{tcp, websocket, webrtc}, unreachable)
+
+		// Every `highConfidenceAddrsProbeInterval` we refresh the primary addr binding
+		for range 2 {
+			cl.Add(highConfidenceAddrProbeInterval + 1*time.Millisecond)
+			reqs := nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+			reqs = nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+
+			reqs = nextProbe(pm)
+			require.Empty(t, reqs)
+		}
+
+		cl.Add(highConfidenceAddrProbeInterval + 1*time.Millisecond)
+		reqs := nextProbe(pm)
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, websocket, webrtc}, extractAddrs(reqs))
+		pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+		reqs = nextProbe(pm)
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, websocket, webrtc}, extractAddrs(reqs))
+		pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+
+		// secondary addrs refreshed at 3*highConfidenceProbeInterval
+		reqs = nextProbe(pm)
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{websocket, webrtc}, extractAddrs(reqs))
+		pm.CompleteProbe(reqs, autonatv2.Result{Addr: websocket, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+		reqs = nextProbe(pm)
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
+		pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+
+		reqs = nextProbe(pm)
+		require.Empty(t, reqs)
+
+		reachable, unreachable, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
+		matest.AssertMultiaddrsMatch(t, reachable, []ma.Multiaddr{quic})
+		matest.AssertMultiaddrsMatch(t, unreachable, []ma.Multiaddr{tcp, websocket, webrtc})
 	})
 }
 
@@ -716,6 +798,64 @@ func TestAddrStatusProbeCount(t *testing.T) {
 			now = now.Add(1 * time.Second)
 			ao.RemoveBefore(now)
 			require.Len(t, ao.outcomes, 0)
+		})
+	}
+}
+
+func TestAssignPrimaryAddress(t *testing.T) {
+	webTransport1 := ma.StringCast("/ip4/127.0.0.1/udp/1/quic-v1/webtransport")
+	quic1 := ma.StringCast("/ip4/127.0.0.1/udp/1/quic-v1")
+	webRTC1 := ma.StringCast("/ip4/127.0.0.1/udp/1/webrtc-direct")
+
+	webTransport2 := ma.StringCast("/ip4/127.0.0.1/udp/2/quic-v1/webtransport")
+	quic2 := ma.StringCast("/ip4/127.0.0.1/udp/2/quic-v1")
+	webRTC2 := ma.StringCast("/ip4/127.0.0.1/udp/2/webrtc-direct")
+
+	tcp1 := ma.StringCast("/ip4/127.0.0.1/tcp/1")
+	ws1 := ma.StringCast("/ip4/127.0.0.1/tcp/1/ws")
+
+	tests := [][]struct{ secondary, primary ma.Multiaddr }{
+		{
+			{webTransport1, quic1},
+			{webRTC1, quic1},
+		},
+		{
+			{webTransport1, quic1},
+			{webRTC1, quic1},
+			{webTransport2, quic2},
+			{webRTC2, quic2},
+		},
+		{
+			{webTransport1, quic1},
+			{webRTC1, quic1},
+			{webTransport2, quic2},
+			{webRTC2, quic2},
+			{ws1, tcp1},
+		},
+		{
+			{webTransport1, nil},
+			{quic2, nil},
+			{ws1, nil},
+		},
+	}
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			statuses := make(map[string]*addrStatus)
+			for _, p := range tt {
+				if p.primary != nil {
+					statuses[string(p.primary.Bytes())] = &addrStatus{Addr: p.primary}
+				}
+				statuses[string(p.secondary.Bytes())] = &addrStatus{Addr: p.secondary}
+			}
+			assignPrimaryAddrs(statuses)
+			for _, p := range tt {
+				if p.primary != nil {
+					require.Nil(t, statuses[string(p.primary.Bytes())].primary)
+					require.Equal(t, statuses[string(p.secondary.Bytes())].primary, statuses[string(p.primary.Bytes())])
+				} else {
+					require.Nil(t, statuses[string(p.secondary.Bytes())].primary)
+				}
+			}
 		})
 	}
 }
