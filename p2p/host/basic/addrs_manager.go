@@ -414,8 +414,8 @@ func (a *addrsManager) updateAddrs(relayAddrs []ma.Multiaddr) hostAddrs {
 		currReachableAddrs, currUnreachableAddrs, currUnknownAddrs = a.getConfirmedAddrs(localAddrs)
 	}
 	relayAddrs = slices.Clone(relayAddrs)
-	currAddrs := a.getAddrs(slices.Clone(localAddrs), relayAddrs)
-
+	currAddrs := a.getDialableAddrs(localAddrs, currReachableAddrs, currUnreachableAddrs, relayAddrs)
+	currAddrs = a.applyAddrsFactory(currAddrs)
 	a.addrsMx.Lock()
 	a.currentAddrs = hostAddrs{
 		addrs:            append(a.currentAddrs.addrs[:0], currAddrs...),
@@ -479,25 +479,36 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, localAddrsEmitt
 // the node's relay addresses and private network addresses.
 func (a *addrsManager) Addrs() []ma.Multiaddr {
 	a.addrsMx.RLock()
-	directAddrs := slices.Clone(a.currentAddrs.localAddrs)
-	relayAddrs := slices.Clone(a.currentAddrs.relayAddrs)
+	addrs := a.getDialableAddrs(a.currentAddrs.localAddrs, a.currentAddrs.reachableAddrs, a.currentAddrs.unreachableAddrs, a.currentAddrs.relayAddrs)
 	a.addrsMx.RUnlock()
-	return a.getAddrs(directAddrs, relayAddrs)
+	// don't hold the lock while applying addrs factory
+	return a.applyAddrsFactory(addrs)
 }
 
-// getAddrs returns the node's dialable addresses. Mutates localAddrs
-func (a *addrsManager) getAddrs(localAddrs []ma.Multiaddr, relayAddrs []ma.Multiaddr) []ma.Multiaddr {
-	addrs := localAddrs
-	rch := a.hostReachability.Load()
-	if rch != nil && *rch == network.ReachabilityPrivate {
-		// Delete public addresses if the node's reachability is private, and we have relay addresses
-		if len(relayAddrs) > 0 {
+// getDialableAddrs returns the node's dialable addrs. Doesn't mutate any argument.
+func (a *addrsManager) getDialableAddrs(localAddrs, reachableAddrs, unreachableAddrs, relayAddrs []ma.Multiaddr) []ma.Multiaddr {
+	addrs := slices.Clone(localAddrs)
+	// remove known unreachable addrs
+	removeInSource(addrs, unreachableAddrs)
+	// If we have no confirmed reachable addresses, add the relay addresses
+	if a.addrsReachabilityTracker != nil {
+		if len(reachableAddrs) == 0 {
+			addrs = append(addrs, relayAddrs...)
+		}
+	} else {
+		// If we're only using autonatv1, remove public addrs and add relay addrs
+		if len(relayAddrs) > 0 && *a.hostReachability.Load() == network.ReachabilityPrivate {
 			addrs = slices.DeleteFunc(addrs, manet.IsPublicAddr)
 			addrs = append(addrs, relayAddrs...)
 		}
 	}
-	// Make a copy. Consumers can modify the slice elements
-	addrs = slices.Clone(a.addrsFactory(addrs))
+	return addrs
+}
+
+func (a *addrsManager) applyAddrsFactory(addrs []ma.Multiaddr) []ma.Multiaddr {
+	af := a.addrsFactory(addrs)
+	// Copy to our slice in case addrsFactory returns its own same slice always.
+	addrs = append(addrs[:0], af...)
 	// Add certhashes for the addresses provided by the user via address factory.
 	addrs = a.addCertHashes(ma.Unique(addrs))
 	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
@@ -969,6 +980,33 @@ func removeNotInSource(addrs, source []ma.Multiaddr) []ma.Multiaddr {
 			addrs[i] = nil
 		}
 		// a is in source, nothing to do
+	}
+	// j is the current element, i is the lowest index nil element
+	i := 0
+	for j := range len(addrs) {
+		if addrs[j] != nil {
+			addrs[i], addrs[j] = addrs[j], addrs[i]
+			i++
+		}
+	}
+	return addrs[:i]
+}
+
+// removeInSource removes items from addrs that are present in source.
+// Modifies the addrs slice in place
+// addrs and source must be sorted using multiaddr.Compare.
+func removeInSource(addrs, source []ma.Multiaddr) []ma.Multiaddr {
+	j := 0
+	// mark entries in source as nil
+	for i, a := range addrs {
+		// move right in source as long as a > source[j]
+		for j < len(source) && a.Compare(source[j]) > 0 {
+			j++
+		}
+		// a is in source,  mark nil
+		if j < len(source) && a.Compare(source[j]) == 0 {
+			addrs[i] = nil
+		}
 	}
 	// j is the current element, i is the lowest index nil element
 	i := 0
