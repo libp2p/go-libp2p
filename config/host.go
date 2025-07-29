@@ -20,11 +20,14 @@ func (h *closableBasicHost) Close() error {
 }
 
 type closableRoutedHost struct {
-	*fx.App
+	// closableBasicHost is embedded here so that interface assertions on
+	// BasicHost exported methods work correctly.
+	closableBasicHost
 	*routed.RoutedHost
 }
 
 func (h *closableRoutedHost) Close() error {
 	_ = h.App.Stop(context.Background())
+	// The routed host will close the basic host
 	return h.RoutedHost.Close()
 }

@@ -812,6 +812,23 @@ func TestCustomTCPDialer(t *testing.T) {
 	require.ErrorContains(t, err, expectedErr.Error())
 }
 
+func TestBasicHostInterfaceAssertion(t *testing.T) {
+	mockRouter := &mockPeerRouting{}
+	h, err := New(
+		NoListenAddrs,
+		Routing(func(host.Host) (routing.PeerRouting, error) { return mockRouter, nil }),
+		DisableRelay(),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+
+	require.NotNil(t, h)
+	require.NotEmpty(t, h.ID())
+
+	_, ok := h.(interface{ AllAddrs() []ma.Multiaddr })
+	require.True(t, ok)
+}
+
 func BenchmarkAllAddrs(b *testing.B) {
 	h, err := New()
 
