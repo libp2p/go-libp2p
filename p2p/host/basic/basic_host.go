@@ -857,7 +857,6 @@ func (h *BasicHost) Close() error {
 		if h.cmgr != nil {
 			h.cmgr.Close()
 		}
-		h.addressManager.Close()
 
 		if h.ids != nil {
 			h.ids.Close()
@@ -882,6 +881,7 @@ func (h *BasicHost) Close() error {
 			log.Errorf("swarm close failed: %v", err)
 		}
 
+		h.addressManager.Close()
 		h.psManager.Close()
 		if h.Peerstore() != nil {
 			h.Peerstore().Close()
