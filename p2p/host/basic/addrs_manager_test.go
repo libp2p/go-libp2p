@@ -3,7 +3,6 @@ package basichost
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -406,10 +405,10 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
 				if reqs[0].Addr.Equal(publicQUIC) {
 					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil
-				} else if reqs[0].Addr.Equal(publicTCP) || reqs[0].Addr.Equal(publicQUIC2) {
+				} else if reqs[0].Addr.Equal(publicQUIC2) {
 					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPrivate}, nil
 				}
-				return autonatv2.Result{}, errors.New("invalid")
+				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityUnknown, AllAddrsRefused: true}, nil
 			},
 		},
 	})
@@ -429,17 +428,20 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 
 	// Wait for probes to complete and addresses to be classified
 	reachableAddrs := []ma.Multiaddr{publicQUIC}
-	unreachableAddrs := []ma.Multiaddr{publicTCP, publicQUIC2}
+	unreachableAddrs := []ma.Multiaddr{publicQUIC2}
+	unknownAddrs := []ma.Multiaddr{publicTCP}
 	select {
 	case e := <-sub.Out():
 		evt := e.(event.EvtHostReachableAddrsChanged)
-		require.ElementsMatch(t, reachableAddrs, evt.Reachable)
-		require.ElementsMatch(t, unreachableAddrs, evt.Unreachable)
-		require.Empty(t, evt.Unknown)
+		matest.AssertMultiaddrsMatch(t, reachableAddrs, evt.Reachable)
+		matest.AssertMultiaddrsMatch(t, unreachableAddrs, evt.Unreachable)
+		matest.AssertMultiaddrsMatch(t, unknownAddrs, evt.Unknown)
 		reachable, unreachable, unknown := am.ConfirmedAddrs()
-		require.ElementsMatch(t, reachable, reachableAddrs)
-		require.ElementsMatch(t, unreachable, unreachableAddrs)
-		require.Empty(t, unknown)
+		matest.AssertMultiaddrsMatch(t, reachableAddrs, reachable)
+		matest.AssertMultiaddrsMatch(t, unreachableAddrs, unreachable)
+		matest.AssertMultiaddrsMatch(t, unknownAddrs, unknown)
+		// unreachable addrs should be removed
+		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{publicQUIC, publicTCP}, am.Addrs())
 	case <-time.After(5 * time.Second):
 		t.Fatal("expected final event for reachability change after probing")
 	}
