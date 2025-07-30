@@ -53,7 +53,9 @@ type addrsManager struct {
 	addrsUpdatedChan chan struct{}
 
 	// triggerAddrsUpdateChan is used to trigger an addresses update.
-	triggerAddrsUpdateChan chan struct{}
+	triggerAddrsUpdateChan chan chan struct{}
+	// started is used to check whether the addrsManager has started.
+	started atomic.Bool
 	// triggerReachabilityUpdate is notified when reachable addrs are updated.
 	triggerReachabilityUpdate chan struct{}
 
@@ -87,7 +89,7 @@ func newAddrsManager(
 		observedAddrsManager:      observedAddrsManager,
 		natManager:                natmgr,
 		addrsFactory:              addrsFactory,
-		triggerAddrsUpdateChan:    make(chan struct{}, 1),
+		triggerAddrsUpdateChan:    make(chan chan struct{}, 1),
 		triggerReachabilityUpdate: make(chan struct{}, 1),
 		addrsUpdatedChan:          addrsUpdatedChan,
 		interfaceAddrs:            &interfaceAddrsCache{},
@@ -115,7 +117,6 @@ func (a *addrsManager) Start() error {
 			return fmt.Errorf("error starting addrs reachability tracker: %s", err)
 		}
 	}
-
 	return a.startBackgroundWorker()
 }
 
@@ -140,16 +141,24 @@ func (a *addrsManager) NetNotifee() network.Notifiee {
 	// Updating addrs in sync provides the nice property that
 	// host.Addrs() just after host.Network().Listen(x) will return x
 	return &network.NotifyBundle{
-		ListenF:      func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
-		ListenCloseF: func(network.Network, ma.Multiaddr) { a.triggerAddrsUpdate() },
+		ListenF:      func(network.Network, ma.Multiaddr) { a.updateAddrsSync() },
+		ListenCloseF: func(network.Network, ma.Multiaddr) { a.updateAddrsSync() },
 	}
 }
 
-func (a *addrsManager) triggerAddrsUpdate() {
-	a.updateAddrs(false, nil)
+func (a *addrsManager) updateAddrsSync() {
+	// This prevents a deadlock where addrs updates before starting the manager are ignored
+	if !a.started.Load() {
+		return
+	}
+	ch := make(chan struct{})
 	select {
-	case a.triggerAddrsUpdateChan <- struct{}{}:
-	default:
+	case a.triggerAddrsUpdateChan <- ch:
+		select {
+		case <-ch:
+		case <-a.ctx.Done():
+		}
+	case <-a.ctx.Done():
 	}
 }
 
@@ -177,7 +186,7 @@ func (a *addrsManager) startBackgroundWorker() error {
 		}
 		err2 := autonatReachabilitySub.Close()
 		if err2 != nil {
-			err2 = fmt.Errorf("error closing autonat reachability: %w", err1)
+			err2 = fmt.Errorf("error closing autonat reachability: %w", err2)
 		}
 		err = fmt.Errorf("error subscribing to autonat reachability: %s", err)
 		return errors.Join(err, err1, err2)
@@ -200,9 +209,11 @@ func (a *addrsManager) startBackgroundWorker() error {
 		}
 	default:
 	}
+	// this ensures that listens concurrent with Start are reflected correctly after Start exits.
+	a.started.Store(true)
 	// update addresses before starting the worker loop. This ensures that any address updates
 	// before calling addrsManager.Start are correctly reported after Start returns.
-	a.updateAddrs(true, relayAddrs)
+	a.updateAddrs(relayAddrs)
 
 	a.wg.Add(1)
 	go a.background(autoRelayAddrsSub, autonatReachabilitySub, emitter, relayAddrs)
@@ -227,13 +238,18 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 	ticker := time.NewTicker(addrChangeTickrInterval)
 	defer ticker.Stop()
 	var previousAddrs hostAddrs
+	var notifCh chan struct{}
 	for {
-		currAddrs := a.updateAddrs(true, relayAddrs)
+		currAddrs := a.updateAddrs(relayAddrs)
+		if notifCh != nil {
+			close(notifCh)
+			notifCh = nil
+		}
 		a.notifyAddrsChanged(emitter, previousAddrs, currAddrs)
 		previousAddrs = currAddrs
 		select {
 		case <-ticker.C:
-		case <-a.triggerAddrsUpdateChan:
+		case notifCh = <-a.triggerAddrsUpdateChan:
 		case <-a.triggerReachabilityUpdate:
 		case e := <-autoRelayAddrsSub.Out():
 			if evt, ok := e.(event.EvtAutoRelayAddrsUpdated); ok {
@@ -250,26 +266,18 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 }
 
 // updateAddrs updates the addresses of the host and returns the new updated
-// addrs
-func (a *addrsManager) updateAddrs(updateRelayAddrs bool, relayAddrs []ma.Multiaddr) hostAddrs {
-	// Must lock while doing both recompute and update as this method is called from
-	// multiple goroutines.
-	a.addrsMx.Lock()
-	defer a.addrsMx.Unlock()
-
+// addrs. This must only be called from the background goroutine or from the Start method otherwise
+// we may end up with stale addrs.
+func (a *addrsManager) updateAddrs(relayAddrs []ma.Multiaddr) hostAddrs {
 	localAddrs := a.getLocalAddrs()
 	var currReachableAddrs, currUnreachableAddrs, currUnknownAddrs []ma.Multiaddr
 	if a.addrsReachabilityTracker != nil {
 		currReachableAddrs, currUnreachableAddrs, currUnknownAddrs = a.getConfirmedAddrs(localAddrs)
 	}
-	if !updateRelayAddrs {
-		relayAddrs = a.currentAddrs.relayAddrs
-	} else {
-		// Copy the callers slice
-		relayAddrs = slices.Clone(relayAddrs)
-	}
+	relayAddrs = slices.Clone(relayAddrs)
 	currAddrs := a.getAddrs(slices.Clone(localAddrs), relayAddrs)
 
+	a.addrsMx.Lock()
 	a.currentAddrs = hostAddrs{
 		addrs:            append(a.currentAddrs.addrs[:0], currAddrs...),
 		localAddrs:       append(a.currentAddrs.localAddrs[:0], localAddrs...),
@@ -278,6 +286,7 @@ func (a *addrsManager) updateAddrs(updateRelayAddrs bool, relayAddrs []ma.Multia
 		unknownAddrs:     append(a.currentAddrs.unknownAddrs[:0], currUnknownAddrs...),
 		relayAddrs:       append(a.currentAddrs.relayAddrs[:0], relayAddrs...),
 	}
+	a.addrsMx.Unlock()
 
 	return hostAddrs{
 		localAddrs:       localAddrs,
@@ -315,7 +324,8 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, curre
 	if areAddrsDifferent(previous.reachableAddrs, current.reachableAddrs) ||
 		areAddrsDifferent(previous.unreachableAddrs, current.unreachableAddrs) ||
 		areAddrsDifferent(previous.unknownAddrs, current.unknownAddrs) {
-		log.Debugf("host reachable addrs updated: %s", current.localAddrs)
+		log.Debugf("host reachable addrs updated: reachable: %s, unreachable: %s, unknown: %s",
+			current.reachableAddrs, current.unreachableAddrs, current.unknownAddrs)
 		if err := emitter.Emit(event.EvtHostReachableAddrsChanged{
 			Reachable:   slices.Clone(current.reachableAddrs),
 			Unreachable: slices.Clone(current.unreachableAddrs),

@@ -623,7 +623,13 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	}
 
 	if cfg.Routing != nil {
-		return &closableRoutedHost{App: app, RoutedHost: rh}, nil
+		return &closableRoutedHost{
+			closableBasicHost: closableBasicHost{
+				App:       app,
+				BasicHost: bh,
+			},
+			RoutedHost: rh,
+		}, nil
 	}
 	return &closableBasicHost{App: app, BasicHost: bh}, nil
 }

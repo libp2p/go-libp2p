@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multiaddr/matest"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -239,7 +241,7 @@ func TestAddrsManager(t *testing.T) {
 			},
 			ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{lhquic, lhtcp} },
 		})
-		am.triggerAddrsUpdate()
+		am.updateAddrsSync()
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			expected := []ma.Multiaddr{publicQUIC, lhquic, lhtcp}
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
@@ -315,7 +317,7 @@ func TestAddrsManager(t *testing.T) {
 			},
 			ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{lhquic, lhtcp} },
 		})
-		am.triggerAddrsUpdate()
+		am.updateAddrsSync()
 		expected := []ma.Multiaddr{lhquic, lhtcp, publicTCP, publicQUIC}
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
@@ -343,7 +345,7 @@ func TestAddrsManager(t *testing.T) {
 			},
 			ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{lhquic} },
 		})
-		am.triggerAddrsUpdate()
+		am.updateAddrsSync()
 		expected := []ma.Multiaddr{lhquic}
 		expected = append(expected, quicAddrs[:maxObservedAddrsPerListenAddr]...)
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
@@ -428,11 +430,31 @@ func TestAddrsManager(t *testing.T) {
 		require.Contains(t, am.Addrs(), publicTCP)
 		require.NotContains(t, am.Addrs(), publicQUIC)
 		close(updateChan)
-		am.triggerAddrsUpdate()
+		am.updateAddrsSync()
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			assert.Contains(collect, am.Addrs(), publicQUIC)
 			assert.NotContains(collect, am.Addrs(), publicTCP)
 		}, 1*time.Second, 50*time.Millisecond)
+	})
+
+	t.Run("addrs factory depends on confirmed addrs", func(t *testing.T) {
+		var amp atomic.Pointer[addrsManager]
+		q1 := ma.StringCast("/ip4/1.1.1.1/udp/1/quic-v1")
+		addrsFactory := func(_ []ma.Multiaddr) []ma.Multiaddr {
+			if amp.Load() == nil {
+				return nil
+			}
+			// r is empty as there's no reachability tracker
+			r, _, _ := amp.Load().ConfirmedAddrs()
+			return append(r, q1)
+		}
+		am := newAddrsManagerTestCase(t, addrsManagerArgs{
+			AddrsFactory: addrsFactory,
+			ListenAddrs:  func() []ma.Multiaddr { return []ma.Multiaddr{lhquic, lhtcp} },
+		})
+		amp.Store(am.addrsManager)
+		am.updateAddrsSync()
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{q1}, am.Addrs())
 	})
 }
 

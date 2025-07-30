@@ -262,9 +262,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
 	}
-	// register to be notified when the network's listen addrs change,
-	// so we can update our address set and push events if needed
-	h.Network().Notify(h.addressManager.NetNotifee())
 
 	if opts.EnableHolePunching {
 		if opts.EnableMetrics {
@@ -336,6 +333,9 @@ func (h *BasicHost) Start() {
 			log.Errorf("autonat v2 failed to start: %s", err)
 		}
 	}
+	// register to be notified when the network's listen addrs change,
+	// so we can update our address set and push events if needed
+	h.Network().Notify(h.addressManager.NetNotifee())
 	if err := h.addressManager.Start(); err != nil {
 		log.Errorf("address service failed to start: %s", err)
 	}
@@ -857,7 +857,6 @@ func (h *BasicHost) Close() error {
 		if h.cmgr != nil {
 			h.cmgr.Close()
 		}
-		h.addressManager.Close()
 
 		if h.ids != nil {
 			h.ids.Close()
@@ -882,6 +881,7 @@ func (h *BasicHost) Close() error {
 			log.Errorf("swarm close failed: %v", err)
 		}
 
+		h.addressManager.Close()
 		h.psManager.Close()
 		if h.Peerstore() != nil {
 			h.Peerstore().Close()
