@@ -47,7 +47,7 @@ func run() {
 
 	connmgr, err := connmgr.NewConnManager(
 		100, // Low watermark
-		400, // High watermark,
+		400, // High watermark
 		connmgr.WithGracePeriod(time.Minute),
 	)
 	if err != nil {
