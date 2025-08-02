@@ -11,9 +11,8 @@ import (
 func TestBlackHoleSuccessCounterReset(t *testing.T) {
 	n := 10
 	bhf := &BlackHoleSuccessCounter{N: n, MinSuccesses: 2, Name: "test"}
-	var i = 0
 	// calls up to n should be probing
-	for i = 1; i <= n; i++ {
+	for i := 1; i <= n; i++ {
 		if bhf.HandleRequest() != blackHoleStateProbing {
 			t.Fatalf("expected calls up to n to be probes")
 		}
@@ -24,7 +23,7 @@ func TestBlackHoleSuccessCounterReset(t *testing.T) {
 	}
 
 	// after threshold calls every nth call should be a probe
-	for i = n + 1; i < 42; i++ {
+	for i := n + 1; i < 42; i++ {
 		result := bhf.HandleRequest()
 		if (i%n == 0 && result != blackHoleStateProbing) || (i%n != 0 && result != blackHoleStateBlocked) {
 			t.Fatalf("expected every nth dial to be a probe")
@@ -36,7 +35,7 @@ func TestBlackHoleSuccessCounterReset(t *testing.T) {
 
 	bhf.RecordResult(true)
 	// check if calls up to n are probes again
-	for i = 0; i < n; i++ {
+	for i := 0; i < n; i++ {
 		if bhf.HandleRequest() != blackHoleStateProbing {
 			t.Fatalf("expected black hole detector state to reset after success")
 		}

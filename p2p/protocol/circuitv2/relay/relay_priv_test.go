@@ -42,7 +42,7 @@ func TestMakeReservationWithP2PAddrs(t *testing.T) {
 		"/ip4/1.2.3.4/tcp/1235/p2p/" + selfID.String(),
 	}
 
-	var addrsFromRsvp []string
+	addrsFromRsvp := make([]string, 0, len(rsvp.GetAddrs()))
 	for _, addr := range rsvp.GetAddrs() {
 		a, err := ma.NewMultiaddrBytes(addr)
 		require.NoError(t, err)

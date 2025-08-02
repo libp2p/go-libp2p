@@ -39,7 +39,7 @@ func FullJitter(duration, min, max time.Duration, rng *rand.Rand) time.Duration 
 }
 
 // NoJitter returns the duration bounded between min and max
-func NoJitter(duration, min, max time.Duration, rng *rand.Rand) time.Duration {
+func NoJitter(duration, min, max time.Duration, _ *rand.Rand) time.Duration {
 	return boundedDuration(duration, min, max)
 }
 

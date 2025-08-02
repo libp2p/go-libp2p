@@ -7,7 +7,7 @@ import (
 func TestNilOption(t *testing.T) {
 	var cfg Config
 	optsRun := 0
-	opt := func(c *Config) error {
+	opt := func(_ *Config) error {
 		optsRun++
 		return nil
 	}

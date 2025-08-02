@@ -51,7 +51,7 @@ func tryDialAddrs(ctx context.Context, l *dialLimiter, p peer.ID, addrs []ma.Mul
 }
 
 func hangDialFunc(hang chan struct{}) dialfunc {
-	return func(ctx context.Context, p peer.ID, a ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
+	return func(_ context.Context, _ peer.ID, a ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
 		if mafmt.UTP.Matches(a) {
 			return transport.CapableConn(nil), nil
 		}
@@ -188,7 +188,7 @@ func TestFDLimiting(t *testing.T) {
 func TestTokenRedistribution(t *testing.T) {
 	var lk sync.Mutex
 	hangchs := make(map[peer.ID]chan struct{})
-	df := func(ctx context.Context, p peer.ID, a ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
+	df := func(_ context.Context, p peer.ID, a ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
 		if tcpPortOver(a, 10) {
 			return (transport.CapableConn)(nil), nil
 		}
@@ -281,7 +281,7 @@ func TestTokenRedistribution(t *testing.T) {
 }
 
 func TestStressLimiter(t *testing.T) {
-	df := func(ctx context.Context, p peer.ID, a ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
+	df := func(_ context.Context, _ peer.ID, a ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
 		if tcpPortOver(a, 1000) {
 			return transport.CapableConn(nil), nil
 		}
@@ -335,7 +335,7 @@ func TestStressLimiter(t *testing.T) {
 }
 
 func TestFDLimitUnderflow(t *testing.T) {
-	df := func(ctx context.Context, p peer.ID, addr ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
+	df := func(ctx context.Context, _ peer.ID, _ ma.Multiaddr, _ chan<- transport.DialUpdate) (transport.CapableConn, error) {
 		select {
 		case <-ctx.Done():
 		case <-time.After(5 * time.Second):

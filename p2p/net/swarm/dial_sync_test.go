@@ -17,7 +17,7 @@ func getMockDialFunc() (dialWorkerFunc, func(), context.Context, <-chan struct{}
 	dfcalls := make(chan struct{}, 512) // buffer it large enough that we won't care
 	dialctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan struct{})
-	f := func(p peer.ID, reqch <-chan dialRequest) {
+	f := func(_ peer.ID, reqch <-chan dialRequest) {
 		defer cancel()
 		dfcalls <- struct{}{}
 		go func() {
@@ -164,7 +164,7 @@ func TestDialSyncAllCancel(t *testing.T) {
 func TestFailFirst(t *testing.T) {
 	var handledFirst atomic.Bool
 	dialErr := fmt.Errorf("gophers ate the modem")
-	f := func(p peer.ID, reqch <-chan dialRequest) {
+	f := func(_ peer.ID, reqch <-chan dialRequest) {
 		go func() {
 			for {
 				req, ok := <-reqch
@@ -195,8 +195,8 @@ func TestFailFirst(t *testing.T) {
 	require.NotNil(t, c, "should have gotten a 'real' conn back")
 }
 
-func TestStressActiveDial(t *testing.T) {
-	ds := newDialSync(func(p peer.ID, reqch <-chan dialRequest) {
+func TestStressActiveDial(_ *testing.T) {
+	ds := newDialSync(func(_ peer.ID, reqch <-chan dialRequest) {
 		go func() {
 			for {
 				req, ok := <-reqch

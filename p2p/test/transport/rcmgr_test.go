@@ -6,6 +6,7 @@ package transport_integration
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,13 +60,8 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						expectedAddr = gomock.Any()
 					}
 
-					expectFd := true
-					if strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport") || strings.Contains(tc.Name, "WebRTC") {
-						expectFd = false
-					}
-
 					peerScope := mocknetwork.NewMockPeerScope(ctrl)
-					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, pri uint8) {
+					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, _ uint8) {
 						reservedMemory.Add(int32(amount))
 					})
 					peerScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes().Do(func(amount int) {
@@ -96,11 +92,17 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						connScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any())
 					}
 					connScope.EXPECT().Done().MinTimes(1)
+					// udp transports won't have FD
+					udpTransportRegex := regexp.MustCompile(`QUIC|WebTransport|WebRTC`)
+					expectFd := !udpTransportRegex.MatchString(tc.Name)
+
+					if !testDialer && (strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport")) {
+						rcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)
+					}
+					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
 
 					var allStreamsDone sync.WaitGroup
-
-					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
-					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(_ peer.ID, _ network.Direction) (network.StreamManagementScope, error) {
 						allStreamsDone.Add(1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
 						// No need to track these memory reservations since we assert that Done is called

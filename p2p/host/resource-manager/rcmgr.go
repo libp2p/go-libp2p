@@ -2,7 +2,9 @@ package rcmgr
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"strings"
 	"sync"
@@ -11,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/x/rate"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multiaddr"
@@ -22,7 +25,9 @@ var log = logging.Logger("rcmgr")
 type resourceManager struct {
 	limits Limiter
 
-	connLimiter *connLimiter
+	connLimiter                    *connLimiter
+	connRateLimiter                *rate.Limiter
+	verifySourceAddressRateLimiter *rate.Limiter
 
 	trace          *trace
 	metrics        *metrics
@@ -134,12 +139,13 @@ type Option func(*resourceManager) error
 func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager, error) {
 	allowlist := newAllowlist()
 	r := &resourceManager{
-		limits:      limits,
-		connLimiter: newConnLimiter(),
-		allowlist:   &allowlist,
-		svc:         make(map[string]*serviceScope),
-		proto:       make(map[protocol.ID]*protocolScope),
-		peer:        make(map[peer.ID]*peerScope),
+		limits:          limits,
+		connLimiter:     newConnLimiter(),
+		allowlist:       &allowlist,
+		svc:             make(map[string]*serviceScope),
+		proto:           make(map[protocol.ID]*protocolScope),
+		peer:            make(map[peer.ID]*peerScope),
+		connRateLimiter: newConnRateLimiter(),
 	}
 
 	for _, opt := range opts {
@@ -169,6 +175,7 @@ func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager
 			})
 		}
 	}
+	r.verifySourceAddressRateLimiter = newVerifySourceAddressRateLimiter(r.connLimiter)
 
 	if !r.disableMetrics {
 		var sr TraceReporter
@@ -338,7 +345,22 @@ func (r *resourceManager) nextStreamId() int64 {
 	return r.streamId
 }
 
+// VerifySourceAddress tells the transport to verify the peer's IP address before
+// initiating a handshake.
+func (r *resourceManager) VerifySourceAddress(addr net.Addr) bool {
+	if r.verifySourceAddressRateLimiter == nil {
+		return false
+	}
+	ipPort, err := netip.ParseAddrPort(addr.String())
+	if err != nil {
+		return true
+	}
+	return !r.verifySourceAddressRateLimiter.Allow(ipPort.Addr())
+}
+
 // OpenConnectionNoIP is deprecated and will be removed in the next release
+//
+// Deprecated: Use OpenConnection instead
 func (r *resourceManager) OpenConnectionNoIP(dir network.Direction, usefd bool, endpoint multiaddr.Multiaddr) (network.ConnManagementScope, error) {
 	return r.openConnection(dir, usefd, endpoint, netip.Addr{})
 }
@@ -358,6 +380,10 @@ func (r *resourceManager) OpenConnection(dir network.Direction, usefd bool, endp
 }
 
 func (r *resourceManager) openConnection(dir network.Direction, usefd bool, endpoint multiaddr.Multiaddr, ip netip.Addr) (network.ConnManagementScope, error) {
+	if !r.connRateLimiter.Allow(ip) {
+		return nil, errors.New("rate limit exceeded")
+	}
+
 	if ip.IsValid() {
 		if ok := r.connLimiter.addConn(ip); !ok {
 			return nil, fmt.Errorf("connections per ip limit exceeded for %s", endpoint)

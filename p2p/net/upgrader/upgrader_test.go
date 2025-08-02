@@ -99,7 +99,7 @@ type errorMuxer struct{}
 
 var _ network.Multiplexer = &errorMuxer{}
 
-func (m *errorMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (m *errorMuxer) NewConn(_ net.Conn, _ bool, _ network.PeerScope) (network.MuxedConn, error) {
 	return nil, errors.New("mux error")
 }
 

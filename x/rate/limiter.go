@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"golang.org/x/time/rate"
 )
@@ -62,6 +61,8 @@ func (r *Limiter) init() {
 		} else {
 			r.globalBucket = rate.NewLimiter(rate.Limit(r.GlobalLimit.RPS), r.GlobalLimit.Burst)
 		}
+		// clone the slice in case it's shared with other limiters
+		r.NetworkPrefixLimits = slices.Clone(r.NetworkPrefixLimits)
 		// sort such that the widest prefix (smallest bit count) is last.
 		slices.SortFunc(r.NetworkPrefixLimits, func(a, b PrefixLimit) int { return b.Prefix.Bits() - a.Prefix.Bits() })
 		r.networkPrefixBuckets = make([]*rate.Limiter, 0, len(r.NetworkPrefixLimits))
@@ -79,7 +80,16 @@ func (r *Limiter) init() {
 func (r *Limiter) Limit(f func(s network.Stream)) func(s network.Stream) {
 	r.init()
 	return func(s network.Stream) {
-		if !r.allow(s.Conn().RemoteMultiaddr()) {
+		addr := s.Conn().RemoteMultiaddr()
+		ip, err := manet.ToIP(addr)
+		if err != nil {
+			ip = nil
+		}
+		ipAddr, ok := netip.AddrFromSlice(ip)
+		if !ok {
+			ipAddr = netip.Addr{}
+		}
+		if !r.Allow(ipAddr) {
 			_ = s.ResetWithError(network.StreamRateLimited)
 			return
 		}
@@ -87,7 +97,8 @@ func (r *Limiter) Limit(f func(s network.Stream)) func(s network.Stream) {
 	}
 }
 
-func (r *Limiter) allow(addr ma.Multiaddr) bool {
+// Allow returns true if requests for `ipAddr` are within specified rate limits
+func (r *Limiter) Allow(ipAddr netip.Addr) bool {
 	r.init()
 	// Check buckets from the most specific to the least.
 	//
@@ -97,14 +108,6 @@ func (r *Limiter) allow(addr ma.Multiaddr) bool {
 	// bucket before the specific bucket, and the specific bucket rejected the
 	// request, there's no way to return the token to the global bucket. So all
 	// rejected requests from the specific bucket would take up tokens from the global bucket.
-	ip, err := manet.ToIP(addr)
-	if err != nil {
-		return r.globalBucket.Allow()
-	}
-	ipAddr, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return r.globalBucket.Allow()
-	}
 
 	// prefixs have been sorted from most to least specific so rejected requests for more
 	// specific prefixes don't take up tokens from the less specific prefixes.

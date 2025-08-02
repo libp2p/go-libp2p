@@ -20,7 +20,7 @@ func (p *testPayload) MarshalRecord() ([]byte, error) {
 	return []byte("hello"), nil
 }
 
-func (p *testPayload) UnmarshalRecord(bytes []byte) error {
+func (p *testPayload) UnmarshalRecord(_ []byte) error {
 	p.unmarshalPayloadCalled = true
 	return nil
 }

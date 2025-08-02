@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -66,7 +67,7 @@ func testListenOnSameProto(t *testing.T, enableReuseport bool) {
 
 	ln1, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{alpn}}, nil)
 	require.NoError(t, err)
-	defer ln1.Close()
+	defer func() { _ = ln1.Close() }()
 
 	addr := ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", ln1.Addr().(*net.UDPAddr).Port))
 	_, err = cm.ListenQUIC(addr, &tls.Config{NextProtos: []string{alpn}}, nil)
@@ -75,7 +76,7 @@ func testListenOnSameProto(t *testing.T, enableReuseport bool) {
 	// listening on a different address works
 	ln2, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{alpn}}, nil)
 	require.NoError(t, err)
-	defer ln2.Close()
+	defer func() { _ = ln2.Close() }()
 }
 
 // The conn passed to quic-go should be a conn that quic-go can be
@@ -100,7 +101,7 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 	quicTr, err := cm.transportForListen(nil, netw, naddr)
 	require.NoError(t, err)
 	defer quicTr.Close()
-	if _, ok := quicTr.(*singleOwnerTransport).packetConn.(quic.OOBCapablePacketConn); !ok {
+	if _, ok := quicTr.(*singleOwnerTransport).Transport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }
@@ -144,23 +145,39 @@ func TestConnectionPassedToQUICForDialing(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping on windows. Windows doesn't support these optimizations")
 	}
-	cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{}, DisableReuseport())
-	require.NoError(t, err)
-	defer cm.Close()
+	for _, reuse := range []bool{true, false} {
+		t.Run(fmt.Sprintf("reuseport: %t", reuse), func(t *testing.T) {
+			var cm *ConnManager
+			var err error
+			if reuse {
+				cm, err = NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+			} else {
+				cm, err = NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{}, DisableReuseport())
+			}
+			require.NoError(t, err)
+			defer func() { _ = cm.Close() }()
 
-	raddr := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
+			raddr := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
 
-	naddr, _, err := FromQuicMultiaddr(raddr)
-	require.NoError(t, err)
-	netw, _, err := manet.DialArgs(raddr)
-	require.NoError(t, err)
+			naddr, _, err := FromQuicMultiaddr(raddr)
+			require.NoError(t, err)
+			netw, _, err := manet.DialArgs(raddr)
+			require.NoError(t, err)
 
-	quicTr, err := cm.TransportForDial(netw, naddr)
+			quicTr, err := cm.TransportForDial(netw, naddr)
 
-	require.NoError(t, err, "dial error")
-	defer quicTr.Close()
-	if _, ok := quicTr.(*singleOwnerTransport).packetConn.(quic.OOBCapablePacketConn); !ok {
-		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
+			require.NoError(t, err, "dial error")
+			defer func() { _ = quicTr.Close() }()
+			if reuse {
+				if _, ok := quicTr.(*refcountedTransport).QUICTransport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
+					t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
+				}
+			} else {
+				if _, ok := quicTr.(*singleOwnerTransport).Transport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
+					t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
+				}
+			}
+		})
 	}
 }
 
@@ -175,7 +192,7 @@ func getTLSConfForProto(t *testing.T, alpn string) (peer.ID, *tls.Config) {
 	require.NoError(t, err)
 	var tlsConf tls.Config
 	tlsConf.NextProtos = []string{alpn}
-	tlsConf.GetConfigForClient = func(info *tls.ClientHelloInfo) (*tls.Config, error) {
+	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 		c, _ := identity.ConfigForPeer("")
 		c.NextProtos = tlsConf.NextProtos
 		return c, nil
@@ -193,7 +210,9 @@ func connectWithProtocol(t *testing.T, addr net.Addr, alpn string) (peer.ID, err
 	cconn, err := net.ListenUDP("udp4", nil)
 	tlsConf.NextProtos = []string{alpn}
 	require.NoError(t, err)
-	c, err := quic.Dial(context.Background(), cconn, addr, tlsConf, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	c, err := quic.Dial(ctx, cconn, addr, tlsConf, nil)
+	cancel()
 	if err != nil {
 		return "", err
 	}
@@ -279,7 +298,7 @@ func TestExternalTransport(t *testing.T) {
 		"quic",
 		ma.StringCast(fmt.Sprintf("/ip4/0.0.0.0/udp/%d", port)),
 		&tls.Config{NextProtos: []string{"libp2p"}},
-		func(quic.Connection, uint64) bool { return false },
+		func(*quic.Conn, uint64) bool { return false },
 	)
 	require.NoError(t, err)
 	defer ln.Close()
@@ -300,7 +319,7 @@ func TestExternalTransport(t *testing.T) {
 		ctx,
 		ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", udpLn.LocalAddr().(*net.UDPAddr).Port)),
 		&tls.Config{NextProtos: []string{"libp2p"}},
-		func(quic.Connection, uint64) bool { return false },
+		func(*quic.Conn, uint64) bool { return false },
 	)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 
@@ -362,15 +381,114 @@ func TestAssociate(t *testing.T) {
 		require.Contains(t, []string{ln2.Addr().String(), ln3.Addr().String()}, tr3.LocalAddr().String())
 	}
 
-	t.Run("MultipleUnspecifiedListeners", func(t *testing.T) {
+	t.Run("MultipleUnspecifiedListeners", func(_ *testing.T) {
 		testAssociate(ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
 			ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
 			&net.UDPAddr{IP: net.IPv4(1, 1, 1, 1), Port: 1})
 	})
-	t.Run("MultipleSpecificListeners", func(t *testing.T) {
+	t.Run("MultipleSpecificListeners", func(_ *testing.T) {
 		testAssociate(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
 			ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
 			&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},
 		)
 	})
+}
+
+func TestConnContext(t *testing.T) {
+	for _, reuse := range []bool{true, false} {
+		t.Run(fmt.Sprintf("reuseport:%t_error", reuse), func(t *testing.T) {
+			opts := []Option{
+				ConnContext(func(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
+					return ctx, errors.New("test error")
+				})}
+			if !reuse {
+				opts = append(opts, DisableReuseport())
+			}
+			cm, err := NewConnManager(
+				quic.StatelessResetKey{},
+				quic.TokenGeneratorKey{},
+				opts...,
+			)
+			require.NoError(t, err)
+			defer func() { _ = cm.Close() }()
+
+			proto1 := "proto1"
+			_, proto1TLS := getTLSConfForProto(t, proto1)
+			ln1, err := cm.ListenQUIC(
+				ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+				proto1TLS,
+				nil,
+			)
+			require.NoError(t, err)
+			defer ln1.Close()
+			proto2 := "proto2"
+			_, proto2TLS := getTLSConfForProto(t, proto2)
+			ln2, err := cm.ListenQUIC(
+				ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", ln1.Addr().(*net.UDPAddr).Port)),
+				proto2TLS,
+				nil,
+			)
+			require.NoError(t, err)
+			defer ln2.Close()
+
+			_, err = connectWithProtocol(t, ln1.Addr(), proto1)
+			require.ErrorContains(t, err, "CONNECTION_REFUSED")
+
+			_, err = connectWithProtocol(t, ln1.Addr(), proto2)
+			require.ErrorContains(t, err, "CONNECTION_REFUSED")
+		})
+		t.Run(fmt.Sprintf("reuseport:%t_success", reuse), func(t *testing.T) {
+			type ctxKey struct{}
+			opts := []Option{
+				ConnContext(func(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
+					return context.WithValue(ctx, ctxKey{}, "success"), nil
+				})}
+			if !reuse {
+				opts = append(opts, DisableReuseport())
+			}
+			cm, err := NewConnManager(
+				quic.StatelessResetKey{},
+				quic.TokenGeneratorKey{},
+				opts...,
+			)
+			require.NoError(t, err)
+			defer func() { _ = cm.Close() }()
+
+			proto1 := "proto1"
+			_, proto1TLS := getTLSConfForProto(t, proto1)
+			ln1, err := cm.ListenQUIC(
+				ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+				proto1TLS,
+				nil,
+			)
+			require.NoError(t, err)
+			defer ln1.Close()
+
+			clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+			require.NoError(t, err)
+			clientIdentity, err := libp2ptls.NewIdentity(clientKey)
+			require.NoError(t, err)
+			tlsConf, peerChan := clientIdentity.ConfigForPeer("")
+			cconn, err := net.ListenUDP("udp4", nil)
+			tlsConf.NextProtos = []string{proto1}
+			require.NoError(t, err)
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			conn, err := quic.Dial(ctx, cconn, ln1.Addr(), tlsConf, nil)
+			cancel()
+			require.NoError(t, err)
+			defer conn.CloseWithError(0, "")
+
+			require.Equal(t, proto1, conn.ConnectionState().TLS.NegotiatedProtocol)
+			_, err = peer.IDFromPublicKey(<-peerChan)
+			require.NoError(t, err)
+
+			acceptCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			c, err := ln1.Accept(acceptCtx)
+			cancel()
+			require.NoError(t, err)
+			defer c.CloseWithError(0, "")
+
+			require.Equal(t, "success", c.Context().Value(ctxKey{}))
+		})
+	}
 }

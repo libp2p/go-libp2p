@@ -30,6 +30,7 @@ import (
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -218,8 +219,28 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fxopts = append(fxopts, cfg.QUICReuse...)
 	} else {
 		fxopts = append(fxopts,
-			fx.Provide(func(key quic.StatelessResetKey, tokenGenerator quic.TokenGeneratorKey, lifecycle fx.Lifecycle) (*quicreuse.ConnManager, error) {
-				var opts []quicreuse.Option
+			fx.Provide(func(key quic.StatelessResetKey, tokenGenerator quic.TokenGeneratorKey, rcmgr network.ResourceManager, lifecycle fx.Lifecycle) (*quicreuse.ConnManager, error) {
+				opts := []quicreuse.Option{
+					quicreuse.ConnContext(func(ctx context.Context, clientInfo *quic.ClientInfo) (context.Context, error) {
+						// even if creating the quic maddr fails, let the rcmgr decide what to do with the connection
+						addr, err := quicreuse.ToQuicMultiaddr(clientInfo.RemoteAddr, quic.Version1)
+						if err != nil {
+							addr = nil
+						}
+						scope, err := rcmgr.OpenConnection(network.DirInbound, false, addr)
+						if err != nil {
+							return ctx, err
+						}
+						ctx = network.WithConnManagementScope(ctx, scope)
+						context.AfterFunc(ctx, func() {
+							scope.Done()
+						})
+						return ctx, nil
+					}),
+					quicreuse.VerifySourceAddress(func(addr net.Addr) bool {
+						return rcmgr.VerifySourceAddress(addr)
+					}),
+				}
 				if !cfg.DisableMetrics {
 					opts = append(opts, quicreuse.EnableMetrics(cfg.PrometheusRegisterer))
 				}
@@ -303,6 +324,24 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			})
 			return sw, nil
 		}),
+		fx.Provide(func() (*autonatv2.AutoNAT, error) {
+			if !cfg.EnableAutoNATv2 {
+				return nil, nil
+			}
+			ah, err := cfg.makeAutoNATV2Host()
+			if err != nil {
+				return nil, err
+			}
+			var mt autonatv2.MetricsTracer
+			if !cfg.DisableMetrics {
+				mt = autonatv2.NewMetricsTracer(cfg.PrometheusRegisterer)
+			}
+			autoNATv2, err := autonatv2.New(ah, autonatv2.WithMetricsTracer(mt))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create autonatv2: %w", err)
+			}
+			return autoNATv2, nil
+		}),
 		fx.Provide(cfg.newBasicHost),
 		fx.Provide(func(bh *bhost.BasicHost) identify.IDService {
 			return bh.IDService()
@@ -379,7 +418,13 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	}
 
 	if cfg.Routing != nil {
-		return &closableRoutedHost{App: app, RoutedHost: rh}, nil
+		return &closableRoutedHost{
+			closableBasicHost: closableBasicHost{
+				App:       app,
+				BasicHost: bh,
+			},
+			RoutedHost: rh,
+		}, nil
 	}
 	return &closableBasicHost{App: app, BasicHost: bh}, nil
 }

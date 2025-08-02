@@ -167,7 +167,7 @@ func makeHost(port int, randomness io.Reader) (host.Host, error) {
 	)
 }
 
-func startPeer(ctx context.Context, h host.Host, streamHandler network.StreamHandler) {
+func startPeer(_ context.Context, h host.Host, streamHandler network.StreamHandler) {
 	// Set a function as stream handler.
 	// This function is called when a peer connects, and starts a stream with this protocol.
 	// Only applies on the receiving side.
@@ -193,7 +193,7 @@ func startPeer(ctx context.Context, h host.Host, streamHandler network.StreamHan
 	log.Println()
 }
 
-func startPeerAndConnect(ctx context.Context, h host.Host, destination string) (*bufio.ReadWriter, error) {
+func startPeerAndConnect(_ context.Context, h host.Host, destination string) (*bufio.ReadWriter, error) {
 	log.Println("This node's multiaddresses:")
 	for _, la := range h.Addrs() {
 		log.Printf(" - %v\n", la)

@@ -7,7 +7,7 @@ import (
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 )
 
-func BenchmarkPeerstore(b *testing.B, factory PeerstoreFactory, variant string) {
+func BenchmarkPeerstore(b *testing.B, factory PeerstoreFactory, _ string) {
 	for _, sz := range []int{1, 10, 100} {
 		const N = 10000
 		peers := getPeerPairs(b, N, sz)

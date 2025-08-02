@@ -59,7 +59,7 @@ func TestNewHost(t *testing.T) {
 
 func TestTransportConstructor(t *testing.T) {
 	ctor := func(
-		h host.Host,
+		_ host.Host,
 		_ connmgr.ConnectionGater,
 		upgrader transport.Upgrader,
 	) transport.Transport {
@@ -160,7 +160,7 @@ func TestChainOptions(t *testing.T) {
 	newOpt := func() Option {
 		index := optcount
 		optcount++
-		return func(c *Config) error {
+		return func(_ *Config) error {
 			optsRun = append(optsRun, index)
 			return nil
 		}
@@ -324,7 +324,7 @@ func TestTransportCustomAddressWebTransport(t *testing.T) {
 		Transport(webtransport.New),
 		ListenAddrs(customAddr),
 		DisableRelay(),
-		AddrsFactory(func(multiaddrs []ma.Multiaddr) []ma.Multiaddr {
+		AddrsFactory(func(_ []ma.Multiaddr) []ma.Multiaddr {
 			return []ma.Multiaddr{customAddr}
 		}),
 	)
@@ -354,7 +354,7 @@ func TestTransportCustomAddressWebTransportDoesNotStall(t *testing.T) {
 		// Purposely not listening on the custom address so that we make sure the node doesn't stall if it fails to add a certhash to the multiaddr
 		// ListenAddrs(customAddr),
 		DisableRelay(),
-		AddrsFactory(func(multiaddrs []ma.Multiaddr) []ma.Multiaddr {
+		AddrsFactory(func(_ []ma.Multiaddr) []ma.Multiaddr {
 			return []ma.Multiaddr{customAddr}
 		}),
 	)
@@ -481,7 +481,7 @@ func TestDialCircuitAddrWithWrappedResourceManager(t *testing.T) {
 func TestHostAddrsFactoryAddsCerthashes(t *testing.T) {
 	addr := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1/webtransport")
 	h, err := New(
-		AddrsFactory(func(m []ma.Multiaddr) []ma.Multiaddr {
+		AddrsFactory(func(_ []ma.Multiaddr) []ma.Multiaddr {
 			return []ma.Multiaddr{addr}
 		}),
 	)
@@ -789,7 +789,7 @@ func TestSharedTCPAddr(t *testing.T) {
 
 func TestCustomTCPDialer(t *testing.T) {
 	expectedErr := errors.New("custom dialer called, but not implemented")
-	customDialer := func(raddr ma.Multiaddr) (tcp.ContextDialer, error) {
+	customDialer := func(_ ma.Multiaddr) (tcp.ContextDialer, error) {
 		// Normally a user would implement this by returning a custom dialer
 		// Here, we just test that this is called.
 		return nil, expectedErr
@@ -813,6 +813,23 @@ func TestCustomTCPDialer(t *testing.T) {
 		Addrs: []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/4")},
 	})
 	require.ErrorContains(t, err, expectedErr.Error())
+}
+
+func TestBasicHostInterfaceAssertion(t *testing.T) {
+	mockRouter := &mockPeerRouting{}
+	h, err := New(
+		NoListenAddrs,
+		Routing(func(host.Host) (routing.PeerRouting, error) { return mockRouter, nil }),
+		DisableRelay(),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+
+	require.NotNil(t, h)
+	require.NotEmpty(t, h.ID())
+
+	_, ok := h.(interface{ AllAddrs() []ma.Multiaddr })
+	require.True(t, ok)
 }
 
 func BenchmarkAllAddrs(b *testing.B) {

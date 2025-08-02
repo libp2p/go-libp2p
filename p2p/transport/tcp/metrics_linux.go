@@ -11,5 +11,5 @@ const (
 
 func getSegmentsSent(info *tcpinfo.Info) uint64 { return uint64(info.Sys.SegsOut) }
 func getSegmentsRcvd(info *tcpinfo.Info) uint64 { return uint64(info.Sys.SegsIn) }
-func getBytesSent(info *tcpinfo.Info) uint64    { return 0 }
-func getBytesRcvd(info *tcpinfo.Info) uint64    { return 0 }
+func getBytesSent(_ *tcpinfo.Info) uint64       { return 0 }
+func getBytesRcvd(_ *tcpinfo.Info) uint64       { return 0 }

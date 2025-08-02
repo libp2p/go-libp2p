@@ -16,7 +16,7 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-type refCountedQuicTransport interface {
+type RefCountedQUICTransport interface {
 	LocalAddr() net.Addr
 
 	// Used to send packets directly around QUIC. Useful for hole punching.
@@ -28,7 +28,7 @@ type refCountedQuicTransport interface {
 	DecreaseCount()
 	IncreaseCount()
 
-	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error)
+	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
 }
 
@@ -40,6 +40,7 @@ type singleOwnerTransport struct {
 }
 
 var _ QUICTransport = &singleOwnerTransport{}
+var _ RefCountedQUICTransport = (*singleOwnerTransport)(nil)
 
 func (c *singleOwnerTransport) IncreaseCount() {}
 func (c *singleOwnerTransport) DecreaseCount() { c.Transport.Close() }
@@ -47,7 +48,7 @@ func (c *singleOwnerTransport) LocalAddr() net.Addr {
 	return c.packetConn.LocalAddr()
 }
 
-func (c *singleOwnerTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error) {
+func (c *singleOwnerTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 	return c.Transport.Dial(ctx, addr, tlsConf, conf)
 }
 
@@ -92,6 +93,8 @@ type refcountedTransport struct {
 
 	assocations map[any]struct{}
 }
+
+type connContextFunc = func(context.Context, *quic.ClientInfo) (context.Context, error)
 
 // associate an arbitrary value with this transport.
 // This lets us "tag" the refcountedTransport when listening so we can use it
@@ -183,21 +186,26 @@ type reuse struct {
 	// On Listen, transports are reused from this map if the requested port is 0, and then moved to globalListeners
 	globalDialers map[int]*refcountedTransport
 
-	statelessResetKey *quic.StatelessResetKey
-	tokenGeneratorKey *quic.TokenGeneratorKey
+	statelessResetKey   *quic.StatelessResetKey
+	tokenGeneratorKey   *quic.TokenGeneratorKey
+	connContext         connContextFunc
+	verifySourceAddress func(addr net.Addr) bool
 }
 
-func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey, listenUDP listenUDP, sourceIPSelectorFn func() (SourceIPSelector, error)) *reuse {
+func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey, listenUDP listenUDP, sourceIPSelectorFn func() (SourceIPSelector, error),
+	connContext connContextFunc, verifySourceAddress func(addr net.Addr) bool) *reuse {
 	r := &reuse{
-		unicast:            make(map[string]map[int]*refcountedTransport),
-		globalListeners:    make(map[int]*refcountedTransport),
-		globalDialers:      make(map[int]*refcountedTransport),
-		closeChan:          make(chan struct{}),
-		gcStopChan:         make(chan struct{}),
-		listenUDP:          listenUDP,
-		sourceIPSelectorFn: sourceIPSelectorFn,
-		statelessResetKey:  srk,
-		tokenGeneratorKey:  tokenKey,
+		unicast:             make(map[string]map[int]*refcountedTransport),
+		globalListeners:     make(map[int]*refcountedTransport),
+		globalDialers:       make(map[int]*refcountedTransport),
+		closeChan:           make(chan struct{}),
+		gcStopChan:          make(chan struct{}),
+		listenUDP:           listenUDP,
+		sourceIPSelectorFn:  sourceIPSelectorFn,
+		statelessResetKey:   srk,
+		tokenGeneratorKey:   tokenKey,
+		connContext:         connContext,
+		verifySourceAddress: verifySourceAddress,
 	}
 	go r.gc()
 	return r
@@ -267,7 +275,7 @@ func (r *reuse) gc() {
 	}
 }
 
-func (r *reuse) transportWithAssociationForDial(association any, network string, raddr *net.UDPAddr) (*refcountedTransport, error) {
+func (r *reuse) TransportWithAssociationForDial(association any, network string, raddr *net.UDPAddr) (*refcountedTransport, error) {
 	var ip *net.IP
 
 	// Only bother looking up the source address if we actually _have_ non 0.0.0.0 listeners.
@@ -343,16 +351,7 @@ func (r *reuse) transportForDialLocked(association any, network string, source *
 	if err != nil {
 		return nil, err
 	}
-	tr := &refcountedTransport{
-		QUICTransport: &wrappedQUICTransport{
-			Transport: &quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: r.statelessResetKey,
-				TokenGeneratorKey: r.tokenGeneratorKey,
-			},
-		},
-		packetConn: conn,
-	}
+	tr := r.newTransport(conn)
 	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = tr
 	return tr, nil
 }
@@ -371,7 +370,7 @@ func (r *reuse) AddTransport(tr *refcountedTransport, laddr *net.UDPAddr) error 
 	return nil
 }
 
-func (r *reuse) AssertTransportExists(tr refCountedQuicTransport) error {
+func (r *reuse) AssertTransportExists(tr RefCountedQUICTransport) error {
 	t, ok := tr.(*refcountedTransport)
 	if !ok {
 		return fmt.Errorf("invalid transport type: expected: *refcountedTransport, got: %T", tr)
@@ -436,18 +435,10 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	if err != nil {
 		return nil, err
 	}
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	tr := &refcountedTransport{
-		QUICTransport: &wrappedQUICTransport{
-			Transport: &quic.Transport{
-				Conn:              conn,
-				StatelessResetKey: r.statelessResetKey,
-			},
-		},
-		packetConn: conn,
-	}
+	tr := r.newTransport(conn)
 	tr.IncreaseCount()
 
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	// Deal with listen on a global address
 	if localAddr.IP.IsUnspecified() {
 		// The kernel already checked that the laddr is not already listen
@@ -468,6 +459,21 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	// so we need not check here (when we create ListenUDP).
 	r.unicast[localAddr.IP.String()][localAddr.Port] = tr
 	return tr, nil
+}
+
+func (r *reuse) newTransport(conn net.PacketConn) *refcountedTransport {
+	return &refcountedTransport{
+		QUICTransport: &wrappedQUICTransport{
+			Transport: newQUICTransport(
+				conn,
+				r.tokenGeneratorKey,
+				r.statelessResetKey,
+				r.connContext,
+				r.verifySourceAddress,
+			),
+		},
+		packetConn: conn,
+	}
 }
 
 func (r *reuse) Close() error {

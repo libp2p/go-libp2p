@@ -16,7 +16,7 @@ func pubsubMessageHandler(id peer.ID, msg *SendMessage) {
 	fmt.Printf("%s: %s\n", id.ShortString(), msg.Data)
 }
 
-func pubsubUpdateHandler(id peer.ID, msg *UpdatePeer) {
+func pubsubUpdateHandler(_ peer.ID, _ *UpdatePeer) {
 
 }
 

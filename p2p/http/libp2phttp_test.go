@@ -47,7 +47,7 @@ func TestHTTPOverStreams(t *testing.T) {
 
 	httpHost := libp2phttp.Host{StreamHost: serverHost}
 
-	httpHost.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHost.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
@@ -127,7 +127,7 @@ func TestHTTPOverStreamsContextAndClientTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	httpHost := libp2phttp.Host{StreamHost: serverHost}
-	httpHost.SetHTTPHandler("/hello/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHost.SetHTTPHandler("/hello/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(2 * clientTimeout)
 		w.Write([]byte("hello"))
 	}))
@@ -183,7 +183,7 @@ func TestHTTPOverStreamsReturnsConnectionClose(t *testing.T) {
 
 	httpHost := libp2phttp.Host{StreamHost: serverHost}
 
-	httpHost.SetHTTPHandlerAtPath("/hello", "/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHost.SetHTTPHandlerAtPath("/hello", "/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
@@ -225,7 +225,7 @@ func TestRoundTrippers(t *testing.T) {
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
 
-	httpHost.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHost.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
@@ -243,7 +243,7 @@ func TestRoundTrippers(t *testing.T) {
 	}{
 		{
 			name: "HTTP preferred",
-			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
+			setupRoundTripper: func(t *testing.T, _ host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
 				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: serverMultiaddrs,
@@ -254,7 +254,7 @@ func TestRoundTrippers(t *testing.T) {
 		},
 		{
 			name: "HTTP first",
-			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
+			setupRoundTripper: func(t *testing.T, _ host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
 				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHTTPAddr, serverHost.Addrs()[0]},
@@ -265,7 +265,7 @@ func TestRoundTrippers(t *testing.T) {
 		},
 		{
 			name: "No HTTP transport",
-			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
+			setupRoundTripper: func(t *testing.T, _ host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
 				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHost.Addrs()[0]},
@@ -277,7 +277,7 @@ func TestRoundTrippers(t *testing.T) {
 		},
 		{
 			name: "Stream transport first",
-			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
+			setupRoundTripper: func(t *testing.T, _ host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
 				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHost.Addrs()[0], serverHTTPAddr},
@@ -405,7 +405,7 @@ func TestPlainOldHTTPServer(t *testing.T) {
 		},
 		{
 			name: "using stock http client",
-			do: func(t *testing.T, request *http.Request) (*http.Response, error) {
+			do: func(_ *testing.T, request *http.Request) (*http.Response, error) {
 				request.URL.Scheme = "http"
 				request.URL.Host = l.Addr().String()
 				request.Host = l.Addr().String()
@@ -459,7 +459,7 @@ func TestHostZeroValue(t *testing.T) {
 		InsecureAllowHTTP: true,
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
-	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
+	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("hello")) }))
 	go func() {
 		server.Serve()
 	}()
@@ -567,7 +567,7 @@ func TestCustomServeMux(t *testing.T) {
 }
 
 func TestSetHandlerAtPath(t *testing.T) {
-	hf := func(w http.ResponseWriter, r *http.Request) {
+	hf := func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "text/plain")
 		w.Write([]byte("Hello World"))
 	}
@@ -736,7 +736,7 @@ func TestResponseWriterShouldNotHaveCancelledContext(t *testing.T) {
 	defer httpHost.Close()
 
 	closeNotifyCh := make(chan bool, 1)
-	httpHost.SetHTTPHandlerAtPath("/test", "/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHost.SetHTTPHandlerAtPath("/test", "/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Legacy code uses this to check if the connection was closed
 		//lint:ignore SA1019 This is a test to assert we do the right thing since Go HTTP stdlib depends on this.
 		ch := w.(http.CloseNotifier).CloseNotify()
@@ -784,7 +784,7 @@ func TestHTTPHostAsRoundTripper(t *testing.T) {
 	}))
 
 	// Different protocol.ID and mounted at a different path
-	serverHttpHost.SetHTTPHandlerAtPath("/hello-again", "/hello2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/hello-again", "/hello2", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
@@ -847,30 +847,30 @@ func TestRedirects(t *testing.T) {
 	go serverHttpHost.Serve()
 	defer serverHttpHost.Close()
 
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/a", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/a", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Location", "/b/")
 		w.WriteHeader(http.StatusMovedPermanently)
 	}))
 
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-2/0.0.1", "/b", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-2/0.0.1", "/b", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Location", "/c/")
 		w.WriteHeader(http.StatusMovedPermanently)
 	}))
 
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-3/0.0.1", "/c", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-3/0.0.1", "/c", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Location", "/d/")
 		w.WriteHeader(http.StatusMovedPermanently)
 	}))
 
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-4/0.0.1", "/d", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-4/0.0.1", "/d", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/bar/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/bar/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Location", "../baz/")
 		w.WriteHeader(http.StatusMovedPermanently)
 	}))
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/baz/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/foo/baz/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 
@@ -948,12 +948,12 @@ func TestMultiaddrURIRedirect(t *testing.T) {
 	require.NotNil(t, streamMultiaddr)
 
 	// Redirect to a whole other transport!
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/a", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-1/0.0.1", "/a", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Location", fmt.Sprintf("multiaddr:%s/p2p/%s/http-path/b", streamMultiaddr, serverHost.ID()))
 		w.WriteHeader(http.StatusMovedPermanently)
 	}))
 
-	serverHttpHost.SetHTTPHandlerAtPath("/redirect-2/0.0.1", "/b", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverHttpHost.SetHTTPHandlerAtPath("/redirect-2/0.0.1", "/b", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

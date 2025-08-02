@@ -67,7 +67,7 @@ func WithStaticRelays(static []peer.AddrInfo) Option {
 			return errAlreadyHavePeerSource
 		}
 
-		WithPeerSource(func(ctx context.Context, numPeers int) <-chan peer.AddrInfo {
+		WithPeerSource(func(_ context.Context, numPeers int) <-chan peer.AddrInfo {
 			if len(static) < numPeers {
 				numPeers = len(static)
 			}

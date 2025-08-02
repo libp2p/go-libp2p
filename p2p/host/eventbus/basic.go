@@ -14,6 +14,7 @@ import (
 
 type logInterface interface {
 	Errorf(string, ...interface{})
+	Warnf(string, ...interface{})
 }
 
 var log logInterface = logging.Logger("eventbus")
@@ -464,7 +465,7 @@ func emitAndLogError(timer *time.Timer, typ reflect.Type, evt interface{}, sink 
 			<-timer.C
 		}
 	case <-timer.C:
-		log.Errorf("subscriber named \"%s\" is a slow consumer of %s. This can lead to libp2p stalling and hard to debug issues.", sink.name, typ)
+		log.Warnf("subscriber named \"%s\" is a slow consumer of %s. This can lead to libp2p stalling and hard to debug issues.", sink.name, typ)
 		// Continue to stall since there's nothing else we can do.
 		sink.ch <- evt
 	}

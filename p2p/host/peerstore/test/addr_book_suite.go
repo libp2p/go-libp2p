@@ -162,7 +162,7 @@ func testAddAddress(ab pstore.AddrBook, clk *mockClock.Mock) func(*testing.T) {
 	}
 }
 
-func testClearWorks(ab pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
+func testClearWorks(ab pstore.AddrBook, _ *mockClock.Mock) func(t *testing.T) {
 	return func(t *testing.T) {
 		ids := GeneratePeerIDs(2)
 		addrs := GenerateAddrs(5)
@@ -183,7 +183,7 @@ func testClearWorks(ab pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) 
 	}
 }
 
-func testSetNegativeTTLClears(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
+func testSetNegativeTTLClears(m pstore.AddrBook, _ *mockClock.Mock) func(t *testing.T) {
 	return func(t *testing.T) {
 		id := GeneratePeerIDs(1)[0]
 		addrs := GenerateAddrs(100)
@@ -229,7 +229,7 @@ func testSetNegativeTTLClears(m pstore.AddrBook, clk *mockClock.Mock) func(t *te
 
 func testUpdateTTLs(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
 	return func(t *testing.T) {
-		t.Run("update ttl of peer with no addrs", func(t *testing.T) {
+		t.Run("update ttl of peer with no addrs", func(_ *testing.T) {
 			id := GeneratePeerIDs(1)[0]
 
 			// Shouldn't panic.
@@ -293,8 +293,8 @@ func testUpdateTTLs(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
 	}
 }
 
-func testNilAddrsDontBreak(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
-	return func(t *testing.T) {
+func testNilAddrsDontBreak(m pstore.AddrBook, _ *mockClock.Mock) func(t *testing.T) {
+	return func(_ *testing.T) {
 		id := GeneratePeerIDs(1)[0]
 
 		m.SetAddr(id, nil, time.Hour)
@@ -347,7 +347,7 @@ func testAddressesExpire(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing
 	}
 }
 
-func testClearWithIterator(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
+func testClearWithIterator(m pstore.AddrBook, _ *mockClock.Mock) func(t *testing.T) {
 	return func(t *testing.T) {
 		ids := GeneratePeerIDs(2)
 		addrs := GenerateAddrs(100)
@@ -374,7 +374,7 @@ func testClearWithIterator(m pstore.AddrBook, clk *mockClock.Mock) func(t *testi
 	}
 }
 
-func testPeersWithAddrs(m pstore.AddrBook, clk *mockClock.Mock) func(t *testing.T) {
+func testPeersWithAddrs(m pstore.AddrBook, _ *mockClock.Mock) func(t *testing.T) {
 	return func(t *testing.T) {
 		// cannot run in parallel as the store is modified.
 		// go runs sequentially in the specified order

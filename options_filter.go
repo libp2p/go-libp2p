@@ -19,7 +19,7 @@ func (f *filtersConnectionGater) InterceptAddrDial(_ peer.ID, addr ma.Multiaddr)
 	return !(*ma.Filters)(f).AddrBlocked(addr)
 }
 
-func (f *filtersConnectionGater) InterceptPeerDial(p peer.ID) (allow bool) {
+func (f *filtersConnectionGater) InterceptPeerDial(_ peer.ID) (allow bool) {
 	return true
 }
 

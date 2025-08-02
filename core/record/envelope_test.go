@@ -91,8 +91,8 @@ func TestEnvelopeHappyPath(t *testing.T) {
 
 func TestConsumeTypedEnvelope(t *testing.T) {
 	var (
-		rec          = simpleRecord{message: "hello world!"}
-		priv, _, err = test.RandTestKeyPair(crypto.Ed25519, 256)
+		rec        = simpleRecord{message: "hello world!"}
+		priv, _, _ = test.RandTestKeyPair(crypto.Ed25519, 256)
 	)
 
 	envelope, err := Seal(&rec, priv)
@@ -164,7 +164,7 @@ func (r failingRecord) MarshalRecord() ([]byte, error) {
 	}
 	return nil, errors.New("marshal failed")
 }
-func (r failingRecord) UnmarshalRecord(data []byte) error {
+func (r failingRecord) UnmarshalRecord(_ []byte) error {
 	if r.allowUnmarshal {
 		return nil
 	}

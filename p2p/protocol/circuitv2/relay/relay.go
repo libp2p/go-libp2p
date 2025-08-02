@@ -591,7 +591,7 @@ func makeReservationMsg(
 		return rsvp
 	}
 
-	var addrBytes [][]byte
+	addrBytes := make([][]byte, 0, len(selfAddrs))
 	for _, addr := range selfAddrs {
 		if !manet.IsPublicAddr(addr) {
 			continue
@@ -638,7 +638,7 @@ func makeReservationMsg(
 	return rsvp
 }
 
-func (r *Relay) makeLimitMsg(p peer.ID) *pbv2.Limit {
+func (r *Relay) makeLimitMsg(_ peer.ID) *pbv2.Limit {
 	if r.rc.Limit == nil {
 		return nil
 	}

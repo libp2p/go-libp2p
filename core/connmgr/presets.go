@@ -61,7 +61,7 @@ func BumpSumBounded(min, max int) BumpFn {
 
 // BumpOverwrite replaces the current value of the tag with the incoming one.
 func BumpOverwrite() BumpFn {
-	return func(value DecayingValue, delta int) (after int) {
+	return func(_ DecayingValue, delta int) (after int) {
 		return delta
 	}
 }

@@ -24,6 +24,7 @@ type client struct {
 	host               host.Host
 	dialData           []byte
 	normalizeMultiaddr func(ma.Multiaddr) ma.Multiaddr
+	metricsTracer      MetricsTracer
 
 	mu sync.Mutex
 	// dialBackQueues maps nonce to the channel for providing the local multiaddr of the connection
@@ -35,20 +36,21 @@ type normalizeMultiaddrer interface {
 	NormalizeMultiaddr(ma.Multiaddr) ma.Multiaddr
 }
 
-func newClient(h host.Host) *client {
+func newClient(s *autoNATSettings) *client {
+	return &client{
+		dialData:       make([]byte, 4000),
+		dialBackQueues: make(map[uint64]chan ma.Multiaddr),
+		metricsTracer:  s.metricsTracer,
+	}
+}
+
+func (ac *client) Start(h host.Host) {
 	normalizeMultiaddr := func(a ma.Multiaddr) ma.Multiaddr { return a }
 	if hn, ok := h.(normalizeMultiaddrer); ok {
 		normalizeMultiaddr = hn.NormalizeMultiaddr
 	}
-	return &client{
-		host:               h,
-		dialData:           make([]byte, 4000),
-		normalizeMultiaddr: normalizeMultiaddr,
-		dialBackQueues:     make(map[uint64]chan ma.Multiaddr),
-	}
-}
-
-func (ac *client) Start() {
+	ac.host = h
+	ac.normalizeMultiaddr = normalizeMultiaddr
 	ac.host.SetStreamHandler(DialBackProtocol, ac.handleDialBack)
 }
 
@@ -58,6 +60,17 @@ func (ac *client) Close() {
 
 // GetReachability verifies address reachability with a AutoNAT v2 server p.
 func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
+	result, err := ac.getReachability(ctx, p, reqs)
+
+	// Track metrics
+	if ac.metricsTracer != nil {
+		ac.metricsTracer.ClientCompletedRequest(reqs, result, err)
+	}
+
+	return result, err
+}
+
+func (ac *client) getReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 
@@ -109,9 +122,9 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 		break
 	// provide dial data if appropriate
 	case msg.GetDialDataRequest() != nil:
-		if err := ac.validateDialDataRequest(reqs, &msg); err != nil {
+		if err := validateDialDataRequest(reqs, &msg); err != nil {
 			s.Reset()
-			return Result{}, fmt.Errorf("invalid dial data request: %w", err)
+			return Result{}, fmt.Errorf("invalid dial data request: %s %w", s.Conn().RemoteMultiaddr(), err)
 		}
 		// dial data request is valid and we want to send data
 		if err := sendDialData(ac.dialData, int(msg.GetDialDataRequest().GetNumBytes()), w, &msg); err != nil {
@@ -136,7 +149,7 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 		// E_DIAL_REFUSED has implication for deciding future address verificiation priorities
 		// wrap a distinct error for convenient errors.Is usage
 		if resp.GetStatus() == pb.DialResponse_E_DIAL_REFUSED {
-			return Result{}, fmt.Errorf("dial request failed: %w", ErrDialRefused)
+			return Result{AllAddrsRefused: true}, nil
 		}
 		return Result{}, fmt.Errorf("dial request failed: response status %d %s", resp.GetStatus(),
 			pb.DialResponse_ResponseStatus_name[int32(resp.GetStatus())])
@@ -147,7 +160,6 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	if int(resp.AddrIdx) >= len(reqs) {
 		return Result{}, fmt.Errorf("invalid response: addr index out of range: %d [0-%d)", resp.AddrIdx, len(reqs))
 	}
-
 	// wait for nonce from the server
 	var dialBackAddr ma.Multiaddr
 	if resp.GetDialStatus() == pb.DialStatus_OK {
@@ -163,7 +175,7 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	return ac.newResult(resp, reqs, dialBackAddr)
 }
 
-func (ac *client) validateDialDataRequest(reqs []Request, msg *pb.Message) error {
+func validateDialDataRequest(reqs []Request, msg *pb.Message) error {
 	idx := int(msg.GetDialDataRequest().AddrIdx)
 	if idx >= len(reqs) { // invalid address index
 		return fmt.Errorf("addr index out of range: %d [0-%d)", idx, len(reqs))
@@ -179,9 +191,13 @@ func (ac *client) validateDialDataRequest(reqs []Request, msg *pb.Message) error
 
 func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr ma.Multiaddr) (Result, error) {
 	idx := int(resp.AddrIdx)
+	if idx >= len(reqs) {
+		// This should have been validated by this point, but checking this is cheap.
+		return Result{}, fmt.Errorf("addrs index(%d) greater than len(reqs)(%d)", idx, len(reqs))
+	}
 	addr := reqs[idx].Addr
 
-	var rch network.Reachability
+	rch := network.ReachabilityUnknown //nolint:ineffassign
 	switch resp.DialStatus {
 	case pb.DialStatus_OK:
 		if !ac.areAddrsConsistent(dialBackAddr, addr) {
@@ -191,17 +207,16 @@ func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr 
 			return Result{}, fmt.Errorf("invalid response: dialBackAddr: %s, respAddr: %s", dialBackAddr, addr)
 		}
 		rch = network.ReachabilityPublic
+	case pb.DialStatus_E_DIAL_BACK_ERROR:
+		if !ac.areAddrsConsistent(dialBackAddr, addr) {
+			return Result{}, fmt.Errorf("dial-back stream error: dialBackAddr: %s, respAddr: %s", dialBackAddr, addr)
+		}
+		// We received the dial back but the server claims the dial back errored.
+		// As long as we received the correct nonce in dial back it is safe to assume
+		// that we are public.
+		rch = network.ReachabilityPublic
 	case pb.DialStatus_E_DIAL_ERROR:
 		rch = network.ReachabilityPrivate
-	case pb.DialStatus_E_DIAL_BACK_ERROR:
-		if ac.areAddrsConsistent(dialBackAddr, addr) {
-			// We received the dial back but the server claims the dial back errored.
-			// As long as we received the correct nonce in dial back it is safe to assume
-			// that we are public.
-			rch = network.ReachabilityPublic
-		} else {
-			rch = network.ReachabilityUnknown
-		}
 	default:
 		// Unexpected response code. Discard the response and fail.
 		log.Warnf("invalid status code received in response for addr %s: %d", addr, resp.DialStatus)
@@ -210,8 +225,8 @@ func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr 
 
 	return Result{
 		Addr:         addr,
+		Idx:          idx,
 		Reachability: rch,
-		Status:       resp.DialStatus,
 	}, nil
 }
 
@@ -307,7 +322,7 @@ func (ac *client) handleDialBack(s network.Stream) {
 }
 
 func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) bool {
-	if connLocalAddr == nil || dialedAddr == nil {
+	if len(connLocalAddr) == 0 || len(dialedAddr) == 0 {
 		return false
 	}
 	connLocalAddr = ac.normalizeMultiaddr(connLocalAddr)
@@ -318,32 +333,31 @@ func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) boo
 	if len(localProtos) != len(externalProtos) {
 		return false
 	}
-	for i := 0; i < len(localProtos); i++ {
+	for i, lp := range localProtos {
+		ep := externalProtos[i]
 		if i == 0 {
-			switch externalProtos[i].Code {
+			switch ep.Code {
 			case ma.P_DNS, ma.P_DNSADDR:
-				if localProtos[i].Code == ma.P_IP4 || localProtos[i].Code == ma.P_IP6 {
+				if lp.Code == ma.P_IP4 || lp.Code == ma.P_IP6 {
 					continue
 				}
 				return false
 			case ma.P_DNS4:
-				if localProtos[i].Code == ma.P_IP4 {
+				if lp.Code == ma.P_IP4 {
 					continue
 				}
 				return false
 			case ma.P_DNS6:
-				if localProtos[i].Code == ma.P_IP6 {
+				if lp.Code == ma.P_IP6 {
 					continue
 				}
 				return false
 			}
-			if localProtos[i].Code != externalProtos[i].Code {
+			if lp.Code != ep.Code {
 				return false
 			}
-		} else {
-			if localProtos[i].Code != externalProtos[i].Code {
-				return false
-			}
+		} else if lp.Code != ep.Code {
+			return false
 		}
 	}
 	return true

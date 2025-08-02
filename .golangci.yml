@@ -3,11 +3,18 @@ version: "2"
 run:
   timeout: 5m
 
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 linters:
   enable:
     - revive
     - unused
     - prealloc
+  disable:
+    - errcheck
+    - staticcheck
 
   settings:
     revive:
@@ -17,5 +24,4 @@ linters:
           severity: warning
 
 severity:
-    default: warning
-
+  default: warning

@@ -345,13 +345,13 @@ func TestFailuresOnInitiator(t *testing.T) {
 		},
 		"responder does NOT reply within hole punch deadline": {
 			holePunchTimeout: 200 * time.Millisecond,
-			rhandler:         func(s network.Stream) { time.Sleep(5 * time.Second) },
+			rhandler:         func(_ network.Stream) { time.Sleep(5 * time.Second) },
 			errMsg:           "i/o deadline reached",
 		},
 		"no addrs after filtering": {
 			errMsg:   "aborting hole punch initiation as we have no public address",
-			rhandler: func(s network.Stream) { time.Sleep(5 * time.Second) },
-			filter: func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
+			rhandler: func(_ network.Stream) { time.Sleep(5 * time.Second) },
+			filter: func(_ peer.ID, _ []ma.Multiaddr) []ma.Multiaddr {
 				return []ma.Multiaddr{}
 			},
 		},
@@ -491,7 +491,7 @@ func TestFailuresOnResponder(t *testing.T) {
 				})
 				time.Sleep(10 * time.Second)
 			},
-			filter: func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
+			filter: func(_ peer.ID, _ []ma.Multiaddr) []ma.Multiaddr {
 				return []ma.Multiaddr{}
 			},
 		},
@@ -630,7 +630,7 @@ type MockSourceIPSelector struct {
 	ip atomic.Pointer[net.IP]
 }
 
-func (m *MockSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr) (net.IP, error) {
+func (m *MockSourceIPSelector) PreferredSourceIPForDestination(_ *net.UDPAddr) (net.IP, error) {
 	return *m.ip.Load(), nil
 }
 
@@ -641,7 +641,7 @@ func quicSimConn(isPubliclyReachably bool, router *simconn.SimpleFirewallRouter)
 		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
 			return m, nil
 		}),
-		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
+		quicreuse.OverrideListenUDP(func(_ string, address *net.UDPAddr) (net.PacketConn, error) {
 			m.ip.Store(&address.IP)
 			c := simconn.NewSimConn(address, router)
 			if isPubliclyReachably {

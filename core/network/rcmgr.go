@@ -1,6 +1,10 @@
 package network
 
 import (
+	"context"
+	"errors"
+	"net"
+
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
@@ -86,6 +90,10 @@ type ResourceManager interface {
 	// The caller owns the returned scope and is responsible for calling Done in order to signify
 	// the end of the scope's span.
 	OpenConnection(dir Direction, usefd bool, endpoint multiaddr.Multiaddr) (ConnManagementScope, error)
+
+	// VerifySourceAddress tells the transport to verify the source address for an incoming connection
+	// before gating the connection with OpenConnection.
+	VerifySourceAddress(addr net.Addr) bool
 
 	// OpenStream creates a new stream scope, initially unnegotiated.
 	// An unnegotiated stream will be initially unattached to any protocol scope
@@ -269,8 +277,29 @@ type ScopeStat struct {
 	Memory int64
 }
 
+// connManagementScopeKey is the key to store Scope in contexts
+type connManagementScopeKey struct{}
+
+func WithConnManagementScope(ctx context.Context, scope ConnManagementScope) context.Context {
+	return context.WithValue(ctx, connManagementScopeKey{}, scope)
+}
+
+func UnwrapConnManagementScope(ctx context.Context) (ConnManagementScope, error) {
+	v := ctx.Value(connManagementScopeKey{})
+	if v == nil {
+		return nil, errors.New("context has no ConnManagementScope")
+	}
+	scope, ok := v.(ConnManagementScope)
+	if !ok {
+		return nil, errors.New("context has no ConnManagementScope")
+	}
+	return scope, nil
+}
+
 // NullResourceManager is a stub for tests and initialization of default values
 type NullResourceManager struct{}
+
+var _ ResourceManager = (*NullResourceManager)(nil)
 
 var _ ResourceScope = (*NullScope)(nil)
 var _ ResourceScopeSpan = (*NullScope)(nil)
@@ -291,36 +320,41 @@ func (n *NullResourceManager) ViewSystem(f func(ResourceScope) error) error {
 func (n *NullResourceManager) ViewTransient(f func(ResourceScope) error) error {
 	return f(&NullScope{})
 }
-func (n *NullResourceManager) ViewService(svc string, f func(ServiceScope) error) error {
+func (n *NullResourceManager) ViewService(_ string, f func(ServiceScope) error) error {
 	return f(&NullScope{})
 }
-func (n *NullResourceManager) ViewProtocol(p protocol.ID, f func(ProtocolScope) error) error {
+func (n *NullResourceManager) ViewProtocol(_ protocol.ID, f func(ProtocolScope) error) error {
 	return f(&NullScope{})
 }
-func (n *NullResourceManager) ViewPeer(p peer.ID, f func(PeerScope) error) error {
+func (n *NullResourceManager) ViewPeer(_ peer.ID, f func(PeerScope) error) error {
 	return f(&NullScope{})
 }
-func (n *NullResourceManager) OpenConnection(dir Direction, usefd bool, endpoint multiaddr.Multiaddr) (ConnManagementScope, error) {
+func (n *NullResourceManager) OpenConnection(_ Direction, _ bool, _ multiaddr.Multiaddr) (ConnManagementScope, error) {
 	return &NullScope{}, nil
 }
-func (n *NullResourceManager) OpenStream(p peer.ID, dir Direction) (StreamManagementScope, error) {
+func (n *NullResourceManager) OpenStream(_ peer.ID, _ Direction) (StreamManagementScope, error) {
 	return &NullScope{}, nil
 }
+func (*NullResourceManager) VerifySourceAddress(_ net.Addr) bool {
+	return false
+}
+
 func (n *NullResourceManager) Close() error {
 	return nil
 }
 
-func (n *NullScope) ReserveMemory(size int, prio uint8) error { return nil }
-func (n *NullScope) ReleaseMemory(size int)                   {}
-func (n *NullScope) Stat() ScopeStat                          { return ScopeStat{} }
-func (n *NullScope) BeginSpan() (ResourceScopeSpan, error)    { return &NullScope{}, nil }
-func (n *NullScope) Done()                                    {}
-func (n *NullScope) Name() string                             { return "" }
-func (n *NullScope) Protocol() protocol.ID                    { return "" }
-func (n *NullScope) Peer() peer.ID                            { return "" }
-func (n *NullScope) PeerScope() PeerScope                     { return &NullScope{} }
-func (n *NullScope) SetPeer(peer.ID) error                    { return nil }
-func (n *NullScope) ProtocolScope() ProtocolScope             { return &NullScope{} }
-func (n *NullScope) SetProtocol(proto protocol.ID) error      { return nil }
-func (n *NullScope) ServiceScope() ServiceScope               { return &NullScope{} }
-func (n *NullScope) SetService(srv string) error              { return nil }
+func (n *NullScope) ReserveMemory(_ int, _ uint8) error    { return nil }
+func (n *NullScope) ReleaseMemory(_ int)                   {}
+func (n *NullScope) Stat() ScopeStat                       { return ScopeStat{} }
+func (n *NullScope) BeginSpan() (ResourceScopeSpan, error) { return &NullScope{}, nil }
+func (n *NullScope) Done()                                 {}
+func (n *NullScope) Name() string                          { return "" }
+func (n *NullScope) Protocol() protocol.ID                 { return "" }
+func (n *NullScope) Peer() peer.ID                         { return "" }
+func (n *NullScope) PeerScope() PeerScope                  { return &NullScope{} }
+func (n *NullScope) SetPeer(peer.ID) error                 { return nil }
+func (n *NullScope) ProtocolScope() ProtocolScope          { return &NullScope{} }
+func (n *NullScope) SetProtocol(_ protocol.ID) error       { return nil }
+func (n *NullScope) ServiceScope() ServiceScope            { return &NullScope{} }
+func (n *NullScope) SetService(_ string) error             { return nil }
+func (n *NullScope) VerifySourceAddress(_ net.Addr) bool   { return false }

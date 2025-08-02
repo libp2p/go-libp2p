@@ -660,7 +660,7 @@ func (nn *cmNotifee) cm() *BasicConnMgr {
 // Connected is called by notifiers to inform that a new connection has been established.
 // The notifee updates the BasicConnMgr to start tracking the connection. If the new connection
 // count exceeds the high watermark, a trim may be triggered.
-func (nn *cmNotifee) Connected(n network.Network, c network.Conn) {
+func (nn *cmNotifee) Connected(_ network.Network, c network.Conn) {
 	cm := nn.cm()
 
 	p := c.RemotePeer()
@@ -699,7 +699,7 @@ func (nn *cmNotifee) Connected(n network.Network, c network.Conn) {
 
 // Disconnected is called by notifiers to inform that an existing connection has been closed or terminated.
 // The notifee updates the BasicConnMgr accordingly to stop tracking the connection, and performs housekeeping.
-func (nn *cmNotifee) Disconnected(n network.Network, c network.Conn) {
+func (nn *cmNotifee) Disconnected(_ network.Network, c network.Conn) {
 	cm := nn.cm()
 
 	p := c.RemotePeer()
@@ -727,7 +727,7 @@ func (nn *cmNotifee) Disconnected(n network.Network, c network.Conn) {
 }
 
 // Listen is no-op in this implementation.
-func (nn *cmNotifee) Listen(n network.Network, addr ma.Multiaddr) {}
+func (nn *cmNotifee) Listen(_ network.Network, _ ma.Multiaddr) {}
 
 // ListenClose is no-op in this implementation.
-func (nn *cmNotifee) ListenClose(n network.Network, addr ma.Multiaddr) {}
+func (nn *cmNotifee) ListenClose(_ network.Network, _ ma.Multiaddr) {}

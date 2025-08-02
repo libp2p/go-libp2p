@@ -45,7 +45,7 @@ func (t *Transport) DialContext(ctx context.Context, raddr ma.Multiaddr) (manet.
 	return maconn, nil
 }
 
-func (n *network) getDialer(network string) *dialer {
+func (n *network) getDialer(_ string) *dialer {
 	n.mu.RLock()
 	d := n.dialer
 	n.mu.RUnlock()

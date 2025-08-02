@@ -20,7 +20,7 @@ import (
 )
 
 type Listener interface {
-	Accept(context.Context) (quic.Connection, error)
+	Accept(context.Context) (*quic.Conn, error)
 	Addr() net.Addr
 	Multiaddrs() []ma.Multiaddr
 	io.Closer
@@ -29,12 +29,12 @@ type Listener interface {
 type protoConf struct {
 	ln                  *listener
 	tlsConf             *tls.Config
-	allowWindowIncrease func(conn quic.Connection, delta uint64) bool
+	allowWindowIncrease func(conn *quic.Conn, delta uint64) bool
 }
 
 type quicListener struct {
 	l         QUICListener
-	transport refCountedQuicTransport
+	transport RefCountedQUICTransport
 	running   chan struct{}
 	addrs     []ma.Multiaddr
 
@@ -42,7 +42,7 @@ type quicListener struct {
 	protocols   map[string]protoConf
 }
 
-func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quicListener, error) {
+func newQuicListener(tr RefCountedQUICTransport, quicConfig *quic.Config) (*quicListener, error) {
 	localMultiaddrs := make([]ma.Multiaddr, 0, 2)
 	a, err := ToQuicMultiaddr(tr.LocalAddr(), quic.Version1)
 	if err != nil {
@@ -83,7 +83,7 @@ func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quic
 	return cl, nil
 }
 
-func (l *quicListener) allowWindowIncrease(conn quic.Connection, delta uint64) bool {
+func (l *quicListener) allowWindowIncrease(conn *quic.Conn, delta uint64) bool {
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
@@ -94,7 +94,7 @@ func (l *quicListener) allowWindowIncrease(conn quic.Connection, delta uint64) b
 	return conf.allowWindowIncrease(conn, delta)
 }
 
-func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (Listener, error) {
+func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool, onRemove func()) (Listener, error) {
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
@@ -160,7 +160,7 @@ const queueLen = 16
 
 // A listener for a single ALPN protocol (set).
 type listener struct {
-	queue             chan quic.Connection
+	queue             chan *quic.Conn
 	acceptLoopRunning chan struct{}
 	addr              net.Addr
 	addrs             []ma.Multiaddr
@@ -172,7 +172,7 @@ var _ Listener = &listener{}
 
 func newSingleListener(addr net.Addr, addrs []ma.Multiaddr, remove func(), running chan struct{}) *listener {
 	return &listener{
-		queue:             make(chan quic.Connection, queueLen),
+		queue:             make(chan *quic.Conn, queueLen),
 		acceptLoopRunning: running,
 		remove:            remove,
 		addr:              addr,
@@ -180,7 +180,7 @@ func newSingleListener(addr net.Addr, addrs []ma.Multiaddr, remove func(), runni
 	}
 }
 
-func (l *listener) add(c quic.Connection) {
+func (l *listener) add(c *quic.Conn) {
 	select {
 	case l.queue <- c:
 	default:
@@ -188,7 +188,7 @@ func (l *listener) add(c quic.Connection) {
 	}
 }
 
-func (l *listener) Accept(ctx context.Context) (quic.Connection, error) {
+func (l *listener) Accept(ctx context.Context) (*quic.Conn, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

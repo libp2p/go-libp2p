@@ -529,7 +529,7 @@ type reportingRcmgr struct {
 	report chan<- int
 }
 
-func (m *reportingRcmgr) OpenConnection(dir network.Direction, usefd bool, endpoint ma.Multiaddr) (network.ConnManagementScope, error) {
+func (m *reportingRcmgr) OpenConnection(_ network.Direction, _ bool, _ ma.Multiaddr) (network.ConnManagementScope, error) {
 	return &reportingScope{report: m.report}, nil
 }
 
@@ -587,7 +587,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	proxy := quicproxy.Proxy{
 		Conn:        newUDPConnLocalhost(t),
 		ServerAddr:  ln.Addr().(*net.UDPAddr),
-		DelayPacket: func(quicproxy.Direction, []byte) time.Duration { return rtt / 2 },
+		DelayPacket: func(quicproxy.Direction, net.Addr, net.Addr, []byte) time.Duration { return rtt / 2 },
 	}
 	require.NoError(t, proxy.Start())
 	defer proxy.Close()
@@ -684,7 +684,7 @@ func serverSendsBackValidCert(t *testing.T, timeSinceUnixEpoch time.Duration, ke
 	conn, err := quic.DialAddr(context.Background(), l.Addr().String(), &tls.Config{
 		NextProtos:         []string{http3.NextProtoH3},
 		InsecureSkipVerify: true,
-		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			for _, c := range rawCerts {
 				cert, err := x509.ParseCertificate(c)
 				if err != nil {

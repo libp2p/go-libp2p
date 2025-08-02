@@ -106,7 +106,7 @@ func (pn *peernet) handleNewStream(s network.Stream) {
 
 // DialPeer attempts to establish a connection to a given peer.
 // Respects the context.
-func (pn *peernet) DialPeer(ctx context.Context, p peer.ID) (network.Conn, error) {
+func (pn *peernet) DialPeer(_ context.Context, p peer.ID) (network.Conn, error) {
 	return pn.connect(p)
 }
 
@@ -151,7 +151,7 @@ func (pn *peernet) connect(p peer.ID) (*conn, error) {
 	return pn.openConn(p, l.(*link))
 }
 
-func (pn *peernet) openConn(r peer.ID, l *link) (*conn, error) {
+func (pn *peernet) openConn(_ peer.ID, l *link) (*conn, error) {
 	lc, rc := l.newConnPair(pn)
 	addConnPair(pn, rc.net, lc, rc)
 	log.Debugf("%s opening connection to %s", pn.LocalPeer(), lc.RemotePeer())
@@ -361,6 +361,11 @@ func (pn *peernet) BandwidthTotals() (in uint64, out uint64) {
 // Listen tells the network to start listening on given multiaddrs.
 func (pn *peernet) Listen(addrs ...ma.Multiaddr) error {
 	pn.Peerstore().AddAddrs(pn.LocalPeer(), addrs, peerstore.PermanentAddrTTL)
+	for _, a := range addrs {
+		pn.notifyAll(func(n network.Notifiee) {
+			n.Listen(pn, a)
+		})
+	}
 	return nil
 }
 
@@ -435,6 +440,6 @@ func (pn *peernet) ResourceManager() network.ResourceManager {
 	return &network.NullResourceManager{}
 }
 
-func (pn *peernet) CanDial(p peer.ID, addr ma.Multiaddr) bool {
+func (pn *peernet) CanDial(_ peer.ID, _ ma.Multiaddr) bool {
 	return true
 }

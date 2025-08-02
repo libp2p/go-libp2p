@@ -89,7 +89,7 @@ type transport struct {
 	noise *noise.Transport
 
 	connMx           sync.Mutex
-	conns            map[quic.ConnectionTracingID]*conn // using quic-go's ConnectionTracingKey as map key
+	conns            map[*quic.Conn]*conn // quic connection -> *conn
 	handshakeTimeout time.Duration
 }
 
@@ -116,7 +116,7 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 		gater:            gater,
 		clock:            clock.New(),
 		connManager:      connManager,
-		conns:            map[quic.ConnectionTracingID]*conn{},
+		conns:            map[*quic.Conn]*conn{},
 		handshakeTimeout: handshakeTimeout,
 	}
 	for _, opt := range opts {
@@ -187,11 +187,11 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 		return nil, fmt.Errorf("secured connection gated")
 	}
 	conn := newConn(t, sess, sconn, scope, qconn)
-	t.addConn(sess, conn)
+	t.addConn(qconn, conn)
 	return conn, nil
 }
 
-func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, quic.Connection, error) {
+func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, *quic.Conn, error) {
 	var tlsConf *tls.Config
 	if t.tlsClientConf != nil {
 		tlsConf = t.tlsClientConf.Clone()
@@ -218,8 +218,8 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 		return nil, nil, err
 	}
 	dialer := webtransport.Dialer{
-		DialAddr: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-			return conn.(quic.EarlyConnection), nil
+		DialAddr: func(_ context.Context, _ string, _ *tls.Config, _ *quic.Config) (*quic.Conn, error) {
+			return conn, nil
 		},
 		QUICConfig: t.connManager.ClientConfig().Clone(),
 	}
@@ -277,7 +277,7 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Noise transport: %w", err)
 	}
-	c, err := n.SecureOutbound(ctx, &webtransportStream{Stream: str, wsess: sess}, p)
+	c, err := n.SecureOutbound(ctx, webtransportStream{Stream: str, wsess: sess}, p)
 	if err != nil {
 		return nil, err
 	}
@@ -360,26 +360,26 @@ func (t *transport) Close() error {
 	return nil
 }
 
-func (t *transport) allowWindowIncrease(conn quic.Connection, size uint64) bool {
+func (t *transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
 	t.connMx.Lock()
 	defer t.connMx.Unlock()
 
-	c, ok := t.conns[conn.Context().Value(quic.ConnectionTracingKey).(quic.ConnectionTracingID)]
+	c, ok := t.conns[conn]
 	if !ok {
 		return false
 	}
 	return c.allowWindowIncrease(size)
 }
 
-func (t *transport) addConn(sess *webtransport.Session, c *conn) {
+func (t *transport) addConn(conn *quic.Conn, c *conn) {
 	t.connMx.Lock()
-	t.conns[sess.Context().Value(quic.ConnectionTracingKey).(quic.ConnectionTracingID)] = c
+	t.conns[conn] = c
 	t.connMx.Unlock()
 }
 
-func (t *transport) removeConn(sess *webtransport.Session) {
+func (t *transport) removeConn(conn *quic.Conn) {
 	t.connMx.Lock()
-	delete(t.conns, sess.Context().Value(quic.ConnectionTracingKey).(quic.ConnectionTracingID))
+	delete(t.conns, conn)
 	t.connMx.Unlock()
 }
 

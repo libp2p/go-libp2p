@@ -93,7 +93,7 @@ func NewDiscoveryClient(h host.Host, server *MockDiscoveryServer) *MockDiscovery
 	}
 }
 
-func (d *MockDiscoveryClient) Advertise(ctx context.Context, ns string, opts ...discovery.Option) (time.Duration, error) {
+func (d *MockDiscoveryClient) Advertise(_ context.Context, ns string, opts ...discovery.Option) (time.Duration, error) {
 	var options discovery.Options
 	err := options.Apply(opts...)
 	if err != nil {
@@ -103,7 +103,7 @@ func (d *MockDiscoveryClient) Advertise(ctx context.Context, ns string, opts ...
 	return d.server.Advertise(ns, *host.InfoFromHost(d.host), options.Ttl)
 }
 
-func (d *MockDiscoveryClient) FindPeers(ctx context.Context, ns string, opts ...discovery.Option) (<-chan peer.AddrInfo, error) {
+func (d *MockDiscoveryClient) FindPeers(_ context.Context, ns string, opts ...discovery.Option) (<-chan peer.AddrInfo, error) {
 	var options discovery.Options
 	err := options.Apply(opts...)
 	if err != nil {

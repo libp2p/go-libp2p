@@ -405,7 +405,7 @@ func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) []ma.Multiad
 			return ok
 
 		},
-		resolve: func(ctx context.Context, addr ma.Multiaddr, outputLimit int) ([]ma.Multiaddr, error) {
+		resolve: func(ctx context.Context, addr ma.Multiaddr, _ int) ([]ma.Multiaddr, error) {
 			tpt := s.TransportForDialing(addr)
 			resolver, ok := tpt.(transport.SkipResolver)
 			if !ok {

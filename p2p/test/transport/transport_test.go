@@ -17,6 +17,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -41,6 +42,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
@@ -279,6 +281,29 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
+		Name: "QUIC-CustomReuse",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.QUICReuse(quicreuse.NewConnManager))
+			} else {
+				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
+				if !opts.NoRcmgr && opts.ResourceManager != nil {
+					qr = libp2p.QUICReuse(
+						quicreuse.NewConnManager,
+						quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress))
+				}
+				libp2pOpts = append(libp2pOpts,
+					qr,
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+				)
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
 		Name: "WebTransport",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
@@ -286,6 +311,30 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebTransport-CustomReuse",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.QUICReuse(quicreuse.NewConnManager))
+			} else {
+				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
+				if !opts.NoRcmgr && opts.ResourceManager != nil {
+					qr = libp2p.QUICReuse(
+						quicreuse.NewConnManager,
+						quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress),
+					)
+				}
+				libp2pOpts = append(libp2pOpts,
+					qr,
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"),
+				)
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -610,7 +659,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 						var err error
 						// maxRetries is an arbitrary retry amount if there's any error.
 						maxRetries := streamCount * 4
-						shouldRetry := func(err error) bool {
+						shouldRetry := func(_ error) bool {
 							didErr = true
 							sawFirstErr.Store(true)
 							maxRetries--
@@ -847,17 +896,23 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 // TestCloseConnWhenBlocked tests that the server closes the connection when the rcmgr blocks it.
 func TestCloseConnWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
+		// WebRTC doesn't have a connection when rcmgr blocks it, so there's nothing to close.
 		if tc.Name == "WebRTC" {
-			continue // WebRTC doesn't have a connection when we block so there's nothing to close
+			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
-			mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).DoAndReturn(func(network.Direction, bool, ma.Multiaddr) (network.ConnManagementScope, error) {
-				// Block the connection
-				return nil, fmt.Errorf("connections blocked")
-			})
+			if matched, _ := regexp.MatchString(`^(QUIC|WebTransport)`, tc.Name); matched {
+				mockRcmgr.EXPECT().VerifySourceAddress(gomock.Any()).AnyTimes().Return(false)
+				// If the initial TLS ClientHello is split into two quic-go might call the transport multiple times to open a
+				// connection. This will only be called multiple times if the connection is rejected. If were were to accept
+				// the connection, this would have been called only once.
+				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).Return(nil, errors.New("connection blocked")).AnyTimes()
+			} else {
+				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).Return(nil, errors.New("connection blocked"))
+			}
 			mockRcmgr.EXPECT().Close().AnyTimes()
 
 			server := tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: mockRcmgr})
@@ -961,6 +1016,10 @@ func TestErrorCodes(t *testing.T) {
 	}
 
 	for _, tc := range transportsToTest {
+		if strings.HasPrefix(tc.Name, "WebTransport") {
+			t.Skipf("skipping: %s, not implemented", tc.Name)
+			continue
+		}
 		t.Run(tc.Name, func(t *testing.T) {
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
@@ -996,10 +1055,6 @@ func TestErrorCodes(t *testing.T) {
 			}
 
 			t.Run("StreamResetWithError", func(t *testing.T) {
-				if tc.Name == "WebTransport" {
-					t.Skipf("skipping: %s, not implemented", tc.Name)
-					return
-				}
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				s, err := client.NewStream(ctx, server.ID(), "/test")
@@ -1022,10 +1077,6 @@ func TestErrorCodes(t *testing.T) {
 				})
 			})
 			t.Run("StreamResetWithErrorByRemote", func(t *testing.T) {
-				if tc.Name == "WebTransport" {
-					t.Skipf("skipping: %s, not implemented", tc.Name)
-					return
-				}
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				s, err := client.NewStream(ctx, server.ID(), "/test")
@@ -1049,7 +1100,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
+				if tc.Name == "WebRTC" {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
@@ -1077,7 +1128,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("NewStreamErrorByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebTransport" || tc.Name == "WebRTC" {
+				if tc.Name == "WebRTC" {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
