@@ -46,8 +46,8 @@ func run() {
 	var idht *dht.IpfsDHT
 
 	connmgr, err := connmgr.NewConnManager(
-		100, // Lowwater
-		400, // HighWater,
+		100, // Low watermark
+		400, // High watermark,
 		connmgr.WithGracePeriod(time.Minute),
 	)
 	if err != nil {
