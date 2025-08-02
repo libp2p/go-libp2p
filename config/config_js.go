@@ -29,6 +29,7 @@ import (
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -226,7 +227,9 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		fx.Provide(func() crypto.PrivKey {
 			return cfg.PeerKey
 		}),
-
+		fx.Provide(func() (*autonatv2.AutoNAT, error) {
+			return nil, nil
+		}),
 		fx.Provide(cfg.newBasicHost),
 		fx.Provide(func(bh *bhost.BasicHost) identify.IDService {
 			return bh.IDService()
@@ -321,7 +324,13 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	}
 
 	if cfg.Routing != nil {
-		return &closableRoutedHost{App: app, RoutedHost: rh}, nil
+		return &closableRoutedHost{
+			closableBasicHost: closableBasicHost{
+				App:       app,
+				BasicHost: bh,
+			},
+			RoutedHost: rh,
+		}, nil
 	}
 	return &closableBasicHost{App: app, BasicHost: bh}, nil
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -186,15 +187,7 @@ func (cfg *Config) makeAutoNATV2Host() (host.Host, error) {
 	return dialerHost, nil
 }
 
-func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.BasicHost, error) {
-	var autonatv2Dialer host.Host
-	if cfg.EnableAutoNATv2 {
-		ah, err := cfg.makeAutoNATV2Host()
-		if err != nil {
-			return nil, err
-		}
-		autonatv2Dialer = ah
-	}
+func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *autonatv2.AutoNAT) (*bhost.BasicHost, error) {
 	h, err := bhost.NewHost(swrm, &bhost.HostOpts{
 		EventBus:                        eventBus,
 		ConnManager:                     cfg.ConnManager,
@@ -210,8 +203,7 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus) (*bhost.B
 		EnableMetrics:                   !cfg.DisableMetrics,
 		PrometheusRegisterer:            cfg.PrometheusRegisterer,
 		DisableIdentifyAddressDiscovery: cfg.DisableIdentifyAddressDiscovery,
-		EnableAutoNATv2:                 cfg.EnableAutoNATv2,
-		AutoNATv2Dialer:                 autonatv2Dialer,
+		AutoNATv2:                       an,
 	})
 	if err != nil {
 		return nil, err
