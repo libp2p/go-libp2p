@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package config
 
@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -35,13 +34,8 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
-	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/quic-go/quic-go"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
@@ -64,7 +58,6 @@ type Config struct {
 
 	PeerKey crypto.PrivKey
 
-	QUICReuse          []fx.Option
 	Transports         []fx.Option
 	Muxers             []tptu.StreamMuxer
 	SecurityTransports []Security
@@ -132,35 +125,6 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
 		fx.Provide(func() pnet.PSK { return cfg.PSK }),
 		fx.Provide(func() network.ResourceManager { return cfg.ResourceManager }),
-		fx.Provide(func(upgrader transport.Upgrader) *tcpreuse.ConnMgr {
-			if !cfg.ShareTCPListener {
-				return nil
-			}
-			return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, upgrader)
-		}),
-		fx.Provide(func(cm *quicreuse.ConnManager, sw *swarm.Swarm) libp2pwebrtc.ListenUDPFn {
-			hasQuicAddrPortFor := func(network string, laddr *net.UDPAddr) bool {
-				quicAddrPorts := map[string]struct{}{}
-				for _, addr := range sw.ListenAddresses() {
-					if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
-						netw, addr, err := manet.DialArgs(addr)
-						if err != nil {
-							return false
-						}
-						quicAddrPorts[netw+"_"+addr] = struct{}{}
-					}
-				}
-				_, ok := quicAddrPorts[network+"_"+laddr.String()]
-				return ok
-			}
-
-			return func(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
-				if hasQuicAddrPortFor(network, laddr) {
-					return cm.SharedNonQUICPacketConn(network, laddr)
-				}
-				return net.ListenUDP(network, laddr)
-			}
-		}),
 	}
 	fxopts = append(fxopts, cfg.Transports...)
 	if cfg.Insecure {
@@ -213,47 +177,6 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 			)))
 	}
 
-	fxopts = append(fxopts, fx.Provide(PrivKeyToStatelessResetKey))
-	fxopts = append(fxopts, fx.Provide(PrivKeyToTokenGeneratorKey))
-	if cfg.QUICReuse != nil {
-		fxopts = append(fxopts, cfg.QUICReuse...)
-	} else {
-		fxopts = append(fxopts,
-			fx.Provide(func(key quic.StatelessResetKey, tokenGenerator quic.TokenGeneratorKey, rcmgr network.ResourceManager, lifecycle fx.Lifecycle) (*quicreuse.ConnManager, error) {
-				opts := []quicreuse.Option{
-					quicreuse.ConnContext(func(ctx context.Context, clientInfo *quic.ClientInfo) (context.Context, error) {
-						// even if creating the quic maddr fails, let the rcmgr decide what to do with the connection
-						addr, err := quicreuse.ToQuicMultiaddr(clientInfo.RemoteAddr, quic.Version1)
-						if err != nil {
-							addr = nil
-						}
-						scope, err := rcmgr.OpenConnection(network.DirInbound, false, addr)
-						if err != nil {
-							return ctx, err
-						}
-						ctx = network.WithConnManagementScope(ctx, scope)
-						context.AfterFunc(ctx, func() {
-							scope.Done()
-						})
-						return ctx, nil
-					}),
-					quicreuse.VerifySourceAddress(func(addr net.Addr) bool {
-						return rcmgr.VerifySourceAddress(addr)
-					}),
-				}
-				if !cfg.DisableMetrics {
-					opts = append(opts, quicreuse.EnableMetrics(cfg.PrometheusRegisterer))
-				}
-				cm, err := quicreuse.NewConnManager(key, tokenGenerator, opts...)
-				if err != nil {
-					return nil, err
-				}
-				lifecycle.Append(fx.StopHook(cm.Close))
-				return cm, nil
-			}),
-		)
-	}
-
 	fxopts = append(fxopts, fx.Invoke(
 		fx.Annotate(
 			func(swrm *swarm.Swarm, tpts []transport.Transport) error {
@@ -304,43 +227,8 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		fx.Provide(func() crypto.PrivKey {
 			return cfg.PeerKey
 		}),
-		// Make sure the swarm constructor depends on the quicreuse.ConnManager.
-		// That way, the ConnManager will be started before the swarm, and more importantly,
-		// the swarm will be stopped before the ConnManager.
-		fx.Provide(func(eventBus event.Bus, _ *quicreuse.ConnManager, lifecycle fx.Lifecycle) (*swarm.Swarm, error) {
-			sw, err := cfg.makeSwarm(eventBus, !cfg.DisableMetrics)
-			if err != nil {
-				return nil, err
-			}
-			lifecycle.Append(fx.Hook{
-				OnStart: func(context.Context) error {
-					// TODO: This method succeeds if listening on one address succeeds. We
-					// should probably fail if listening on *any* addr fails.
-					return sw.Listen(cfg.ListenAddrs...)
-				},
-				OnStop: func(context.Context) error {
-					return sw.Close()
-				},
-			})
-			return sw, nil
-		}),
 		fx.Provide(func() (*autonatv2.AutoNAT, error) {
-			if !cfg.EnableAutoNATv2 {
-				return nil, nil
-			}
-			ah, err := cfg.makeAutoNATV2Host()
-			if err != nil {
-				return nil, err
-			}
-			var mt autonatv2.MetricsTracer
-			if !cfg.DisableMetrics {
-				mt = autonatv2.NewMetricsTracer(cfg.PrometheusRegisterer)
-			}
-			autoNATv2, err := autonatv2.New(ah, autonatv2.WithMetricsTracer(mt))
-			if err != nil {
-				return nil, fmt.Errorf("failed to create autonatv2: %w", err)
-			}
-			return autoNATv2, nil
+			return nil, nil
 		}),
 		fx.Provide(cfg.newBasicHost),
 		fx.Provide(func(bh *bhost.BasicHost) identify.IDService {
@@ -386,6 +274,24 @@ func (cfg *Config) NewNode() (host.Host, error) {
 				return nil
 			}
 			return nil
+		}),
+	)
+
+	fxopts = append(fxopts,
+		fx.Provide(func(eventBus event.Bus, lifecycle fx.Lifecycle) (*swarm.Swarm, error) {
+			sw, err := cfg.makeSwarm(eventBus, !cfg.DisableMetrics)
+			if err != nil {
+				return nil, err
+			}
+			lifecycle.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					return sw.Listen(cfg.ListenAddrs...)
+				},
+				OnStop: func(ctx context.Context) error {
+					return sw.Close()
+				},
+			})
+			return sw, nil
 		}),
 	)
 

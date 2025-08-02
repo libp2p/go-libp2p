@@ -1,3 +1,6 @@
+//go:build !js
+// +build !js
+
 // Package libp2pwebrtc implements the WebRTC transport for go-libp2p,
 // as described in https://github.com/libp2p/specs/tree/master/webrtc.
 package libp2pwebrtc
@@ -103,8 +106,6 @@ type iceTimeouts struct {
 	Failed     time.Duration
 	Keepalive  time.Duration
 }
-
-type ListenUDPFn func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
 
 func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, listenUDP ListenUDPFn, opts ...Option) (*WebRTCTransport, error) {
 	if psk != nil {
@@ -637,36 +638,4 @@ func newWebRTCConnection(settings webrtc.SettingEngine, config webrtc.Configurat
 		IncomingDataChannels:   incomingDataChannels,
 		PeerConnectionClosedCh: connectionClosedCh,
 	}, nil
-}
-
-// IsWebRTCDirectMultiaddr returns whether addr is a /webrtc-direct multiaddr with the count of certhashes
-// in addr
-func IsWebRTCDirectMultiaddr(addr ma.Multiaddr) (bool, int) {
-	var foundUDP, foundWebRTC bool
-	certHashCount := 0
-	ma.ForEach(addr, func(c ma.Component) bool {
-		if !foundUDP {
-			if c.Protocol().Code == ma.P_UDP {
-				foundUDP = true
-			}
-			return true
-		}
-		if !foundWebRTC && foundUDP {
-			// protocol after udp must be webrtc-direct
-			if c.Protocol().Code != ma.P_WEBRTC_DIRECT {
-				return false
-			}
-			foundWebRTC = true
-			return true
-		}
-		if foundWebRTC {
-			if c.Protocol().Code == ma.P_CERTHASH {
-				certHashCount++
-			} else {
-				return false
-			}
-		}
-		return true
-	})
-	return foundUDP && foundWebRTC, certHashCount
 }

@@ -1,3 +1,6 @@
+//go:build !js
+// +build !js
+
 package autonatv2
 
 import (

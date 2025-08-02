@@ -1,7 +1,6 @@
-// Package quicreuse provides `quicreuse.ConnManager`, which provides functionality
-// for reusing QUIC transports for various purposes, like listening & dialing, having
-// multiple QUIC listeners on the same address with different ALPNs, and sharing the
-// same address with non QUIC transports like WebRTC.
+//go:build !js
+// +build !js
+
 package quicreuse
 
 import (
