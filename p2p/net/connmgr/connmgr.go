@@ -107,10 +107,10 @@ func (s *segment) tagInfoFor(p peer.ID, now time.Time) *peerInfo {
 // lo and hi are watermarks governing the number of connections that'll be maintained.
 // When the peer count exceeds the 'high watermark', as many peers will be pruned (and
 // their connections terminated) until 'low watermark' peers remain.
-func NewConnManager(low, hi int, opts ...Option) (*BasicConnMgr, error) {
+func NewConnManager(lo, hi int, opts ...Option) (*BasicConnMgr, error) {
 	cfg := &config{
 		highWater:     hi,
-		lowWater:      low,
+		lowWater:      lo,
 		gracePeriod:   time.Minute,
 		silencePeriod: 10 * time.Second,
 		clock:         clock.New(),
