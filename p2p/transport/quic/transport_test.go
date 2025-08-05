@@ -51,6 +51,7 @@ func TestCanDial(t *testing.T) {
 	valid := []string{
 		"/ip4/127.0.0.1/udp/1234/quic-v1",
 		"/ip4/5.5.5.5/udp/0/quic-v1",
+		"/ip6zone/eth0/ip6/fe80::fc54:ff:fe43:e553/udp/1234/quic-v1",
 	}
 	for _, s := range invalid {
 		invalidAddr, err := ma.NewMultiaddr(s)
