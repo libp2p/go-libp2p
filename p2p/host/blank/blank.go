@@ -24,20 +24,24 @@ import (
 
 var log = logging.Logger("blankhost")
 
-// BlankHost is the thinnest implementation of the host.Host interface
+// BlankHost is a thin implementation of the host.Host interface
 type BlankHost struct {
-	n        network.Network
-	mux      *mstream.MultistreamMuxer[protocol.ID]
-	cmgr     connmgr.ConnManager
-	eventbus event.Bus
-	emitters struct {
+	N       network.Network
+	M       *mstream.MultistreamMuxer[protocol.ID]
+	E       event.Bus
+	ConnMgr connmgr.ConnManager
+	// SkipInitSignedRecord is a flag to skip the initialization of a signed record for the host
+	SkipInitSignedRecord bool
+	emitters             struct {
 		evtLocalProtocolsUpdated event.Emitter
 	}
+	onStop []func() error
 }
 
 type config struct {
-	cmgr     connmgr.ConnManager
-	eventBus event.Bus
+	cmgr                 connmgr.ConnManager
+	eventBus             event.Bus
+	skipInitSignedRecord bool
 }
 
 type Option = func(cfg *config)
@@ -54,6 +58,12 @@ func WithEventBus(eventBus event.Bus) Option {
 	}
 }
 
+func SkipInitSignedRecord(eventBus event.Bus) Option {
+	return func(cfg *config) {
+		cfg.skipInitSignedRecord = true
+	}
+}
+
 func NewBlankHost(n network.Network, options ...Option) *BlankHost {
 	cfg := config{
 		cmgr: &connmgr.NullConnMgr{},
@@ -63,27 +73,15 @@ func NewBlankHost(n network.Network, options ...Option) *BlankHost {
 	}
 
 	bh := &BlankHost{
-		n:        n,
-		cmgr:     cfg.cmgr,
-		mux:      mstream.NewMultistreamMuxer[protocol.ID](),
-		eventbus: cfg.eventBus,
-	}
-	if bh.eventbus == nil {
-		bh.eventbus = eventbus.NewBus(eventbus.WithMetricsTracer(eventbus.NewMetricsTracer()))
-	}
+		N:       n,
+		ConnMgr: cfg.cmgr,
+		M:       mstream.NewMultistreamMuxer[protocol.ID](),
+		E:       cfg.eventBus,
 
-	// subscribe the connection manager to network notifications (has no effect with NullConnMgr)
-	n.Notify(bh.cmgr.Notifee())
-
-	var err error
-	if bh.emitters.evtLocalProtocolsUpdated, err = bh.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
-		return nil
+		SkipInitSignedRecord: cfg.skipInitSignedRecord,
 	}
 
-	n.SetStreamHandler(bh.newStreamHandler)
-
-	// persist a signed peer record for self to the peerstore.
-	if err := bh.initSignedRecord(); err != nil {
+	if err := bh.Start(); err != nil {
 		log.Errorf("error creating blank host, err=%s", err)
 		return nil
 	}
@@ -91,8 +89,56 @@ func NewBlankHost(n network.Network, options ...Option) *BlankHost {
 	return bh
 }
 
+func (bh *BlankHost) Start() error {
+	if bh.E == nil {
+		bh.E = eventbus.NewBus(eventbus.WithMetricsTracer(eventbus.NewMetricsTracer()))
+	}
+
+	// subscribe the connection manager to network notifications (has no effect with NullConnMgr)
+	notifee := bh.ConnMgr.Notifee()
+	bh.N.Notify(notifee)
+	bh.onStop = append(bh.onStop, func() error {
+		bh.N.StopNotify(notifee)
+		return nil
+	})
+
+	var err error
+	if bh.emitters.evtLocalProtocolsUpdated, err = bh.E.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
+		return err
+	}
+	bh.onStop = append(bh.onStop, func() error {
+		bh.emitters.evtLocalProtocolsUpdated.Close()
+		return nil
+	})
+
+	bh.N.SetStreamHandler(bh.newStreamHandler)
+	bh.onStop = append(bh.onStop, func() error {
+		bh.N.SetStreamHandler(func(s network.Stream) { s.Reset() })
+		return nil
+	})
+
+	// persist a signed peer record for self to the peerstore.
+	if !bh.SkipInitSignedRecord {
+		if err := bh.initSignedRecord(); err != nil {
+			log.Errorf("error creating blank host, err=%s", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (bh *BlankHost) Stop() error {
+	var err error
+	for _, f := range bh.onStop {
+		err = errors.Join(err, f())
+	}
+	bh.onStop = nil
+	return err
+}
+
 func (bh *BlankHost) initSignedRecord() error {
-	cab, ok := peerstore.GetCertifiedAddrBook(bh.n.Peerstore())
+	cab, ok := peerstore.GetCertifiedAddrBook(bh.N.Peerstore())
 	if !ok {
 		log.Error("peerstore does not support signed records")
 		return errors.New("peerstore does not support signed records")
@@ -114,7 +160,7 @@ func (bh *BlankHost) initSignedRecord() error {
 var _ host.Host = (*BlankHost)(nil)
 
 func (bh *BlankHost) Addrs() []ma.Multiaddr {
-	addrs, err := bh.n.InterfaceListenAddresses()
+	addrs, err := bh.N.InterfaceListenAddresses()
 	if err != nil {
 		log.Debug("error retrieving network interface addrs: ", err)
 		return nil
@@ -124,14 +170,14 @@ func (bh *BlankHost) Addrs() []ma.Multiaddr {
 }
 
 func (bh *BlankHost) Close() error {
-	return bh.n.Close()
+	return bh.N.Close()
 }
 
 func (bh *BlankHost) Connect(ctx context.Context, ai peer.AddrInfo) error {
 	// absorb addresses into peerstore
 	bh.Peerstore().AddAddrs(ai.ID, ai.Addrs, peerstore.TempAddrTTL)
 
-	cs := bh.n.ConnsToPeer(ai.ID)
+	cs := bh.N.ConnsToPeer(ai.ID)
 	if len(cs) > 0 {
 		return nil
 	}
@@ -144,15 +190,15 @@ func (bh *BlankHost) Connect(ctx context.Context, ai peer.AddrInfo) error {
 }
 
 func (bh *BlankHost) Peerstore() peerstore.Peerstore {
-	return bh.n.Peerstore()
+	return bh.N.Peerstore()
 }
 
 func (bh *BlankHost) ID() peer.ID {
-	return bh.n.LocalPeer()
+	return bh.N.LocalPeer()
 }
 
 func (bh *BlankHost) NewStream(ctx context.Context, p peer.ID, protos ...protocol.ID) (network.Stream, error) {
-	s, err := bh.n.NewStream(ctx, p)
+	s, err := bh.N.NewStream(ctx, p)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open stream: %w", err)
 	}
@@ -216,18 +262,18 @@ func (bh *BlankHost) newStreamHandler(s network.Stream) {
 
 // TODO: i'm not sure this really needs to be here
 func (bh *BlankHost) Mux() protocol.Switch {
-	return bh.mux
+	return bh.M
 }
 
 // TODO: also not sure this fits... Might be better ways around this (leaky abstractions)
 func (bh *BlankHost) Network() network.Network {
-	return bh.n
+	return bh.N
 }
 
 func (bh *BlankHost) ConnManager() connmgr.ConnManager {
-	return bh.cmgr
+	return bh.ConnMgr
 }
 
 func (bh *BlankHost) EventBus() event.Bus {
-	return bh.eventbus
+	return bh.E
 }
