@@ -9,7 +9,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -235,19 +234,14 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
-	} else if c.enableReuseport {
-		reuse, err := c.getReuse(netw)
-		if err != nil {
-			return nil, fmt.Errorf("reuse error: %w", err)
-		}
-		err = reuse.AssertTransportExists(entry.ln.transport)
-		if err != nil {
-			return nil, fmt.Errorf("reuse assert transport failed: %w", err)
+	}
+	if c.enableReuseport && association != nil {
+		if _, ok := entry.ln.transport.(*refcountedTransport); !ok {
+			log.Warnf("reuseport is enabled, association is non-nil, but the transport is not a refcountedTransport.")
 		}
 	}
-	var l Listener
-	l, err = entry.ln.Add(association, tlsConf, allowWindowIncrease, func() {
-		c.onListenerClosed(key, l.(*listener))
+	l, err := entry.ln.Add(association, tlsConf, allowWindowIncrease, func() {
+		c.onListenerClosed(key)
 	})
 	if err != nil {
 		if entry.refCount <= 0 {
@@ -255,24 +249,17 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		return nil, err
 	}
-
 	entry.refCount++
 	c.quicListeners[key] = entry
 	return l, nil
 }
 
-func (c *ConnManager) onListenerClosed(key string, ln *listener) {
+func (c *ConnManager) onListenerClosed(key string) {
 	c.quicListenersMu.Lock()
 	defer c.quicListenersMu.Unlock()
 
 	entry := c.quicListeners[key]
 	entry.refCount = entry.refCount - 1
-
-	// Clean up associations for this specific listener
-	if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
-		tr.RemoveAssociationsForListener(ln)
-	}
-
 	if entry.refCount <= 0 {
 		delete(c.quicListeners, key)
 		entry.ln.Close()

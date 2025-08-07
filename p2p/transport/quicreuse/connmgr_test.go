@@ -505,7 +505,12 @@ func TestAssociationCleanup(t *testing.T) {
 	require.NoError(t, err)
 	defer ln1.Close()
 
-	ln2, err := cm.ListenQUICAndAssociate(assoc2, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	addr := ln1.Multiaddrs()[0]
+	port, err := addr.ValueForProtocol(ma.P_UDP)
+	require.NoError(t, err)
+
+	h3TLS := &tls.Config{NextProtos: []string{"h3"}}
+	ln2, err := cm.ListenQUICAndAssociate(assoc2, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic-v1", port)), h3TLS, nil)
 	require.NoError(t, err)
 	defer ln2.Close()
 
@@ -517,11 +522,14 @@ func TestAssociationCleanup(t *testing.T) {
 	addr1 := ln1.Addr().String()
 	addr2 := ln2.Addr().String()
 	addr3 := ln3.Addr().String()
+	require.Equal(t, addr1, addr2)
 
 	// Test that dialing with assoc1 uses the first listener's address
 	dialAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234}
 
-	for i := 0; i < 10; i++ {
+	numTries := 100
+
+	for i := 0; i < numTries; i++ {
 		tr, err := cm.TransportWithAssociationForDial(assoc1, "udp4", dialAddr)
 		require.NoError(t, err)
 		require.Equal(t, addr1, tr.LocalAddr().String(), "assoc1 should use addr1")
@@ -532,7 +540,7 @@ func TestAssociationCleanup(t *testing.T) {
 
 	// Call TransportWithAssociationForDial 10 times with assoc1 and check if we get at least one different address
 	foundDifferentAddr := false
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numTries; i++ {
 		tr, err := cm.TransportWithAssociationForDial(assoc1, "udp4", dialAddr)
 		require.NoError(t, err)
 		actualAddr := tr.LocalAddr().String()
@@ -543,7 +551,7 @@ func TestAssociationCleanup(t *testing.T) {
 	}
 	require.True(t, foundDifferentAddr, "assoc1 should use a different address than addr1 at least once after ln1 is closed")
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numTries; i++ {
 		// Test that dialing with assoc2 still uses the second listener's address
 		tr2Still, err := cm.TransportWithAssociationForDial(assoc2, "udp4", dialAddr)
 		require.NoError(t, err)
@@ -555,7 +563,7 @@ func TestAssociationCleanup(t *testing.T) {
 
 	// Call TransportWithAssociationForDial 10 times with assoc2 and check if we get at least one different address
 	foundDifferentAddr2 := false
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numTries; i++ {
 		tr, err := cm.TransportWithAssociationForDial(assoc2, "udp4", dialAddr)
 		require.NoError(t, err)
 		actualAddr := tr.LocalAddr().String()
@@ -565,12 +573,11 @@ func TestAssociationCleanup(t *testing.T) {
 	}
 	require.True(t, foundDifferentAddr2, "assoc2 should use a different address than addr2 at least once after ln2 is closed")
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numTries; i++ {
 		// Test that dialing with assoc3 still uses the third listener's address
 		tr3Still, err := cm.TransportWithAssociationForDial(assoc3, "udp4", dialAddr)
 		require.NoError(t, err)
 		require.Equal(t, addr3, tr3Still.LocalAddr().String(), "assoc3 should still use addr3")
-		tr3Still.Close()
 	}
 }
 

@@ -386,33 +386,6 @@ func (r *reuse) AddTransport(tr *refcountedTransport, laddr *net.UDPAddr) error 
 	return nil
 }
 
-func (r *reuse) AssertTransportExists(tr RefCountedQUICTransport) error {
-	t, ok := tr.(*refcountedTransport)
-	if !ok {
-		return fmt.Errorf("invalid transport type: expected: *refcountedTransport, got: %T", tr)
-	}
-	laddr := t.LocalAddr().(*net.UDPAddr)
-	if laddr.IP.IsUnspecified() {
-		if lt, ok := r.globalListeners[laddr.Port]; ok {
-			if lt == t {
-				return nil
-			}
-			return errors.New("two global listeners on the same port")
-		}
-		return errors.New("transport not found")
-	}
-	if m, ok := r.unicast[laddr.IP.String()]; ok {
-		if lt, ok := m[laddr.Port]; ok {
-			if lt == t {
-				return nil
-			}
-			return errors.New("two unicast listeners on same ip:port")
-		}
-		return errors.New("transport not found")
-	}
-	return errors.New("transport not found")
-}
-
 func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcountedTransport, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

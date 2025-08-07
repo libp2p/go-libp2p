@@ -92,7 +92,6 @@ func (l *quicListener) allowWindowIncrease(conn *quic.Conn, delta uint64) bool {
 }
 
 func (l *quicListener) Add(association any, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool, onRemove func()) (*listener, error) {
-
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
