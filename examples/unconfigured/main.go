@@ -1,32 +1,42 @@
 package main
 
 import (
+	"context"
 	"log"
 
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/core/host"
+
+	"go.uber.org/fx"
+
+	libp2pfx "github.com/libp2p/go-libp2p/fx"
 )
 
 func main() {
-	priv, _, err := crypto.GenerateKeyPair(
-		crypto.Ed25519,
-		-1,
-	)
-	if err != nil {
-		panic(err)
+	factory := func() host.Host {
+		var h host.Host
+		app := fx.New(
+			fx.NopLogger,
+			libp2pfx.BlankHost(),
+			libp2pfx.SwarmNetwork(),
+			libp2pfx.RandomPeerID(),
+			libp2pfx.EventBus(),
+			libp2pfx.InMemoryPeerstore(),
+			libp2pfx.MultistreamMuxer,
+			libp2pfx.NullConnectionGater,
+			libp2pfx.NullResourceManager,
+			libp2pfx.NullConnManager,
+			fx.Supply(libp2pfx.MetricsConfig{Disable: true}),
+			fx.Populate(&h),
+			libp2pfx.ListenAddrs(),
+		)
+
+		app.Start(context.Background())
+		return h
 	}
 
-	h2, err := libp2p.NewWithoutDefaults(
-		libp2p.Identity(priv),
-		libp2p.NoListenAddrs,
-		libp2p.Security(noise.ID, noise.New),
-		libp2p.NoTransports,
-	)
-	if err != nil {
-		panic(err)
-	}
-	defer h2.Close()
+	h := factory()
 
-	log.Printf("Hello World, my second hosts ID is %s\n", h2.ID())
+	defer h.Close()
+
+	log.Printf("Hello World, my second hosts ID is %s\n", h.ID())
 }
