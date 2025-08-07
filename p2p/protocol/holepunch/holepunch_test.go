@@ -65,22 +65,12 @@ func (m mockMaddrFilter) FilterRemote(remoteID peer.ID, maddrs []ma.Multiaddr) [
 
 var _ holepunch.AddrFilter = &mockMaddrFilter{}
 
-type mockIDService struct {
-	identify.IDService
-}
-
-var _ identify.IDService = &mockIDService{}
-
-func newMockIDService(t *testing.T, h host.Host) identify.IDService {
+func newIDService(t *testing.T, h host.Host) identify.IDService {
 	ids, err := identify.NewIDService(h)
 	require.NoError(t, err)
 	ids.Start()
 	t.Cleanup(func() { ids.Close() })
-	return &mockIDService{IDService: ids}
-}
-
-func (s *mockIDService) OwnObservedAddrs() []ma.Multiaddr {
-	return append(s.IDService.OwnObservedAddrs(), ma.StringCast("/ip4/1.1.1.1/tcp/1234"))
+	return ids
 }
 
 func TestNoHolePunchIfDirectConnExists(t *testing.T) {
@@ -655,7 +645,7 @@ func quicSimConn(isPubliclyReachably bool, router *simconn.SimpleFirewallRouter)
 
 func addHolePunchService(t *testing.T, h host.Host, extraAddrs []ma.Multiaddr, opts ...holepunch.Option) *holepunch.Service {
 	t.Helper()
-	hps, err := holepunch.NewService(h, newMockIDService(t, h), func() []ma.Multiaddr {
+	hps, err := holepunch.NewService(h, newIDService(t, h), func() []ma.Multiaddr {
 		addrs := h.Addrs()
 		addrs = append(addrs, extraAddrs...)
 		return addrs
