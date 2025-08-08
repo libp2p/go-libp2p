@@ -123,7 +123,7 @@ func TestSimultDials(t *testing.T) {
 		errs := make(chan error, 20) // 2 connect calls in each of the 10 for-loop iterations
 		connect := func(s *swarm.Swarm, dst peer.ID, addr ma.Multiaddr) {
 			// copy for other peer
-			log.Debugf("TestSimultOpen: connecting: %s --> %s (%s)", s.LocalPeer(), dst, addr)
+			log.Debug("TestSimultOpen: connecting", "local", s.LocalPeer(), "remote", dst, "addr", addr)
 			s.Peerstore().AddAddr(dst, addr, peerstore.TempAddrTTL)
 			if _, err := s.DialPeer(ctx, dst); err != nil {
 				errs <- err

@@ -130,10 +130,10 @@ func (pn *peernet) connect(p peer.ID) (*conn, error) {
 	pn.RUnlock()
 
 	if pn.gater != nil && !pn.gater.InterceptPeerDial(p) {
-		log.Debugf("gater disallowed outbound connection to peer %s", p)
+		log.Debug("gater disallowed outbound connection to peer", "peer", p)
 		return nil, fmt.Errorf("%v connection gater disallowed connection to %v", pn.peer, p)
 	}
-	log.Debugf("%s (newly) dialing %s", pn.peer, p)
+	log.Debug("(newly) dialing peer", "source_peer", pn.peer, "destination_peer", p)
 
 	// ok, must create a new connection. we need a link
 	links := pn.mocknet.LinksBetweenPeers(pn.peer, p)
@@ -146,7 +146,7 @@ func (pn *peernet) connect(p peer.ID) (*conn, error) {
 	// links (network interfaces) and select properly
 	l := links[rand.Intn(len(links))]
 
-	log.Debugf("%s dialing %s openingConn", pn.peer, p)
+	log.Debug("dialing peer openingConn", "source_peer", pn.peer, "destination_peer", p)
 	// create a new connection with link
 	return pn.openConn(p, l.(*link))
 }
@@ -154,7 +154,7 @@ func (pn *peernet) connect(p peer.ID) (*conn, error) {
 func (pn *peernet) openConn(_ peer.ID, l *link) (*conn, error) {
 	lc, rc := l.newConnPair(pn)
 	addConnPair(pn, rc.net, lc, rc)
-	log.Debugf("%s opening connection to %s", pn.LocalPeer(), lc.RemotePeer())
+	log.Debug("opening connection", "source_peer", pn.LocalPeer(), "destination_peer", lc.RemotePeer())
 	abort := func() {
 		_ = lc.Close()
 		_ = rc.Close()
@@ -230,7 +230,7 @@ func addConnPair(pn1, pn2 *peernet, c1, c2 *conn) {
 }
 
 func (pn *peernet) remoteOpenedConn(c *conn) {
-	log.Debugf("%s accepting connection from %s", pn.LocalPeer(), c.RemotePeer())
+	log.Debug("accepting connection", "source_peer", pn.LocalPeer(), "destination_peer", c.RemotePeer())
 	pn.addConn(c)
 }
 

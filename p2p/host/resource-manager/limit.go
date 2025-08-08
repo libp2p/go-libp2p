@@ -81,7 +81,7 @@ type fixedLimiter struct {
 var _ Limiter = (*fixedLimiter)(nil)
 
 func NewFixedLimiter(conf ConcreteLimitConfig) Limiter {
-	log.Debugw("initializing new limiter with config", "limits", conf)
+	log.Debug("initializing new limiter with config", "limits", conf)
 	return &fixedLimiter{conf}
 }
 

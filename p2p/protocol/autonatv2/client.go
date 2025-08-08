@@ -211,7 +211,9 @@ func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr 
 		rch = network.ReachabilityPrivate
 	default:
 		// Unexpected response code. Discard the response and fail.
-		log.Warnf("invalid status code received in response for addr %s: %d", addr, resp.DialStatus)
+		log.Warn("invalid status code received in response",
+			"address", addr,
+			"dial_status", resp.DialStatus)
 		return Result{}, fmt.Errorf("invalid response: invalid status code for addr %s: %d", addr, resp.DialStatus)
 	}
 
@@ -266,13 +268,17 @@ func (ac *client) handleDialBack(s network.Stream) {
 	}()
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)
+		log.Debug("failed to attach stream to service",
+			"service_name", ServiceName,
+			"error", err)
 		s.Reset()
 		return
 	}
 
 	if err := s.Scope().ReserveMemory(dialBackMaxMsgSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("failed to reserve memory for stream %s: %w", DialBackProtocol, err)
+		log.Debug("failed to reserve memory for stream",
+			"protocol", DialBackProtocol,
+			"error", err)
 		s.Reset()
 		return
 	}
@@ -284,7 +290,9 @@ func (ac *client) handleDialBack(s network.Stream) {
 	r := pbio.NewDelimitedReader(s, dialBackMaxMsgSize)
 	var msg pb.DialBack
 	if err := r.ReadMsg(&msg); err != nil {
-		log.Debugf("failed to read dialback msg from %s: %s", s.Conn().RemotePeer(), err)
+		log.Debug("failed to read dialback message",
+			"remote_peer", s.Conn().RemotePeer(),
+			"error", err)
 		s.Reset()
 		return
 	}
@@ -294,21 +302,27 @@ func (ac *client) handleDialBack(s network.Stream) {
 	ch := ac.dialBackQueues[nonce]
 	ac.mu.Unlock()
 	if ch == nil {
-		log.Debugf("dialback received with invalid nonce: localAdds: %s peer: %s nonce: %d", s.Conn().LocalMultiaddr(), s.Conn().RemotePeer(), nonce)
+		log.Debug("dialback received with invalid nonce",
+			"local_multiaddr", s.Conn().LocalMultiaddr(),
+			"remote_peer", s.Conn().RemotePeer(),
+			"nonce", nonce)
 		s.Reset()
 		return
 	}
 	select {
 	case ch <- s.Conn().LocalMultiaddr():
 	default:
-		log.Debugf("multiple dialbacks received: localAddr: %s peer: %s", s.Conn().LocalMultiaddr(), s.Conn().RemotePeer())
+		log.Debug("multiple dialbacks received",
+			"local_multiaddr", s.Conn().LocalMultiaddr(),
+			"remote_peer", s.Conn().RemotePeer())
 		s.Reset()
 		return
 	}
 	w := pbio.NewDelimitedWriter(s)
 	res := pb.DialBackResponse{}
 	if err := w.WriteMsg(&res); err != nil {
-		log.Debugf("failed to write dialback response: %s", err)
+		log.Debug("failed to write dialback response",
+			"error", err)
 		s.Reset()
 	}
 }

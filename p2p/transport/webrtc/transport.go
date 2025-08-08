@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	mrand "math/rand/v2"
@@ -44,7 +45,8 @@ func init() {
 	var err error
 	webrtcComponent, err = ma.NewComponent(ma.ProtocolWithCode(ma.P_WEBRTC_DIRECT).Name, "")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Executable()
 	}
 }
 
@@ -473,12 +475,12 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 
 	localEncoded, err := multihash.Encode(localFpBytes, multihash.SHA2_256)
 	if err != nil {
-		log.Debugf("could not encode multihash for local fingerprint")
+		log.Debug("could not encode multihash for local fingerprint")
 		return nil, err
 	}
 	remoteEncoded, err := multihash.Encode(remoteFpBytes, multihash.SHA2_256)
 	if err != nil {
-		log.Debugf("could not encode multihash for remote fingerprint")
+		log.Debug("could not encode multihash for remote fingerprint")
 		return nil, err
 	}
 
@@ -608,13 +610,13 @@ func newWebRTCConnection(settings webrtc.SettingEngine, config webrtc.Configurat
 		dc.OnOpen(func() {
 			rwc, err := dc.Detach()
 			if err != nil {
-				log.Warnf("could not detach datachannel: id: %d", *dc.ID())
+				log.Warn("could not detach datachannel", "id", *dc.ID())
 				return
 			}
 			select {
 			case incomingDataChannels <- dataChannel{rwc, dc}:
 			default:
-				log.Warnf("connection busy, rejecting stream")
+				log.Warn("connection busy, rejecting stream")
 				b, _ := proto.Marshal(&pb.Message{Flag: pb.Message_RESET.Enum()})
 				w := msgio.NewWriter(rwc)
 				w.WriteMsg(b)

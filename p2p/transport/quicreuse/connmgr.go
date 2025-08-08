@@ -146,7 +146,7 @@ func (c *ConnManager) getTracer() func(context.Context, quiclogging.Perspective,
 			case quiclogging.PerspectiveServer:
 				promTracer = quicmetrics.NewServerConnectionTracerWithRegisterer(c.registerer)
 			default:
-				log.Error("invalid logging perspective: %s", p)
+				log.Error("invalid logging perspective", "peer", p)
 			}
 		}
 		var tracer *quiclogging.ConnectionTracer
@@ -245,7 +245,7 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 	}
 	if c.enableReuseport && association != nil {
 		if _, ok := entry.ln.transport.(*refcountedTransport); !ok {
-			log.Warnf("reuseport is enabled, association is non-nil, but the transport is not a refcountedTransport.")
+			log.Warn("reuseport is enabled, association is non-nil, but the transport is not a refcountedTransport.")
 		}
 	}
 	l, err := entry.ln.Add(association, tlsConf, allowWindowIncrease, func() {

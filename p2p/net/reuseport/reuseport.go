@@ -28,7 +28,7 @@ func reuseDial(ctx context.Context, laddr *net.TCPAddr, network, raddr string) (
 	if reuseErrShouldRetry(err) && ctx.Err() == nil {
 		// We could have an existing socket open or we could have one
 		// stuck in TIME-WAIT.
-		log.Debugf("failed to reuse port, will try again with a random port: %s", err)
+		log.Debug("failed to reuse port, will try again with a random port", "err", err)
 		con, err = fallbackDialer.DialContext(ctx, network, raddr)
 	}
 	return con, err

@@ -82,12 +82,12 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 		for {
 			conn, err := ln.reuseListener.Accept(context.Background())
 			if err != nil {
-				log.Debugw("serving failed", "addr", ln.Addr(), "error", err)
+				log.Debug("serving failed", "addr", ln.Addr(), "error", err)
 				return
 			}
 			err = ln.startHandshake(conn)
 			if err != nil {
-				log.Debugf("failed to start handshake: %s", err)
+				log.Debug("failed to start handshake", "error", err)
 				continue
 			}
 			go ln.server.ServeQUICConn(conn)
@@ -99,7 +99,7 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 func (l *listener) startHandshake(conn *quic.Conn) error {
 	ctx, cancel := context.WithTimeout(l.ctx, handshakeTimeout)
 	stopHandshakeTimeout := context.AfterFunc(ctx, func() {
-		log.Debugf("failed to handshake on conn: %s", conn.RemoteAddr())
+		log.Debug("failed to handshake on conn", "remote_addr", conn.RemoteAddr())
 		conn.CloseWithError(1, "")
 		l.mx.Lock()
 		delete(l.pendingConns, conn)
@@ -159,7 +159,7 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 	remoteMultiaddr, err := stringToWebtransportMultiaddr(r.RemoteAddr)
 	if err != nil {
 		// This should never happen.
-		log.Errorw("converting remote address failed", "remote", r.RemoteAddr, "error", err)
+		log.Error("converting remote address failed", "remote", r.RemoteAddr, "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -178,7 +178,7 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 	if connScope == nil {
 		connScope, err = l.transport.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
 		if err != nil {
-			log.Debugw("resource manager blocked incoming connection", "addr", r.RemoteAddr, "error", err)
+			log.Debug("resource manager blocked incoming connection", "addr", r.RemoteAddr, "error", err)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -192,7 +192,7 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Request, connScope network.ConnManagementScope) error {
 	sess, err := l.server.Upgrade(w, r)
 	if err != nil {
-		log.Debugw("upgrade failed", "error", err)
+		log.Debug("upgrade failed", "error", err)
 		// TODO: think about the status code to use here
 		w.WriteHeader(500)
 		return err
@@ -201,7 +201,7 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 	sconn, err := l.handshake(ctx, sess)
 	if err != nil {
 		cancel()
-		log.Debugw("handshake failed", "error", err)
+		log.Debug("handshake failed", "error", err)
 		sess.CloseWithError(1, "")
 		return err
 	}
@@ -214,14 +214,14 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := connScope.SetPeer(sconn.RemotePeer()); err != nil {
-		log.Debugw("resource manager blocked incoming connection for peer", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
+		log.Debug("resource manager blocked incoming connection for peer", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
 		sess.CloseWithError(1, "")
 		return err
 	}
 
 	connVal := r.Context().Value(connKey{})
 	if connVal == nil {
-		log.Errorf("missing conn from context")
+		log.Error("missing conn from context")
 		sess.CloseWithError(1, "")
 		return errors.New("invalid context")
 	}
@@ -232,12 +232,12 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 	delete(l.pendingConns, qconn)
 	l.mx.Unlock()
 	if !ok {
-		log.Debugf("handshake timed out: %s", r.RemoteAddr)
+		log.Debug("handshake timed out", "remote_addr", r.RemoteAddr)
 		sess.CloseWithError(1, "")
 		return errTimeout
 	}
 	if err := nconn.StopHandshakeTimeout(); err != nil {
-		log.Debugf("handshake timed out: %s", r.RemoteAddr)
+		log.Debug("handshake timed out", "remote_addr", r.RemoteAddr)
 		sess.CloseWithError(1, "")
 		return err
 	}
@@ -247,7 +247,7 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 	select {
 	case l.queue <- conn:
 	default:
-		log.Debugw("accept queue full, dropping incoming connection", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
+		log.Debug("accept queue full, dropping incoming connection", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
 		conn.Close()
 		return errors.New("accept queue full")
 	}

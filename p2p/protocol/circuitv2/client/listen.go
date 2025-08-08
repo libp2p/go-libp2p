@@ -22,12 +22,14 @@ func (l *Listener) Accept() (manet.Conn, error) {
 		case evt := <-l.incoming:
 			err := evt.writeResponse()
 			if err != nil {
-				log.Debugf("error writing relay response: %s", err.Error())
+				log.Debug("error writing relay response", "err", err)
 				evt.conn.stream.Reset()
 				continue
 			}
 
-			log.Debugf("accepted relay connection from %s through %s", evt.conn.remote.ID, evt.conn.RemoteMultiaddr())
+			log.Debug("accepted relay connection",
+				"remote_peer", evt.conn.remote.ID,
+				"remote_multiaddr", evt.conn.RemoteMultiaddr())
 
 			evt.conn.tagHop()
 			return evt.conn, nil

@@ -1,10 +1,13 @@
 package canonicallog
 
 import (
-	"fmt"
+	"context"
+	"log/slog"
 	"math/rand"
 	"net"
-	"strings"
+	"os"
+	"runtime"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
@@ -13,13 +16,39 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-var log = logging.WithSkip(logging.Logger("canonical-log"), 1)
+var log = slog.New(
+	slog.NewTextHandler(
+		os.Stderr,
+		&slog.HandlerOptions{
+			Level:     logging.ConfigFromEnv().LevelForSystem("canonical-log"),
+			AddSource: true}))
+
+// logWithSkip logs at level with AddSource pointing to the caller `skip` frames up
+// from *this* function’s caller (so skip=0 => the immediate caller of logWithSkip).
+func logWithSkip(ctx context.Context, l *slog.Logger, level slog.Level, skip int, msg string, args ...any) {
+	if !l.Enabled(ctx, level) {
+		return
+	}
+
+	var pcs [1]uintptr
+	// +2 to skip runtime.Callers and logWithSkip itself.
+	runtime.Callers(skip+2, pcs[:])
+
+	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
+	r.Add(args...)
+	_ = l.Handler().Handle(ctx, r)
+}
 
 // LogMisbehavingPeer is the canonical way to log a misbehaving peer.
 // Protocols should use this to identify a misbehaving peer to allow the end
 // user to easily identify these nodes across protocols and libp2p.
 func LogMisbehavingPeer(p peer.ID, peerAddr multiaddr.Multiaddr, component string, err error, msg string) {
-	log.Warnf("CANONICAL_MISBEHAVING_PEER: peer=%s addr=%s component=%s err=%q msg=%q", p, peerAddr.String(), component, err, msg)
+	logWithSkip(context.Background(), log, slog.LevelWarn, 1, "CANONICAL_MISBEHAVING_PEER",
+		"peer", p,
+		"addr", peerAddr.String(),
+		"component", component,
+		"err", err,
+		"msg", msg)
 }
 
 // LogMisbehavingPeerNetAddr is the canonical way to log a misbehaving peer.
@@ -28,7 +57,12 @@ func LogMisbehavingPeer(p peer.ID, peerAddr multiaddr.Multiaddr, component strin
 func LogMisbehavingPeerNetAddr(p peer.ID, peerAddr net.Addr, component string, originalErr error, msg string) {
 	ma, err := manet.FromNetAddr(peerAddr)
 	if err != nil {
-		log.Warnf("CANONICAL_MISBEHAVING_PEER: peer=%s net_addr=%s component=%s err=%q msg=%q", p, peerAddr.String(), component, originalErr, msg)
+		logWithSkip(context.Background(), log, slog.LevelWarn, 1, "CANONICAL_MISBEHAVING_PEER",
+			"peer", p,
+			"net_addr", peerAddr.String(),
+			"component", component,
+			"err", originalErr,
+			"msg", msg)
 		return
 	}
 
@@ -44,14 +78,15 @@ func LogMisbehavingPeerNetAddr(p peer.ID, peerAddr net.Addr, component string, o
 // like fail2ban to action on the log.
 func LogPeerStatus(sampleRate int, p peer.ID, peerAddr multiaddr.Multiaddr, keyVals ...string) {
 	if rand.Intn(sampleRate) == 0 {
-		keyValsStr := strings.Builder{}
-		for i, kOrV := range keyVals {
-			if i%2 == 0 {
-				fmt.Fprintf(&keyValsStr, " %v=", kOrV)
-			} else {
-				fmt.Fprintf(&keyValsStr, "%q", kOrV)
-			}
+		args := []any{
+			"peer", p,
+			"addr", peerAddr.String(),
+			"sample_rate", sampleRate,
 		}
-		log.Infof("CANONICAL_PEER_STATUS: peer=%s addr=%s sample_rate=%v%s", p, peerAddr.String(), sampleRate, keyValsStr.String())
+		// Add the additional key-value pairs
+		for _, kv := range keyVals {
+			args = append(args, kv)
+		}
+		logWithSkip(context.Background(), log, slog.LevelInfo, 1, "CANONICAL_PEER_STATUS", args...)
 	}
 }

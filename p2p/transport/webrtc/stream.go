@@ -205,7 +205,7 @@ func (s *stream) processIncomingFlag(msg *pb.Message) {
 			s.receiveState = receiveStateDataRead
 		}
 		if err := s.writer.WriteMsg(&pb.Message{Flag: pb.Message_FIN_ACK.Enum()}); err != nil {
-			log.Debugf("failed to send FIN_ACK: %s", err)
+			log.Debug("failed to send FIN_ACK", "error", err)
 			// Remote has finished writing all the data It'll stop waiting for the
 			// FIN_ACK eventually or will be notified when we close the datachannel
 		}

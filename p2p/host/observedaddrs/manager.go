@@ -326,7 +326,7 @@ func (o *Manager) eventHandler(identifySub event.Subscription, natEmitter event.
 				observed: evt.ObservedAddr,
 			}:
 			default:
-				log.Debugw("dropping address observation due to full buffer",
+				log.Debug("dropping address observation due to full buffer",
 					"from", evt.Conn.RemoteMultiaddr(),
 					"observed", evt.ObservedAddr,
 				)
@@ -387,6 +387,12 @@ func (o *Manager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multi
 
 	localTW, err := thinWaistForm(conn.LocalMultiaddr())
 	if err != nil {
+<<<<<<< HEAD:p2p/host/observedaddrs/manager.go
+||||||| parent of ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
+		log.Infof("failed to get interface listen addrs", err)
+=======
+		log.Info("failed to get interface listen addrs", "err", err)
+>>>>>>> ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
 		return false, thinWaist{}, thinWaist{}
 	}
 
@@ -409,8 +415,50 @@ func (o *Manager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multi
 	if err != nil {
 		return false, thinWaist{}, thinWaist{}
 	}
+<<<<<<< HEAD:p2p/host/observedaddrs/manager.go
 	if !hasConsistentTransport(localTW.TW, observedTW.TW) {
 		log.Debugf("invalid observed address %s for local address %s", observed, localTW.Addr)
+||||||| parent of ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
+	observedTW, err = thinWaistForm(o.normalize(observed))
+	if err != nil {
+		return false, thinWaist{}, thinWaist{}
+	}
+
+	hostAddrs := o.hostAddrs()
+	for i, a := range hostAddrs {
+		hostAddrs[i] = o.normalize(a)
+	}
+
+	// We should reject the connection if the observation doesn't match the
+	// transports of one of our advertised addresses.
+	if !HasConsistentTransport(observed, hostAddrs) &&
+		!HasConsistentTransport(observed, listenAddrs) {
+		log.Debugw(
+			"observed multiaddr doesn't match the transports of any announced addresses",
+			"from", conn.RemoteMultiaddr(),
+			"observed", observed,
+		)
+=======
+	observedTW, err = thinWaistForm(o.normalize(observed))
+	if err != nil {
+		return false, thinWaist{}, thinWaist{}
+	}
+
+	hostAddrs := o.hostAddrs()
+	for i, a := range hostAddrs {
+		hostAddrs[i] = o.normalize(a)
+	}
+
+	// We should reject the connection if the observation doesn't match the
+	// transports of one of our advertised addresses.
+	if !HasConsistentTransport(observed, hostAddrs) &&
+		!HasConsistentTransport(observed, listenAddrs) {
+		log.Debug(
+			"observed multiaddr doesn't match the transports of any announced addresses",
+			"from", conn.RemoteMultiaddr(),
+			"observed", observed,
+		)
+>>>>>>> ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
 		return false, thinWaist{}, thinWaist{}
 	}
 
@@ -422,7 +470,7 @@ func (o *Manager) maybeRecordObservation(conn connMultiaddrs, observed ma.Multia
 	if !shouldRecord {
 		return
 	}
-	log.Debugw("added own observed listen addr", "conn", conn, "observed", observed)
+	log.Debug("added own observed listen addr", "conn", conn, "observed", observed)
 
 	o.mu.Lock()
 	defer o.mu.Unlock()

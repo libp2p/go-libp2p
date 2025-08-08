@@ -139,7 +139,7 @@ func DiscoverGateway(ctx context.Context) (NAT, error) {
 		return nil, ErrNoNATFound{Errs: errs}
 	case 1:
 		if len(errs) > 0 {
-			log.Debugf("NAT found, but some potentially unrelated errors occurred: %v", errs)
+			log.Debug("NAT found, but some potentially unrelated errors occurred", "errors", errs)
 		}
 
 		return nats[0], nil
@@ -165,7 +165,7 @@ func DiscoverGateway(ctx context.Context) (NAT, error) {
 	}
 
 	if len(errs) > 0 {
-		log.Debugf("NAT found, but some potentially unrelated errors occurred: %v", errs)
+		log.Debug("NAT found, but some potentially unrelated errors occurred", "errors", errs)
 	}
 	return bestNAT, nil
 }

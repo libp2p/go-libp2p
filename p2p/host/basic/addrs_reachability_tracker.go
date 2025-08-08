@@ -229,7 +229,7 @@ func (r *addrsReachabilityTracker) updateTrackedAddrs(addrs []ma.Multiaddr) {
 		return !manet.IsPublicAddr(a)
 	})
 	if len(addrs) > maxTrackedAddrs {
-		log.Errorf("too many addresses (%d) for addrs reachability tracker; dropping %d", len(addrs), len(addrs)-maxTrackedAddrs)
+		log.Error("too many addresses for addrs reachability tracker; dropping some", "total", len(addrs), "max", maxTrackedAddrs, "dropping", len(addrs)-maxTrackedAddrs)
 		addrs = addrs[:maxTrackedAddrs]
 	}
 	r.probeManager.UpdateAddrs(addrs)
@@ -318,7 +318,7 @@ func (c *errCountingClient) GetReachability(ctx context.Context, reqs probe) (au
 			err = fmt.Errorf("%w:%w", errTooManyConsecutiveFailures, err)
 		}
 		if errors.Is(err, autonatv2.ErrPrivateAddrs) {
-			log.Errorf("private IP addr in autonatv2 request: %s", err)
+			log.Error("private IP addr in autonatv2 request", "err", err)
 		}
 	} else {
 		c.consecutiveErrors = 0

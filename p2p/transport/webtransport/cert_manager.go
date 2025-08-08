@@ -126,7 +126,7 @@ func (m *certManager) rollConfig(hostKey ic.PrivKey) error {
 
 func (m *certManager) background(hostKey ic.PrivKey) {
 	d := m.currentConfig.End().Add(-clockSkewAllowance).Sub(m.clock.Now())
-	log.Debugw("setting timer", "duration", d.String())
+	log.Debug("setting timer", "duration", d.String())
 	t := m.clock.Timer(d)
 	m.refCount.Add(1)
 
@@ -142,10 +142,10 @@ func (m *certManager) background(hostKey ic.PrivKey) {
 				now := m.clock.Now()
 				m.mx.Lock()
 				if err := m.rollConfig(hostKey); err != nil {
-					log.Errorw("rolling config failed", "error", err)
+					log.Error("rolling config failed", "error", err)
 				}
 				d := m.currentConfig.End().Add(-clockSkewAllowance).Sub(now)
-				log.Debugw("rolling certificates", "next", d.String())
+				log.Debug("rolling certificates", "next", d.String())
 				t.Reset(d)
 				m.mx.Unlock()
 			}

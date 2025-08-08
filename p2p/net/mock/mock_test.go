@@ -490,10 +490,10 @@ func TestLimitedStreams(t *testing.T) {
 		b := make([]byte, messageSize)
 		for i := 0; i < messages; i++ {
 			if _, err := io.ReadFull(s, b); err != nil {
-				log.Fatal(err)
+				t.Fatal(err)
 			}
 			if !bytes.Equal(b[:4], []byte("ping")) {
-				log.Fatal("bytes mismatch")
+				t.Fatal("bytes mismatch")
 			}
 			wg.Done()
 		}

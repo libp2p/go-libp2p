@@ -345,7 +345,7 @@ func (s *resourceScope) ReserveMemory(size int, prio uint8) error {
 	}
 
 	if err := s.rc.reserveMemory(int64(size), prio); err != nil {
-		log.Debugw("blocked memory reservation", logValuesMemoryLimit(s.name, "", s.rc.stat(), err)...)
+		log.Debug("blocked memory reservation", logValuesMemoryLimit(s.name, "", s.rc.stat(), err)...)
 		s.trace.BlockReserveMemory(s.name, prio, int64(size), s.rc.memory)
 		s.metrics.BlockMemory(size)
 		return s.wrapError(err)
@@ -373,7 +373,7 @@ func (s *resourceScope) reserveMemoryForEdges(size int, prio uint8) error {
 		var stat network.ScopeStat
 		stat, err = e.ReserveMemoryForChild(int64(size), prio)
 		if err != nil {
-			log.Debugw("blocked memory reservation from constraining edge", logValuesMemoryLimit(s.name, e.name, stat, err)...)
+			log.Debug("blocked memory reservation from constraining edge", logValuesMemoryLimit(s.name, e.name, stat, err)...)
 			break
 		}
 
@@ -452,7 +452,7 @@ func (s *resourceScope) AddStream(dir network.Direction) error {
 	}
 
 	if err := s.rc.addStream(dir); err != nil {
-		log.Debugw("blocked stream", logValuesStreamLimit(s.name, "", dir, s.rc.stat(), err)...)
+		log.Debug("blocked stream", logValuesStreamLimit(s.name, "", dir, s.rc.stat(), err)...)
 		s.trace.BlockAddStream(s.name, dir, s.rc.nstreamsIn, s.rc.nstreamsOut)
 		return s.wrapError(err)
 	}
@@ -477,7 +477,7 @@ func (s *resourceScope) addStreamForEdges(dir network.Direction) error {
 		var stat network.ScopeStat
 		stat, err = e.AddStreamForChild(dir)
 		if err != nil {
-			log.Debugw("blocked stream from constraining edge", logValuesStreamLimit(s.name, e.name, dir, stat, err)...)
+			log.Debug("blocked stream from constraining edge", logValuesStreamLimit(s.name, e.name, dir, stat, err)...)
 			break
 		}
 		reserved++
@@ -554,7 +554,7 @@ func (s *resourceScope) AddConn(dir network.Direction, usefd bool) error {
 	}
 
 	if err := s.rc.addConn(dir, usefd); err != nil {
-		log.Debugw("blocked connection", logValuesConnLimit(s.name, "", dir, usefd, s.rc.stat(), err)...)
+		log.Debug("blocked connection", logValuesConnLimit(s.name, "", dir, usefd, s.rc.stat(), err)...)
 		s.trace.BlockAddConn(s.name, dir, usefd, s.rc.nconnsIn, s.rc.nconnsOut, s.rc.nfd)
 		return s.wrapError(err)
 	}
@@ -579,7 +579,7 @@ func (s *resourceScope) addConnForEdges(dir network.Direction, usefd bool) error
 		var stat network.ScopeStat
 		stat, err = e.AddConnForChild(dir, usefd)
 		if err != nil {
-			log.Debugw("blocked connection from constraining edge", logValuesConnLimit(s.name, e.name, dir, usefd, stat, err)...)
+			log.Debug("blocked connection from constraining edge", logValuesConnLimit(s.name, e.name, dir, usefd, stat, err)...)
 			break
 		}
 		reserved++

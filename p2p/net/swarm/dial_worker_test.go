@@ -487,7 +487,7 @@ func TestDialQueueNextBatch(t *testing.T) {
 				sort.Slice(batch, func(i, j int) bool { return batch[i].String() < batch[j].String() })
 				for i := 0; i < len(b); i++ {
 					if !b[i].Addr.Equal(batch[i]) {
-						log.Errorf("expected %s got %s", batch[i], b[i].Addr)
+						log.Error("expected address mismatch", "expected", batch[i], "got", b[i].Addr)
 					}
 				}
 			}
@@ -910,7 +910,7 @@ func TestDialWorkerLoopSchedulingProperty(t *testing.T) {
 		s1.dialRanker = makeRanker(tc.input)
 		err := checkDialWorkerLoopScheduling(t, s1, s2, tc)
 		if err != nil {
-			log.Error(err)
+			t.Log(err)
 		}
 		return err == nil
 	}

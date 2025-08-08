@@ -225,15 +225,15 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 	var err error
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
-		log.Warnf("identify service not emitting peer protocol updates; err: %s", err)
+		log.Warn("identify service not emitting peer protocol updates", "err", err)
 	}
 	s.emitters.evtPeerIdentificationCompleted, err = h.EventBus().Emitter(&event.EvtPeerIdentificationCompleted{})
 	if err != nil {
-		log.Warnf("identify service not emitting identification completed events; err: %s", err)
+		log.Warn("identify service not emitting identification completed events", "err", err)
 	}
 	s.emitters.evtPeerIdentificationFailed, err = h.EventBus().Emitter(&event.EvtPeerIdentificationFailed{})
 	if err != nil {
-		log.Warnf("identify service not emitting identification failed events; err: %s", err)
+		log.Warn("identify service not emitting identification failed events", "err", err)
 	}
 	return s, nil
 }
@@ -258,7 +258,7 @@ func (ids *idService) loop(ctx context.Context) {
 		eventbus.Name("identify (loop)"),
 	)
 	if err != nil {
-		log.Errorf("failed to subscribe to events on the bus, err=%s", err)
+		log.Error("failed to subscribe to events on the bus", "err", err)
 		return
 	}
 	defer sub.Close()
@@ -331,7 +331,7 @@ func (ids *idService) sendPushes(ctx context.Context) {
 		snapshot := ids.currentSnapshot.snapshot
 		ids.currentSnapshot.Unlock()
 		if e.Sequence >= snapshot.seq {
-			log.Debugw("already sent this snapshot to peer", "peer", c.RemotePeer(), "seq", snapshot.seq)
+			log.Debug("already sent this snapshot to peer", "peer", c.RemotePeer(), "seq", snapshot.seq)
 			continue
 		}
 		// we haven't, send it now
@@ -349,7 +349,7 @@ func (ids *idService) sendPushes(ctx context.Context) {
 			}
 			// TODO: find out if the peer supports push if we didn't have any information about push support
 			if err := ids.sendIdentifyResp(str, true); err != nil {
-				log.Debugw("failed to send identify push", "peer", c.RemotePeer(), "error", err)
+				log.Debug("failed to send identify push", "peer", c.RemotePeer(), "error", err)
 				return
 			}
 		}(c)
@@ -384,7 +384,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 		// No entry found. We may have gotten an out of order notification. Check it we should have this conn (because we're still connected)
 		// We hold the ids.connsMu lock so this is safe since a disconnect event will be processed later if we are connected.
 		if c.IsClosed() {
-			log.Debugw("connection not found in identify service", "peer", c.RemotePeer())
+			log.Debug("connection not found in identify service", "peer", c.RemotePeer())
 			ch := make(chan struct{})
 			close(ch)
 			return ch
@@ -406,7 +406,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 	go func() {
 		defer close(e.IdentifyWaitChan)
 		if err := ids.identifyConn(c); err != nil {
-			log.Warnf("failed to identify %s: %s", c.RemotePeer(), err)
+			log.Warn("failed to identify peer", "peer", c.RemotePeer(), "error", err)
 			ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
 			return
 		}
@@ -419,7 +419,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 func newStreamAndNegotiate(ctx context.Context, c network.Conn, proto protocol.ID, timeout time.Duration) (network.Stream, error) {
 	s, err := c.NewStream(network.WithAllowLimitedConn(ctx, "identify"))
 	if err != nil {
-		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
+		log.Debug("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return nil, fmt.Errorf("failed to open new stream: %w", err)
 	}
 
@@ -427,14 +427,14 @@ func newStreamAndNegotiate(ctx context.Context, c network.Conn, proto protocol.I
 	_ = s.SetDeadline(time.Now().Add(timeout))
 
 	if err := s.SetProtocol(proto); err != nil {
-		log.Warnf("error setting identify protocol for stream: %s", err)
+		log.Warn("error setting identify protocol for stream", "err", err)
 		_ = s.Reset()
 		return nil, fmt.Errorf("failed to set protocol: %w", err)
 	}
 
 	// ok give the response to our handler.
 	if err := msmux.SelectProtoOrFail(proto, s); err != nil {
-		log.Infow("failed negotiate identify protocol with peer", "peer", c.RemotePeer(), "error", err)
+		log.Info("failed negotiate identify protocol with peer", "peer", c.RemotePeer(), "error", err)
 		_ = s.Reset()
 		return nil, fmt.Errorf("multistream mux select protocol failed: %w", err)
 	}
@@ -446,7 +446,7 @@ func (ids *idService) identifyConn(c network.Conn) error {
 	defer cancel()
 	s, err := newStreamAndNegotiate(network.WithAllowLimitedConn(ctx, "identify"), c, ID, ids.timeout)
 	if err != nil {
-		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
+		log.Debug("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return err
 	}
 
@@ -457,7 +457,7 @@ func (ids *idService) identifyConn(c network.Conn) error {
 func (ids *idService) handlePush(s network.Stream) {
 	s.SetDeadline(time.Now().Add(ids.timeout))
 	if err := ids.handleIdentifyResponse(s, true); err != nil {
-		log.Debugf("failed to handle identify push: %s", err)
+		log.Debug("failed to handle identify push", "err", err)
 	}
 }
 
@@ -476,12 +476,12 @@ func (ids *idService) sendIdentifyResp(s network.Stream, isPush bool) error {
 	snapshot := ids.currentSnapshot.snapshot
 	ids.currentSnapshot.Unlock()
 
-	log.Debugw("sending snapshot", "seq", snapshot.seq, "protocols", snapshot.protocols, "addrs", snapshot.addrs)
+	log.Debug("sending snapshot", "seq", snapshot.seq, "protocols", snapshot.protocols, "addrs", snapshot.addrs)
 
 	mes := ids.createBaseIdentifyResponse(s.Conn(), &snapshot)
 	mes.SignedPeerRecord = ids.getSignedRecord(&snapshot)
 
-	log.Debugf("%s sending message to %s %s", ID, s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
+	log.Debug("sending identify message", "id", ID, "remote_peer", s.Conn().RemotePeer(), "remote_multiaddr", s.Conn().RemoteMultiaddr())
 	if err := ids.writeChunkedIdentifyMsg(s, mes); err != nil {
 		return err
 	}
@@ -507,13 +507,13 @@ func (ids *idService) sendIdentifyResp(s network.Stream, isPush bool) error {
 
 func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) error {
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Warnf("error attaching stream to identify service: %s", err)
+		log.Warn("error attaching stream to identify service", "err", err)
 		s.Reset()
 		return err
 	}
 
 	if err := s.Scope().ReserveMemory(signedIDSize, network.ReservationPriorityAlways); err != nil {
-		log.Warnf("error reserving memory for identify stream: %s", err)
+		log.Warn("error reserving memory for identify stream", "err", err)
 		s.Reset()
 		return err
 	}
@@ -525,14 +525,14 @@ func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) erro
 	mes := &pb.Identify{}
 
 	if err := readAllIDMessages(r, mes); err != nil {
-		log.Warn("error reading identify message: ", err)
+		log.Warn("error reading identify message", "err", err)
 		s.Reset()
 		return err
 	}
 
 	defer s.Close()
 
-	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
+	log.Debug("received identify message", "protocol", s.Protocol(), "remote_peer", c.RemotePeer(), "remote_multiaddr", c.RemoteMultiaddr())
 
 	ids.consumeMessage(mes, c, isPush)
 
@@ -611,7 +611,7 @@ func (ids *idService) updateSnapshot() (updated bool) {
 	snapshot.seq = ids.currentSnapshot.snapshot.seq + 1
 	ids.currentSnapshot.snapshot = snapshot
 
-	log.Debugw("updating snapshot", "seq", snapshot.seq, "addrs", snapshot.addrs)
+	log.Debug("updating snapshot", "seq", snapshot.seq, "addrs", snapshot.addrs)
 	return true
 }
 
@@ -664,13 +664,13 @@ func (ids *idService) createBaseIdentifyResponse(conn network.Conn, snapshot *id
 		// check if we're even operating in "secure mode"
 		if ids.Host.Peerstore().PrivKey(ids.Host.ID()) != nil {
 			// private key is present. But NO public key. Something bad happened.
-			log.Errorf("did not have own public key in Peerstore")
+			log.Error("did not have own public key in Peerstore")
 		}
 		// if neither of the key is present it is safe to assume that we are using an insecure transport.
 	} else {
 		// public key is present. Safe to proceed.
 		if kb, err := crypto.MarshalPublicKey(ownKey); err != nil {
-			log.Errorf("failed to convert key to bytes")
+			log.Error("failed to convert key to bytes")
 		} else {
 			mes.PublicKey = kb
 		}
@@ -690,7 +690,7 @@ func (ids *idService) getSignedRecord(snapshot *identifySnapshot) []byte {
 
 	recBytes, err := snapshot.record.Marshal()
 	if err != nil {
-		log.Errorw("failed to marshal signed record", "err", err)
+		log.Error("failed to marshal signed record", "err", err)
 		return nil
 	}
 
@@ -744,7 +744,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 
 	obsAddr, err := ma.NewMultiaddrBytes(mes.GetObservedAddr())
 	if err != nil {
-		log.Debugf("error parsing received observed addr for %s: %s", c, err)
+		log.Debug("error parsing received observed addr", "connection", c, "err", err)
 		obsAddr = nil
 	}
 
@@ -754,8 +754,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	for _, addr := range laddrs {
 		maddr, err := ma.NewMultiaddrBytes(addr)
 		if err != nil {
-			log.Debugf("%s failed to parse multiaddr from %s %s", ID,
-				p, c.RemoteMultiaddr())
+			log.Debug("failed to parse multiaddr", "id", ID, "peer", p, "remote_multiaddr", c.RemoteMultiaddr())
 			continue
 		}
 		lmaddrs = append(lmaddrs, maddr)
@@ -773,7 +772,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	// otherwise use the unsigned addresses.
 	signedPeerRecord, err := signedPeerRecordFromMessage(mes)
 	if err != nil {
-		log.Debugf("error getting peer record from Identify message: %v", err)
+		log.Debug("error getting peer record from Identify message", "err", err)
 	}
 
 	// Extend the TTLs on the known (probably) good addresses.
@@ -797,7 +796,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	if signedPeerRecord != nil {
 		signedAddrs, err := ids.consumeSignedPeerRecord(c.RemotePeer(), signedPeerRecord)
 		if err != nil {
-			log.Debugf("failed to consume signed peer record: %s", err)
+			log.Debug("failed to consume signed peer record", "err", err)
 			signedPeerRecord = nil
 		} else {
 			addrs = signedAddrs
@@ -816,7 +815,10 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
 	ids.addrMu.Unlock()
 
-	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), addrs)
+	log.Debug("received listen addresses",
+		"local_peer", c.LocalPeer(),
+		"remote_peer", c.RemotePeer(),
+		"addresses", addrs)
 
 	// get protocol versions
 	pv := mes.GetProtocolVersion()
@@ -873,20 +875,28 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 	rp := c.RemotePeer()
 
 	if kb == nil {
-		log.Debugf("%s did not receive public key for remote peer: %s", lp, rp)
+		log.Debug("did not receive public key for remote peer",
+			"local_peer", lp,
+			"remote_peer", rp)
 		return
 	}
 
 	newKey, err := crypto.UnmarshalPublicKey(kb)
 	if err != nil {
-		log.Warnf("%s cannot unmarshal key from remote peer: %s, %s", lp, rp, err)
+		log.Warn("cannot unmarshal key from remote peer",
+			"local_peer", lp,
+			"remote_peer", rp,
+			"err", err)
 		return
 	}
 
 	// verify key matches peer.ID
 	np, err := peer.IDFromPublicKey(newKey)
 	if err != nil {
-		log.Debugf("%s cannot get peer.ID from key of remote peer: %s, %s", lp, rp, err)
+		log.Debug("cannot get peer.ID from key of remote peer",
+			"local_peer", lp,
+			"remote_peer", rp,
+			"err", err)
 		return
 	}
 
@@ -897,12 +907,18 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 			// if local peerid is empty, then use the new, sent key.
 			err := ids.Host.Peerstore().AddPubKey(rp, newKey)
 			if err != nil {
-				log.Debugf("%s could not add key for %s to peerstore: %s", lp, rp, err)
+				log.Debug("could not add key for peer to peerstore",
+					"local_peer", lp,
+					"remote_peer", rp,
+					"err", err)
 			}
 
 		} else {
 			// we have a local peer.ID and it does not match the sent key... error.
-			log.Errorf("%s received key for remote peer %s mismatch: %s", lp, rp, np)
+			log.Error("received key for remote peer mismatch",
+				"local_peer", lp,
+				"remote_peer", rp,
+				"peer_id", np)
 		}
 		return
 	}
@@ -912,7 +928,10 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 		// no key? no auth transport. set this one.
 		err := ids.Host.Peerstore().AddPubKey(rp, newKey)
 		if err != nil {
-			log.Debugf("%s could not add key for %s to peerstore: %s", lp, rp, err)
+			log.Debug("could not add key for peer to peerstore",
+				"local_peer", lp,
+				"remote_peer", rp,
+				"err", err)
 		}
 		return
 	}
@@ -925,21 +944,31 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 	// weird, got a different key... but the different key MATCHES the peer.ID.
 	// this odd. let's log error and investigate. this should basically never happen
 	// and it means we have something funky going on and possibly a bug.
-	log.Errorf("%s identify got a different key for: %s", lp, rp)
+	log.Error("identify got a different key",
+		"local_peer", lp,
+		"remote_peer", rp)
 
 	// okay... does ours NOT match the remote peer.ID?
 	cp, err := peer.IDFromPublicKey(currKey)
 	if err != nil {
-		log.Errorf("%s cannot get peer.ID from local key of remote peer: %s, %s", lp, rp, err)
+		log.Error("cannot get peer.ID from local key of remote peer",
+			"local_peer", lp,
+			"remote_peer", rp,
+			"err", err)
 		return
 	}
 	if cp != rp {
-		log.Errorf("%s local key for remote peer %s yields different peer.ID: %s", lp, rp, cp)
+		log.Error("local key for remote peer yields different peer.ID",
+			"local_peer", lp,
+			"remote_peer", rp,
+			"calculated_peer_id", cp)
 		return
 	}
 
 	// okay... curr key DOES NOT match new key. both match peer.ID. wat?
-	log.Errorf("%s local key and received key for %s do not match, but match peer.ID", lp, rp)
+	log.Error("local key and received key do not match, but match peer.ID",
+		"local_peer", lp,
+		"remote_peer", rp)
 }
 
 // HasConsistentTransport returns true if the address 'a' shares a

@@ -247,7 +247,7 @@ func (cl *connLimiter) rmConn(ip netip.Addr) {
 		if limit.Network.Contains(ip) {
 			count := connsPerNetworkPrefix[i]
 			if count <= 0 {
-				log.Errorf("unexpected conn count for ip %s. Was this not added with addConn first?", ip)
+				log.Error("unexpected conn count for ip. Was this not added with addConn first?", "ip", ip)
 				return
 			}
 			connsPerNetworkPrefix[i]--
@@ -271,13 +271,13 @@ func (cl *connLimiter) rmConn(ip netip.Addr) {
 		prefix, err := ip.Prefix(limit.PrefixLength)
 		if err != nil {
 			// Unexpected since we should have seen this IP before in addConn
-			log.Errorf("unexpected error getting prefix: %v", err)
+			log.Error("unexpected error getting prefix", "err", err)
 			continue
 		}
 		counts, ok := connsPerLimit[i][prefix]
 		if !ok || counts == 0 {
 			// Unexpected, but don't panic
-			log.Errorf("unexpected conn count for %s ok=%v count=%v", prefix, ok, counts)
+			log.Error("unexpected conn count", "prefix", prefix, "ok", ok, "count", counts)
 			continue
 		}
 		connsPerLimit[i][prefix]--

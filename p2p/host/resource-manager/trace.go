@@ -263,7 +263,7 @@ func (t *trace) backgroundWriter(out io.WriteCloser) {
 			}
 
 			if err := t.writeEvents(pend, jsonOut); err != nil {
-				log.Warnf("error writing rcmgr trace: %s", err)
+				log.Warn("error writing rcmgr trace", "err", err)
 				t.mx.Lock()
 				t.done = true
 				t.mx.Unlock()
@@ -271,7 +271,7 @@ func (t *trace) backgroundWriter(out io.WriteCloser) {
 			}
 
 			if err := gzOut.Flush(); err != nil {
-				log.Warnf("error flushing rcmgr trace: %s", err)
+				log.Warn("error flushing rcmgr trace", "err", err)
 				t.mx.Lock()
 				t.done = true
 				t.mx.Unlock()
@@ -286,12 +286,12 @@ func (t *trace) backgroundWriter(out io.WriteCloser) {
 			}
 
 			if err := t.writeEvents(pend, jsonOut); err != nil {
-				log.Warnf("error writing rcmgr trace: %s", err)
+				log.Warn("error writing rcmgr trace", "err", err)
 				return
 			}
 
 			if err := gzOut.Flush(); err != nil {
-				log.Warnf("error flushing rcmgr trace: %s", err)
+				log.Warn("error flushing rcmgr trace", "err", err)
 			}
 
 			return

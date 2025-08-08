@@ -52,7 +52,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		}
 		c, err := l.wrapConn(qconn)
 		if err != nil {
-			log.Debugf("failed to setup connection: %s", err)
+			log.Debug("failed to setup connection", "err", err)
 			qconn.CloseWithError(quic.ApplicationErrorCode(network.ConnResourceLimitExceeded), "")
 			continue
 		}
@@ -99,7 +99,7 @@ func (l *listener) wrapConn(qconn *quic.Conn) (*conn, error) {
 	if connScope == nil {
 		connScope, err = l.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
 		if err != nil {
-			log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
+			log.Debug("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "err", err)
 			return nil, err
 		}
 	}
@@ -126,7 +126,7 @@ func (l *listener) wrapConnWithScope(qconn *quic.Conn, connScope network.ConnMan
 		return nil, err
 	}
 	if err := connScope.SetPeer(remotePeerID); err != nil {
-		log.Debugw("resource manager blocked incoming connection for peer", "peer", remotePeerID, "addr", qconn.RemoteAddr(), "error", err)
+		log.Debug("resource manager blocked incoming connection for peer", "peer", remotePeerID, "addr", qconn.RemoteAddr(), "err", err)
 		return nil, err
 	}
 

@@ -84,7 +84,7 @@ func (r *AutoRelay) background() {
 				if errors.Is(err, errAlreadyRunning) {
 					log.Debug("tried to start already running relay finder")
 				} else if err != nil {
-					log.Errorw("failed to start relay finder", "error", err)
+					log.Error("failed to start relay finder", "err", err)
 				} else {
 					r.metricsTracer.RelayFinderStatus(true)
 				}

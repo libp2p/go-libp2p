@@ -40,14 +40,14 @@ func newConn(raw *ws.Conn, secure bool, scope network.ConnManagementScope) *Conn
 	lna := NewAddrWithScheme(raw.LocalAddr().String(), secure)
 	laddr, err := manet.FromNetAddr(lna)
 	if err != nil {
-		log.Errorf("BUG: invalid localaddr on websocket conn", raw.LocalAddr())
+		log.Error("BUG: invalid localaddr on websocket conn", "local_addr", raw.LocalAddr())
 		return nil
 	}
 
 	rna := NewAddrWithScheme(raw.RemoteAddr().String(), secure)
 	raddr, err := manet.FromNetAddr(rna)
 	if err != nil {
-		log.Errorf("BUG: invalid remoteaddr on websocket conn", raw.RemoteAddr())
+		log.Error("BUG: invalid remoteaddr on websocket conn", "remote_addr", raw.RemoteAddr())
 		return nil
 	}
 

@@ -98,10 +98,15 @@ func (as *server) handleDialRequest(s network.Stream) {
 		}
 	}()
 
-	log.Debugf("received dial-request from: %s, addr: %s", s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
+	log.Debug("received dial-request",
+		"remote_peer", s.Conn().RemotePeer(),
+		"remote_multiaddr", s.Conn().RemoteMultiaddr())
 	evt := as.serveDialRequest(s)
-	log.Debugf("completed dial-request from %s, response status: %s, dial status: %s, err: %s",
-		s.Conn().RemotePeer(), evt.ResponseStatus, evt.DialStatus, evt.Error)
+	log.Debug("completed dial-request",
+		"remote_peer", s.Conn().RemotePeer(),
+		"response_status", evt.ResponseStatus,
+		"dial_status", evt.DialStatus,
+		"error", evt.Error)
 	if as.metricsTracer != nil {
 		as.metricsTracer.CompletedRequest(evt)
 	}
@@ -110,7 +115,9 @@ func (as *server) handleDialRequest(s network.Stream) {
 func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		s.Reset()
-		log.Debugf("failed to attach stream to %s service: %w", ServiceName, err)
+		log.Debug("failed to attach stream to service",
+			"service_name", ServiceName,
+			"error", err)
 		return EventDialRequestCompleted{
 			Error: errors.New("failed to attach stream to autonat-v2"),
 		}
@@ -118,7 +125,9 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
 		s.Reset()
-		log.Debugf("failed to reserve memory for stream %s: %w", DialProtocol, err)
+		log.Debug("failed to reserve memory for stream",
+			"protocol", DialProtocol,
+			"error", err)
 		return EventDialRequestCompleted{Error: errResourceLimitExceeded}
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
@@ -144,13 +153,17 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 		}
 		if err := w.WriteMsg(&msg); err != nil {
 			s.Reset()
-			log.Debugf("failed to write request rejected response to %s: %s", p, err)
+			log.Debug("failed to write request rejected response",
+				"remote_peer", p,
+				"error", err)
 			return EventDialRequestCompleted{
 				ResponseStatus: pb.DialResponse_E_REQUEST_REJECTED,
 				Error:          fmt.Errorf("write failed: %w", err),
 			}
 		}
-		log.Debugf("rejected request from %s: rate limit exceeded", p)
+		log.Debug("rejected request",
+			"remote_peer", p,
+			"reason", "rate limit exceeded")
 		return EventDialRequestCompleted{ResponseStatus: pb.DialResponse_E_REQUEST_REJECTED}
 	}
 	defer as.limiter.CompleteRequest(p)
@@ -158,12 +171,17 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	if err := r.ReadMsg(&msg); err != nil {
 		s.Reset()
-		log.Debugf("failed to read request from %s: %s", p, err)
+		log.Debug("failed to read request",
+			"remote_peer", p,
+			"error", err)
 		return EventDialRequestCompleted{Error: fmt.Errorf("read failed: %w", err)}
 	}
 	if msg.GetDialRequest() == nil {
 		s.Reset()
-		log.Debugf("invalid message type from %s: %T expected: DialRequest", p, msg.Msg)
+		log.Debug("invalid message type",
+			"remote_peer", p,
+			"actual_type", fmt.Sprintf("%T", msg.Msg),
+			"expected_type", "DialRequest")
 		return EventDialRequestCompleted{Error: errBadRequest}
 	}
 
@@ -199,7 +217,9 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 		}
 		if err := w.WriteMsg(&msg); err != nil {
 			s.Reset()
-			log.Debugf("failed to write dial refused response to %s: %s", p, err)
+			log.Debug("failed to write dial refused response",
+				"remote_peer", p,
+				"error", err)
 			return EventDialRequestCompleted{
 				ResponseStatus: pb.DialResponse_E_DIAL_REFUSED,
 				Error:          fmt.Errorf("write failed: %w", err),
@@ -223,14 +243,18 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 		}
 		if err := w.WriteMsg(&msg); err != nil {
 			s.Reset()
-			log.Debugf("failed to write request rejected response to %s: %s", p, err)
+			log.Debug("failed to write request rejected response",
+				"remote_peer", p,
+				"error", err)
 			return EventDialRequestCompleted{
 				ResponseStatus:   pb.DialResponse_E_REQUEST_REJECTED,
 				Error:            fmt.Errorf("write failed: %w", err),
 				DialDataRequired: true,
 			}
 		}
-		log.Debugf("rejected request from %s: rate limit exceeded", p)
+		log.Debug("rejected request",
+			"remote_peer", p,
+			"reason", "rate limit exceeded")
 		return EventDialRequestCompleted{
 			ResponseStatus:   pb.DialResponse_E_REQUEST_REJECTED,
 			DialDataRequired: true,
@@ -240,7 +264,9 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 	if isDialDataRequired {
 		if err := getDialData(w, s, &msg, addrIdx); err != nil {
 			s.Reset()
-			log.Debugf("%s refused dial data request: %s", p, err)
+			log.Debug("dial data request refused",
+				"remote_peer", p,
+				"error", err)
 			return EventDialRequestCompleted{
 				Error:            errDialDataRefused,
 				DialDataRequired: true,
@@ -254,7 +280,9 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 		select {
 		case <-ctx.Done():
 			s.Reset()
-			log.Debugf("rejecting request without dialing: %s %p ", p, ctx.Err())
+			log.Debug("rejecting request without dialing",
+				"remote_peer", p,
+				"error", ctx.Err())
 			return EventDialRequestCompleted{Error: ctx.Err(), DialDataRequired: true, DialedAddr: dialAddr}
 		case <-t.C:
 		}
@@ -272,7 +300,9 @@ func (as *server) serveDialRequest(s network.Stream) EventDialRequestCompleted {
 	}
 	if err := w.WriteMsg(&msg); err != nil {
 		s.Reset()
-		log.Debugf("failed to write response to %s: %s", p, err)
+		log.Debug("failed to write response",
+			"remote_peer", p,
+			"error", err)
 		return EventDialRequestCompleted{
 			ResponseStatus:   pb.DialResponse_OK,
 			DialStatus:       dialStatus,
@@ -501,7 +531,8 @@ func (r *rateLimiter) CompleteRequest(p peer.ID) {
 	if r.inProgressReqs[p] <= 0 {
 		delete(r.inProgressReqs, p)
 		if r.inProgressReqs[p] < 0 {
-			log.Errorf("BUG: negative in progress requests for peer %s", p)
+			log.Error("BUG: negative in progress requests",
+				"remote_peer", p)
 		}
 	}
 }

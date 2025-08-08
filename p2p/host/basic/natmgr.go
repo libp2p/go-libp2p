@@ -109,7 +109,7 @@ func (nmgr *natManager) background(ctx context.Context) {
 	defer cancel()
 	natInstance, err := discoverNAT(discoverCtx)
 	if err != nil {
-		log.Info("DiscoverNAT error:", err)
+		log.Info("DiscoverNAT error:", "err", err)
 		return
 	}
 
@@ -209,7 +209,7 @@ func (nmgr *natManager) doSync() {
 	// Create new mappings.
 	for _, e := range newAddresses {
 		if err := nmgr.nat.AddMapping(nmgr.ctx, e.protocol, e.port); err != nil {
-			log.Errorf("failed to port-map %s port %d: %s", e.protocol, e.port, err)
+			log.Error("failed to port-map", "protocol", e.protocol, "port", e.port, "err", err)
 		}
 		nmgr.tracked[e] = false
 	}
@@ -239,7 +239,7 @@ func (nmgr *natManager) GetMapping(addr ma.Multiaddr) ma.Multiaddr {
 
 	naddr, err := manet.ToNetAddr(transport)
 	if err != nil {
-		log.Error("error parsing net multiaddr %q: %s", transport, err)
+		log.Error("error parsing net multiaddr", "addr", transport, "err", err)
 		return nil
 	}
 
@@ -280,7 +280,7 @@ func (nmgr *natManager) GetMapping(addr ma.Multiaddr) ma.Multiaddr {
 	}
 	mappedMaddr, err := manet.FromNetAddr(mappedAddr)
 	if err != nil {
-		log.Errorf("mapped addr can't be turned into a multiaddr %q: %s", mappedAddr, err)
+		log.Error("mapped addr can't be turned into a multiaddr", "addr", mappedAddr, "err", err)
 		return nil
 	}
 	extMaddr := mappedMaddr

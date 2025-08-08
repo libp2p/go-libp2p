@@ -238,7 +238,7 @@ func (s *Swarm) DialPeer(ctx context.Context, p peer.ID) (network.Conn, error) {
 // It is gated by the swarm's dial synchronization systems: dialsync and
 // dialbackoff.
 func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
-	log.Debugw("dialing peer", "from", s.local, "to", p)
+	log.Debug("dialing peer", "source_peer", s.local, "destination_peer", p)
 	err := p.Validate()
 	if err != nil {
 		return nil, err
@@ -255,7 +255,7 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 	}
 
 	if s.gater != nil && !s.gater.InterceptPeerDial(p) {
-		log.Debugf("gater disallowed outbound connection to peer %s", p)
+		log.Debug("gater disallowed outbound connection to peer", "peer", p)
 		return nil, &DialError{Peer: p, Cause: ErrGaterDisallowedConnection}
 	}
 
@@ -269,13 +269,13 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 		// This was most likely already checked by the security protocol, but it doesn't hurt do it again here.
 		if conn.RemotePeer() != p {
 			conn.Close()
-			log.Errorw("Handshake failed to properly authenticate peer", "authenticated", conn.RemotePeer(), "expected", p)
+			log.Error("Handshake failed to properly authenticate peer", "authenticated", conn.RemotePeer(), "expected", p)
 			return nil, fmt.Errorf("unexpected peer")
 		}
 		return conn, nil
 	}
 
-	log.Debugf("network for %s finished dialing %s", s.local, p)
+	log.Debug("network finished dialing peer", "local", s.local, "remote", p)
 
 	if ctx.Err() != nil {
 		// Context error trumps any dial errors as it was likely the ultimate cause.
@@ -451,7 +451,7 @@ func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) []ma.Multiad
 	}
 	addrs, errs := chainResolvers(ctx, pi.Addrs, maximumResolvedAddresses, []resolver{dnsAddrResolver, skipResolver, tptResolver, dnsResolver})
 	for _, err := range errs {
-		log.Warnf("Failed to resolve addr %s: %v", err.addr, err.err)
+		log.Warn("Failed to resolve addr", "addr", err.addr, "err", err.err)
 	}
 	// Add skipped addresses back to the resolved addresses
 	addrs = append(addrs, skipped...)
@@ -587,10 +587,10 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, updC
 	}
 	// Check before we start work
 	if err := ctx.Err(); err != nil {
-		log.Debugf("%s swarm not dialing. Context cancelled: %v. %s %s", s.local, err, p, addr)
+		log.Debug("swarm not dialing. Context cancelled", "source_peer", s.local, "err", err, "destination_peer", p, "addr", addr)
 		return nil, err
 	}
-	log.Debugf("%s swarm dialing %s %s", s.local, p, addr)
+	log.Debug("swarm dialing peer", "source_peer", s.local, "destination_peer", p, "addr", addr)
 
 	tpt := s.TransportForDialing(addr)
 	if tpt == nil {
@@ -628,7 +628,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, updC
 	if connC.RemotePeer() != p {
 		connC.Close()
 		err = fmt.Errorf("BUG in transport %T: tried to dial %s, dialed %s", tpt, p, connC.RemotePeer())
-		log.Error(err)
+		log.Error("BUG in transport: peer mismatch", "transport_type", fmt.Sprintf("%T", tpt), "expected_peer", p, "observed_peer", connC.RemotePeer())
 		return nil, err
 	}
 

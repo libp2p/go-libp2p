@@ -6,8 +6,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -15,14 +17,20 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestMutualAuth tests that we can do a mutually authenticated round trip
 func TestMutualAuth(t *testing.T) {
-	logging.SetLogLevel("httppeeridauth", "DEBUG")
+	originalLogger := log
+	defer func() {
+		log = originalLogger
+	}()
+	// Override to print debug logs
+	log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	zeroBytes := make([]byte, 64)
 	serverKey, _, err := crypto.GenerateEd25519Key(bytes.NewReader(zeroBytes))

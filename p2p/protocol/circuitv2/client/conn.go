@@ -83,7 +83,7 @@ func (c *Conn) RemoteMultiaddr() ma.Multiaddr {
 		c.stream.Conn().RemotePeer().String(),
 	)
 	if err != nil {
-		log.Error(err)
+		log.Error("failed to create relay address:", "err", err)
 		return ma.Join(c.stream.Conn().RemoteMultiaddr(), circuitAddr)
 	}
 	return ma.Join(c.stream.Conn().RemoteMultiaddr(), relayAddr.Multiaddr(), circuitAddr)
@@ -96,7 +96,7 @@ func (c *Conn) LocalMultiaddr() ma.Multiaddr {
 func (c *Conn) LocalAddr() net.Addr {
 	na, err := manet.ToNetAddr(c.stream.Conn().LocalMultiaddr())
 	if err != nil {
-		log.Error("failed to convert local multiaddr to net addr:", err)
+		log.Error("failed to convert local multiaddr to net addr:", "err", err)
 		return nil
 	}
 	return na

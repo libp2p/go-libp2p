@@ -126,13 +126,13 @@ func (a *addrsManager) Close() {
 	if a.natManager != nil {
 		err := a.natManager.Close()
 		if err != nil {
-			log.Warnf("error closing natmgr: %s", err)
+			log.Warn("error closing natmgr", "err", err)
 		}
 	}
 	if a.addrsReachabilityTracker != nil {
 		err := a.addrsReachabilityTracker.Close()
 		if err != nil {
-			log.Warnf("error closing addrs reachability tracker: %s", err)
+			log.Warn("error closing addrs reachability tracker", "err", err)
 		}
 	}
 	a.wg.Wait()
@@ -219,11 +219,11 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 	defer func() {
 		err := autoRelayAddrsSub.Close()
 		if err != nil {
-			log.Warnf("error closing auto relay addrs sub: %s", err)
+			log.Warn("error closing auto relay addrs sub", "err", err)
 		}
 		err = autonatReachabilitySub.Close()
 		if err != nil {
-			log.Warnf("error closing autonat reachability sub: %s", err)
+			log.Warn("error closing autonat reachability sub", "err", err)
 		}
 		err = emitter.Close()
 		if err != nil {
@@ -296,13 +296,13 @@ func (a *addrsManager) updateAddrs(relayAddrs []ma.Multiaddr) hostAddrs {
 
 func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, current hostAddrs) {
 	if areAddrsDifferent(previous.localAddrs, current.localAddrs) {
-		log.Debugf("host local addresses updated: %s", current.localAddrs)
+		log.Debug("host local addresses updated", "addrs", current.localAddrs)
 		if a.addrsReachabilityTracker != nil {
 			a.addrsReachabilityTracker.UpdateAddrs(current.localAddrs)
 		}
 	}
 	if areAddrsDifferent(previous.addrs, current.addrs) {
-		log.Debugf("host addresses updated: %s", current.localAddrs)
+		log.Debug("host addresses updated", "addrs", current.localAddrs)
 		select {
 		case a.addrsUpdatedChan <- struct{}{}:
 		default:
@@ -320,14 +320,16 @@ func (a *addrsManager) notifyAddrsChanged(emitter event.Emitter, previous, curre
 	if areAddrsDifferent(previous.reachableAddrs, current.reachableAddrs) ||
 		areAddrsDifferent(previous.unreachableAddrs, current.unreachableAddrs) ||
 		areAddrsDifferent(previous.unknownAddrs, current.unknownAddrs) {
-		log.Debugf("host reachable addrs updated: reachable: %s, unreachable: %s, unknown: %s",
-			current.reachableAddrs, current.unreachableAddrs, current.unknownAddrs)
+		log.Debug("host reachable addrs updated",
+			"reachable", current.reachableAddrs,
+			"unreachable", current.unreachableAddrs,
+			"unknown", current.unknownAddrs)
 		if err := emitter.Emit(event.EvtHostReachableAddrsChanged{
 			Reachable:   slices.Clone(current.reachableAddrs),
 			Unreachable: slices.Clone(current.unreachableAddrs),
 			Unknown:     slices.Clone(current.unknownAddrs),
 		}); err != nil {
-			log.Errorf("error sending host reachable addrs changed event: %s", err)
+			log.Error("error sending host reachable addrs changed event", "err", err)
 		}
 	}
 }
@@ -439,7 +441,7 @@ func (a *addrsManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenAdd
 	// resolving any unspecified listen addressees to use only the primary
 	// interface to avoid advertising too many addresses.
 	if resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, a.interfaceAddrs.Filtered()); err != nil {
-		log.Warnw("failed to resolve listen addrs", "error", err)
+		log.Warn("failed to resolve listen addrs", "err", err)
 	} else {
 		dst = append(dst, resolved...)
 	}
@@ -474,7 +476,7 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddrs, ifac
 	// if it can be resolved into more addresses, add them too
 	resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, ifaceAddrs)
 	if err != nil {
-		log.Warnf("failed to resolve listen addr %s, %s: %s", listenAddrs, ifaceAddrs, err)
+		log.Warn("failed to resolve listen addr", "listen_addr", listenAddrs, "iface_addrs", ifaceAddrs, "err", err)
 		return dst
 	}
 	for _, addr := range resolved {
@@ -559,7 +561,7 @@ func (i *interfaceAddrsCache) updateUnlocked() {
 	// Try to use the default ipv4/6 addresses.
 	// TODO: Remove this. We should advertise all interface addresses.
 	if r, err := netroute.New(); err != nil {
-		log.Debugw("failed to build Router for kernel's routing table", "error", err)
+		log.Debug("failed to build Router for kernel's routing table", "err", err)
 	} else {
 
 		var localIPv4 net.IP
@@ -570,7 +572,7 @@ func (i *interfaceAddrsCache) updateUnlocked() {
 		})
 
 		if ran && err != nil {
-			log.Debugw("failed to fetch local IPv4 address", "error", err)
+			log.Debug("failed to fetch local IPv4 address", "err", err)
 		} else if ran && localIPv4.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv4)
 			if err == nil {
@@ -585,7 +587,7 @@ func (i *interfaceAddrsCache) updateUnlocked() {
 		})
 
 		if ran && err != nil {
-			log.Debugw("failed to fetch local IPv6 address", "error", err)
+			log.Debug("failed to fetch local IPv6 address", "err", err)
 		} else if ran && localIPv6.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv6)
 			if err == nil {
@@ -599,7 +601,7 @@ func (i *interfaceAddrsCache) updateUnlocked() {
 	if err != nil {
 		// This usually shouldn't happen, but we could be in some kind
 		// of funky restricted environment.
-		log.Errorw("failed to resolve local interface addresses", "error", err)
+		log.Error("failed to resolve local interface addresses", "err", err)
 
 		// Add the loopback addresses to the filtered addrs and use them as the non-filtered addrs.
 		// Then bail. There's nothing else we can do here.
