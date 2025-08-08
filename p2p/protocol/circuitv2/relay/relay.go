@@ -21,7 +21,6 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (
@@ -593,9 +592,9 @@ func makeReservationMsg(
 
 	addrBytes := make([][]byte, 0, len(selfAddrs))
 	for _, addr := range selfAddrs {
-		if !manet.IsPublicAddr(addr) {
-			continue
-		}
+		// if !manet.IsPublicAddr(addr) {
+		// 	continue
+		// }
 
 		id, _ := peer.IDFromP2PAddr(addr)
 		switch {
