@@ -46,6 +46,8 @@ type Relay struct {
 	ctx    context.Context
 	cancel func()
 
+	reservationAddrFilter ReservationAddressFilterFunc
+
 	host        host.Host
 	rc          Resources
 	acl         ACLFilter
@@ -75,6 +77,8 @@ func New(h host.Host, opts ...Option) (*Relay, error) {
 		acl:    nil,
 		rsvp:   make(map[peer.ID]time.Time),
 		conns:  make(map[peer.ID]int),
+
+		reservationAddrFilter: manet.IsPublicAddr,
 	}
 
 	for _, opt := range opts {
@@ -235,6 +239,7 @@ func (r *Relay) handleReserve(s network.Stream) pbv2.Status {
 	// For example, the stream might be reset or the connection might be closed before the reservation is received.
 	// In that case, the reservation will just be garbage collected later.
 	rsvp := makeReservationMsg(
+		r.reservationAddrFilter,
 		r.host.Peerstore().PrivKey(r.host.ID()),
 		r.host.ID(),
 		r.host.Addrs(),
@@ -612,6 +617,7 @@ func (r *Relay) writeResponse(s network.Stream, status pbv2.Status, rsvp *pbv2.R
 }
 
 func makeReservationMsg(
+	reservationAddrFilter ReservationAddressFilterFunc,
 	signingKey crypto.PrivKey,
 	selfID peer.ID,
 	selfAddrs []ma.Multiaddr,
@@ -630,7 +636,7 @@ func makeReservationMsg(
 
 	addrBytes := make([][]byte, 0, len(selfAddrs))
 	for _, addr := range selfAddrs {
-		if !manet.IsPublicAddr(addr) {
+		if !reservationAddrFilter(addr) {
 			continue
 		}
 
