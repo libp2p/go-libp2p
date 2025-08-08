@@ -11,7 +11,7 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/stretchr/testify/require"
 )
 

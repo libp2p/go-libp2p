@@ -22,7 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	. "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"

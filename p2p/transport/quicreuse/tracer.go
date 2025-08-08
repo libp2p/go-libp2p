@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	golog "github.com/ipfs/go-log/v2"
 	"github.com/klauspost/compress/zstd"
+	golog "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/qlog"

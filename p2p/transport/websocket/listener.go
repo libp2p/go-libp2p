@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	ws "github.com/gorilla/websocket"
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"

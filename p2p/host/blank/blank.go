@@ -16,7 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mstream "github.com/multiformats/go-multistream"

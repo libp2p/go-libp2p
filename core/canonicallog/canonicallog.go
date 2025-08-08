@@ -8,7 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )

@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
