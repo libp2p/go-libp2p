@@ -29,7 +29,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/prometheus/client_golang/prometheus"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	msmux "github.com/multiformats/go-multistream"

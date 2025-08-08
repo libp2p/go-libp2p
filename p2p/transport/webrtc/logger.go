@@ -1,7 +1,7 @@
 package libp2pwebrtc
 
 import (
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	pionLogging "github.com/pion/logging"
 )
 

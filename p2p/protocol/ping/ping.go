@@ -10,11 +10,11 @@ import (
 	mrand "math/rand"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 var log = logging.Logger("ping")

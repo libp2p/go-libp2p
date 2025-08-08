@@ -13,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )

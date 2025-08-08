@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 var log = logging.Logger("discovery-backoff")

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 
 	"github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat"
 )

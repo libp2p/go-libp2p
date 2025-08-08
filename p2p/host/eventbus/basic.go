@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 type logInterface interface {

@@ -10,7 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 var log = logging.Logger("p2p-circuit")

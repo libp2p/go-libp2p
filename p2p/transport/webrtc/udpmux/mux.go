@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/pion/ice/v4"
 	"github.com/pion/stun"
 )

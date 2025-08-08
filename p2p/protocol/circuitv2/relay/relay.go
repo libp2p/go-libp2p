@@ -18,8 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/util"
 
-	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )

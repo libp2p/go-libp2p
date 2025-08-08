@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-netroute"
 )
 

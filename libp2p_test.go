@@ -432,7 +432,7 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreAnyFunction("github.com/koron/go-ssdp.Search"),
 		goleak.IgnoreAnyFunction("github.com/pion/sctp.(*Stream).SetReadDeadline.func1"),
 		// Logging & Stats
-		goleak.IgnoreTopFunction("github.com/ipfs/go-log/v2/writer.(*MirrorWriter).logRoutine"),
+		goleak.IgnoreTopFunction("github.com/libp2p/go-libp2p/gologshim/writer.(*MirrorWriter).logRoutine"),
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
 		goleak.IgnoreAnyFunction("github.com/jackpal/go-nat-pmp.(*Client).GetExternalAddress"),
 	)

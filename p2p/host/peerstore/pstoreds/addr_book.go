@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/golang-lru/arc/v2"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	b32 "github.com/multiformats/go-base32"
 	ma "github.com/multiformats/go-multiaddr"
 	"google.golang.org/protobuf/proto"
