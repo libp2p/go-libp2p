@@ -54,9 +54,7 @@ func (c *singleOwnerTransport) ReadNonQUICPacket(ctx context.Context, b []byte) 
 }
 
 func (c *singleOwnerTransport) Close() error {
-	// TODO(when we drop support for go 1.19) use errors.Join
-	c.Transport.Close()
-	return c.packetConn.Close()
+	return errors.Join(c.Transport.Close(), c.packetConn.Close())
 }
 
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
