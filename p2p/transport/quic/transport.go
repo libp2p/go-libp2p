@@ -115,7 +115,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (_c
 
 	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
 	if err != nil {
-		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
+		log.Debug("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "err", err)
 		return nil, err
 	}
 
@@ -129,7 +129,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (_c
 
 func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
 	if err := scope.SetPeer(p); err != nil {
-		log.Debugw("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "error", err)
+		log.Debug("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "err", err)
 		return nil, err
 	}
 

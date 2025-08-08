@@ -92,7 +92,7 @@ func (hp *holePuncher) beginDirectConnect(p peer.ID) error {
 // It first attempts a direct dial (if we have a public address of that peer), and then
 // coordinates a hole punch over the given relay connection.
 func (hp *holePuncher) DirectConnect(p peer.ID) error {
-	log.Debugw("beginDirectConnect", "host", hp.host.ID(), "peer", p)
+	log.Debug("beginDirectConnect", "source_peer", hp.host.ID(), "destination_peer", p)
 	if err := hp.beginDirectConnect(p); err != nil {
 		return err
 	}
@@ -109,11 +109,11 @@ func (hp *holePuncher) DirectConnect(p peer.ID) error {
 func (hp *holePuncher) directConnect(rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
 	if getDirectConnection(hp.host, rp) != nil {
-		log.Debugw("already connected", "host", hp.host.ID(), "peer", rp)
+		log.Debug("already connected", "source_peer", hp.host.ID(), "destination_peer", rp)
 		return nil
 	}
 
-	log.Debugw("attempting direct dial", "host", hp.host.ID(), "peer", rp, "addrs", hp.host.Peerstore().Addrs(rp))
+	log.Debug("attempting direct dial", "source_peer", hp.host.ID(), "destination_peer", rp, "addrs", hp.host.Peerstore().Addrs(rp))
 	// short-circuit hole punching if a direct dial works.
 	// attempt a direct connection ONLY if we have a public address for the remote peer
 	for _, a := range hp.host.Peerstore().Addrs(rp) {
@@ -132,12 +132,12 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 				break
 			}
 			hp.tracer.DirectDialSuccessful(rp, dt)
-			log.Debugw("direct connection to peer successful, no need for a hole punch", "peer", rp)
+			log.Debug("direct connection to peer successful, no need for a hole punch", "destination_peer", rp)
 			return nil
 		}
 	}
 
-	log.Debugw("got inbound proxy conn", "peer", rp)
+	log.Debug("got inbound proxy conn", "destination_peer", rp)
 
 	// hole punch
 	for i := 1; i <= maxRetries; i++ {
@@ -147,7 +147,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			return err
 		}
 		synTime := rtt / 2
-		log.Debugf("peer RTT is %s; starting hole punch in %s", rtt, synTime)
+		log.Debug("peer RTT and starting hole punch", "rtt", rtt, "syn_time", synTime)
 
 		// wait for sync to reach the other peer and then punch a hole for it in our NAT
 		// by attempting a connect to it.
@@ -170,7 +170,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			dt := time.Since(start)
 			hp.tracer.EndHolePunch(rp, dt, err)
 			if err == nil {
-				log.Debugw("hole punching with successful", "peer", rp, "time", dt)
+				log.Debug("hole punching with successful", "destination_peer", rp, "duration", dt)
 				hp.tracer.HolePunchFinished("initiator", i, addrs, obsAddrs, getDirectConnection(hp.host, rp))
 				return nil
 			}
@@ -196,7 +196,7 @@ func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multi
 		return nil, nil, 0, fmt.Errorf("failed to open hole-punching stream: %w", err)
 	}
 	defer str.Close()
-	log.Debugf("initiateHolePunch: %s, %s", str.Conn().RemotePeer(), str.Conn().RemoteMultiaddr())
+	log.Debug("initiateHolePunch", "remote_peer", str.Conn().RemotePeer(), "remote_multiaddr", str.Conn().RemoteMultiaddr())
 
 	addr, obsAddr, rtt, err := hp.initiateHolePunchImpl(str)
 	if err != nil {
@@ -229,7 +229,7 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	if len(obsAddrs) == 0 {
 		return nil, nil, 0, errors.New("aborting hole punch initiation as we have no public address")
 	}
-	log.Debugf("initiating hole punch with %s", obsAddrs)
+	log.Debug("initiating hole punch", "observed_addrs", obsAddrs)
 
 	start := time.Now()
 	if err := w.WriteMsg(&pb.HolePunch{
@@ -296,7 +296,7 @@ func (nn *netNotifiee) Connected(_ network.Network, conn network.Conn) {
 
 			err := hs.DirectConnect(conn.RemotePeer())
 			if err != nil {
-				log.Debugf("attempt to perform DirectConnect to %s failed: %s", conn.RemotePeer(), err)
+				log.Debug("attempt to perform DirectConnect failed", "remote_peer", conn.RemotePeer(), "err", err)
 			}
 		}()
 	}

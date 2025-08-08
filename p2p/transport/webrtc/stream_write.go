@@ -127,7 +127,7 @@ func (s *stream) availableSendSpace() int {
 	buffered := int(s.dataChannel.BufferedAmount())
 	availableSpace := s.sendBufferSize() - buffered
 	if availableSpace+maxTotalControlMessagesSize < 0 { // this should never happen, but better check
-		log.Errorw("data channel buffered more data than the maximum amount", "max", s.sendBufferSize(), "buffered", buffered)
+		log.Error("data channel buffered more data than the maximum amount", "max", s.sendBufferSize(), "buffered", buffered)
 	}
 	return availableSpace
 }

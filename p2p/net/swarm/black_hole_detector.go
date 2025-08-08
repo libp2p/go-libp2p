@@ -125,7 +125,7 @@ func (b *BlackHoleSuccessCounter) updateState() {
 	}
 
 	if st != b.state {
-		log.Debugf("%s blackHoleDetector state changed from %s to %s", b.Name, st, b.state)
+		log.Debug("blackHoleDetector state changed", "name", b.Name, "from", st, "to", b.state)
 	}
 }
 

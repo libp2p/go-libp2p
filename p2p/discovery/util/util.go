@@ -34,7 +34,7 @@ func Advertise(ctx context.Context, a discovery.Advertiser, ns string, opts ...d
 		for {
 			ttl, err := a.Advertise(ctx, ns, opts...)
 			if err != nil {
-				log.Debugf("Error advertising %s: %s", ns, err.Error())
+				log.Debug("Error advertising", "namespace", ns, "err", err)
 				if ctx.Err() != nil {
 					return
 				}

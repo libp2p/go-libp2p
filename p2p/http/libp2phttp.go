@@ -310,7 +310,7 @@ func (h *Host) setupListeners(listenerErrCh chan error) error {
 			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 		} else {
 			// We are not serving insecure HTTP
-			log.Warnf("Not serving insecure HTTP on %s. Prefer an HTTPS endpoint.", listenAddr)
+			log.Warn("Not serving insecure HTTP. Prefer an HTTPS endpoint.", "addr", listenAddr)
 		}
 	}
 	return nil

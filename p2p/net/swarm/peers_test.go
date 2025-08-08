@@ -43,7 +43,7 @@ func TestPeers(t *testing.T) {
 	}
 
 	for _, s := range swarms {
-		log.Infof("%s swarm routing table: %s", s.LocalPeer(), s.Peers())
+		log.Info("swarm routing table", "peer", s.LocalPeer(), "peers", s.Peers())
 	}
 
 	test := func(s *Swarm) {

@@ -41,13 +41,13 @@ func (c *client) DialBack(ctx context.Context, p peer.ID) error {
 	}
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to autonat service: %s", err)
+		log.Debug("error attaching stream to autonat service", "err", err)
 		s.Reset()
 		return err
 	}
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for autonat stream: %s", err)
+		log.Debug("error reserving memory for autonat stream", "err", err)
 		s.Reset()
 		return err
 	}

@@ -119,7 +119,7 @@ func Reserve(ctx context.Context, h host.Host, ai peer.AddrInfo) (*Reservation, 
 	for _, ab := range addrs {
 		a, err := ma.NewMultiaddrBytes(ab)
 		if err != nil {
-			log.Warnf("ignoring unparsable relay address: %s", err)
+			log.Warn("ignoring unparsable relay address", "err", err)
 			continue
 		}
 		result.Addrs = append(result.Addrs, a)

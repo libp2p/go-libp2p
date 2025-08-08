@@ -122,7 +122,7 @@ func (l *listener) listen() {
 		candidate, err := l.mux.Accept(l.ctx)
 		if err != nil {
 			if l.ctx.Err() == nil {
-				log.Debugf("accepting candidate failed: %s", err)
+				log.Debug("accepting candidate failed", "error", err)
 			}
 			return
 		}
@@ -136,7 +136,7 @@ func (l *listener) listen() {
 			conn, err := l.handleCandidate(ctx, candidate)
 			if err != nil {
 				l.mux.RemoveConnByUfrag(candidate.Ufrag)
-				log.Debugf("could not accept connection: %s: %v", candidate.Ufrag, err)
+				log.Debug("could not accept connection", "ufrag", candidate.Ufrag, "error", err)
 				return
 			}
 
