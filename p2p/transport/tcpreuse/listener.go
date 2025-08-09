@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-libp2p/p2p/net/reuseport"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -193,13 +193,13 @@ func (m *multiplexedListener) run() error {
 			cancelCtx()
 			connScope.Done()
 			c.Close()
-			log.Debugf("accept queue full, dropping connection: %s", c.RemoteMultiaddr())
+			log.Debug("accept queue full, dropping connection", "remote_addr", c.RemoteMultiaddr())
 			continue
 		case <-m.ctx.Done():
 			cancelCtx()
 			connScope.Done()
 			c.Close()
-			log.Debugf("listener closed; dropping connection from: %s", c.RemoteMultiaddr())
+			log.Debug("listener closed; dropping connection", "remote_addr", c.RemoteMultiaddr())
 			continue
 		}
 
@@ -212,7 +212,7 @@ func (m *multiplexedListener) run() error {
 			if err != nil {
 				// conn closed by identifyConnType
 				connScope.Done()
-				log.Debugf("error demultiplexing connection: %s", err.Error())
+				log.Debug("error demultiplexing connection", "error", err)
 				return
 			}
 
@@ -221,7 +221,7 @@ func (m *multiplexedListener) run() error {
 				connScope.Done()
 				closeErr := c.Close()
 				err = errors.Join(err, closeErr)
-				log.Debugf("error wrapping connection with scope: %s", err.Error())
+				log.Debug("error wrapping connection with scope", "error", err)
 				return
 			}
 
@@ -231,9 +231,9 @@ func (m *multiplexedListener) run() error {
 			if !ok {
 				closeErr := connWithScope.Close()
 				if closeErr != nil {
-					log.Debugf("no registered listener for demultiplex connection %s. Error closing the connection %s", t, closeErr.Error())
+					log.Debug("no registered listener for demultiplex connection. Error closing the connection", "type", t, "close_error", closeErr)
 				} else {
-					log.Debugf("no registered listener for demultiplex connection %s", t)
+					log.Debug("no registered listener for demultiplex connection", "type", t)
 				}
 				return
 			}
@@ -241,7 +241,7 @@ func (m *multiplexedListener) run() error {
 			select {
 			case demux.buffer <- connWithScope:
 			case <-ctx.Done():
-				log.Debug("accept timeout; dropping connection from: %v", connWithScope.RemoteMultiaddr())
+				log.Debug("accept timeout; dropping connection", "remote", connWithScope.RemoteMultiaddr())
 				connWithScope.Close()
 			}
 		}()

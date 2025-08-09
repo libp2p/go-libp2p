@@ -16,7 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/reuseport"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -41,7 +41,7 @@ var ReuseportIsAvailable = tcpreuse.ReuseportIsAvailable
 func tryKeepAlive(conn net.Conn, keepAlive bool) {
 	keepAliveConn, ok := conn.(canKeepAlive)
 	if !ok {
-		log.Errorf("can't set TCP keepalives. net.Conn of type %T doesn't support SetKeepAlive", conn)
+		log.Error("can't set TCP keepalives. net.Conn doesn't support SetKeepAlive", "conn_type", fmt.Sprintf("%T", conn))
 		return
 	}
 	if err := keepAliveConn.SetKeepAlive(keepAlive); err != nil {
@@ -51,16 +51,16 @@ func tryKeepAlive(conn net.Conn, keepAlive bool) {
 		// But there's nothing we can do about invalid arguments, so we'll drop this to a
 		// debug.
 		if errors.Is(err, os.ErrInvalid) || errors.Is(err, syscall.EINVAL) {
-			log.Debugw("failed to enable TCP keepalive", "error", err)
+			log.Debug("failed to enable TCP keepalive", "error", err)
 		} else {
-			log.Errorw("failed to enable TCP keepalive", "error", err)
+			log.Error("failed to enable TCP keepalive", "error", err)
 		}
 		return
 	}
 
 	if runtime.GOOS != "openbsd" {
 		if err := keepAliveConn.SetKeepAlivePeriod(keepAlivePeriod); err != nil {
-			log.Errorw("failed set keepalive period", "error", err)
+			log.Error("failed set keepalive period", "error", err)
 		}
 	}
 }
@@ -85,7 +85,7 @@ func (ll *tcpGatedMaListener) Accept() (manet.Conn, network.ConnManagementScope,
 	c, scope, err := ll.GatedMaListener.Accept()
 	if err != nil {
 		if scope != nil {
-			log.Errorf("BUG: got non-nil scope but also an error: %s", err)
+			log.Error("BUG: got non-nil scope but also an error", "error", err)
 			scope.Done()
 		}
 		return nil, nil, err
@@ -254,7 +254,7 @@ func (t *TcpTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) 
 func (t *TcpTransport) DialWithUpdates(ctx context.Context, raddr ma.Multiaddr, p peer.ID, updateChan chan<- transport.DialUpdate) (transport.CapableConn, error) {
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
-		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
+		log.Debug("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
 		return nil, err
 	}
 
@@ -268,7 +268,7 @@ func (t *TcpTransport) DialWithUpdates(ctx context.Context, raddr ma.Multiaddr, 
 
 func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope, updateChan chan<- transport.DialUpdate) (transport.CapableConn, error) {
 	if err := connScope.SetPeer(p); err != nil {
-		log.Debugw("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "error", err)
+		log.Debug("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "error", err)
 		return nil, err
 	}
 	conn, err := t.maDial(ctx, raddr)

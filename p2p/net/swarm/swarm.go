@@ -20,7 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
@@ -310,7 +310,7 @@ func (s *Swarm) close() {
 		go func(l transport.Listener) {
 			defer s.refs.Done()
 			if err := l.Close(); err != nil && err != transport.ErrListenerClosed {
-				log.Errorf("error when shutting down listener: %s", err)
+				log.Error("error when shutting down listener", "err", err)
 			}
 		}(l)
 	}
@@ -319,7 +319,7 @@ func (s *Swarm) close() {
 		for _, c := range cs {
 			go func(c *Conn) {
 				if err := c.Close(); err != nil {
-					log.Errorf("error when shutting down connection: %s", err)
+					log.Error("error when shutting down connection", "err", err)
 				}
 			}(c)
 		}
@@ -349,8 +349,8 @@ func (s *Swarm) close() {
 			wg.Add(1)
 			go func(c io.Closer) {
 				defer wg.Done()
-				if err := closer.Close(); err != nil {
-					log.Errorf("error when closing down transport %T: %s", c, err)
+				if err := c.Close(); err != nil {
+					log.Error("error when closing down transport", "transport_type", fmt.Sprintf("%T", c), "err", err)
 				}
 			}(closer)
 		}
@@ -387,7 +387,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 		if allow, _ := s.gater.InterceptUpgraded(c); !allow {
 			err := tc.CloseWithError(network.ConnGated)
 			if err != nil {
-				log.Warnf("failed to close connection with peer %s and addr %s; err: %s", p, addr, err)
+				log.Warn("failed to close connection with peer and addr", "peer", p, "addr", addr, "err", err)
 			}
 			return nil, ErrGaterDisallowedConnection
 		}
@@ -472,7 +472,7 @@ func (s *Swarm) StreamHandler() network.StreamHandler {
 // Use network.WithAllowLimitedConn to open a stream over a limited(relayed)
 // connection.
 func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error) {
-	log.Debugf("[%s] opening stream to peer [%s]", s.local, p)
+	log.Debug("opening stream to peer", "source_peer", s.local, "destination_peer", p)
 
 	// Algorithm:
 	// 1. Find the best connection, otherwise, dial.
@@ -510,7 +510,7 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 			var err error
 			c, err = s.waitForDirectConn(ctx, p)
 			if err != nil {
-				log.Debugf("failed to get direct connection to a limited peer %s: %s", p, err)
+				log.Debug("failed to get direct connection to a limited peer", "destination_peer", p, "err", err)
 				return nil, err
 			}
 		}
@@ -918,7 +918,7 @@ func (r ResolverFromMaDNS) ResolveDNSAddr(ctx context.Context, expectedPeerID pe
 		nextOutputLimit := outputLimit - len(resolved) - (len(toResolve) - i) + 1
 		resolvedAddrs, err := r.ResolveDNSAddr(ctx, expectedPeerID, addr, recursionLimit-1, nextOutputLimit)
 		if err != nil {
-			log.Warnf("failed to resolve dnsaddr %v %s: ", addr, err)
+			log.Warn("failed to resolve dnsaddr", "addr", addr, "err", err)
 			// Dropping this address
 			continue
 		}
@@ -982,7 +982,7 @@ func (s *Swarm) AddCertHashes(listenAddrs []ma.Multiaddr) []ma.Multiaddr {
 		}
 		addrWithCerthash, added := tpt.AddCertHashes(addr)
 		if !added {
-			log.Warnf("Couldn't add certhashes to multiaddr: %s", addr)
+			log.Warn("Couldn't add certhashes to multiaddr", "addr", addr)
 			continue
 		}
 		listenAddrs[i] = addrWithCerthash

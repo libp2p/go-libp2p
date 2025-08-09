@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
@@ -31,7 +32,7 @@ import (
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	msmux "github.com/multiformats/go-multistream"
@@ -334,24 +335,24 @@ func (h *BasicHost) Start() {
 	if h.autonatv2 != nil {
 		err := h.autonatv2.Start(h)
 		if err != nil {
-			log.Errorf("autonat v2 failed to start: %s", err)
+			log.Error("autonat v2 failed to start", "err", err)
 		}
 	}
 	// register to be notified when the network's listen addrs change,
 	// so we can update our address set and push events if needed
 	h.Network().Notify(h.addressManager.NetNotifee())
 	if err := h.addressManager.Start(); err != nil {
-		log.Errorf("address service failed to start: %s", err)
+		log.Error("address service failed to start", "err", err)
 	}
 
 	if !h.disableSignedPeerRecord {
 		// Ensure we have the correct peer record after Start returns
 		rec, err := h.makeSignedPeerRecord(h.addressManager.Addrs())
 		if err != nil {
-			log.Errorf("failed to create signed record: %w", err)
+			log.Error("failed to create signed record", "err", err)
 		}
 		if _, err := h.caBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
-			log.Errorf("failed to persist signed record to peerstore: %w", err)
+			log.Error("failed to persist signed record to peerstore", "err", err)
 		}
 	}
 
@@ -368,7 +369,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 
 	if h.negtimeout > 0 {
 		if err := s.SetDeadline(time.Now().Add(h.negtimeout)); err != nil {
-			log.Debug("setting stream deadline: ", err)
+			log.Debug("setting stream deadline", "err", err)
 			s.Reset()
 			return
 		}
@@ -378,13 +379,13 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 	took := time.Since(before)
 	if err != nil {
 		if err == io.EOF {
-			logf := log.Debugf
+			lvl := slog.LevelDebug
 			if took > time.Second*10 {
-				logf = log.Warnf
+				lvl = slog.LevelWarn
 			}
-			logf("protocol EOF: %s (took %s)", s.Conn().RemotePeer(), took)
+			log.Log(context.Background(), lvl, "protocol EOF", "remote_peer", s.Conn().RemotePeer(), "duration", took)
 		} else {
-			log.Debugf("protocol mux failed: %s (took %s, id:%s, remote peer:%s, remote addr:%v)", err, took, s.ID(), s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
+			log.Debug("protocol mux failed", "err", err, "duration", took, "stream_id", s.ID(), "remote_peer", s.Conn().RemotePeer(), "remote_multiaddr", s.Conn().RemoteMultiaddr())
 		}
 		s.ResetWithError(network.StreamProtocolNegotiationFailed)
 		return
@@ -392,19 +393,19 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 
 	if h.negtimeout > 0 {
 		if err := s.SetDeadline(time.Time{}); err != nil {
-			log.Debugf("resetting stream deadline: ", err)
+			log.Debug("resetting stream deadline", "err", err)
 			s.Reset()
 			return
 		}
 	}
 
 	if err := s.SetProtocol(protoID); err != nil {
-		log.Debugf("error setting stream protocol: %s", err)
+		log.Debug("error setting stream protocol", "err", err)
 		s.ResetWithError(network.StreamResourceLimitExceeded)
 		return
 	}
 
-	log.Debugf("negotiated: %s (took %s)", protoID, took)
+	log.Debug("negotiated", "protocol", protoID, "duration", took)
 
 	handle(protoID, s)
 }
@@ -450,7 +451,7 @@ func (h *BasicHost) makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.Ev
 		// add signed peer record to the event
 		sr, err := h.makeSignedPeerRecord(current)
 		if err != nil {
-			log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
+			log.Error("error creating a signed peer record from the set of current addresses", "err", err)
 			// drop this change
 			return nil
 		}
@@ -489,7 +490,7 @@ func (h *BasicHost) background() {
 		// store the signed peer record in the peer store.
 		if !h.disableSignedPeerRecord {
 			if _, err := h.caBook.ConsumePeerRecord(changeEvt.SignedPeerRecord, peerstore.PermanentAddrTTL); err != nil {
-				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+				log.Error("failed to persist signed peer record in peer store", "err", err)
 				return
 			}
 		}
@@ -503,7 +504,7 @@ func (h *BasicHost) background() {
 
 		// emit addr change event
 		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
-			log.Warnf("error emitting event for updated addrs: %s", err)
+			log.Warn("error emitting event for updated addrs", "err", err)
 		}
 	}
 
@@ -714,7 +715,7 @@ func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 // dialPeer opens a connection to peer, and makes sure to identify
 // the connection once it has been opened.
 func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
-	log.Debugf("host %s dialing %s", h.ID(), p)
+	log.Debug("host dialing peer", "source_peer", h.ID(), "destination_peer", p)
 	c, err := h.Network().DialPeer(ctx, p)
 	if err != nil {
 		return fmt.Errorf("failed to dial: %w", err)
@@ -731,7 +732,7 @@ func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 		return fmt.Errorf("identify failed to complete: %w", ctx.Err())
 	}
 
-	log.Debugf("host %s finished dialing %s", h.ID(), p)
+	log.Debug("host finished dialing peer", "source_peer", h.ID(), "destination_peer", p)
 	return nil
 }
 
@@ -882,7 +883,7 @@ func (h *BasicHost) Close() error {
 		_ = h.emitters.evtLocalAddrsUpdated.Close()
 
 		if err := h.network.Close(); err != nil {
-			log.Errorf("swarm close failed: %v", err)
+			log.Error("swarm close failed", "err", err)
 		}
 
 		h.addressManager.Close()

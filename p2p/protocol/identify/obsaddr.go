@@ -228,7 +228,7 @@ func (o *ObservedAddrManager) appendInferredAddrs(twToObserverSets map[string][]
 	}
 	lAddrs, err := o.interfaceListenAddrs()
 	if err != nil {
-		log.Warnw("failed to get interface resolved listen addrs. Using just the listen addrs", "error", err)
+		log.Warn("failed to get interface resolved listen addrs. Using just the listen addrs", "err", err)
 		lAddrs = nil
 	}
 	lAddrs = append(lAddrs, o.listenAddrs()...)
@@ -315,7 +315,7 @@ func (o *ObservedAddrManager) Record(conn connMultiaddrs, observed ma.Multiaddr)
 		observed: observed,
 	}:
 	default:
-		log.Debugw("dropping address observation due to full buffer",
+		log.Debug("dropping address observation due to full buffer",
 			"from", conn.RemoteMultiaddr(),
 			"observed", observed,
 		)
@@ -367,7 +367,7 @@ func (o *ObservedAddrManager) shouldRecordObservation(conn connMultiaddrs, obser
 	// the same as the listen addr.
 	ifaceaddrs, err := o.interfaceListenAddrs()
 	if err != nil {
-		log.Infof("failed to get interface listen addrs", err)
+		log.Info("failed to get interface listen addrs", "err", err)
 		return false, thinWaist{}, thinWaist{}
 	}
 
@@ -405,7 +405,7 @@ func (o *ObservedAddrManager) shouldRecordObservation(conn connMultiaddrs, obser
 	// transports of one of our advertised addresses.
 	if !HasConsistentTransport(observed, hostAddrs) &&
 		!HasConsistentTransport(observed, listenAddrs) {
-		log.Debugw(
+		log.Debug(
 			"observed multiaddr doesn't match the transports of any announced addresses",
 			"from", conn.RemoteMultiaddr(),
 			"observed", observed,
@@ -421,7 +421,7 @@ func (o *ObservedAddrManager) maybeRecordObservation(conn connMultiaddrs, observ
 	if !shouldRecord {
 		return
 	}
-	log.Debugw("added own observed listen addr", "conn", conn, "observed", observed)
+	log.Debug("added own observed listen addr", "conn", conn, "observed", observed)
 
 	o.mu.Lock()
 	defer o.mu.Unlock()

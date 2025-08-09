@@ -13,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/record"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -355,11 +355,11 @@ func (mab *memoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl
 		// Remove suffix of /p2p/peer-id from address
 		addr, addrPid := peer.SplitAddr(addr)
 		if addr == nil {
-			log.Warnw("Was passed nil multiaddr", "peer", p)
+			log.Warn("Was passed nil multiaddr", "peer", p)
 			continue
 		}
 		if addrPid != "" && addrPid != p {
-			log.Warnf("Was passed p2p address with a different peerId. found: %s, expected: %s", addrPid, p)
+			log.Warn("Was passed p2p address with a different peerId", "found", addrPid, "expected", p)
 			continue
 		}
 		a, found := mab.addrs.FindAddr(p, addr)
@@ -403,11 +403,11 @@ func (mab *memoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Du
 	for _, addr := range addrs {
 		addr, addrPid := peer.SplitAddr(addr)
 		if addr == nil {
-			log.Warnw("was passed nil multiaddr", "peer", p)
+			log.Warn("was passed nil multiaddr", "peer", p)
 			continue
 		}
 		if addrPid != "" && addrPid != p {
-			log.Warnf("was passed p2p address with a different peerId, found: %s wanted: %s", addrPid, p)
+			log.Warn("was passed p2p address with a different peerId", "found", addrPid, "expected", p)
 			continue
 		}
 

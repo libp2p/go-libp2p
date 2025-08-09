@@ -10,11 +10,11 @@ import (
 	mrand "math/rand"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 var log = logging.Logger("ping")
@@ -41,13 +41,13 @@ func NewPingService(h host.Host) *PingService {
 
 func (p *PingService) PingHandler(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to ping service: %s", err)
+		log.Debug("error attaching stream to ping service", "err", err)
 		s.Reset()
 		return
 	}
 
 	if err := s.Scope().ReserveMemory(PingSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for ping stream: %s", err)
+		log.Debug("error reserving memory for ping stream", "err", err)
 		s.Reset()
 		return
 	}
@@ -69,7 +69,7 @@ func (p *PingService) PingHandler(s network.Stream) {
 			log.Debug("ping timeout")
 		case err, ok := <-errCh:
 			if ok {
-				log.Debug(err)
+				log.Debug("ping error", "err", err)
 			} else {
 				log.Error("ping loop failed without error")
 			}
@@ -120,14 +120,14 @@ func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 	}
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to ping service: %s", err)
+		log.Debug("error attaching stream to ping service", "err", err)
 		s.Reset()
 		return pingError(err)
 	}
 
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		log.Errorf("failed to get cryptographic random: %s", err)
+		log.Error("failed to get cryptographic random", "err", err)
 		s.Reset()
 		return pingError(err)
 	}
@@ -171,7 +171,7 @@ func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 
 func ping(s network.Stream, randReader io.Reader) (time.Duration, error) {
 	if err := s.Scope().ReserveMemory(2*PingSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for ping stream: %s", err)
+		log.Debug("error reserving memory for ping stream", "err", err)
 		s.Reset()
 		return 0, err
 	}

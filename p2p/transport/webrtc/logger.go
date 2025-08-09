@@ -1,7 +1,11 @@
 package libp2pwebrtc
 
 import (
-	logging "github.com/ipfs/go-log/v2"
+	"context"
+	"fmt"
+	"log/slog"
+
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	pionLogging "github.com/pion/logging"
 )
 
@@ -15,7 +19,7 @@ var pionLog = logging.Logger("webrtc-transport-pion")
 // Pion logs are too noisy and have invalid log levels. pionLogger downgrades all the
 // logs to debug
 type pionLogger struct {
-	logging.StandardLogger
+	*slog.Logger
 }
 
 var pLog = pionLogger{pionLog}
@@ -23,38 +27,52 @@ var pLog = pionLogger{pionLog}
 var _ pionLogging.LeveledLogger = pLog
 
 func (l pionLogger) Debug(s string) {
-	l.StandardLogger.Debug(s)
+	l.Logger.Debug(s)
+}
+
+func (l pionLogger) Debugf(s string, args ...interface{}) {
+	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		l.Logger.Debug(fmt.Sprintf(s, args...))
+	}
 }
 
 func (l pionLogger) Error(s string) {
-	l.StandardLogger.Debug(s)
+	l.Logger.Error(s)
 }
 
 func (l pionLogger) Errorf(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args...)
+	if l.Logger.Enabled(context.Background(), slog.LevelError) {
+		l.Logger.Error(fmt.Sprintf(s, args...))
+	}
 }
 
 func (l pionLogger) Info(s string) {
-	l.StandardLogger.Debug(s)
+	l.Logger.Info(s)
 }
 
 func (l pionLogger) Infof(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args...)
+	if l.Logger.Enabled(context.Background(), slog.LevelInfo) {
+		l.Logger.Info(fmt.Sprintf(s, args...))
+	}
 }
 
 func (l pionLogger) Warn(s string) {
-	l.StandardLogger.Debug(s)
+	l.Logger.Warn(s)
 }
 
 func (l pionLogger) Warnf(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args...)
+	if l.Logger.Enabled(context.Background(), slog.LevelWarn) {
+		l.Logger.Warn(fmt.Sprintf(s, args...))
+	}
 }
 
 func (l pionLogger) Trace(s string) {
-	l.StandardLogger.Debug(s)
+	l.Logger.Debug(s)
 }
 func (l pionLogger) Tracef(s string, args ...interface{}) {
-	l.StandardLogger.Debugf(s, args...)
+	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		l.Logger.Debug(fmt.Sprintf(s, args...))
+	}
 }
 
 // loggerFactory returns pLog for all new logger instances

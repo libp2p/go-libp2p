@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -134,7 +134,7 @@ func (an *AutoNAT) background(sub event.Subscription) {
 			case event.EvtPeerIdentificationCompleted:
 				an.updatePeer(evt.Peer)
 			default:
-				log.Errorf("unexpected event: %T", e)
+				log.Error("unexpected event", "event_type", fmt.Sprintf("%T", e))
 			}
 		case <-ticker.C:
 			now := time.Now()
@@ -186,7 +186,7 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 			if manet.IsPublicAddr(r.Addr) {
 				filteredReqs = append(filteredReqs, r)
 			} else {
-				log.Errorf("private address in reachability check: %s", r.Addr)
+				log.Error("private address in reachability check", "address", r.Addr)
 			}
 		}
 		if len(filteredReqs) == 0 {
@@ -212,7 +212,7 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 	}
 	res, err := an.cli.GetReachability(ctx, p, filteredReqs)
 	if err != nil {
-		log.Debugf("reachability check with %s failed, err: %s", p, err)
+		log.Debug("reachability check failed", "peer", p, "err", err)
 		return res, fmt.Errorf("reachability check with %s failed: %w", p, err)
 	}
 	// restore the correct index in case we'd filtered private addresses
@@ -222,7 +222,7 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 			break
 		}
 	}
-	log.Debugf("reachability check with %s successful", p)
+	log.Debug("reachability check successful", "peer", p)
 	return res, nil
 }
 

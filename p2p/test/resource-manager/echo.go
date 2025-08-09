@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 const (
@@ -137,7 +137,7 @@ func (e *Echo) handleStream(s network.Stream) {
 
 	if beforeReserve := e.getBeforeReserve(); beforeReserve != nil {
 		if err := beforeReserve(); err != nil {
-			echoLog.Debugf("error syncing before reserve: %s", err)
+			echoLog.Debug("error syncing before reserve", "err", err)
 
 			s.Reset()
 			return
@@ -145,7 +145,7 @@ func (e *Echo) handleStream(s network.Stream) {
 	}
 
 	if err := s.Scope().SetService(EchoService); err != nil {
-		echoLog.Debugf("error attaching stream to echo service: %s", err)
+		echoLog.Debug("error attaching stream to echo service", "err", err)
 
 		e.mx.Lock()
 		e.status.ResourceServiceErrors++
@@ -156,7 +156,7 @@ func (e *Echo) handleStream(s network.Stream) {
 	}
 
 	if err := s.Scope().ReserveMemory(4096, network.ReservationPriorityAlways); err != nil {
-		echoLog.Debugf("error reserving memory: %s", err)
+		echoLog.Debug("error reserving memory", "err", err)
 
 		e.mx.Lock()
 		e.status.ResourceReservationErrors++
@@ -168,7 +168,7 @@ func (e *Echo) handleStream(s network.Stream) {
 
 	if beforeRead := e.getBeforeRead(); beforeRead != nil {
 		if err := beforeRead(); err != nil {
-			echoLog.Debugf("error syncing before read: %s", err)
+			echoLog.Debug("error syncing before read", "err", err)
 
 			s.Reset()
 			return
@@ -186,7 +186,7 @@ func (e *Echo) handleStream(s network.Stream) {
 		}
 
 	case err != nil:
-		echoLog.Debugf("I/O error : %s", err)
+		echoLog.Debug("I/O error", "err", err)
 
 		e.mx.Lock()
 		e.status.IOErrors++
@@ -202,7 +202,7 @@ func (e *Echo) handleStream(s network.Stream) {
 
 	if beforeWrite := e.getBeforeWrite(); beforeWrite != nil {
 		if err := beforeWrite(); err != nil {
-			echoLog.Debugf("error syncing before write: %s", err)
+			echoLog.Debug("error syncing before write", "err", err)
 
 			s.Reset()
 			return
@@ -212,7 +212,7 @@ func (e *Echo) handleStream(s network.Stream) {
 	s.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	_, err = s.Write(buf[:n])
 	if err != nil {
-		echoLog.Debugf("I/O error: %s", err)
+		echoLog.Debug("I/O error", "err", err)
 
 		e.mx.Lock()
 		e.status.IOErrors++
@@ -230,7 +230,7 @@ func (e *Echo) handleStream(s network.Stream) {
 
 	if beforeDone := e.getBeforeDone(); beforeDone != nil {
 		if err := beforeDone(); err != nil {
-			echoLog.Debugf("error syncing before done: %s", err)
+			echoLog.Debug("error syncing before done", "err", err)
 
 			s.Reset()
 		}
@@ -248,14 +248,14 @@ func (e *Echo) Echo(p peer.ID, what string) error {
 	defer s.Close()
 
 	if err := s.Scope().SetService(EchoService); err != nil {
-		echoLog.Debugf("error attaching stream to echo service: %s", err)
+		echoLog.Debug("error attaching stream to echo service", "err", err)
 
 		s.Reset()
 		return err
 	}
 
 	if err := s.Scope().ReserveMemory(4096, network.ReservationPriorityAlways); err != nil {
-		echoLog.Debugf("error reserving memory: %s", err)
+		echoLog.Debug("error reserving memory", "err", err)
 
 		s.Reset()
 		return err
@@ -279,7 +279,7 @@ func (e *Echo) Echo(p peer.ID, what string) error {
 		}
 
 	case err != nil:
-		echoLog.Debugf("I/O error : %s", err)
+		echoLog.Debug("I/O error", "err", err)
 
 		s.Reset()
 		return err

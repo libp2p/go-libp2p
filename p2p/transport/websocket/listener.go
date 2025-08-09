@@ -5,16 +5,15 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
-
 	ws "github.com/gorilla/websocket"
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
@@ -25,7 +24,6 @@ import (
 )
 
 var log = logging.Logger("websocket-transport")
-var stdLog = zap.NewStdLog(log.Desugar())
 
 type listener struct {
 	netListener *httpNetListener
@@ -127,7 +125,12 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 			HandshakeTimeout: handshakeTimeout,
 		},
 	}
-	ln.server = http.Server{Handler: ln, ErrorLog: stdLog, ConnContext: ln.ConnContext, TLSConfig: tlsConf}
+	ln.server = http.Server{
+		Handler:     ln,
+		ErrorLog:    slog.NewLogLogger(log.Handler(), slog.LevelError),
+		ConnContext: ln.ConnContext,
+		TLSConfig:   tlsConf,
+	}
 	return ln, nil
 }
 
@@ -151,7 +154,7 @@ func (l *listener) ConnContext(ctx context.Context, c net.Conn) context.Context 
 	if nc, ok := c.(*negotiatingConn); ok {
 		return context.WithValue(ctx, connKey{}, nc)
 	}
-	log.Errorf("BUG: expected net.Conn of type *websocket.negotiatingConn: got %T", c)
+	log.Error("BUG: expected net.Conn of type *websocket.negotiatingConn", "got_type", fmt.Sprintf("%T", c))
 	// might as well close the connection as there's no way to proceed now.
 	c.Close()
 	return ctx
@@ -179,7 +182,7 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		c.Close()
 		w.WriteHeader(500)
-		log.Errorf("BUG: failed to extract conn from context: RemoteAddr: %s: err: %s", r.RemoteAddr, err)
+		log.Error("BUG: failed to extract conn from context", "remote_addr", r.RemoteAddr, "err", err)
 		return
 	}
 
@@ -187,7 +190,7 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		c.Close()
 		w.WriteHeader(500)
-		log.Debugf("connection timed out from: %s", r.RemoteAddr)
+		log.Debug("connection timed out", "remote_addr", r.RemoteAddr)
 		return
 	}
 
@@ -249,7 +252,7 @@ func (l *httpNetListener) Accept() (net.Conn, error) {
 	conn, scope, err := l.GatedMaListener.Accept()
 	if err != nil {
 		if scope != nil {
-			log.Errorf("BUG: scope non-nil when err is non nil: %v", err)
+			log.Error("BUG: scope non-nil when err is non nil", "error", err)
 			scope.Done()
 		}
 		return nil, err
@@ -265,7 +268,7 @@ func (l *httpNetListener) Accept() (net.Conn, error) {
 		cancelCtx:     cancel,
 		stopClose: context.AfterFunc(ctx, func() {
 			connWithScope.Close()
-			log.Debugf("handshake timeout for conn from: %s", conn.RemoteAddr())
+			log.Debug("handshake timeout for conn", "remote_addr", conn.RemoteAddr())
 		}),
 	}, nil
 }

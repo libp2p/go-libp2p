@@ -13,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -157,10 +157,10 @@ func (cm *BasicConnMgr) ForceTrim() {
 	connCount := int(cm.connCount.Load())
 	target := connCount - cm.cfg.lowWater
 	if target < 0 {
-		log.Warnw("Low on memory, but we only have a few connections", "num", connCount, "low watermark", cm.cfg.lowWater)
+		log.Warn("Low on memory, but we only have a few connections", "num", connCount, "low_watermark", cm.cfg.lowWater)
 		return
 	} else {
-		log.Warnf("Low on memory. Closing %d connections.", target)
+		log.Warn("Low on memory. Closing connections.", "count", target)
 	}
 
 	cm.trimMutex.Lock()
@@ -169,7 +169,7 @@ func (cm *BasicConnMgr) ForceTrim() {
 
 	// Trim connections without paying attention to the silence period.
 	for _, c := range cm.getConnsToCloseEmergency(target) {
-		log.Infow("low on memory. closing conn", "peer", c.RemotePeer())
+		log.Info("low on memory. closing conn", "peer", c.RemotePeer())
 
 		c.CloseWithError(network.ConnGarbageCollected)
 	}
@@ -383,7 +383,7 @@ func (cm *BasicConnMgr) doTrim() {
 func (cm *BasicConnMgr) trim() {
 	// do the actual trim.
 	for _, c := range cm.getConnsToClose() {
-		log.Debugw("closing conn", "peer", c.RemotePeer())
+		log.Debug("closing conn", "peer", c.RemotePeer())
 		c.CloseWithError(network.ConnGarbageCollected)
 	}
 }
@@ -588,7 +588,7 @@ func (cm *BasicConnMgr) UntagPeer(p peer.ID, tag string) {
 
 	pi, ok := s.peers[p]
 	if !ok {
-		log.Debug("tried to remove tag from untracked peer: ", p, tag)
+		log.Debug("tried to remove tag from untracked peer", "peer", p, "tag", tag)
 		return
 	}
 
@@ -689,7 +689,7 @@ func (nn *cmNotifee) Connected(_ network.Network, c network.Conn) {
 
 	_, ok = pinfo.conns[c]
 	if ok {
-		log.Error("received connected notification for conn we are already tracking: ", p)
+		log.Error("received connected notification for conn we are already tracking", "peer", p)
 		return
 	}
 
@@ -709,13 +709,13 @@ func (nn *cmNotifee) Disconnected(_ network.Network, c network.Conn) {
 
 	cinf, ok := s.peers[p]
 	if !ok {
-		log.Error("received disconnected notification for peer we are not tracking: ", p)
+		log.Error("received disconnected notification for peer we are not tracking", "peer", p)
 		return
 	}
 
 	_, ok = cinf.conns[c]
 	if !ok {
-		log.Error("received disconnected notification for conn we are not tracking: ", p)
+		log.Error("received disconnected notification for conn we are not tracking", "peer", p)
 		return
 	}
 

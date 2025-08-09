@@ -13,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -89,7 +89,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		relay, _ := addr.ValueForProtocol(ma.P_P2P)
 		relayID, err := peer.Decode(relay)
 		if err != nil {
-			log.Debugf("failed to parse relay ID in address %s: %s", relay, err)
+			log.Debug("failed to parse relay ID in address", "relay", relay, "err", err)
 			continue
 		}
 
@@ -100,7 +100,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 		relayAddrs, err := rh.findPeerAddrs(ctx, relayID)
 		if err != nil {
-			log.Debugf("failed to find relay %s: %s", relay, err)
+			log.Debug("failed to find relay", "relay", relay, "err", err)
 			continue
 		}
 
@@ -116,7 +116,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		// try to connect again.
 		newAddrs, err := rh.findPeerAddrs(ctx, pi.ID)
 		if err != nil {
-			log.Debugf("failed to find more peer addresses %s: %s", pi.ID, err)
+			log.Debug("failed to find more peer addresses", "peer", pi.ID, "err", err)
 			return cerr
 		}
 
@@ -152,7 +152,7 @@ func (rh *RoutedHost) findPeerAddrs(ctx context.Context, id peer.ID) ([]ma.Multi
 
 	if pi.ID != id {
 		err = fmt.Errorf("routing failure: provided addrs for different peer")
-		log.Errorw("got wrong peer",
+		log.Error("got wrong peer",
 			"error", err,
 			"wantedPeer", id,
 			"gotPeer", pi.ID,
