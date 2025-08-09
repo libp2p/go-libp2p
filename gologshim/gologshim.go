@@ -28,7 +28,7 @@ func Logger(system string) *slog.Logger {
 	handlerOpts := &slog.HandlerOptions{
 		Level:     c.LevelForSystem(system),
 		AddSource: c.addSource,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey {
 				// ipfs go-log uses "ts" for time
 				a.Key = "ts"
