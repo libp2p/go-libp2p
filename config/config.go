@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
@@ -50,6 +51,8 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
+
+var log = logging.Logger("p2p-config")
 
 // AddrsFactory is a function that takes a set of multiaddrs we're listening on and
 // returns the set of multiaddrs we should advertise to the network.
@@ -286,7 +289,11 @@ func (cfg *Config) makeAutoNATV2Host() (host.Host, error) {
 
 func (cfg *Config) addTransports() ([]fx.Option, error) {
 	fxopts := []fx.Option{
-		fx.WithLogger(func() fxevent.Logger { return getFXLogger() }),
+		fx.WithLogger(func() fxevent.Logger {
+			return &fxevent.SlogLogger{
+				Logger: log.With("system", "fx"),
+			}
+		}),
 		fx.Provide(fx.Annotate(tptu.New, fx.ParamTags(`name:"security"`))),
 		fx.Supply(cfg.Muxers),
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
