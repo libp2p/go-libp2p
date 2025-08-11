@@ -1,4 +1,4 @@
-package basichost
+package observedaddrs
 
 import (
 	"context"
@@ -7,23 +7,35 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"time"
 
+	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
+	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-// ActivationThresh sets how many times an address must be seen as "activated"
-// and therefore advertised to other peers as an address that the local peer
-// can be contacted on. The "seen" events expire by default after 40 minutes
-// (OwnObservedAddressTTL * ActivationThreshold). The are cleaned up during
-// the GC rounds set by GCInterval.
+var log = logging.Logger("observedaddrs")
+
+// ActivationThresh is the minimum number of observers required for an observed address
+// to be considered valid. We may not advertise this address even if we have these many
+// observations if better observed addresses are available.
 var ActivationThresh = 4
 
-// observedAddrManagerWorkerChannelSize defines how many addresses can be enqueued
-// for adding to an ObservedAddrManager.
-var observedAddrManagerWorkerChannelSize = 16
+var (
+	// observedAddrManagerWorkerChannelSize defines how many addresses can be enqueued
+	// for adding to an ObservedAddrManager.
+	observedAddrManagerWorkerChannelSize = 16
+	// natTypeChangeTickrInterval is the interval between two nat device change events.
+	//
+	// Computing the NAT type is expensive and the information in the event is not too
+	// useful, so this interval is long.
+	natTypeChangeTickrInterval = 1 * time.Minute
+)
 
 const maxExternalThinWaistAddrsPerLocalAddr = 3
 
@@ -116,17 +128,20 @@ type observation struct {
 	observed ma.Multiaddr
 }
 
-// ObservedAddrsManager maps connection's local multiaddrs to their externally observable multiaddress
-type ObservedAddrsManager struct {
+// Manager maps connection's local multiaddrs to their externally observable multiaddress
+type Manager struct {
 	// Our listen addrs
 	listenAddrs func() []ma.Multiaddr
 	// worker channel for new observations
 	wch chan observation
+	// eventbus for identify observations
+	eventbus event.Bus
 
 	// for closing
-	wg        sync.WaitGroup
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	wg         sync.WaitGroup
+	ctx        context.Context
+	ctxCancel  context.CancelFunc
+	stopNotify func()
 
 	mu sync.RWMutex
 	// local thin waist => external thin waist => observerSet
@@ -135,27 +150,70 @@ type ObservedAddrsManager struct {
 	connObservedTWAddrs map[connMultiaddrs]ma.Multiaddr
 }
 
-// NewObservedAddrManager returns a new address manager using peerstore.OwnObservedAddressTTL as the TTL.
-func NewObservedAddrManager(listenAddrs func() []ma.Multiaddr) (*ObservedAddrsManager, error) {
-	o := &ObservedAddrsManager{
+var _ basichost.ObservedAddrsManager = (*Manager)(nil)
+
+// NewManager returns a new manager using peerstore.OwnObservedAddressTTL as the TTL.
+func NewManager(eventbus event.Bus, net network.Network) (*Manager, error) {
+	listenAddrs := func() []ma.Multiaddr {
+		la := net.ListenAddresses()
+		ila, err := net.InterfaceListenAddresses()
+		if err != nil {
+			log.Warnf("error getting interface listen addresses: %s", err)
+		}
+		return append(la, ila...)
+	}
+	o, err := newManagerWithListenAddrs(eventbus, listenAddrs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Maybe this should be done in start, but that makes testing without a swarm difficult.
+	nb := &network.NotifyBundle{
+		DisconnectedF: func(_ network.Network, c network.Conn) {
+			o.RemoveConn(c)
+		},
+	}
+	o.stopNotify = func() {
+		net.StopNotify(nb)
+	}
+	return o, nil
+}
+
+// newManagerWithListenAddrs uses the listenAddrs directly to simplify creation in tests.
+func newManagerWithListenAddrs(eventbus event.Bus, listenAddrs func() []ma.Multiaddr) (*Manager, error) {
+	o := &Manager{
 		externalAddrs:       make(map[string]map[string]*observerSet),
 		connObservedTWAddrs: make(map[connMultiaddrs]ma.Multiaddr),
 		wch:                 make(chan observation, observedAddrManagerWorkerChannelSize),
 		listenAddrs:         listenAddrs,
+		eventbus:            eventbus,
+		stopNotify:          func() {},
 	}
 	o.ctx, o.ctxCancel = context.WithCancel(context.Background())
-
 	return o, nil
 }
 
-func (o *ObservedAddrsManager) Start() {
-	o.wg.Add(1)
+// Start tracking addrs
+func (o *Manager) Start() {
+	sub, err := o.eventbus.Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.Name("observed-addrs-manager"))
+	if err != nil {
+		log.Errorf("failed to start observed addrs manager")
+		return
+	}
+	emitter, err := o.eventbus.Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
+	if err != nil {
+		log.Errorf("failed to start nat device type changed emitter: %s", err)
+		sub.Close()
+		return
+	}
+	o.wg.Add(2)
+	go o.eventHandler(sub, emitter)
 	go o.worker()
 }
 
 // AddrsFor return all activated observed addresses associated with the given
 // (resolved) listen address.
-func (o *ObservedAddrsManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr) {
+func (o *Manager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr) {
 	if addr == nil {
 		return nil
 	}
@@ -180,7 +238,7 @@ func (o *ObservedAddrsManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr
 // e.g. If we have observations for a QUIC address on port 9000, and we are
 // listening on the same interface and port 9000 for WebTransport, we can infer
 // the external WebTransport address.
-func (o *ObservedAddrsManager) appendInferredAddrs(twToObserverSets map[string][]*observerSet, addrs []ma.Multiaddr) []ma.Multiaddr {
+func (o *Manager) appendInferredAddrs(twToObserverSets map[string][]*observerSet, addrs []ma.Multiaddr) []ma.Multiaddr {
 	if twToObserverSets == nil {
 		twToObserverSets = make(map[string][]*observerSet)
 		for localTWStr := range o.externalAddrs {
@@ -208,7 +266,7 @@ func (o *ObservedAddrsManager) appendInferredAddrs(twToObserverSets map[string][
 
 // Addrs return all observed addresses with at least minObservers observers
 // If minObservers <= 0, it will return all addresses with at least ActivationThresh observers.
-func (o *ObservedAddrsManager) Addrs(minObservers int) []ma.Multiaddr {
+func (o *Manager) Addrs(minObservers int) []ma.Multiaddr {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
@@ -225,7 +283,7 @@ func (o *ObservedAddrsManager) Addrs(minObservers int) []ma.Multiaddr {
 	return addrs
 }
 
-func (o *ObservedAddrsManager) getTopExternalAddrs(localTWStr string, minObservers int) []*observerSet {
+func (o *Manager) getTopExternalAddrs(localTWStr string, minObservers int) []*observerSet {
 	observerSets := make([]*observerSet, 0, len(o.externalAddrs[localTWStr]))
 	for _, v := range o.externalAddrs[localTWStr] {
 		if len(v.ObservedBy) >= minObservers {
@@ -250,22 +308,48 @@ func (o *ObservedAddrsManager) getTopExternalAddrs(localTWStr string, minObserve
 	return observerSets[:n]
 }
 
-// Record enqueues an observation for recording
-func (o *ObservedAddrsManager) Record(conn connMultiaddrs, observed ma.Multiaddr) {
-	select {
-	case o.wch <- observation{
-		conn:     conn,
-		observed: observed,
-	}:
-	default:
-		log.Debugw("dropping address observation due to full buffer",
-			"from", conn.RemoteMultiaddr(),
-			"observed", observed,
-		)
+func (o *Manager) eventHandler(identifySub event.Subscription, natEmitter event.Emitter) {
+	defer o.wg.Done()
+	natTypeTicker := time.NewTicker(natTypeChangeTickrInterval)
+	defer natTypeTicker.Stop()
+	var udpNATType, tcpNATType network.NATDeviceType
+	for {
+		select {
+		case e := <-identifySub.Out():
+			evt := e.(event.EvtPeerIdentificationCompleted)
+			select {
+			case o.wch <- observation{
+				conn:     evt.Conn,
+				observed: evt.ObservedAddr,
+			}:
+			default:
+				log.Debugw("dropping address observation due to full buffer",
+					"from", evt.Conn.RemoteMultiaddr(),
+					"observed", evt.ObservedAddr,
+				)
+			}
+		case <-natTypeTicker.C:
+			newUDPNAT, newTCPNAT := o.getNATType()
+			if newUDPNAT != udpNATType {
+				natEmitter.Emit(event.EvtNATDeviceTypeChanged{
+					TransportProtocol: network.NATTransportUDP,
+					NatDeviceType:     newUDPNAT,
+				})
+			}
+			if newTCPNAT != tcpNATType {
+				natEmitter.Emit(event.EvtNATDeviceTypeChanged{
+					TransportProtocol: network.NATTransportTCP,
+					NatDeviceType:     newTCPNAT,
+				})
+			}
+			udpNATType, tcpNATType = newUDPNAT, newTCPNAT
+		case <-o.ctx.Done():
+			return
+		}
 	}
 }
 
-func (o *ObservedAddrsManager) worker() {
+func (o *Manager) worker() {
 	defer o.wg.Done()
 	for {
 		select {
@@ -277,16 +361,7 @@ func (o *ObservedAddrsManager) worker() {
 	}
 }
 
-func isRelayedAddress(a ma.Multiaddr) bool {
-	for _, c := range a {
-		if c.Code() == ma.P_CIRCUIT {
-			return true
-		}
-	}
-	return false
-}
-
-func (o *ObservedAddrsManager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) (shouldRecord bool, localTW thinWaist, observedTW thinWaist) {
+func (o *Manager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) (shouldRecord bool, localTW thinWaist, observedTW thinWaist) {
 	if conn == nil || observed == nil {
 		return false, thinWaist{}, thinWaist{}
 	}
@@ -333,13 +408,13 @@ func (o *ObservedAddrsManager) shouldRecordObservation(conn connMultiaddrs, obse
 	}
 	if !hasConsistentTransport(localTW.TW, observedTW.TW) {
 		log.Debugf("invalid observed address %s for local address %s", observed, localTW.Addr)
-		return
+		return false, thinWaist{}, thinWaist{}
 	}
 
 	return true, localTW, observedTW
 }
 
-func (o *ObservedAddrsManager) maybeRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) {
+func (o *Manager) maybeRecordObservation(conn connMultiaddrs, observed ma.Multiaddr) {
 	shouldRecord, localTW, observedTW := o.shouldRecordObservation(conn, observed)
 	if !shouldRecord {
 		return
@@ -351,7 +426,7 @@ func (o *ObservedAddrsManager) maybeRecordObservation(conn connMultiaddrs, obser
 	o.recordObservationUnlocked(conn, localTW, observedTW)
 }
 
-func (o *ObservedAddrsManager) recordObservationUnlocked(conn connMultiaddrs, localTW, observedTW thinWaist) {
+func (o *Manager) recordObservationUnlocked(conn connMultiaddrs, localTW, observedTW thinWaist) {
 	if conn.IsClosed() {
 		// dont record if the connection is already closed. Any previous observations will be removed in
 		// the disconnected callback
@@ -366,19 +441,18 @@ func (o *ObservedAddrsManager) recordObservationUnlocked(conn connMultiaddrs, lo
 
 	prevObservedTWAddr, ok := o.connObservedTWAddrs[conn]
 	if ok {
+		// we have received the same observation again, nothing to do
 		if prevObservedTWAddr.Equal(observedTW.TW) {
-			// we have received the same observation again, nothing to do
 			return
-		} else {
-			// if we have a previous entry remove it from externalAddrs
-			o.removeExternalAddrsUnlocked(observer, localTWStr, string(prevObservedTWAddr.Bytes()))
 		}
+		// if we have a previous entry remove it from externalAddrs
+		o.removeExternalAddrsUnlocked(observer, localTWStr, string(prevObservedTWAddr.Bytes()))
 	}
 	o.connObservedTWAddrs[conn] = observedTW.TW
 	o.addExternalAddrsUnlocked(observedTW.TW, observer, localTWStr, observedTWStr)
 }
 
-func (o *ObservedAddrsManager) removeExternalAddrsUnlocked(observer, localTWStr, observedTWStr string) {
+func (o *Manager) removeExternalAddrsUnlocked(observer, localTWStr, observedTWStr string) {
 	s, ok := o.externalAddrs[localTWStr][observedTWStr]
 	if !ok {
 		return
@@ -395,7 +469,7 @@ func (o *ObservedAddrsManager) removeExternalAddrsUnlocked(observer, localTWStr,
 	}
 }
 
-func (o *ObservedAddrsManager) addExternalAddrsUnlocked(observedTWAddr ma.Multiaddr, observer, localTWStr, observedTWStr string) {
+func (o *Manager) addExternalAddrsUnlocked(observedTWAddr ma.Multiaddr, observer, localTWStr, observedTWStr string) {
 	s, ok := o.externalAddrs[localTWStr][observedTWStr]
 	if !ok {
 		s = &observerSet{
@@ -410,7 +484,7 @@ func (o *ObservedAddrsManager) addExternalAddrsUnlocked(observedTWAddr ma.Multia
 	s.ObservedBy[observer]++
 }
 
-func (o *ObservedAddrsManager) RemoveConn(conn connMultiaddrs) {
+func (o *Manager) RemoveConn(conn connMultiaddrs) {
 	if conn == nil {
 		return
 	}
@@ -436,7 +510,7 @@ func (o *ObservedAddrsManager) RemoveConn(conn connMultiaddrs) {
 	o.removeExternalAddrsUnlocked(observer, string(localTW.TW.Bytes()), string(observedTWAddr.Bytes()))
 }
 
-func (o *ObservedAddrsManager) getNATType() (tcpNATType, udpNATType network.NATDeviceType) {
+func (o *Manager) getNATType() (tcpNATType, udpNATType network.NATDeviceType) {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
@@ -496,7 +570,8 @@ func (o *ObservedAddrsManager) getNATType() (tcpNATType, udpNATType network.NATD
 	return
 }
 
-func (o *ObservedAddrsManager) Close() error {
+func (o *Manager) Close() error {
+	o.stopNotify()
 	o.ctxCancel()
 	o.wg.Wait()
 	return nil
@@ -514,4 +589,13 @@ func hasConsistentTransport(aTW, bTW ma.Multiaddr) bool {
 		}
 	}
 	return true
+}
+
+func isRelayedAddress(a ma.Multiaddr) bool {
+	for _, c := range a {
+		if c.Code() == ma.P_CIRCUIT {
+			return true
+		}
+	}
+	return false
 }

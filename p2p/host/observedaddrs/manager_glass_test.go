@@ -1,4 +1,4 @@
-package basichost
+package observedaddrs
 
 // This test lives in the identify package, not the identify_test package, so it
 // can access internal types.
@@ -45,7 +45,7 @@ func TestShouldRecordObservationWithWebTransport(t *testing.T) {
 		remote: ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/webtransport"),
 	}
 	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/webtransport")
-	o, err := NewObservedAddrManager(listenAddrs)
+	o, err := newManagerWithListenAddrs(nil, listenAddrs)
 	require.NoError(t, err)
 	shouldRecord, _, _ := o.shouldRecordObservation(c, observedAddr)
 	require.True(t, shouldRecord)
@@ -60,7 +60,7 @@ func TestShouldNotRecordObservationWithRelayedAddr(t *testing.T) {
 		remote: ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/p2p-circuit"),
 	}
 	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/p2p-circuit")
-	o, err := NewObservedAddrManager(listenAddrs)
+	o, err := newManagerWithListenAddrs(nil, listenAddrs)
 	require.NoError(t, err)
 	shouldRecord, _, _ := o.shouldRecordObservation(c, observedAddr)
 	require.False(t, shouldRecord)
@@ -105,7 +105,7 @@ func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
 		},
 	}
 
-	o, err := NewObservedAddrManager(listenAddrs)
+	o, err := newManagerWithListenAddrs(nil, listenAddrs)
 	require.NoError(t, err)
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {

@@ -28,6 +28,7 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
@@ -434,23 +435,23 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 	return fxopts, nil
 }
 
-func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *autonatv2.AutoNAT) (*bhost.BasicHost, error) {
+func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *autonatv2.AutoNAT, o bhost.ObservedAddrsManager) (*bhost.BasicHost, error) {
 	h, err := bhost.NewHost(swrm, &bhost.HostOpts{
-		EventBus:                        eventBus,
-		ConnManager:                     cfg.ConnManager,
-		AddrsFactory:                    cfg.AddrsFactory,
-		NATManager:                      cfg.NATManager,
-		EnablePing:                      !cfg.DisablePing,
-		UserAgent:                       cfg.UserAgent,
-		ProtocolVersion:                 cfg.ProtocolVersion,
-		EnableHolePunching:              cfg.EnableHolePunching,
-		HolePunchingOptions:             cfg.HolePunchingOptions,
-		EnableRelayService:              cfg.EnableRelayService,
-		RelayServiceOpts:                cfg.RelayServiceOpts,
-		EnableMetrics:                   !cfg.DisableMetrics,
-		PrometheusRegisterer:            cfg.PrometheusRegisterer,
-		DisableIdentifyAddressDiscovery: cfg.DisableIdentifyAddressDiscovery,
-		AutoNATv2:                       an,
+		EventBus:             eventBus,
+		ConnManager:          cfg.ConnManager,
+		AddrsFactory:         cfg.AddrsFactory,
+		NATManager:           cfg.NATManager,
+		EnablePing:           !cfg.DisablePing,
+		UserAgent:            cfg.UserAgent,
+		ProtocolVersion:      cfg.ProtocolVersion,
+		EnableHolePunching:   cfg.EnableHolePunching,
+		HolePunchingOptions:  cfg.HolePunchingOptions,
+		EnableRelayService:   cfg.EnableRelayService,
+		RelayServiceOpts:     cfg.RelayServiceOpts,
+		EnableMetrics:        !cfg.DisableMetrics,
+		PrometheusRegisterer: cfg.PrometheusRegisterer,
+		AutoNATv2:            an,
+		ObservedAddrsManager: o,
 	})
 	if err != nil {
 		return nil, err
@@ -528,6 +529,25 @@ func (cfg *Config) NewNode() (host.Host, error) {
 				},
 			})
 			return sw, nil
+		}),
+		fx.Provide(func(eventBus event.Bus, s *swarm.Swarm, lifecycle fx.Lifecycle) (bhost.ObservedAddrsManager, error) {
+			if cfg.DisableIdentifyAddressDiscovery {
+				return nil, nil
+			}
+			o, err := observedaddrs.NewManager(eventBus, s)
+			if err != nil {
+				return nil, err
+			}
+			lifecycle.Append(fx.Hook{
+				OnStart: func(context.Context) error {
+					o.Start()
+					return nil
+				},
+				OnStop: func(context.Context) error {
+					return o.Close()
+				},
+			})
+			return o, nil
 		}),
 		fx.Provide(func() (*autonatv2.AutoNAT, error) {
 			if !cfg.EnableAutoNATv2 {

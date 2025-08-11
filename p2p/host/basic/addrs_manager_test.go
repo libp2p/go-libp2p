@@ -46,32 +46,16 @@ type mockObservedAddrs struct {
 	AddrsForFunc func(ma.Multiaddr) []ma.Multiaddr
 }
 
-// Record implements observedAddrsManager.
-func (m *mockObservedAddrs) Record(_ connMultiaddrs, _ ma.Multiaddr) {}
-
-// Start implements observedAddrsManager.
-func (m *mockObservedAddrs) Start() {}
-
-// getNATType implements observedAddrsManager.
-func (m *mockObservedAddrs) getNATType() (network.NATDeviceType, network.NATDeviceType) {
-	return network.NATDeviceTypeUnknown, network.NATDeviceTypeUnknown
-}
-
-// removeConn implements observedAddrsManager.
-func (m *mockObservedAddrs) RemoveConn(_ connMultiaddrs) {}
-
 func (m *mockObservedAddrs) Addrs(int) []ma.Multiaddr { return m.AddrsFunc() }
 
 func (m *mockObservedAddrs) AddrsFor(local ma.Multiaddr) []ma.Multiaddr { return m.AddrsForFunc(local) }
 
-func (m *mockObservedAddrs) Close() error { return nil }
-
-var _ observedAddrsManager = &mockObservedAddrs{}
+var _ ObservedAddrsManager = &mockObservedAddrs{}
 
 type addrsManagerArgs struct {
 	NATManager           NATManager
 	AddrsFactory         AddrsFactory
-	ObservedAddrsManager observedAddrsManager
+	ObservedAddrsManager ObservedAddrsManager
 	ListenAddrs          func() []ma.Multiaddr
 	AddCertHashes        func([]ma.Multiaddr) []ma.Multiaddr
 	AutoNATClient        autonatv2Client
@@ -106,7 +90,6 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		args.AddrsFactory,
 		args.ListenAddrs,
 		addCertHashes,
-		false,
 		args.ObservedAddrsManager,
 		addrsUpdatedChan,
 		args.AutoNATClient,
@@ -143,6 +126,7 @@ func TestAddrsManager(t *testing.T) {
 	publicQUIC := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 	publicQUIC2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 	publicTCP := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+	privQUIC := ma.StringCast("/ip4/100.100.100.101/udp/1/quic-v1")
 
 	t.Run("only nat", func(t *testing.T) {
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
@@ -169,7 +153,7 @@ func TestAddrsManager(t *testing.T) {
 			NATManager: &mockNatManager{
 				GetMappingFunc: func(addr ma.Multiaddr) ma.Multiaddr {
 					if _, err := addr.ValueForProtocol(ma.P_UDP); err == nil {
-						return publicQUIC
+						return privQUIC
 					}
 					return nil
 				},
@@ -188,11 +172,11 @@ func TestAddrsManager(t *testing.T) {
 			ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{lhquic, lhtcp} },
 		})
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			expected := []ma.Multiaddr{lhquic, lhtcp, publicQUIC, publicTCP, publicQUIC2}
+			expected := []ma.Multiaddr{lhquic, lhtcp, privQUIC, publicTCP, publicQUIC2}
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
 		}, 5*time.Second, 50*time.Millisecond)
 	})
-	t.Run("nat returns private addr addr", func(t *testing.T) {
+	t.Run("nat returns unspecified addr", func(t *testing.T) {
 		quicPort1 := ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1")
 		// port from nat, IP from observed addr
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
@@ -264,10 +248,10 @@ func TestAddrsManager(t *testing.T) {
 		})
 		am.updateAddrsSync()
 		expected := []ma.Multiaddr{lhquic}
-		expected = append(expected, quicAddrs[:maxExternalThinWaistAddrsPerLocalAddr]...)
+		expected = append(expected, quicAddrs[:maxObservedAddrsPerListenAddr]...)
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
-		}, 5*time.Second, 50*time.Millisecond)
+			matest.AssertMultiaddrsMatch(collect, expected, am.Addrs())
+		}, 2*time.Second, 50*time.Millisecond)
 	})
 	t.Run("public addrs removed when private", func(t *testing.T) {
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
@@ -483,23 +467,5 @@ func BenchmarkRemoveIfNotInSource(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		removeNotInSource(slices.Clone(addrs[:5]), addrs[:])
-	}
-}
-
-func BenchmarkUpdateAddrs(b *testing.B) {
-	publicQUIC, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1")
-	publicQUIC2, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1235/quic-v1")
-	publicTCP, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
-	am := newAddrsManagerTestCase(b, addrsManagerArgs{
-		ListenAddrs: func() []ma.Multiaddr {
-			return []ma.Multiaddr{publicQUIC, publicQUIC2, publicTCP}
-		},
-	})
-	am.Close()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		am.updateAddrs(false, nil)
 	}
 }
