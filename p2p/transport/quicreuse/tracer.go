@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	golog "github.com/ipfs/go-log/v2"
 	"github.com/klauspost/compress/zstd"
+	golog "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/qlog"
@@ -27,7 +27,7 @@ func init() {
 func qloggerForDir(qlogDir string, p logging.Perspective, ci quic.ConnectionID) *logging.ConnectionTracer {
 	// create the QLOGDIR, if it doesn't exist
 	if err := os.MkdirAll(qlogDir, 0777); err != nil {
-		log.Errorf("creating the QLOGDIR failed: %s", err)
+		log.Error("creating the QLOGDIR failed", "err", err)
 		return nil
 	}
 	return qlog.NewConnectionTracer(newQlogger(qlogDir, p, ci), p, ci)
@@ -53,7 +53,7 @@ func newQlogger(qlogDir string, role logging.Perspective, connID quic.Connection
 	filename := fmt.Sprintf("%s%c.log_%s_%s_%s.qlog.swp", qlogDir, os.PathSeparator, t, r, connID)
 	f, err := os.Create(filename)
 	if err != nil {
-		log.Errorf("unable to create qlog file %s: %s", filename, err)
+		log.Error("unable to create qlog file", "filename", filename, "error", err)
 		return nil
 	}
 	return &qlogger{

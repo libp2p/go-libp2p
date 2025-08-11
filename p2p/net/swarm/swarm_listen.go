@@ -59,7 +59,7 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 
 	for i, e := range errs {
 		if e != nil {
-			log.Warnw("listening failed", "on", sortedAddrsAndTpts[i].addr, "error", errs[i])
+			log.Warn("listening failed", "on", sortedAddrsAndTpts[i].addr, "err", errs[i])
 		}
 	}
 
@@ -148,7 +148,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 
 			if ok {
 				list.Close()
-				log.Errorf("swarm listener unintentionally closed")
+				log.Error("swarm listener unintentionally closed")
 			}
 
 			// signal to our notifiees on listen close.
@@ -161,7 +161,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 			c, err := list.Accept()
 			if err != nil {
 				if !errors.Is(err, transport.ErrListenerClosed) {
-					log.Errorf("swarm listener for %s accept error: %s", a, err)
+					log.Error("swarm listener accept error", "addr", a, "err", err)
 				}
 				return
 			}
@@ -170,7 +170,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 				c = wrapWithMetrics(c, s.metricsTracer, time.Now(), network.DirInbound)
 			}
 
-			log.Debugf("swarm listener accepted connection: %s <-> %s", c.LocalMultiaddr(), c.RemoteMultiaddr())
+			log.Debug("swarm listener accepted connection", "local_multiaddr", c.LocalMultiaddr(), "remote_multiaddr", c.RemoteMultiaddr())
 			s.refs.Add(1)
 			go func() {
 				defer s.refs.Done()
@@ -181,7 +181,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 					// ignore.
 					return
 				default:
-					log.Warnw("adding connection failed", "to", a, "error", err)
+					log.Warn("adding connection failed", "to", a, "err", err)
 					return
 				}
 			}()

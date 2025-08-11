@@ -13,7 +13,7 @@ import (
 
 	"github.com/libp2p/zeroconf/v2"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -166,14 +166,14 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 				}
 				addr, err := ma.NewMultiaddr(s[len(dnsaddrPrefix):])
 				if err != nil {
-					log.Debugf("failed to parse multiaddr: %s", err)
+					log.Debug("failed to parse multiaddr", "err", err)
 					continue
 				}
 				addrs = append(addrs, addr)
 			}
 			infos, err := peer.AddrInfosFromP2pAddrs(addrs...)
 			if err != nil {
-				log.Debugf("failed to get peer info: %s", err)
+				log.Debug("failed to get peer info", "err", err)
 				continue
 			}
 			for _, info := range infos {
@@ -187,7 +187,7 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 	go func() {
 		defer s.resolverWG.Done()
 		if err := zeroconf.Browse(ctx, s.serviceName, mdnsDomain, entryChan); err != nil {
-			log.Debugf("zeroconf browsing failed: %s", err)
+			log.Debug("zeroconf browsing failed", "err", err)
 		}
 	}()
 }

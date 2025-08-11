@@ -57,7 +57,7 @@ func TestNoDelayDialRanker(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			res := NoDelayDialRanker(tc.addrs)
 			if len(res) != len(tc.output) {
-				log.Errorf("expected %s got %s", tc.output, res)
+				log.Error("expected output mismatch", "expected", tc.output, "got", res)
 				t.Errorf("expected elems: %d got: %d", len(tc.output), len(res))
 			}
 			sortAddrDelays(res)
@@ -138,7 +138,7 @@ func TestDelayRankerQUICDelay(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			res := DefaultDialRanker(tc.addrs)
 			if len(res) != len(tc.output) {
-				log.Errorf("expected %s got %s", tc.output, res)
+				log.Error("expected output mismatch", "expected", tc.output, "got", res)
 				t.Errorf("expected elems: %d got: %d", len(tc.output), len(res))
 			}
 			sortAddrDelays(res)
@@ -234,7 +234,7 @@ func TestDelayRankerTCPDelay(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			res := DefaultDialRanker(tc.addrs)
 			if len(res) != len(tc.output) {
-				log.Errorf("expected %s got %s", tc.output, res)
+				log.Error("expected output mismatch", "expected", tc.output, "got", res)
 				t.Errorf("expected elems: %d got: %d", len(tc.output), len(res))
 			}
 			sortAddrDelays(res)
@@ -276,7 +276,7 @@ func TestDelayRankerRelay(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			res := DefaultDialRanker(tc.addrs)
 			if len(res) != len(tc.output) {
-				log.Errorf("expected %s got %s", tc.output, res)
+				log.Error("expected output mismatch", "expected", tc.output, "got", res)
 				t.Errorf("expected elems: %d got: %d", len(tc.output), len(res))
 			}
 			sortAddrDelays(res)
@@ -341,7 +341,7 @@ func TestDelayRankerOtherTransportDelay(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			res := DefaultDialRanker(tc.addrs)
 			if len(res) != len(tc.output) {
-				log.Errorf("expected %s got %s", tc.output, res)
+				log.Error("expected output mismatch", "expected", tc.output, "got", res)
 				t.Errorf("expected elems: %d got: %d", len(tc.output), len(res))
 				return
 			}

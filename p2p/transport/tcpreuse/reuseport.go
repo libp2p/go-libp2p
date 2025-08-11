@@ -18,7 +18,7 @@ func init() {
 	v := strings.ToLower(os.Getenv(envReuseport))
 	if v == "false" || v == "f" || v == "0" {
 		EnvReuseportVal = false
-		log.Infof("REUSEPORT disabled (LIBP2P_TCP_REUSEPORT=%s)", v)
+		log.Info("REUSEPORT disabled", "LIBP2P_TCP_REUSEPORT", v)
 	}
 }
 

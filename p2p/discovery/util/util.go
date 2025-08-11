@@ -7,7 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/discovery"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 var log = logging.Logger("discovery-util")
@@ -34,7 +34,7 @@ func Advertise(ctx context.Context, a discovery.Advertiser, ns string, opts ...d
 		for {
 			ttl, err := a.Advertise(ctx, ns, opts...)
 			if err != nil {
-				log.Debugf("Error advertising %s: %s", ns, err.Error())
+				log.Debug("Error advertising", "namespace", ns, "err", err)
 				if ctx.Err() != nil {
 					return
 				}

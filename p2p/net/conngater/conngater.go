@@ -16,7 +16,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	"github.com/ipfs/go-datastore/query"
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 // BasicConnectionGater implements a connection gater that allows the application to perform
@@ -65,13 +65,13 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 	// load blocked peers
 	res, err := cg.ds.Query(ctx, query.Query{Prefix: keyPeer})
 	if err != nil {
-		log.Errorf("error querying datastore for blocked peers: %s", err)
+		log.Error("error querying datastore for blocked peers", "err", err)
 		return err
 	}
 
 	for r := range res.Next() {
 		if r.Error != nil {
-			log.Errorf("query result error: %s", r.Error)
+			log.Error("query result error", "err", r.Error)
 			return r.Error
 		}
 
@@ -82,13 +82,13 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 	// load blocked addrs
 	res, err = cg.ds.Query(ctx, query.Query{Prefix: keyAddr})
 	if err != nil {
-		log.Errorf("error querying datastore for blocked addrs: %s", err)
+		log.Error("error querying datastore for blocked addrs", "err", err)
 		return err
 	}
 
 	for r := range res.Next() {
 		if r.Error != nil {
-			log.Errorf("query result error: %s", r.Error)
+			log.Error("query result error", "err", r.Error)
 			return r.Error
 		}
 
@@ -99,20 +99,20 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 	// load blocked subnets
 	res, err = cg.ds.Query(ctx, query.Query{Prefix: keySubnet})
 	if err != nil {
-		log.Errorf("error querying datastore for blocked subnets: %s", err)
+		log.Error("error querying datastore for blocked subnets", "err", err)
 		return err
 	}
 
 	for r := range res.Next() {
 		if r.Error != nil {
-			log.Errorf("query result error: %s", r.Error)
+			log.Error("query result error", "err", r.Error)
 			return r.Error
 		}
 
 		ipnetStr := string(r.Entry.Value)
 		_, ipnet, err := net.ParseCIDR(ipnetStr)
 		if err != nil {
-			log.Errorf("error parsing CIDR subnet: %s", err)
+			log.Error("error parsing CIDR subnet", "err", err)
 			return err
 		}
 		cg.blockedSubnets[ipnetStr] = ipnet
@@ -127,7 +127,7 @@ func (cg *BasicConnectionGater) BlockPeer(p peer.ID) error {
 	if cg.ds != nil {
 		err := cg.ds.Put(context.Background(), datastore.NewKey(keyPeer+p.String()), []byte(p))
 		if err != nil {
-			log.Errorf("error writing blocked peer to datastore: %s", err)
+			log.Error("error writing blocked peer to datastore", "err", err)
 			return err
 		}
 	}
@@ -144,7 +144,7 @@ func (cg *BasicConnectionGater) UnblockPeer(p peer.ID) error {
 	if cg.ds != nil {
 		err := cg.ds.Delete(context.Background(), datastore.NewKey(keyPeer+p.String()))
 		if err != nil {
-			log.Errorf("error deleting blocked peer from datastore: %s", err)
+			log.Error("error deleting blocked peer from datastore", "err", err)
 			return err
 		}
 	}
@@ -176,7 +176,7 @@ func (cg *BasicConnectionGater) BlockAddr(ip net.IP) error {
 	if cg.ds != nil {
 		err := cg.ds.Put(context.Background(), datastore.NewKey(keyAddr+ip.String()), []byte(ip))
 		if err != nil {
-			log.Errorf("error writing blocked addr to datastore: %s", err)
+			log.Error("error writing blocked addr to datastore", "err", err)
 			return err
 		}
 	}
@@ -194,7 +194,7 @@ func (cg *BasicConnectionGater) UnblockAddr(ip net.IP) error {
 	if cg.ds != nil {
 		err := cg.ds.Delete(context.Background(), datastore.NewKey(keyAddr+ip.String()))
 		if err != nil {
-			log.Errorf("error deleting blocked addr from datastore: %s", err)
+			log.Error("error deleting blocked addr from datastore", "err", err)
 			return err
 		}
 	}
@@ -227,7 +227,7 @@ func (cg *BasicConnectionGater) BlockSubnet(ipnet *net.IPNet) error {
 	if cg.ds != nil {
 		err := cg.ds.Put(context.Background(), datastore.NewKey(keySubnet+ipnet.String()), []byte(ipnet.String()))
 		if err != nil {
-			log.Errorf("error writing blocked addr to datastore: %s", err)
+			log.Error("error writing blocked addr to datastore", "err", err)
 			return err
 		}
 	}
@@ -245,7 +245,7 @@ func (cg *BasicConnectionGater) UnblockSubnet(ipnet *net.IPNet) error {
 	if cg.ds != nil {
 		err := cg.ds.Delete(context.Background(), datastore.NewKey(keySubnet+ipnet.String()))
 		if err != nil {
-			log.Errorf("error deleting blocked subnet from datastore: %s", err)
+			log.Error("error deleting blocked subnet from datastore", "err", err)
 			return err
 		}
 	}
@@ -289,7 +289,7 @@ func (cg *BasicConnectionGater) InterceptAddrDial(_ peer.ID, a ma.Multiaddr) (al
 
 	ip, err := manet.ToIP(a)
 	if err != nil {
-		log.Warnf("error converting multiaddr to IP addr: %s", err)
+		log.Warn("error converting multiaddr to IP addr", "err", err)
 		return true
 	}
 
@@ -315,7 +315,7 @@ func (cg *BasicConnectionGater) InterceptAccept(cma network.ConnMultiaddrs) (all
 
 	ip, err := manet.ToIP(a)
 	if err != nil {
-		log.Warnf("error converting multiaddr to IP addr: %s", err)
+		log.Warn("error converting multiaddr to IP addr", "err", err)
 		return true
 	}
 

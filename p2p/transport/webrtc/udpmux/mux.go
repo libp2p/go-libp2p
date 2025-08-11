@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/pion/ice/v4"
 	"github.com/pion/stun"
 )
@@ -145,9 +145,9 @@ func (mux *UDPMux) readLoop() {
 		n, addr, err := mux.socket.ReadFrom(buf)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") || errors.Is(err, context.Canceled) {
-				log.Debugf("readLoop exiting: socket %s closed", mux.socket.LocalAddr())
+				log.Debug("readLoop exiting: socket closed", "local_addr", mux.socket.LocalAddr())
 			} else {
-				log.Errorf("error reading from socket %s: %v", mux.socket.LocalAddr(), err)
+				log.Error("error reading from socket", "local_addr", mux.socket.LocalAddr(), "error", err)
 			}
 			pool.Put(buf)
 			return
@@ -163,7 +163,7 @@ func (mux *UDPMux) readLoop() {
 func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 	udpAddr, ok := addr.(*net.UDPAddr)
 	if !ok {
-		log.Errorf("received a non-UDP address: %s", addr)
+		log.Error("received a non-UDP address", "addr", addr)
 		return false
 	}
 	isIPv6 := udpAddr.IP.To4() == nil
@@ -176,7 +176,7 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 	mux.mx.Unlock()
 	if ok {
 		if err := conn.Push(buf, addr); err != nil {
-			log.Debugf("could not push packet: %v", err)
+			log.Debug("could not push packet", "error", err)
 			return false
 		}
 		return true
@@ -189,17 +189,17 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 
 	msg := &stun.Message{Raw: buf}
 	if err := msg.Decode(); err != nil {
-		log.Debugf("failed to decode STUN message: %s", err)
+		log.Debug("failed to decode STUN message", "error", err)
 		return false
 	}
 	if msg.Type != stun.BindingRequest {
-		log.Debugf("incoming message should be a STUN binding request, got %s", msg.Type)
+		log.Debug("incoming message should be a STUN binding request", "got_type", msg.Type)
 		return false
 	}
 
 	ufrag, err := ufragFromSTUNMessage(msg)
 	if err != nil {
-		log.Debugf("could not find STUN username: %s", err)
+		log.Debug("could not find STUN username", "error", err)
 		return false
 	}
 
@@ -208,14 +208,14 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 		select {
 		case mux.queue <- Candidate{Addr: udpAddr, Ufrag: ufrag}:
 		default:
-			log.Debugw("queue full, dropping incoming candidate", "ufrag", ufrag, "addr", udpAddr)
+			log.Debug("queue full, dropping incoming candidate", "ufrag", ufrag, "addr", udpAddr)
 			conn.Close()
 			return false
 		}
 	}
 
 	if err := conn.Push(buf, addr); err != nil {
-		log.Debugf("could not push packet: %v", err)
+		log.Debug("could not push packet", "error", err)
 		return false
 	}
 	return true

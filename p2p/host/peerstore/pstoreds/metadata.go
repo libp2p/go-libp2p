@@ -73,7 +73,7 @@ func (pm *dsPeerMetadata) RemovePeer(p peer.ID) {
 		KeysOnly: true,
 	})
 	if err != nil {
-		log.Warnw("querying datastore when removing peer failed", "peer", p, "error", err)
+		log.Warn("querying datastore when removing peer failed", "peer", p, "err", err)
 		return
 	}
 	for entry := range result.Next() {

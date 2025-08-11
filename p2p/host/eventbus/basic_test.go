@@ -3,6 +3,7 @@ package eventbus
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"sync"
@@ -140,14 +141,11 @@ type mockLogger struct {
 	logs []string
 }
 
-func (m *mockLogger) Errorf(format string, args ...interface{}) {
+func (m *mockLogger) Write(p []byte) (n int, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.logs = append(m.logs, fmt.Sprintf(format, args...))
-}
-
-func (m *mockLogger) Warnf(format string, args ...interface{}) {
-	m.Errorf(format, args...)
+	m.logs = append(m.logs, string(p))
+	return len(p), nil
 }
 
 func (m *mockLogger) Logs() []string {
@@ -167,8 +165,8 @@ func TestEmitLogsErrorOnStall(t *testing.T) {
 	defer func() {
 		log = oldLogger
 	}()
-	ml := &mockLogger{}
-	log = ml
+	ml := mockLogger{}
+	log = slog.New(slog.NewTextHandler(&ml, nil))
 
 	bus1 := NewBus()
 	bus2 := NewBus()

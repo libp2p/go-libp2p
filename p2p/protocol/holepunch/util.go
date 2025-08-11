@@ -52,11 +52,11 @@ func holePunchConnect(ctx context.Context, host host.Host, pi peer.AddrInfo, isC
 	holePunchCtx := network.WithSimultaneousConnect(ctx, isClient, "hole-punching")
 	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")
 
-	log.Debugw("holepunchConnect", "host", host.ID(), "peer", pi.ID, "addrs", pi.Addrs)
+	log.Debug("holepunchConnect", "source_peer", host.ID(), "destination_peer", pi.ID, "addrs", pi.Addrs)
 	if err := host.Connect(forceDirectConnCtx, pi); err != nil {
-		log.Debugw("hole punch attempt with peer failed", "peer ID", pi.ID, "error", err)
+		log.Debug("hole punch attempt with peer failed", "destination_peer", pi.ID, "err", err)
 		return err
 	}
-	log.Debugw("hole punch successful", "peer", pi.ID)
+	log.Debug("hole punch successful", "destination_peer", pi.ID)
 	return nil
 }

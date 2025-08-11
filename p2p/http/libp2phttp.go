@@ -19,12 +19,12 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
-	logging "github.com/ipfs/go-log/v2"
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	gostream "github.com/libp2p/go-libp2p/p2p/net/gostream"
 	ma "github.com/multiformats/go-multiaddr"
@@ -310,7 +310,7 @@ func (h *Host) setupListeners(listenerErrCh chan error) error {
 			h.httpTransport.listenAddrs = append(h.httpTransport.listenAddrs, listenAddr)
 		} else {
 			// We are not serving insecure HTTP
-			log.Warnf("Not serving insecure HTTP on %s. Prefer an HTTPS endpoint.", listenAddr)
+			log.Warn("Not serving insecure HTTP. Prefer an HTTPS endpoint.", "addr", listenAddr)
 		}
 	}
 	return nil

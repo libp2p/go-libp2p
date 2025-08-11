@@ -15,7 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/x/rate"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -164,7 +164,7 @@ func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager
 	for _, network := range allowlist.allowedNetworks {
 		prefix, err := netip.ParsePrefix(network.String())
 		if err != nil {
-			log.Debugf("failed to parse prefix from allowlist %s, %s", network, err)
+			log.Debug("failed to parse prefix from allowlist", "network", network.String(), "err", err)
 			continue
 		}
 		if _, ok := registeredConnLimiterPrefixes[prefix.String()]; !ok {
@@ -181,7 +181,7 @@ func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager
 		var sr TraceReporter
 		sr, err := NewStatsTraceReporter()
 		if err != nil {
-			log.Errorf("failed to initialise StatsTraceReporter %s", err)
+			log.Error("failed to initialise StatsTraceReporter", "err", err)
 		} else {
 			if r.trace == nil {
 				r.trace = &trace{}

@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
 var log = logging.Logger("autorelay")
@@ -84,7 +84,7 @@ func (r *AutoRelay) background() {
 				if errors.Is(err, errAlreadyRunning) {
 					log.Debug("tried to start already running relay finder")
 				} else if err != nil {
-					log.Errorw("failed to start relay finder", "error", err)
+					log.Error("failed to start relay finder", "err", err)
 				} else {
 					r.metricsTracer.RelayFinderStatus(true)
 				}

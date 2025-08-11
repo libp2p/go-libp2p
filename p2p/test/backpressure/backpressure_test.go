@@ -11,7 +11,7 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +37,7 @@ func TestStBackpressureStreamWrite(t *testing.T) {
 	})
 
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
-	log.Debugf("dialing %s", h2pi.Addrs)
+	log.Debug("dialing", "addrs", h2pi.Addrs)
 	if err := h1.Connect(ctx, h2pi); err != nil {
 		t.Fatal("Failed to connect:", err)
 	}

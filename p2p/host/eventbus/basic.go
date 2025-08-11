@@ -8,16 +8,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 )
 
-type logInterface interface {
-	Errorf(string, ...interface{})
-	Warnf(string, ...interface{})
-}
-
-var log logInterface = logging.Logger("eventbus")
+var log = logging.Logger("eventbus")
 
 const slowConsumerWarningTimeout = time.Second
 
@@ -465,7 +460,7 @@ func emitAndLogError(timer *time.Timer, typ reflect.Type, evt interface{}, sink 
 			<-timer.C
 		}
 	case <-timer.C:
-		log.Warnf("subscriber named \"%s\" is a slow consumer of %s. This can lead to libp2p stalling and hard to debug issues.", sink.name, typ)
+		log.Warn("subscriber is a slow consumer. This can lead to libp2p stalling and hard to debug issues.", "subscriber_name", sink.name, "event_type", typ)
 		// Continue to stall since there's nothing else we can do.
 		sink.ch <- evt
 	}

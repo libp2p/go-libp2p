@@ -16,7 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mstream "github.com/multiformats/go-multistream"
@@ -84,7 +84,7 @@ func NewBlankHost(n network.Network, options ...Option) *BlankHost {
 
 	// persist a signed peer record for self to the peerstore.
 	if err := bh.initSignedRecord(); err != nil {
-		log.Errorf("error creating blank host, err=%s", err)
+		log.Error("error creating blank host", "err", err)
 		return nil
 	}
 
@@ -100,12 +100,12 @@ func (bh *BlankHost) initSignedRecord() error {
 	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{ID: bh.ID(), Addrs: bh.Addrs()})
 	ev, err := record.Seal(rec, bh.Peerstore().PrivKey(bh.ID()))
 	if err != nil {
-		log.Errorf("failed to create signed record for self, err=%s", err)
+		log.Error("failed to create signed record for self", "err", err)
 		return fmt.Errorf("failed to create signed record for self, err=%s", err)
 	}
 	_, err = cab.ConsumePeerRecord(ev, peerstore.PermanentAddrTTL)
 	if err != nil {
-		log.Errorf("failed to persist signed record to peerstore,err=%s", err)
+		log.Error("failed to persist signed record to peerstore", "err", err)
 		return fmt.Errorf("failed to persist signed record for self, err=%s", err)
 	}
 	return err
@@ -116,7 +116,7 @@ var _ host.Host = (*BlankHost)(nil)
 func (bh *BlankHost) Addrs() []ma.Multiaddr {
 	addrs, err := bh.n.InterfaceListenAddresses()
 	if err != nil {
-		log.Debug("error retrieving network interface addrs: ", err)
+		log.Debug("error retrieving network interface addrs", "err", err)
 		return nil
 	}
 
@@ -204,7 +204,7 @@ func (bh *BlankHost) SetStreamHandlerMatch(pid protocol.ID, m func(protocol.ID) 
 func (bh *BlankHost) newStreamHandler(s network.Stream) {
 	protoID, handle, err := bh.Mux().Negotiate(s)
 	if err != nil {
-		log.Infow("protocol negotiation failed", "error", err)
+		log.Info("protocol negotiation failed", "err", err)
 		s.Reset()
 		return
 	}

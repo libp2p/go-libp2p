@@ -10,8 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
 
-	logging "github.com/ipfs/go-log/v2"
 	tec "github.com/jbenet/go-temp-err-catcher"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -79,7 +79,7 @@ func (l *listener) handleIncoming() {
 		if err != nil {
 			// Note: function may pause the accept loop.
 			if catcher.IsTemporary(err) {
-				log.Infof("temporary accept error: %s", err)
+				log.Info("temporary accept error", "err", err)
 				continue
 			}
 			l.err = err
@@ -88,7 +88,7 @@ func (l *listener) handleIncoming() {
 		catcher.Reset()
 
 		if connScope == nil {
-			log.Errorf("BUG: got nil connScope for incoming connection from %s", maconn.RemoteMultiaddr())
+			log.Error("BUG: got nil connScope for incoming connection", "remote_multiaddr", maconn.RemoteMultiaddr())
 			maconn.Close()
 			continue
 		}
@@ -97,10 +97,10 @@ func (l *listener) handleIncoming() {
 		// canceled so there's no need to wait on it here.
 		l.threshold.Wait()
 
-		log.Debugf("listener %s got connection: %s <---> %s",
-			l,
-			maconn.LocalMultiaddr(),
-			maconn.RemoteMultiaddr())
+		log.Debug("listener got connection",
+			"listener", l,
+			"local_multiaddr", maconn.LocalMultiaddr(),
+			"remote_multiaddr", maconn.RemoteMultiaddr())
 
 		wg.Add(1)
 		go func() {
@@ -113,15 +113,17 @@ func (l *listener) handleIncoming() {
 			if err != nil {
 				// Don't bother bubbling this up. We just failed
 				// to completely negotiate the connection.
-				log.Debugf("accept upgrade error: %s (%s <--> %s)",
-					err,
-					maconn.LocalMultiaddr(),
-					maconn.RemoteMultiaddr())
+				log.Debug("accept upgrade error",
+					"err", err,
+					"local_multiaddr", maconn.LocalMultiaddr(),
+					"remote_multiaddr", maconn.RemoteMultiaddr())
 				connScope.Done()
 				return
 			}
 
-			log.Debugf("listener %s accepted connection: %s", l, conn)
+			log.Debug("listener accepted connection",
+				"listener", l,
+				"connection", conn)
 
 			// This records the fact that the connection has been
 			// setup and is waiting to be accepted. This call
@@ -136,7 +138,7 @@ func (l *listener) handleIncoming() {
 			case <-ctx.Done():
 				// Listener not closed but the accept timeout expired.
 				if l.ctx.Err() == nil {
-					log.Warnf("listener dropped connection due to slow accept. remote addr: %s peer: %s", maconn.RemoteMultiaddr(), conn.RemotePeer())
+					log.Warn("listener dropped connection due to slow accept", "remote_multiaddr", maconn.RemoteMultiaddr(), "peer", conn.RemotePeer())
 				}
 				conn.CloseWithError(network.ConnRateLimited)
 			}
@@ -181,19 +183,20 @@ func (l *gatedMaListener) Accept() (manet.Conn, network.ConnManagementScope, err
 		}
 		// gate the connection if applicable
 		if l.connGater != nil && !l.connGater.InterceptAccept(conn) {
-			log.Debugf("gater blocked incoming connection on local addr %s from %s",
-				conn.LocalMultiaddr(), conn.RemoteMultiaddr())
+			log.Debug("gater blocked incoming connection",
+				"local_multiaddr", conn.LocalMultiaddr(),
+				"remote_multiaddr", conn.RemoteMultiaddr())
 			if err := conn.Close(); err != nil {
-				log.Warnf("failed to close incoming connection rejected by gater: %s", err)
+				log.Warn("failed to close incoming connection rejected by gater", "err", err)
 			}
 			continue
 		}
 
 		connScope, err := l.rcmgr.OpenConnection(network.DirInbound, true, conn.RemoteMultiaddr())
 		if err != nil {
-			log.Debugw("resource manager blocked accept of new connection", "error", err)
+			log.Debug("resource manager blocked accept of new connection", "err", err)
 			if err := conn.Close(); err != nil {
-				log.Warnf("failed to open incoming connection. Rejected by resource manager: %s", err)
+				log.Warn("failed to open incoming connection. Rejected by resource manager", "err", err)
 			}
 			continue
 		}

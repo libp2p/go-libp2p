@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 
 	"github.com/libp2p/go-libp2p/p2p/net/nat/internal/nat"
 )
@@ -49,9 +49,9 @@ func DiscoverNAT(ctx context.Context) (*NAT, error) {
 	// Log the device addr.
 	addr, err := natInstance.GetDeviceAddress()
 	if err != nil {
-		log.Debug("DiscoverGateway address error:", err)
+		log.Debug("DiscoverGateway address error", "err", err)
 	} else {
-		log.Debug("DiscoverGateway address:", addr)
+		log.Debug("DiscoverGateway address", "address", addr)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -226,7 +226,7 @@ func (nat *NAT) background() {
 }
 
 func (nat *NAT) establishMapping(ctx context.Context, protocol string, internalPort int) (externalPort int) {
-	log.Debugf("Attempting port map: %s/%d", protocol, internalPort)
+	log.Debug("Attempting port map", "protocol", protocol, "internal_port", internalPort)
 	const comment = "libp2p"
 
 	nat.natmu.Lock()
@@ -240,16 +240,16 @@ func (nat *NAT) establishMapping(ctx context.Context, protocol string, internalP
 
 	if err != nil || externalPort == 0 {
 		if err != nil {
-			log.Warnf("NAT port mapping failed: protocol=%s internal_port=%d error=%q", protocol, internalPort, err)
+			log.Warn("NAT port mapping failed", "protocol", protocol, "internal_port", internalPort, "err", err)
 		} else {
-			log.Warnf("NAT port mapping failed: protocol=%s internal_port=%d external_port=0", protocol, internalPort)
+			log.Warn("NAT port mapping failed", "protocol", protocol, "internal_port", internalPort, "external_port", 0)
 		}
 		// we do not close if the mapping failed,
 		// because it may work again next time.
 		return 0
 	}
 
-	log.Debugf("NAT Mapping: %d --> %d (%s)", externalPort, internalPort, protocol)
+	log.Debug("NAT Mapping", "external_port", externalPort, "internal_port", internalPort, "protocol", protocol)
 	return externalPort
 }
 

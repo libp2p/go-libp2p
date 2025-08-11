@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
@@ -49,6 +50,8 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
+
+var log = logging.Logger("p2p-config")
 
 // AddrsFactory is a function that takes a set of multiaddrs we're listening on and
 // returns the set of multiaddrs we should advertise to the network.
@@ -158,9 +161,7 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 
 	// Check this early. Prevents us from even *starting* without verifying this.
 	if pnet.ForcePrivateNetwork && len(cfg.PSK) == 0 {
-		log.Error("tried to create a libp2p node with no Private" +
-			" Network Protector but usage of Private Networks" +
-			" is forced by the environment")
+		log.Error("tried to create a libp2p node with no Private Network Protector but usage of Private Networks is forced by the environment")
 		// Note: This is *also* checked the upgrader itself, so it'll be
 		// enforced even *if* you don't use the libp2p constructor.
 		return nil, pnet.ErrNotInPrivateNetwork
@@ -287,7 +288,11 @@ func (cfg *Config) makeAutoNATV2Host() (host.Host, error) {
 
 func (cfg *Config) addTransports() ([]fx.Option, error) {
 	fxopts := []fx.Option{
-		fx.WithLogger(func() fxevent.Logger { return getFXLogger() }),
+		fx.WithLogger(func() fxevent.Logger {
+			return &fxevent.SlogLogger{
+				Logger: log.With("system", "fx"),
+			}
+		}),
 		fx.Provide(fx.Annotate(tptu.New, fx.ParamTags(`name:"security"`))),
 		fx.Supply(cfg.Muxers),
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),
@@ -467,7 +472,7 @@ func (cfg *Config) validate() error {
 	if l, ok := cfg.ResourceManager.(connmgr.GetConnLimiter); ok {
 		err := cfg.ConnManager.CheckLimit(l)
 		if err != nil {
-			log.Warn(fmt.Sprintf("rcmgr limit conflicts with connmgr limit: %v", err))
+			log.Warn("rcmgr limit conflicts with connmgr limit", "err", err)
 		}
 	}
 

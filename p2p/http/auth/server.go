@@ -85,7 +85,7 @@ func (a *ServerPeerIDAuth) ServeHTTPWithNextHandler(w http.ResponseWriter, r *ht
 			return
 		}
 		if !a.ValidHostnameFn(hostname) {
-			log.Debugf("Unauthorized request for host %s: hostname returned false for ValidHostnameFn", hostname)
+			log.Debug("Unauthorized request for host: hostname returned false for ValidHostnameFn", "hostname", hostname)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -96,12 +96,12 @@ func (a *ServerPeerIDAuth) ServeHTTPWithNextHandler(w http.ResponseWriter, r *ht
 			return
 		}
 		if hostname != r.TLS.ServerName {
-			log.Debugf("Unauthorized request for host %s: hostname mismatch. Expected %s", hostname, r.TLS.ServerName)
+			log.Debug("Unauthorized request for host: hostname mismatch", "hostname", hostname, "expected", r.TLS.ServerName)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		if a.ValidHostnameFn != nil && !a.ValidHostnameFn(hostname) {
-			log.Debugf("Unauthorized request for host %s: hostname returned false for ValidHostnameFn", hostname)
+			log.Debug("Unauthorized request for host: hostname returned false for ValidHostnameFn", "hostname", hostname)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -117,7 +117,7 @@ func (a *ServerPeerIDAuth) ServeHTTPWithNextHandler(w http.ResponseWriter, r *ht
 	}
 	err := hs.ParseHeaderVal([]byte(r.Header.Get("Authorization")))
 	if err != nil {
-		log.Debugf("Failed to parse header: %v", err)
+		log.Debug("Failed to parse header", "err", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -142,7 +142,7 @@ func (a *ServerPeerIDAuth) ServeHTTPWithNextHandler(w http.ResponseWriter, r *ht
 			return
 		}
 
-		log.Debugf("Failed to run handshake: %v", err)
+		log.Debug("Failed to run handshake", "err", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
