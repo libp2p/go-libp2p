@@ -150,8 +150,8 @@ type HostOpts struct {
 	// AutoNATv2MetricsTracker tracks AutoNATv2 address reachability metrics
 	AutoNATv2MetricsTracker MetricsTracker
 
-	// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses in identify
-	DisableIdentifyAddressDiscovery bool
+	// ObservedAddrsManager maps our local listen addresses to external publicly observed addresses.
+	ObservedAddrsManager ObservedAddrsManager
 
 	AutoNATv2 *autonatv2.AutoNAT
 }
@@ -208,9 +208,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			identify.WithMetricsTracer(
 				identify.NewMetricsTracer(identify.WithRegisterer(opts.PrometheusRegisterer))))
 	}
-	if opts.DisableIdentifyAddressDiscovery {
-		idOpts = append(idOpts, identify.DisableObservedAddrManager())
-	}
 
 	h.ids, err = identify.NewIDService(h, idOpts...)
 	if err != nil {
@@ -252,8 +249,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		addrFactory,
 		h.Network().ListenAddresses,
 		addCertHashesFunc,
-		opts.DisableIdentifyAddressDiscovery,
-		nil,
+		opts.ObservedAddrsManager,
 		h.addrsUpdatedChan,
 		autonatv2Client,
 		opts.EnableMetrics,
