@@ -14,6 +14,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
+	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -21,19 +23,14 @@ import (
 // client implements the client for making dial requests for AutoNAT v2. It verifies successful
 // dials and provides an option to send data for dial requests.
 type client struct {
-	host               host.Host
-	dialData           []byte
-	normalizeMultiaddr func(ma.Multiaddr) ma.Multiaddr
-	metricsTracer      MetricsTracer
+	host          host.Host
+	dialData      []byte
+	metricsTracer MetricsTracer
 
 	mu sync.Mutex
 	// dialBackQueues maps nonce to the channel for providing the local multiaddr of the connection
 	// the nonce was received on
 	dialBackQueues map[uint64]chan ma.Multiaddr
-}
-
-type normalizeMultiaddrer interface {
-	NormalizeMultiaddr(ma.Multiaddr) ma.Multiaddr
 }
 
 func newClient(s *autoNATSettings) *client {
@@ -45,12 +42,7 @@ func newClient(s *autoNATSettings) *client {
 }
 
 func (ac *client) Start(h host.Host) {
-	normalizeMultiaddr := func(a ma.Multiaddr) ma.Multiaddr { return a }
-	if hn, ok := h.(normalizeMultiaddrer); ok {
-		normalizeMultiaddr = hn.NormalizeMultiaddr
-	}
 	ac.host = h
-	ac.normalizeMultiaddr = normalizeMultiaddr
 	ac.host.SetStreamHandler(DialBackProtocol, ac.handleDialBack)
 }
 
@@ -321,12 +313,29 @@ func (ac *client) handleDialBack(s network.Stream) {
 	}
 }
 
+// normalizeMultiaddr returns a multiaddr suitable for equality checks.
+// If the multiaddr is a webtransport component, it removes the certhashes.
+func normalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
+	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
+	if !ok {
+		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
+	}
+	if ok && n > 0 {
+		out := addr
+		for i := 0; i < n; i++ {
+			out, _ = ma.SplitLast(out)
+		}
+		return out
+	}
+	return addr
+}
+
 func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) bool {
 	if len(connLocalAddr) == 0 || len(dialedAddr) == 0 {
 		return false
 	}
-	connLocalAddr = ac.normalizeMultiaddr(connLocalAddr)
-	dialedAddr = ac.normalizeMultiaddr(dialedAddr)
+	connLocalAddr = normalizeMultiaddr(connLocalAddr)
+	dialedAddr = normalizeMultiaddr(dialedAddr)
 
 	localProtos := connLocalAddr.Protocols()
 	externalProtos := dialedAddr.Protocols()

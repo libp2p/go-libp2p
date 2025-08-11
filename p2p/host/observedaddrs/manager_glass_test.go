@@ -1,4 +1,4 @@
-package identify
+package observedaddrs
 
 // This test lives in the identify package, not the identify_test package, so it
 // can access internal types.
@@ -38,17 +38,14 @@ func (c *mockConn) IsClosed() bool {
 
 func TestShouldRecordObservationWithWebTransport(t *testing.T) {
 	listenAddr := ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1/webtransport/certhash/uEgNmb28")
-	ifaceAddr := ma.StringCast("/ip4/10.0.0.2/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")
 	listenAddrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
-	ifaceListenAddrs := func() ([]ma.Multiaddr, error) { return []ma.Multiaddr{ifaceAddr}, nil }
-	addrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
 
 	c := &mockConn{
 		local:  listenAddr,
 		remote: ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/webtransport"),
 	}
 	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/webtransport")
-	o, err := NewObservedAddrManager(listenAddrs, addrs, ifaceListenAddrs, normalize)
+	o, err := newManagerWithListenAddrs(nil, listenAddrs)
 	require.NoError(t, err)
 	shouldRecord, _, _ := o.shouldRecordObservation(c, observedAddr)
 	require.True(t, shouldRecord)
@@ -56,17 +53,14 @@ func TestShouldRecordObservationWithWebTransport(t *testing.T) {
 
 func TestShouldNotRecordObservationWithRelayedAddr(t *testing.T) {
 	listenAddr := ma.StringCast("/ip4/1.2.3.4/udp/8888/quic-v1/p2p-circuit")
-	ifaceAddr := ma.StringCast("/ip4/10.0.0.2/udp/9999/quic-v1")
 	listenAddrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
-	ifaceListenAddrs := func() ([]ma.Multiaddr, error) { return []ma.Multiaddr{ifaceAddr}, nil }
-	addrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr} }
 
 	c := &mockConn{
 		local:  listenAddr,
 		remote: ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/p2p-circuit"),
 	}
 	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/p2p-circuit")
-	o, err := NewObservedAddrManager(listenAddrs, addrs, ifaceListenAddrs, normalize)
+	o, err := newManagerWithListenAddrs(nil, listenAddrs)
 	require.NoError(t, err)
 	shouldRecord, _, _ := o.shouldRecordObservation(c, observedAddr)
 	require.False(t, shouldRecord)
@@ -74,48 +68,48 @@ func TestShouldNotRecordObservationWithRelayedAddr(t *testing.T) {
 
 func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
 	listenAddr1 := ma.StringCast("/ip4/0.0.0.0/tcp/1234")
-	ifaceAddr1 := ma.StringCast("/ip4/10.0.0.2/tcp/4321")
 	listenAddr2 := ma.StringCast("/ip6/::/tcp/1234")
-	ifaceAddr2 := ma.StringCast("/ip6/1::1/tcp/4321")
-
-	var (
-		listenAddrs      = func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr1, listenAddr2} }
-		ifaceListenAddrs = func() ([]ma.Multiaddr, error) { return []ma.Multiaddr{ifaceAddr1, ifaceAddr2}, nil }
-		addrs            = func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr1, listenAddr2} }
-	)
-	c := &mockConn{
+	listenAddrs := func() []ma.Multiaddr { return []ma.Multiaddr{listenAddr1, listenAddr2} }
+	c4 := &mockConn{
 		local:  listenAddr1,
 		remote: ma.StringCast("/ip4/1.2.3.6/tcp/4321"),
+	}
+	c6 := &mockConn{
+		local:  listenAddr2,
+		remote: ma.StringCast("/ip6/1::4/tcp/4321"),
 	}
 
 	cases := []struct {
 		addr          ma.Multiaddr
 		want          bool
+		conn          *mockConn
 		failureReason string
 	}{
 		{
 			addr:          ma.StringCast("/ip4/1.2.3.4/tcp/1234"),
 			want:          true,
 			failureReason: "IPv4 should be observed",
+			conn:          c4,
 		},
 		{
 			addr:          ma.StringCast("/ip6/1::4/tcp/1234"),
 			want:          true,
 			failureReason: "public IPv6 address should be observed",
+			conn:          c6,
 		},
 		{
 			addr:          ma.StringCast("/ip6/64:ff9b::192.0.1.2/tcp/1234"),
 			want:          false,
 			failureReason: "NAT64 IPv6 address shouldn't be observed",
+			conn:          c6,
 		},
 	}
 
-	o, err := NewObservedAddrManager(listenAddrs, addrs, ifaceListenAddrs, normalize)
+	o, err := newManagerWithListenAddrs(nil, listenAddrs)
 	require.NoError(t, err)
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-
-			if shouldRecord, _, _ := o.shouldRecordObservation(c, tc.addr); shouldRecord != tc.want {
+			if shouldRecord, _, _ := o.shouldRecordObservation(tc.conn, tc.addr); shouldRecord != tc.want {
 				t.Fatalf("%s %s", tc.addr, tc.failureReason)
 			}
 		})

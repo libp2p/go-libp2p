@@ -27,8 +27,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
-	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -36,9 +34,6 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 	msmux "github.com/multiformats/go-multistream"
 )
-
-// addrChangeTickrInterval is the interval between two address change ticks.
-var addrChangeTickrInterval = 5 * time.Second
 
 var log = logging.Logger("basichost")
 
@@ -155,8 +150,8 @@ type HostOpts struct {
 	// AutoNATv2MetricsTracker tracks AutoNATv2 address reachability metrics
 	AutoNATv2MetricsTracker MetricsTracker
 
-	// DisableIdentifyAddressDiscovery disables address discovery using peer provided observed addresses in identify
-	DisableIdentifyAddressDiscovery bool
+	// ObservedAddrsManager maps our local listen addresses to external publicly observed addresses.
+	ObservedAddrsManager ObservedAddrsManager
 
 	AutoNATv2 *autonatv2.AutoNAT
 }
@@ -213,9 +208,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			identify.WithMetricsTracer(
 				identify.NewMetricsTracer(identify.WithRegisterer(opts.PrometheusRegisterer))))
 	}
-	if opts.DisableIdentifyAddressDiscovery {
-		idOpts = append(idOpts, identify.DisableObservedAddrManager())
-	}
 
 	h.ids, err = identify.NewIDService(h, idOpts...)
 	if err != nil {
@@ -257,7 +249,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		addrFactory,
 		h.Network().ListenAddresses,
 		addCertHashesFunc,
-		h.ids,
+		opts.ObservedAddrsManager,
 		h.addrsUpdatedChan,
 		autonatv2Client,
 		opts.EnableMetrics,
@@ -745,23 +737,6 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 // the relay addresses and private addresses.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
 	return h.addressManager.Addrs()
-}
-
-// NormalizeMultiaddr returns a multiaddr suitable for equality checks.
-// If the multiaddr is a webtransport component, it removes the certhashes.
-func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
-	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
-	if !ok {
-		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
-	}
-	if ok && n > 0 {
-		out := addr
-		for i := 0; i < n; i++ {
-			out, _ = ma.SplitLast(out)
-		}
-		return out
-	}
-	return addr
 }
 
 // AllAddrs returns all the addresses the host is listening on except circuit addresses.

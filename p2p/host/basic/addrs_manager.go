@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"slices"
 	"sync"
@@ -20,11 +21,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const maxObservedAddrsPerListenAddr = 5
+const maxObservedAddrsPerListenAddr = 3
 
-type observedAddrsManager interface {
-	OwnObservedAddrs() []ma.Multiaddr
-	ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr
+// addrChangeTickrInterval is the interval to recompute host addrs.
+var addrChangeTickrInterval = 5 * time.Second
+
+// ObservedAddrsManager maps our local listen addrs to externally observed addrs.
+type ObservedAddrsManager interface {
+	Addrs(minObservers int) []ma.Multiaddr
+	AddrsFor(local ma.Multiaddr) []ma.Multiaddr
 }
 
 type hostAddrs struct {
@@ -42,7 +47,7 @@ type addrsManager struct {
 	addrsFactory             AddrsFactory
 	listenAddrs              func() []ma.Multiaddr
 	addCertHashes            func([]ma.Multiaddr) []ma.Multiaddr
-	observedAddrsManager     observedAddrsManager
+	observedAddrsManager     ObservedAddrsManager
 	interfaceAddrs           *interfaceAddrsCache
 	addrsReachabilityTracker *addrsReachabilityTracker
 
@@ -72,7 +77,7 @@ func newAddrsManager(
 	addrsFactory AddrsFactory,
 	listenAddrs func() []ma.Multiaddr,
 	addCertHashes func([]ma.Multiaddr) []ma.Multiaddr,
-	observedAddrsManager observedAddrsManager,
+	observedAddrsManager ObservedAddrsManager,
 	addrsUpdatedChan chan struct{},
 	client autonatv2Client,
 	enableMetrics bool,
@@ -107,7 +112,6 @@ func newAddrsManager(
 }
 
 func (a *addrsManager) Start() error {
-	// TODO: add Start method to NATMgr
 	if a.addrsReachabilityTracker != nil {
 		err := a.addrsReachabilityTracker.Start()
 		if err != nil {
@@ -135,8 +139,6 @@ func (a *addrsManager) Close() {
 }
 
 func (a *addrsManager) NetNotifee() network.Notifiee {
-	// Updating addrs in sync provides the nice property that
-	// host.Addrs() just after host.Network().Listen(x) will return x
 	return &network.NotifyBundle{
 		ListenF:      func(network.Network, ma.Multiaddr) { a.updateAddrsSync() },
 		ListenCloseF: func(network.Network, ma.Multiaddr) { a.updateAddrsSync() },
@@ -159,34 +161,33 @@ func (a *addrsManager) updateAddrsSync() {
 	}
 }
 
-func (a *addrsManager) startBackgroundWorker() error {
+func closeIfError(err error, closer io.Closer, name string) error {
+	if err != nil {
+		err1 := closer.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("error closing %s: %w", name, err1)
+		}
+		return errors.Join(err, err1)
+	}
+	return nil
+}
+
+func (a *addrsManager) startBackgroundWorker() (retErr error) {
 	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("addrs-manager"))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
 	}
+	defer func() { retErr = closeIfError(retErr, autoRelayAddrsSub, "autorelay subscription") }()
 
 	autonatReachabilitySub, err := a.bus.Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("addrs-manager"))
 	if err != nil {
-		err1 := autoRelayAddrsSub.Close()
-		if err1 != nil {
-			err1 = fmt.Errorf("error closign autorelaysub: %w", err1)
-		}
-		err = fmt.Errorf("error subscribing to autonat reachability: %s", err)
-		return errors.Join(err, err1)
+		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
 	}
+	defer func() { retErr = closeIfError(retErr, autonatReachabilitySub, "autonatReachability subscription") }()
 
 	emitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
 	if err != nil {
-		err1 := autoRelayAddrsSub.Close()
-		if err1 != nil {
-			err1 = fmt.Errorf("error closing autorelaysub: %w", err1)
-		}
-		err2 := autonatReachabilitySub.Close()
-		if err2 != nil {
-			err2 = fmt.Errorf("error closing autonat reachability: %w", err2)
-		}
-		err = fmt.Errorf("error subscribing to autonat reachability: %s", err)
-		return errors.Join(err, err1, err2)
+		return fmt.Errorf("error creating reachability subscriber: %s", err)
 	}
 
 	var relayAddrs []ma.Multiaddr
@@ -229,6 +230,10 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 		err = autonatReachabilitySub.Close()
 		if err != nil {
 			log.Warnf("error closing autonat reachability sub: %s", err)
+		}
+		err = emitter.Close()
+		if err != nil {
+			log.Warnf("error closing host reachability emitter: %s", err)
 		}
 	}()
 
@@ -371,7 +376,8 @@ func (a *addrsManager) HolePunchAddrs() []ma.Multiaddr {
 	// AllAddrs may ignore observed addresses in favour of NAT mappings.
 	// Use both for hole punching.
 	if a.observedAddrsManager != nil {
-		addrs = append(addrs, a.observedAddrsManager.OwnObservedAddrs()...)
+		// For holepunching, include all the best addresses we know even ones with only 1 observer.
+		addrs = append(addrs, a.observedAddrsManager.Addrs(1)...)
 	}
 	addrs = ma.Unique(addrs)
 	return slices.DeleteFunc(addrs, func(a ma.Multiaddr) bool { return !manet.IsPublicAddr(a) })
@@ -406,7 +412,12 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 
 	finalAddrs := make([]ma.Multiaddr, 0, 8)
 	finalAddrs = a.appendPrimaryInterfaceAddrs(finalAddrs, listenAddrs)
-	finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs, a.interfaceAddrs.All())
+	if a.natManager != nil {
+		finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs)
+	}
+	if a.observedAddrsManager != nil {
+		finalAddrs = a.appendObservedAddrs(finalAddrs, listenAddrs, a.interfaceAddrs.All())
+	}
 
 	// Remove "/p2p-circuit" addresses from the list.
 	// The p2p-circuit listener reports its address as just /p2p-circuit. This is
@@ -444,65 +455,36 @@ func (a *addrsManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenAdd
 // appendNATAddrs appends the NAT-ed addrs for the listenAddrs. For unspecified listen addrs it appends the
 // public address for all the interfaces.
 // Inferring WebTransport from QUIC depends on the observed address manager.
-//
-// TODO: Merge the natmgr and identify.ObservedAddrManager in to one NatMapper module.
-func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
-	var obsAddrs []ma.Multiaddr
+func (a *addrsManager) appendNATAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr) []ma.Multiaddr {
 	for _, listenAddr := range listenAddrs {
-		var natAddr ma.Multiaddr
-		if a.natManager != nil {
-			natAddr = a.natManager.GetMapping(listenAddr)
-		}
-
-		// The order of the cases below is important.
-		switch {
-		case natAddr == nil: // no nat mapping
-			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
-		case manet.IsIPUnspecified(natAddr):
-			log.Infof("NAT device reported an unspecified IP as it's external address: %s", natAddr)
-			_, natRest := ma.SplitFirst(natAddr)
-			obsAddrs = a.appendObservedAddrs(obsAddrs[:0], listenAddr, ifaceAddrs)
-			for _, addr := range obsAddrs {
-				obsIP, _ := ma.SplitFirst(addr)
-				if obsIP != nil && manet.IsPublicAddr(obsIP.Multiaddr()) {
-					dst = append(dst, obsIP.Encapsulate(natRest))
-				}
-			}
-		// This is !Public as opposed to IsPrivate intentionally.
-		// Public is a more restrictive classification in some cases, like IPv6 addresses which only
-		// consider unicast IPv6 addresses allocated so far as public(2000::/3).
-		case !manet.IsPublicAddr(natAddr): // nat reported non public addr(maybe CGNAT?)
-			// use both NAT and observed addr
-			dst = append(dst, natAddr)
-			dst = a.appendObservedAddrs(dst, listenAddr, ifaceAddrs)
-		default: // public addr
+		natAddr := a.natManager.GetMapping(listenAddr)
+		if natAddr != nil {
 			dst = append(dst, natAddr)
 		}
 	}
 	return dst
 }
 
-func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Multiaddr, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
-	if a.observedAddrsManager == nil {
-		return dst
-	}
-	// Add it for the listenAddr first.
+func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddrs, ifaceAddrs []ma.Multiaddr) []ma.Multiaddr {
+	// Add it for all the listenAddr first.
 	// listenAddr maybe unspecified. That's okay as connections on UDP transports
 	// will have the unspecified address as the local address.
-	obsAddrs := a.observedAddrsManager.ObservedAddrsFor(listenAddr)
-	if len(obsAddrs) > maxObservedAddrsPerListenAddr {
-		obsAddrs = obsAddrs[:maxObservedAddrsPerListenAddr]
+	for _, la := range listenAddrs {
+		obsAddrs := a.observedAddrsManager.AddrsFor(la)
+		if len(obsAddrs) > maxObservedAddrsPerListenAddr {
+			obsAddrs = obsAddrs[:maxObservedAddrsPerListenAddr]
+		}
+		dst = append(dst, obsAddrs...)
 	}
-	dst = append(dst, obsAddrs...)
 
 	// if it can be resolved into more addresses, add them too
-	resolved, err := manet.ResolveUnspecifiedAddress(listenAddr, ifaceAddrs)
+	resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, ifaceAddrs)
 	if err != nil {
-		log.Warnf("failed to resolve listen addr %s, %s: %s", listenAddr, ifaceAddrs, err)
+		log.Warnf("failed to resolve listen addr %s, %s: %s", listenAddrs, ifaceAddrs, err)
 		return dst
 	}
 	for _, addr := range resolved {
-		obsAddrs = a.observedAddrsManager.ObservedAddrsFor(addr)
+		obsAddrs := a.observedAddrsManager.AddrsFor(addr)
 		if len(obsAddrs) > maxObservedAddrsPerListenAddr {
 			obsAddrs = obsAddrs[:maxObservedAddrsPerListenAddr]
 		}
