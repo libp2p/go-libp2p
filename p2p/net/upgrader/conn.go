@@ -23,6 +23,10 @@ type transportConn struct {
 
 var _ transport.CapableConn = &transportConn{}
 
+func (c *transportConn) As(target any) bool {
+	return c.MuxedConn.As(target)
+}
+
 func (t *transportConn) Transport() transport.Transport {
 	return t.transport
 }
