@@ -2,7 +2,6 @@ package simconn
 
 import (
 	"errors"
-	"io"
 	"net"
 	"slices"
 	"sync"
@@ -150,26 +149,19 @@ func (c *SimConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 
 	var pkt Packet
+	var deadlineTimer <-chan time.Time
 	if !deadline.IsZero() {
-		select {
-		case pkt = <-c.packetsToRead:
-		case <-c.closedChan:
-			return 0, nil, io.EOF
-		case <-time.After(time.Until(deadline)):
-			return 0, nil, ErrDeadlineExceeded
-		}
-	} else {
-	outer:
-		for {
-			select {
-			case pkt = <-c.packetsToRead:
-				break outer
-			case <-c.closedChan:
-				return 0, nil, net.ErrClosed
-			case <-c.deadlineUpdated:
-				return c.ReadFrom(p)
-			}
-		}
+		deadlineTimer = time.After(time.Until(deadline))
+	}
+
+	select {
+	case pkt = <-c.packetsToRead:
+	case <-c.closedChan:
+		return 0, nil, net.ErrClosed
+	case <-c.deadlineUpdated:
+		return c.ReadFrom(p)
+	case <-deadlineTimer:
+		return 0, nil, ErrDeadlineExceeded
 	}
 
 	n = copy(p, pkt.buf)
