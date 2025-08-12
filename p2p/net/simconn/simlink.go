@@ -1,63 +1,21 @@
 package simconn
 
 import (
+	"context"
 	"math"
 	"sync"
 	"time"
-)
 
-// A rateLimiter is used by a link to determine how long to wait before sending
-// data given a bandwidth cap.
-type rateLimiter struct {
-	lock         sync.Mutex
-	refillRate   float64   // bytes per nanosecond
-	allowance    float64   // in bytes
-	maxAllowance float64   // in bytes
-	lastUpdate   time.Time // when allowance was updated last
-}
+	"golang.org/x/time/rate"
+)
 
 // Creates a new RateLimiter with the following parameters:
 // bandwidth (in bits/sec).
 // burstSize is in Bytes
-func newRateLimiter(bandwidth int, burstSize int) *rateLimiter {
-	//  convert bandwidth to bytes per nanosecond
-	refillRate := float64(bandwidth) / float64(time.Second*8)
-	maxAllowance := float64(burstSize)
-	return &rateLimiter{
-		refillRate:   refillRate,
-		allowance:    maxAllowance,
-		maxAllowance: maxAllowance,
-		lastUpdate:   time.Now(),
-	}
-}
-
-// Returns how long to wait before sending data with length 'dataSize' bytes
-func (r *rateLimiter) Limit(dataSize int) time.Duration {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	//  update time
-	var duration time.Duration = time.Duration(0)
-	if r.refillRate == 0 {
-		return duration
-	}
-	current := time.Now()
-	elapsedTime := current.Sub(r.lastUpdate)
-	r.lastUpdate = current
-
-	allowance := r.allowance + float64(elapsedTime)*r.refillRate
-	//  allowance can't exceed bandwidth
-	if allowance > r.maxAllowance {
-		allowance = r.maxAllowance
-	}
-
-	allowance -= float64(dataSize)
-	if allowance < 0 {
-		//  sleep until allowance is back to 0
-		duration = time.Duration(-allowance / r.refillRate)
-	}
-
-	r.allowance = allowance
-	return duration
+func newRateLimiter(bandwidth int, burstSize int) *rate.Limiter {
+	// Convert bandwidth from bits/sec to bytes/sec
+	bytesPerSecond := rate.Limit(float64(bandwidth) / 8.0)
+	return rate.NewLimiter(bytesPerSecond, burstSize)
 }
 
 type LinkSettings struct {
@@ -134,8 +92,8 @@ type SimulatedLink struct {
 	downstream *packetQueue
 	upstream   *packetQueue
 
-	upLimiter   *rateLimiter
-	downLimiter *rateLimiter
+	upLimiter   *rate.Limiter
+	downLimiter *rate.Limiter
 
 	upLatency   *latencyLink
 	downLatency *latencyLink
@@ -147,11 +105,9 @@ type SimulatedLink struct {
 	DownloadPacket PacketRecieverBlocking
 }
 
-func delayPacketHandling(limiter *rateLimiter, p packetWithDeliveryTime) {
-	delay := limiter.Limit(len(p.buf))
-	if delay > 0 {
-		time.Sleep(delay)
-	}
+func delayPacketHandling(limiter *rate.Limiter, p packetWithDeliveryTime) {
+	// WaitN blocks until the limiter permits len(p.buf) tokens
+	limiter.WaitN(context.Background(), len(p.buf))
 }
 
 func (l *SimulatedLink) backgroundDownlink() {
