@@ -30,6 +30,7 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 	"github.com/multiformats/go-multiaddr"
 	mstream "github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
@@ -158,15 +159,24 @@ var QUICTransport = fx.Provide(
 	),
 )
 
+var NullTCPReuseConnMgr = fx.Provide(func() *tcpreuse.ConnMgr {
+	return nil
+})
+
+var TCPReuseConnMgr = fx.Provide(func(upgrader transport.Upgrader) *tcpreuse.ConnMgr {
+	return tcpreuse.NewConnMgr(tcpreuse.EnvReuseportVal, upgrader)
+})
+
 func TCPTransport(opts ...tcp.Option) fx.Option {
 	return fx.Provide(
 		fx.Annotate(
 			func(p struct {
 				fx.In
-				Upgrader transport.Upgrader
-				Rcmgr    network.ResourceManager
+				Upgrader     transport.Upgrader
+				Rcmgr        network.ResourceManager
+				ReuseConnMgr *tcpreuse.ConnMgr
 			}) (transport.Transport, error) {
-				return tcp.NewTCPTransport(p.Upgrader, p.Rcmgr, opts...)
+				return tcp.NewTCPTransport(p.Upgrader, p.Rcmgr, p.ReuseConnMgr, opts...)
 			},
 			fx.As(new(transport.Transport)),
 			fx.ResultTags(`group:"transport"`),

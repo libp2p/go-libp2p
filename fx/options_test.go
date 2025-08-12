@@ -2,6 +2,7 @@ package libp2pfx
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"testing"
 
@@ -115,6 +116,7 @@ func TestTCPTransport(t *testing.T) {
 			fx.Populate(&h),
 			Upgrader(),
 			TCPTransport(),
+			NullTCPReuseConnMgr,
 			Yamux,
 			// TODO how to order?
 			Security(
@@ -232,4 +234,203 @@ func TestIdentify(t *testing.T) {
 	t.Log(res)
 	res = (<-sub2.Out()).(event.EvtPeerIdentificationCompleted)
 	t.Log(res)
+}
+
+// ExampleBlankHost demonstrates creating a basic libp2p host using fx.New and BlankHost.
+// This creates a minimal host with QUIC transport that can listen for connections.
+func ExampleBlankHost() {
+	var h host.Host
+	app := fx.New(
+		fx.NopLogger,
+		BlankHost(),
+		SwarmNetwork(),
+		RandomPeerID(),
+		EventBus(),
+		InMemoryPeerstore(),
+		MultistreamMuxer,
+		QUICTransport,
+		QUICReuseConnManager,
+		NullConnectionGater,
+		NullResourceManager,
+		NullConnManager,
+		fx.Supply(MetricsConfig{Disable: true}),
+		fx.Populate(&h),
+		ListenAddrs(multiaddr.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")),
+	)
+
+	if err := app.Start(context.Background()); err != nil {
+		panic(err)
+	}
+	defer app.Stop(context.Background())
+
+	// Host is now ready to use
+	fmt.Printf("Host created successfully\n")
+	fmt.Printf("QUIC transport enabled\n")
+	// Output:
+	// Host created successfully
+	// QUIC transport enabled
+}
+
+// ExampleBlankHost_echoService demonstrates creating two QUIC hosts that communicate with each other.
+// One host acts as an echo server, the other connects and sends a message.
+func ExampleBlankHost_echoService() {
+	createHost := func() host.Host {
+		var h host.Host
+		app := fx.New(
+			fx.NopLogger,
+			BlankHost(),
+			SwarmNetwork(),
+			RandomPeerID(),
+			EventBus(),
+			InMemoryPeerstore(),
+			MultistreamMuxer,
+			QUICTransport,
+			QUICReuseConnManager,
+			NullConnectionGater,
+			NullResourceManager,
+			NullConnManager,
+			fx.Supply(MetricsConfig{Disable: true}),
+			fx.Populate(&h),
+			ListenAddrs(multiaddr.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")),
+		)
+
+		if err := app.Start(context.Background()); err != nil {
+			panic(err)
+		}
+		return h
+	}
+
+	// Create server host
+	server := createHost()
+	defer server.Close()
+
+	// Create client host
+	client := createHost()
+	defer client.Close()
+
+	// Set up echo handler on server
+	server.SetStreamHandler("/echo/1.0.0", func(s network.Stream) {
+		defer s.Close()
+		io.Copy(s, s) // Echo back whatever is received
+	})
+
+	// Connect client to server
+	err := client.Connect(context.Background(), peer.AddrInfo{
+		ID:    server.ID(),
+		Addrs: server.Addrs(),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Open stream and send message
+	stream, err := client.NewStream(context.Background(), server.ID(), "/echo/1.0.0")
+	if err != nil {
+		panic(err)
+	}
+	defer stream.Close()
+
+	// Send message
+	message := "Hello, QUIC world!"
+	_, err = stream.Write([]byte(message))
+	if err != nil {
+		panic(err)
+	}
+	stream.CloseWrite()
+
+	// Read echo response
+	response, err := io.ReadAll(stream)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Sent: %s\n", message)
+	fmt.Printf("Received: %s\n", string(response))
+	// Output:
+	// Sent: Hello, QUIC world!
+	// Received: Hello, QUIC world!
+}
+
+// ExampleBlankHost_withServices demonstrates creating a QUIC host with additional services
+// like ping and identify protocols.
+func ExampleBlankHost_withServices() {
+	var h host.Host
+	var pingService *ping.PingService
+	app := fx.New(
+		fx.NopLogger,
+		BlankHost(),
+		SwarmNetwork(),
+		RandomPeerID(),
+		EventBus(),
+		InMemoryPeerstore(),
+		MultistreamMuxer,
+		QUICTransport,
+		QUICReuseConnManager,
+		NullConnectionGater,
+		NullResourceManager,
+		NullConnManager,
+		fx.Supply(MetricsConfig{Disable: true}),
+		PingService,
+		IdentifyService(),
+		fx.Populate(&h, &pingService),
+		ListenAddrs(multiaddr.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")),
+	)
+
+	if err := app.Start(context.Background()); err != nil {
+		panic(err)
+	}
+	defer app.Stop(context.Background())
+
+	fmt.Printf("Host created with ping and identify services\n")
+	// Output:
+	// Host created with ping and identify services
+}
+
+// ExampleBlankHost_multiTransport demonstrates creating a host with both QUIC and TCP transports.
+func ExampleBlankHost_multiTransport() {
+	var h host.Host
+	app := fx.New(
+		fx.NopLogger,
+		BlankHost(),
+		SwarmNetwork(),
+		RandomPeerID(),
+		EventBus(),
+		InMemoryPeerstore(),
+		MultistreamMuxer,
+
+		// Multiple transports
+		QUICTransport,
+		QUICReuseConnManager,
+		TCPTransport(),
+		NullTCPReuseConnMgr,
+
+		// Required for TCP transport
+		Upgrader(),
+		Security(TLS, Noise),
+		Yamux,
+
+		NullConnectionGater,
+		NullResourceManager,
+		NullConnManager,
+		fx.Supply(MetricsConfig{Disable: true}),
+
+		fx.Populate(&h),
+
+		// Listen on both QUIC and TCP
+		ListenAddrs(
+			multiaddr.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
+			multiaddr.StringCast("/ip4/127.0.0.1/tcp/0"),
+		),
+	)
+
+	if err := app.Start(context.Background()); err != nil {
+		panic(err)
+	}
+	defer app.Stop(context.Background())
+
+	fmt.Printf("Multi-transport host created\n")
+	fmt.Printf("Supports: QUIC and TCP transports\n")
+	// Output:
+	// Multi-transport host created
+	// Supports: QUIC and TCP transports
 }
