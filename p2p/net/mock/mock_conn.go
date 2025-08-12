@@ -86,7 +86,7 @@ func (c *conn) Close() error {
 	return nil
 }
 
-func (c *conn) As(target any) bool {
+func (c *conn) As(_ any) bool {
 	return false
 }
 
