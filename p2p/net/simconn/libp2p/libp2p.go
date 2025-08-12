@@ -242,6 +242,8 @@ func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSetting
 				h, err = libp2p.New(
 					libp2p.ListenAddrStrings(addr),
 					QUICSimConnSimpleNet(nw, l.LinkSettings, quicReuseOpts...),
+					// TODO: Currently using identify address discovery stalls
+					// synctest
 					libp2p.DisableIdentifyAddressDiscovery(),
 					libp2p.ResourceManager(&network.NullResourceManager{}),
 				)

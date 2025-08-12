@@ -27,7 +27,7 @@ func OverrideSourceIPSelector(f func() (SourceIPSelector, error)) Option {
 	}
 }
 
-func WithQlogDir(dir string) Option {
+func WithQlogTracerDir(dir string) Option {
 	return func(m *ConnManager) error {
 		m.qlogTracerDir = dir
 		return nil

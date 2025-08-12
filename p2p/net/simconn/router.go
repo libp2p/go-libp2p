@@ -84,7 +84,7 @@ func (m *addrMap[V]) Set(addr net.Addr, v V) error {
 	return nil
 }
 
-func (m *addrMap[V]) Remove(addr net.Addr) error {
+func (m *addrMap[V]) Delete(addr net.Addr) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.nodes == nil {
@@ -121,7 +121,7 @@ func (r *PerfectRouter) AddNode(addr net.Addr, conn PacketReciever) {
 }
 
 func (r *PerfectRouter) RemoveNode(addr net.Addr) {
-	r.nodes.Remove(addr)
+	r.nodes.Delete(addr)
 }
 
 var _ Router = &PerfectRouter{}
