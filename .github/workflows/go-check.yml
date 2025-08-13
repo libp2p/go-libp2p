@@ -3,7 +3,7 @@ name: Go Checks
 on:
   pull_request:
   push:
-    branches: ["master","release-v0[0-9][0-9]"]
+    branches: ["master", "release-v0[0-9][0-9]"]
   workflow_dispatch:
 
 permissions:
@@ -17,6 +17,5 @@ jobs:
   go-check:
     uses: ipdxco/unified-github-workflows/.github/workflows/go-check.yml@v1.0
     with:
-      go-version: "1.24.x"
+      go-version: "1.25.x"
       go-generate-ignore-protoc-version-comments: true
-  

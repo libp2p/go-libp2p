@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1
 # This is run from the parent directory to copy the whole go-libp2p codebase
 
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app/
 
 COPY ./ .
 WORKDIR /app/test-plans
 RUN go mod download
-RUN go build -o /testplan ./cmd/ping 
+RUN go build -o /testplan ./cmd/ping
 
 FROM alpine
 WORKDIR /app

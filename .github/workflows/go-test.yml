@@ -3,7 +3,7 @@ name: Go Test
 on:
   pull_request:
   push:
-    branches: ["master","release-v0[0-9][0-9]"]
+    branches: ["master", "release-v0[0-9][0-9]"]
   workflow_dispatch:
 
 permissions:
@@ -17,6 +17,6 @@ jobs:
   go-test:
     uses: ./.github/workflows/go-test-template.yml
     with:
-      go-versions: '["1.23.x", "1.24.x"]'
+      go-versions: '["1.24.x", "1.25.x"]'
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
