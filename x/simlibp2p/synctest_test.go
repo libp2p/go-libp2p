@@ -12,9 +12,9 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/net/simconn"
-	simlibp2p "github.com/libp2p/go-libp2p/p2p/net/simconn/libp2p"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	simlibp2p "github.com/libp2p/go-libp2p/x/simlibp2p"
+	"github.com/marcopolo/simnet"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,9 +22,9 @@ func TestSimpleLibp2pNetwork_synctest(t *testing.T) {
 	synctest.Run(func() {
 		latency := 10 * time.Millisecond
 		network, meta, err := simlibp2p.SimpleLibp2pNetwork([]simlibp2p.NodeLinkSettingsAndCount{
-			{LinkSettings: simconn.NodeBiDiLinkSettings{
-				Downlink: simconn.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps, Latency: latency / 2}, // Divide by two since this is latency for each direction
-				Uplink:   simconn.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps, Latency: latency / 2},
+			{LinkSettings: simnet.NodeBiDiLinkSettings{
+				Downlink: simnet.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps, Latency: latency / 2}, // Divide by two since this is latency for each direction
+				Uplink:   simnet.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps, Latency: latency / 2},
 			}, Count: 100},
 		}, simlibp2p.NetworkSettings{})
 		require.NoError(t, err)
@@ -75,16 +75,16 @@ func TestSimpleLibp2pNetwork_synctest(t *testing.T) {
 
 func TestSimpleSimNetPing_synctest(t *testing.T) {
 	synctest.Run(func() {
-		router := &simconn.SimpleSimNet{}
+		router := &simnet.Simnet{}
 
 		const bandwidth = 10 * simlibp2p.OneMbps
 		const latency = 10 * time.Millisecond
-		linkSettings := simconn.NodeBiDiLinkSettings{
-			Downlink: simconn.LinkSettings{
+		linkSettings := simnet.NodeBiDiLinkSettings{
+			Downlink: simnet.LinkSettings{
 				BitsPerSecond: bandwidth,
 				Latency:       latency / 2,
 			},
-			Uplink: simconn.LinkSettings{
+			Uplink: simnet.LinkSettings{
 				BitsPerSecond: bandwidth,
 				Latency:       latency / 2,
 			},
@@ -93,12 +93,12 @@ func TestSimpleSimNetPing_synctest(t *testing.T) {
 		hostA := simlibp2p.MustNewHost(t,
 			libp2p.ListenAddrStrings("/ip4/1.0.0.1/udp/8000/quic-v1"),
 			libp2p.DisableIdentifyAddressDiscovery(),
-			simlibp2p.QUICSimConnSimpleNet(router, linkSettings),
+			simlibp2p.QUICSimnet(router, linkSettings),
 		)
 		hostB := simlibp2p.MustNewHost(t,
 			libp2p.ListenAddrStrings("/ip4/1.0.0.2/udp/8000/quic-v1"),
 			libp2p.DisableIdentifyAddressDiscovery(),
-			simlibp2p.QUICSimConnSimpleNet(router, linkSettings),
+			simlibp2p.QUICSimnet(router, linkSettings),
 		)
 
 		err := router.Start()

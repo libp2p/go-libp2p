@@ -19,11 +19,11 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
-	"github.com/libp2p/go-libp2p/p2p/net/simconn"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+	"github.com/marcopolo/simnet"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/require"
@@ -47,7 +47,7 @@ func (m *MockSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr)
 
 const OneMbps = 1_000_000
 
-func QUICSimConnSimpleNet(simnet *simconn.SimpleSimNet, linkSettings simconn.NodeBiDiLinkSettings, quicReuseOpts ...quicreuse.Option) libp2p.Option {
+func QUICSimnet(simnet *simnet.Simnet, linkSettings simnet.NodeBiDiLinkSettings, quicReuseOpts ...quicreuse.Option) libp2p.Option {
 	m := &MockSourceIPSelector{}
 	quicReuseOpts = append(quicReuseOpts,
 		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
@@ -93,8 +93,8 @@ func (h *wrappedHost) Close() error {
 type BlankHostOpts struct {
 	ConnMgr         *connmgr.BasicConnMgr
 	listenMultiaddr multiaddr.Multiaddr
-	simnet          *simconn.SimpleSimNet
-	linkSettings    simconn.NodeBiDiLinkSettings
+	simnet          *simnet.Simnet
+	linkSettings    simnet.NodeBiDiLinkSettings
 	quicReuseOpts   []quicreuse.Option
 }
 
@@ -186,7 +186,7 @@ func newBlankHost(opts BlankHostOpts) (*wrappedHost, error) {
 }
 
 type NodeLinkSettingsAndCount struct {
-	LinkSettings simconn.NodeBiDiLinkSettings
+	LinkSettings simnet.NodeBiDiLinkSettings
 	Count        int
 }
 
@@ -206,8 +206,8 @@ type NetworkSettings struct {
 	BlankHostOptsForHostIdx func(idx int) BlankHostOpts
 }
 
-func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSettings NetworkSettings) (*simconn.SimpleSimNet, *SimpleLibp2pNetworkMeta, error) {
-	nw := &simconn.SimpleSimNet{}
+func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSettings NetworkSettings) (*simnet.Simnet, *SimpleLibp2pNetworkMeta, error) {
+	nw := &simnet.Simnet{}
 	meta := &SimpleLibp2pNetworkMeta{
 		AddrToNode: make(map[string]HostAndIdx),
 	}
@@ -215,7 +215,7 @@ func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSetting
 	for _, l := range linkSettings {
 		for i := 0; i < l.Count; i++ {
 			idx := len(meta.Nodes)
-			ip := simconn.IntToPublicIPv4(idx)
+			ip := simnet.IntToPublicIPv4(idx)
 			addr := fmt.Sprintf("/ip4/%s/udp/8000/quic-v1", ip)
 			var h host.Host
 			var err error
@@ -239,7 +239,7 @@ func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSetting
 			} else {
 				h, err = libp2p.New(
 					libp2p.ListenAddrStrings(addr),
-					QUICSimConnSimpleNet(nw, l.LinkSettings, quicReuseOpts...),
+					QUICSimnet(nw, l.LinkSettings, quicReuseOpts...),
 					// TODO: Currently using identify address discovery stalls
 					// synctest
 					libp2p.DisableIdentifyAddressDiscovery(),

@@ -32,6 +32,7 @@ require (
 	github.com/libp2p/go-reuseport v0.4.0
 	github.com/libp2p/go-yamux/v5 v5.0.1
 	github.com/libp2p/zeroconf/v2 v2.2.0
+	github.com/marcopolo/simnet v0.0.1
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b
 	github.com/mr-tron/base58 v1.2.0
