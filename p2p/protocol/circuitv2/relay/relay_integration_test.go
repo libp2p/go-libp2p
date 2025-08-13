@@ -3,6 +3,7 @@ package relay_test
 import (
 	"context"
 	"crypto/rand"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -34,6 +35,10 @@ func Test_RelayIntegration(t *testing.T) {
 		defer relayHost.Close()
 
 		relaySvc, err := relay.New(relayHost,
+			relay.WithRelaySubnets(
+				netip.MustParsePrefix("192.168.0.0/16"),
+			),
+			relay.WithRelayAddresses(relayHost.Addrs()...),
 			relay.WithInfiniteLimits(),
 		)
 		assertions.Nil(err, "failed to prepare relay service")

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +18,8 @@ import (
 	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/util"
+	"github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 
 	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
@@ -44,6 +47,18 @@ var log = logging.Logger("relay")
 type Relay struct {
 	ctx    context.Context
 	cancel func()
+
+	// List of subnets that the relay is able to advertise
+	// For example if a relay is allowed to advertise under a isolated LAN network.
+	// It could use a subnet such as 192.168.0.0/24.
+	// This is useful when listening in any address such as /ip4/0.0.0.0/...
+	// Because we may know our subnet but not the DHCP assigned final address
+	publicSubnets []netip.Prefix
+	// If the relay has statically assigned addresses that it can advertise
+	// It can specify those addresses directly here.
+	// This is useful when we already know our address and we want to directly specify it
+	// /ip4/192.168.0.10/...
+	publicAddresses []multiaddr.Multiaddr
 
 	host        host.Host
 	rc          Resources
@@ -225,6 +240,8 @@ func (r *Relay) handleReserve(s network.Stream) pbv2.Status {
 	// For example, the stream might be reset or the connection might be closed before the reservation is received.
 	// In that case, the reservation will just be garbage collected later.
 	rsvp := makeReservationMsg(
+		r.publicSubnets,
+		r.publicAddresses,
 		r.host.Peerstore().PrivKey(r.host.ID()),
 		r.host.ID(),
 		r.host.Addrs(),
@@ -573,7 +590,51 @@ func (r *Relay) writeResponse(s network.Stream, status pbv2.Status, rsvp *pbv2.R
 	return wr.WriteMsg(&msg)
 }
 
+func includeAddrInReservation(
+	relayPublicSubnets []netip.Prefix,
+	relayPublicAddresses []multiaddr.Multiaddr,
+	addr multiaddr.Multiaddr,
+) (include bool) {
+	// Direct matching of public addresses first
+	for _, public := range relayPublicAddresses {
+		if public.Equal(addr) {
+			return true
+		}
+	}
+
+	// If there are no internal subnets allowed. Do not even try
+	if len(relayPublicSubnets) != 0 {
+		var rawAddr string
+		rawAddr, err := addr.ValueForProtocol(multiaddr.P_IP4)
+		if err != nil {
+			rawAddr, err = addr.ValueForProtocol(multiaddr.P_IP4)
+			if err != nil {
+				return false
+			}
+		}
+
+		asNetipAddr, err := netip.ParseAddr(rawAddr)
+		if err != nil {
+			// invalid address, just ignore
+			return false
+		}
+
+		var includeAddress bool
+		for _, prefix := range relayPublicSubnets {
+			if prefix.Contains(asNetipAddr) {
+				includeAddress = true
+				break
+			}
+		}
+		return includeAddress
+	}
+
+	return false
+}
+
 func makeReservationMsg(
+	relayPublicSubnets []netip.Prefix,
+	relayPublicAddresses []multiaddr.Multiaddr,
 	signingKey crypto.PrivKey,
 	selfID peer.ID,
 	selfAddrs []ma.Multiaddr,
@@ -592,9 +653,10 @@ func makeReservationMsg(
 
 	addrBytes := make([][]byte, 0, len(selfAddrs))
 	for _, addr := range selfAddrs {
-		// if !manet.IsPublicAddr(addr) {
-		// 	continue
-		// }
+		if !manet.IsPublicAddr(addr) &&
+			!includeAddrInReservation(relayPublicSubnets, relayPublicAddresses, addr) {
+			continue
+		}
 
 		id, _ := peer.IDFromP2PAddr(addr)
 		switch {
