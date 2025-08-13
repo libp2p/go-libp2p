@@ -144,6 +144,10 @@ func calculateBDP(mtu, bandwidth int, latency time.Duration) int {
 }
 
 func (l *SimulatedLink) Start() {
+	if l.DownloadPacket == nil {
+		panic("SimulatedLink.Start() called without having added a packet receiver")
+	}
+
 	l.closed = make(chan struct{})
 
 	// Sane defaults

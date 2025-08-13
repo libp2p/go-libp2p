@@ -11,6 +11,12 @@ import (
 
 var ErrDeadlineExceeded = errors.New("deadline exceeded")
 
+type PacketReceiver interface {
+	RecvPacket(p Packet)
+}
+
+// Router handles routing of packets between simulated connections.
+// Implementations are responsible for delivering packets to their destinations.
 type Router interface {
 	SendPacket(p Packet) error
 }
@@ -21,6 +27,10 @@ type Packet struct {
 	buf  []byte
 }
 
+// SimConn is a simulated network connection that implements net.PacketConn. It
+// provides packet-based communication through a Router for testing and
+// simulation purposes. All send/recv operations are handled through the
+// Router's packet delivery mechanism.
 type SimConn struct {
 	mu              sync.Mutex
 	closed          bool

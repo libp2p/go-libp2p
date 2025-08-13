@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-type PacketReciever interface {
-	RecvPacket(p Packet)
-}
-
 type ipPortKey struct {
 	ip    string
 	port  uint16
@@ -102,7 +98,7 @@ func (m *addrMap[V]) Delete(addr net.Addr) error {
 // PerfectRouter is a router that has no latency or jitter and can route to
 // every node
 type PerfectRouter struct {
-	nodes addrMap[PacketReciever]
+	nodes addrMap[PacketReceiver]
 }
 
 // SendPacket implements Router.
@@ -116,7 +112,7 @@ func (r *PerfectRouter) SendPacket(p Packet) error {
 	return nil
 }
 
-func (r *PerfectRouter) AddNode(addr net.Addr, conn PacketReciever) {
+func (r *PerfectRouter) AddNode(addr net.Addr, conn PacketReceiver) {
 	r.nodes.Set(addr, conn)
 }
 
@@ -127,7 +123,7 @@ func (r *PerfectRouter) RemoveNode(addr net.Addr) {
 var _ Router = &PerfectRouter{}
 
 type DelayedPacketReciever struct {
-	inner PacketReciever
+	inner PacketReceiver
 	delay time.Duration
 }
 
@@ -144,7 +140,7 @@ func (r *FixedLatencyRouter) SendPacket(p Packet) error {
 	return r.PerfectRouter.SendPacket(p)
 }
 
-func (r *FixedLatencyRouter) AddNode(addr net.Addr, conn PacketReciever) {
+func (r *FixedLatencyRouter) AddNode(addr net.Addr, conn PacketReceiver) {
 	r.PerfectRouter.AddNode(addr, &DelayedPacketReciever{
 		inner: conn,
 		delay: r.latency,

@@ -37,16 +37,18 @@ func (n *SimpleSimNet) Close() error {
 	return nil
 }
 
-func (n *SimpleSimNet) AddNode(addr net.Addr, conn *SimConn, linkSettings NodeBiDiLinkSettings) {
+func (n *SimpleSimNet) NewEndpoint(addr *net.UDPAddr, linkSettings NodeBiDiLinkSettings) *SimConn {
 	link := &SimulatedLink{
 		DownlinkSettings: linkSettings.Downlink,
 		UplinkSettings:   linkSettings.Uplink,
 		UploadPacket:     &n.router,
-		DownloadPacket:   conn,
 	}
-	conn.router = link
+	c := NewSimConn(addr, link)
+	link.DownloadPacket = c
+
 	n.links = append(n.links, link)
 	n.router.AddNode(addr, link)
+	return c
 }
 
 func (n *SimpleSimNet) RemoveNode(addr net.Addr) {

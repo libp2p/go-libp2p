@@ -47,7 +47,7 @@ func (m *MockSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr)
 
 const OneMbps = 1_000_000
 
-func QUICSimConnSimpleNet(router *simconn.SimpleSimNet, linkSettings simconn.NodeBiDiLinkSettings, quicReuseOpts ...quicreuse.Option) libp2p.Option {
+func QUICSimConnSimpleNet(simnet *simconn.SimpleSimNet, linkSettings simconn.NodeBiDiLinkSettings, quicReuseOpts ...quicreuse.Option) libp2p.Option {
 	m := &MockSourceIPSelector{}
 	quicReuseOpts = append(quicReuseOpts,
 		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
@@ -55,8 +55,7 @@ func QUICSimConnSimpleNet(router *simconn.SimpleSimNet, linkSettings simconn.Nod
 		}),
 		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
 			m.ip.Store(&address.IP)
-			c := simconn.NewSimConn(address, router)
-			router.AddNode(address, c, linkSettings)
+			c := simnet.NewEndpoint(address, linkSettings)
 			return c, nil
 		}))
 	return libp2p.QUICReuse(
@@ -94,7 +93,7 @@ func (h *wrappedHost) Close() error {
 type BlankHostOpts struct {
 	ConnMgr         *connmgr.BasicConnMgr
 	listenMultiaddr multiaddr.Multiaddr
-	router          *simconn.SimpleSimNet
+	simnet          *simconn.SimpleSimNet
 	linkSettings    simconn.NodeBiDiLinkSettings
 	quicReuseOpts   []quicreuse.Option
 }
@@ -136,8 +135,7 @@ func newBlankHost(opts BlankHostOpts) (*wrappedHost, error) {
 		}),
 		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
 			m.ip.Store(&address.IP)
-			c := simconn.NewSimConn(address, opts.router)
-			opts.router.AddNode(address, c, opts.linkSettings)
+			c := opts.simnet.NewEndpoint(address, opts.linkSettings)
 			return c, nil
 		}),
 	)
@@ -233,7 +231,7 @@ func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSetting
 
 				h, err = newBlankHost(BlankHostOpts{
 					listenMultiaddr: multiaddr.StringCast(addr),
-					router:          nw,
+					simnet:          nw,
 					linkSettings:    l.LinkSettings,
 					quicReuseOpts:   quicReuseOpts,
 					ConnMgr:         opts.ConnMgr,

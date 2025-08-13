@@ -16,10 +16,8 @@ import (
 
 const oneMbps = 1_000_000
 
-func newConn(router *SimpleSimNet, address *net.UDPAddr, linkSettings NodeBiDiLinkSettings) *SimConn {
-	c := NewSimConn(address, router)
-	router.AddNode(address, c, linkSettings)
-	return c
+func newConn(simnet *SimpleSimNet, address *net.UDPAddr, linkSettings NodeBiDiLinkSettings) *SimConn {
+	return simnet.NewEndpoint(address, linkSettings)
 }
 
 func TestSimpleSimNet_synctest(t *testing.T) {
