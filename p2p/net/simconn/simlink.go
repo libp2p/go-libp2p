@@ -29,10 +29,6 @@ type packetWithDeliveryTime struct {
 	DeliveryTime time.Time
 }
 
-type PacketRecieverBlocking interface {
-	RecvPacketBlocking(p Packet)
-}
-
 type latencyLink struct {
 	Out func(p Packet)
 	In  chan *packetWithDeliveryTime
@@ -84,25 +80,49 @@ func (l *latencyLink) Start(wg *sync.WaitGroup) {
 	}
 }
 
+// SimulatedLink simulates a bidirectional network link with configurable bandwidth,
+// latency, and MTU settings for both uplink and downlink directions.
+//
+// The link provides realistic network behavior by:
+//   - Rate limiting packets based on bandwidth settings
+//   - Adding configurable latency to packet delivery
+//   - Enforcing MTU limits (dropping oversized packets)
+//   - Buffering packets up to the bandwidth-delay product
+//
+// Usage:
+//
+//	link := &SimulatedLink{
+//	    UplinkSettings:   LinkSettings{BitsPerSecond: 1000000, Latency: 50*time.Millisecond, MTU: 1400},
+//	    DownlinkSettings: LinkSettings{BitsPerSecond: 1000000, Latency: 50*time.Millisecond, MTU: 1400},
+//	    UploadPacket:     upstream,
+//	    DownloadPacket:   downstream,
+//	}
+//	link.Start()
+//	defer link.Close()
 type SimulatedLink struct {
-	// Internal state
-	closed chan struct{}
-	wg     sync.WaitGroup
+	// Internal state for lifecycle management
+	closed chan struct{}  // signals shutdown to background goroutines
+	wg     sync.WaitGroup // ensures clean shutdown of all goroutines
 
-	downstream *packetQueue
-	upstream   *packetQueue
+	// Packet queues with buffering based on bandwidth-delay product
+	downstream *packetQueue // buffers packets flowing to DownloadPacket
+	upstream   *packetQueue // buffers packets flowing to UploadPacket
 
-	upLimiter   *rate.Limiter
-	downLimiter *rate.Limiter
+	// Rate limiters enforce bandwidth constraints
+	upLimiter   *rate.Limiter // limits uplink bandwidth
+	downLimiter *rate.Limiter // limits downlink bandwidth
 
-	upLatency   *latencyLink
-	downLatency *latencyLink
+	// Latency simulators add realistic network delays
+	upLatency   *latencyLink // adds latency to uplink packets
+	downLatency *latencyLink // adds latency to downlink packets
 
-	UplinkSettings   LinkSettings
-	DownlinkSettings LinkSettings
+	// Configuration for link characteristics
+	UplinkSettings   LinkSettings // bandwidth, latency, MTU for uplink direction
+	DownlinkSettings LinkSettings // bandwidth, latency, MTU for downlink direction
 
-	UploadPacket   Router
-	DownloadPacket PacketRecieverBlocking
+	// Packet routing interfaces
+	UploadPacket   Router         // Handles packets sent out
+	DownloadPacket PacketReceiver // Handles packets received
 }
 
 func delayPacketHandling(limiter *rate.Limiter, p packetWithDeliveryTime) {
@@ -168,7 +188,7 @@ func (l *SimulatedLink) Start() {
 	l.downLimiter = newRateLimiter(l.DownlinkSettings.BitsPerSecond, l.DownlinkSettings.MTU*burstSizeInPackets)
 
 	l.upLatency = newLatencyLink(func(p Packet) { _ = l.UploadPacket.SendPacket(p) })
-	l.downLatency = newLatencyLink(func(p Packet) { l.DownloadPacket.RecvPacketBlocking(p) })
+	l.downLatency = newLatencyLink(func(p Packet) { l.DownloadPacket.RecvPacket(p) })
 
 	l.wg.Add(4)
 	// TODO: Can we coalesce these into a single goroutine? Is it worth it?

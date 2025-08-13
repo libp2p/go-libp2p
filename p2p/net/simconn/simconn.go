@@ -48,18 +48,36 @@ type SimConn struct {
 	myLocalAddr   net.Addr
 	packetsToRead chan Packet
 
+	// Controls whether to block when receiving packets if our buffer is full.
+	// If false, drops packets.
+	recvBackPressure bool
+
 	readDeadline  time.Time
 	writeDeadline time.Time
 }
 
-// NewSimConn creates a new simulated connection with the specified parameters
+// NewSimConn creates a new simulated connection that drops packets if the
+// receive buffer is full.
 func NewSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
 	return &SimConn{
 		router:          rtr,
 		myAddr:          addr,
-		packetsToRead:   make(chan Packet, 512), // buffered channel to prevent blocking
+		packetsToRead:   make(chan Packet, 128),
 		closedChan:      make(chan struct{}),
 		deadlineUpdated: make(chan struct{}, 1),
+	}
+}
+
+// NewBlockingSimConn creates a new simulated connection that blocks if the
+// receive buffer is full. Does not drop packets.
+func NewBlockingSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
+	return &SimConn{
+		recvBackPressure: true,
+		router:           rtr,
+		myAddr:           addr,
+		packetsToRead:    make(chan Packet, 32),
+		closedChan:       make(chan struct{}),
+		deadlineUpdated:  make(chan struct{}, 1),
 	}
 }
 
@@ -105,28 +123,19 @@ func (c *SimConn) RecvPacket(p Packet) {
 	c.packetsRcvd.Add(1)
 	c.bytesRcvd.Add(int64(len(p.buf)))
 
-	select {
-	case c.packetsToRead <- p:
-	default:
-		// drop the packet if the channel is full
-	}
-}
-
-func (c *SimConn) RecvPacketBlocking(p Packet) {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return
-	}
-	c.mu.Unlock()
-	c.packetsRcvd.Add(1)
-	c.bytesRcvd.Add(int64(len(p.buf)))
-
-	select {
-	case c.packetsToRead <- p:
-	case <-c.closedChan:
-		// if the connection is closed, drop the packet
-		return
+	if c.recvBackPressure {
+		select {
+		case c.packetsToRead <- p:
+		case <-c.closedChan:
+			// if the connection is closed, drop the packet
+			return
+		}
+	} else {
+		select {
+		case c.packetsToRead <- p:
+		default:
+			// drop the packet if the channel is full
+		}
 	}
 }
 

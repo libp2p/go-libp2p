@@ -20,7 +20,7 @@ func (r *testRouter) SendPacket(p Packet) error {
 	return nil
 }
 
-func (r *testRouter) RecvPacketBlocking(p Packet) {
+func (r *testRouter) RecvPacket(p Packet) {
 	r.onRecv(p)
 }
 
@@ -161,6 +161,7 @@ func TestBandwidthLimiterAndLatencyConnectedLinks_synctest(t *testing.T) {
 			UplinkSettings:   linkSettings,
 			DownlinkSettings: linkSettings,
 			UploadPacket:     &linkAdapter{link: &link2},
+			DownloadPacket:   &testRouter{},
 		}
 
 		link1.Start()
