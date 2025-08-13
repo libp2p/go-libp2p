@@ -41,7 +41,7 @@ type MockSourceIPSelector struct {
 	ip atomic.Pointer[net.IP]
 }
 
-func (m *MockSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr) (net.IP, error) {
+func (m *MockSourceIPSelector) PreferredSourceIPForDestination(_ *net.UDPAddr) (net.IP, error) {
 	return *m.ip.Load(), nil
 }
 
@@ -53,7 +53,7 @@ func QUICSimnet(simnet *simnet.Simnet, linkSettings simnet.NodeBiDiLinkSettings,
 		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
 			return m, nil
 		}),
-		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
+		quicreuse.OverrideListenUDP(func(_ string, address *net.UDPAddr) (net.PacketConn, error) {
 			m.ip.Store(&address.IP)
 			c := simnet.NewEndpoint(address, linkSettings)
 			return c, nil
@@ -133,7 +133,7 @@ func newBlankHost(opts BlankHostOpts) (*wrappedHost, error) {
 		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
 			return m, nil
 		}),
-		quicreuse.OverrideListenUDP(func(network string, address *net.UDPAddr) (net.PacketConn, error) {
+		quicreuse.OverrideListenUDP(func(_ string, address *net.UDPAddr) (net.PacketConn, error) {
 			m.ip.Store(&address.IP)
 			c := opts.simnet.NewEndpoint(address, opts.linkSettings)
 			return c, nil
