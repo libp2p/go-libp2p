@@ -21,9 +21,6 @@ func TestSimConnBasicConnectivity(t *testing.T) {
 	conn1 := NewSimConn(addr1, router)
 	conn2 := NewSimConn(addr2, router)
 
-	router.AddNode(addr1, conn1)
-	router.AddNode(addr2, conn2)
-
 	// Test sending data from conn1 to conn2
 	testData := []byte("hello world")
 	n, err := conn1.WriteTo(testData, addr2)
@@ -52,7 +49,6 @@ func TestSimConnDeadlines(t *testing.T) {
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
 	conn := NewSimConn(addr1, router)
-	router.AddNode(addr1, conn)
 
 	t.Run("read deadline", func(t *testing.T) {
 		deadline := time.Now().Add(10 * time.Millisecond)
@@ -79,7 +75,6 @@ func TestSimConnClose(t *testing.T) {
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
 	conn := NewSimConn(addr1, router)
-	router.AddNode(addr1, conn)
 
 	err := conn.Close()
 	require.NoError(t, err)
@@ -124,18 +119,12 @@ func TestSimConnDeadlinesWithLatency(t *testing.T) {
 	conn1 := NewSimConn(addr1, router)
 	conn2 := NewSimConn(addr2, router)
 
-	router.AddNode(addr1, conn1)
-	router.AddNode(addr2, conn2)
-
 	reset := func() {
 		router.RemoveNode(addr1)
 		router.RemoveNode(addr2)
 
 		conn1 = NewSimConn(addr1, router)
 		conn2 = NewSimConn(addr2, router)
-
-		router.AddNode(addr1, conn1)
-		router.AddNode(addr2, conn2)
 	}
 
 	t.Run("write succeeds within deadline", func(t *testing.T) {
@@ -217,18 +206,12 @@ func TestSimpleHolePunch(t *testing.T) {
 	peer1 := NewSimConn(addr1, router)
 	peer2 := NewSimConn(addr2, router)
 
-	router.AddNode(addr1, peer1)
-	router.AddNode(addr2, peer2)
-
 	reset := func() {
 		router.RemoveNode(addr1)
 		router.RemoveNode(addr2)
 
 		peer1 = NewSimConn(addr1, router)
 		peer2 = NewSimConn(addr2, router)
-
-		router.AddNode(addr1, peer1)
-		router.AddNode(addr2, peer2)
 	}
 
 	// Initially, direct communication between peer1 and peer2 should fail

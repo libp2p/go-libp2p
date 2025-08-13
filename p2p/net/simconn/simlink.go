@@ -3,6 +3,7 @@ package simconn
 import (
 	"context"
 	"math"
+	"net"
 	"sync"
 	"time"
 
@@ -122,7 +123,7 @@ type SimulatedLink struct {
 
 	// Packet routing interfaces
 	UploadPacket   Router         // Handles packets sent out
-	DownloadPacket PacketReceiver // Handles packets received
+	downloadPacket PacketReceiver // Handles packets received
 }
 
 func delayPacketHandling(limiter *rate.Limiter, p packetWithDeliveryTime) {
@@ -163,8 +164,12 @@ func calculateBDP(mtu, bandwidth int, latency time.Duration) int {
 	return mtusWorth * mtu
 }
 
+func (l *SimulatedLink) AddNode(addr net.Addr, receiver PacketReceiver) {
+	l.downloadPacket = receiver
+}
+
 func (l *SimulatedLink) Start() {
-	if l.DownloadPacket == nil {
+	if l.downloadPacket == nil {
 		panic("SimulatedLink.Start() called without having added a packet receiver")
 	}
 
@@ -188,7 +193,7 @@ func (l *SimulatedLink) Start() {
 	l.downLimiter = newRateLimiter(l.DownlinkSettings.BitsPerSecond, l.DownlinkSettings.MTU*burstSizeInPackets)
 
 	l.upLatency = newLatencyLink(func(p Packet) { _ = l.UploadPacket.SendPacket(p) })
-	l.downLatency = newLatencyLink(func(p Packet) { l.DownloadPacket.RecvPacket(p) })
+	l.downLatency = newLatencyLink(func(p Packet) { l.downloadPacket.RecvPacket(p) })
 
 	l.wg.Add(4)
 	// TODO: Can we coalesce these into a single goroutine? Is it worth it?

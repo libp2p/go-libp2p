@@ -5,6 +5,7 @@ package simconn
 import (
 	"fmt"
 	"math"
+	"net"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -22,6 +23,10 @@ func (r *testRouter) SendPacket(p Packet) error {
 
 func (r *testRouter) RecvPacket(p Packet) {
 	r.onRecv(p)
+}
+
+func (r *testRouter) AddNode(addr net.Addr, receiver PacketReceiver) {
+	r.onRecv = receiver.RecvPacket
 }
 
 const Mibps = 1_000_000
@@ -60,7 +65,7 @@ func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
 					UplinkSettings:   linkSettings,
 					DownlinkSettings: linkSettings,
 					UploadPacket:     router,
-					DownloadPacket:   router,
+					downloadPacket:   router,
 				}
 
 				link.Start()
@@ -115,10 +120,15 @@ func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
 }
 
 type linkAdapter struct {
-	link *SimulatedLink
+	link PacketReceiver
 }
 
 var _ Router = &linkAdapter{}
+
+// AddNode implements Router.
+func (c *linkAdapter) AddNode(addr net.Addr, receiver PacketReceiver) {
+	c.link = receiver
+}
 
 // SendPacket implements Router.
 func (c *linkAdapter) SendPacket(p Packet) error {
@@ -155,13 +165,13 @@ func TestBandwidthLimiterAndLatencyConnectedLinks_synctest(t *testing.T) {
 		link2 := SimulatedLink{
 			UplinkSettings:   linkSettings,
 			DownlinkSettings: linkSettings,
-			DownloadPacket:   r,
+			downloadPacket:   r,
 		}
 		link1 := SimulatedLink{
 			UplinkSettings:   linkSettings,
 			DownlinkSettings: linkSettings,
 			UploadPacket:     &linkAdapter{link: &link2},
-			DownloadPacket:   &testRouter{},
+			downloadPacket:   &testRouter{},
 		}
 
 		link1.Start()

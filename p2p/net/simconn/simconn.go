@@ -19,6 +19,7 @@ type PacketReceiver interface {
 // Implementations are responsible for delivering packets to their destinations.
 type Router interface {
 	SendPacket(p Packet) error
+	AddNode(addr net.Addr, receiver PacketReceiver)
 }
 
 type Packet struct {
@@ -59,26 +60,26 @@ type SimConn struct {
 // NewSimConn creates a new simulated connection that drops packets if the
 // receive buffer is full.
 func NewSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
-	return &SimConn{
-		router:          rtr,
-		myAddr:          addr,
-		packetsToRead:   make(chan Packet, 128),
-		closedChan:      make(chan struct{}),
-		deadlineUpdated: make(chan struct{}, 1),
-	}
+	return newSimConn(addr, rtr, false)
 }
 
 // NewBlockingSimConn creates a new simulated connection that blocks if the
 // receive buffer is full. Does not drop packets.
 func NewBlockingSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
-	return &SimConn{
-		recvBackPressure: true,
+	return newSimConn(addr, rtr, true)
+}
+
+func newSimConn(addr *net.UDPAddr, rtr Router, block bool) *SimConn {
+	c := &SimConn{
+		recvBackPressure: block,
 		router:           rtr,
 		myAddr:           addr,
 		packetsToRead:    make(chan Packet, 32),
 		closedChan:       make(chan struct{}),
 		deadlineUpdated:  make(chan struct{}, 1),
 	}
+	rtr.AddNode(addr, c)
+	return c
 }
 
 type ConnStats struct {

@@ -153,7 +153,7 @@ type simpleNodeFirewall struct {
 	mu                sync.Mutex
 	publiclyReachable bool
 	packetsOutTo      map[string]struct{}
-	node              *SimConn
+	node              PacketReceiver
 }
 
 func (f *simpleNodeFirewall) MarkPacketSentOut(p Packet) {
@@ -181,8 +181,9 @@ func (f *simpleNodeFirewall) String() string {
 }
 
 type SimpleFirewallRouter struct {
-	mu    sync.Mutex
-	nodes map[string]*simpleNodeFirewall
+	mu                     sync.Mutex
+	nodes                  map[string]*simpleNodeFirewall
+	publiclyReachableAddrs map[string]bool
 }
 
 func (r *SimpleFirewallRouter) String() string {
@@ -193,6 +194,15 @@ func (r *SimpleFirewallRouter) String() string {
 		nodes = append(nodes, node.String())
 	}
 	return fmt.Sprintf("%v", nodes)
+}
+
+func (r *SimpleFirewallRouter) SetAddrPubliclyReachable(addr net.Addr) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.publiclyReachableAddrs == nil {
+		r.publiclyReachableAddrs = make(map[string]bool)
+	}
+	r.publiclyReachableAddrs[addr.String()] = true
 }
 
 func (r *SimpleFirewallRouter) SendPacket(p Packet) error {
@@ -218,27 +228,23 @@ func (r *SimpleFirewallRouter) SendPacket(p Packet) error {
 	return nil
 }
 
-func (r *SimpleFirewallRouter) AddNode(addr net.Addr, conn *SimConn) {
+func (r *SimpleFirewallRouter) AddNode(addr net.Addr, conn PacketReceiver) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.nodes == nil {
 		r.nodes = make(map[string]*simpleNodeFirewall)
+	}
+
+	if publiclyReachable := r.publiclyReachableAddrs[addr.String()]; publiclyReachable {
+		r.nodes[addr.String()] = &simpleNodeFirewall{
+			publiclyReachable: true,
+			node:              conn,
+		}
+		return
 	}
 	r.nodes[addr.String()] = &simpleNodeFirewall{
 		packetsOutTo: make(map[string]struct{}),
 		node:         conn,
-	}
-}
-
-func (r *SimpleFirewallRouter) AddPubliclyReachableNode(addr net.Addr, conn *SimConn) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.nodes == nil {
-		r.nodes = make(map[string]*simpleNodeFirewall)
-	}
-	r.nodes[addr.String()] = &simpleNodeFirewall{
-		publiclyReachable: true,
-		node:              conn,
 	}
 }
 

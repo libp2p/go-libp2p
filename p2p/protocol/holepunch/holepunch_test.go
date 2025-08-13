@@ -643,12 +643,10 @@ func quicSimConn(isPubliclyReachably bool, router *simconn.SimpleFirewallRouter)
 		}),
 		quicreuse.OverrideListenUDP(func(_ string, address *net.UDPAddr) (net.PacketConn, error) {
 			m.ip.Store(&address.IP)
-			c := simconn.NewSimConn(address, router)
 			if isPubliclyReachably {
-				router.AddPubliclyReachableNode(address, c)
-			} else {
-				router.AddNode(address, c)
+				router.SetAddrPubliclyReachable(address)
 			}
+			c := simconn.NewSimConn(address, router)
 			return c, nil
 		}))
 }

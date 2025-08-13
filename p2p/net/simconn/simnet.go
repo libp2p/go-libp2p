@@ -44,7 +44,6 @@ func (n *SimpleSimNet) NewEndpoint(addr *net.UDPAddr, linkSettings NodeBiDiLinkS
 		UploadPacket:     &n.router,
 	}
 	c := NewBlockingSimConn(addr, link)
-	link.DownloadPacket = c
 
 	n.links = append(n.links, link)
 	n.router.AddNode(addr, link)
