@@ -19,10 +19,20 @@ func newRateLimiter(bandwidth int, burstSize int) *rate.Limiter {
 	return rate.NewLimiter(bytesPerSecond, burstSize)
 }
 
+// LinkSettings defines the network characteristics for a simulated link direction.
+// These settings control bandwidth, latency, and MTU for either uplink or downlink traffic.
 type LinkSettings struct {
+	// BitsPerSecond specifies the bandwidth limit in bits per second.
+	// This controls the rate at which data can be transmitted over the link.
 	BitsPerSecond int
-	Latency       time.Duration
-	MTU           int
+
+	// Latency specifies the network delay to add to each packet.
+	// This simulates the time it takes for a packet to travel across the network.
+	Latency time.Duration
+
+	// MTU (Maximum Transmission Unit) specifies the maximum packet size in bytes.
+	// Packets larger than this size will be dropped by the simulated link.
+	MTU int
 }
 
 type packetWithDeliveryTime struct {

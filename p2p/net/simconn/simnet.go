@@ -6,14 +6,21 @@ import (
 	"net"
 )
 
+// SimpleSimNet is a simulated network that manages connections between nodes
+// with configurable network conditions.
 type SimpleSimNet struct {
 	router PerfectRouter
 	links  []*SimulatedLink
 }
 
+// NodeBiDiLinkSettings defines the bidirectional link settings for a network node.
+// It specifies separate configurations for downlink (incoming) and uplink (outgoing)
+// traffic, allowing asymmetric network conditions to be simulated.
 type NodeBiDiLinkSettings struct {
+	// Downlink configures the settings for incoming traffic to this node
 	Downlink LinkSettings
-	Uplink   LinkSettings
+	// Uplink configures the settings for outgoing traffic from this node
+	Uplink LinkSettings
 }
 
 func (n *SimpleSimNet) Start() error {
@@ -48,12 +55,4 @@ func (n *SimpleSimNet) NewEndpoint(addr *net.UDPAddr, linkSettings NodeBiDiLinkS
 	n.links = append(n.links, link)
 	n.router.AddNode(addr, link)
 	return c
-}
-
-func (n *SimpleSimNet) RemoveNode(addr net.Addr) {
-	n.router.RemoveNode(addr)
-}
-
-func (n *SimpleSimNet) SendPacket(p Packet) error {
-	return n.router.SendPacket(p)
 }
