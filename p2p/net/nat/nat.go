@@ -62,9 +62,9 @@ func DiscoverNAT(ctx context.Context) (*NAT, error) {
 	// Log the device addr.
 	addr, err := natInstance.GetDeviceAddress()
 	if err != nil {
-		log.Debug("DiscoverGateway address error:", err)
+		log.Warn("DiscoverGateway address error:", err)
 	} else {
-		log.Debug("DiscoverGateway address:", addr)
+		log.Info("DiscoverGateway address:", addr)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -169,6 +169,8 @@ func (nat *NAT) AddMapping(ctx context.Context, protocol string, port int) error
 		return nil
 	}
 
+	log.Infof("Starting maintenance of port mapping: %s/%d", protocol, port)
+
 	// do it once synchronously, so first mapping is done right away, and before exiting,
 	// allowing users -- in the optimistic case -- to use results right after.
 	extPort := nat.establishMapping(ctx, protocol, port)
@@ -191,6 +193,7 @@ func (nat *NAT) RemoveMapping(ctx context.Context, protocol string, port int) er
 	case "tcp", "udp":
 		e := entry{protocol: protocol, port: port}
 		if _, ok := nat.mappings[e]; ok {
+			log.Infof("Stopping maintenance of port mapping: %s/%d", protocol, port)
 			delete(nat.mappings, e)
 			return nat.nat.DeletePortMapping(ctx, protocol, port)
 		}
@@ -292,7 +295,7 @@ func (nat *NAT) establishMapping(ctx context.Context, protocol string, internalP
 	// Handle success
 	if err == nil && externalPort != 0 {
 		nat.consecutiveFailures = 0
-		log.Infof("NAT port mapping established: %s %d -> %d", protocol, internalPort, externalPort)
+		log.Debugf("NAT port mapping established: %s %d -> %d", protocol, internalPort, externalPort)
 		return externalPort
 	}
 
