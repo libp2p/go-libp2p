@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	inat "github.com/libp2p/go-libp2p/p2p/net/nat"
@@ -105,7 +104,7 @@ func (nmgr *natManager) background(ctx context.Context) {
 		}
 	}()
 
-	discoverCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	discoverCtx, cancel := context.WithTimeout(ctx, inat.DiscoveryTimeout)
 	defer cancel()
 	natInstance, err := discoverNAT(discoverCtx)
 	if err != nil {
