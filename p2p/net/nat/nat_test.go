@@ -110,6 +110,41 @@ func TestAddMappingInvalidPort(t *testing.T) {
 	require.False(t, found, "didn't expect a port mapping for invalid nat-ed port")
 }
 
+// TestAddMappingDeduplication tests that duplicate AddMapping calls don't trigger duplicate NAT operations.
+// This is a regression test for a bug where multiple libp2p listeners sharing the same port
+// (e.g., TCP, QUIC, WebTransport, WebRTC-direct all on the same port) would cause duplicate NAT
+// port mapping requests - resulting in 5+ duplicate mapping attempts for the same protocol/port combination.
+func TestAddMappingDeduplication(t *testing.T) {
+	mockNAT, reset := setupMockNAT(t)
+	defer reset()
+
+	mockNAT.EXPECT().GetExternalAddress().Return(net.IPv4(1, 2, 3, 4), nil)
+	nat, err := DiscoverNAT(context.Background())
+	require.NoError(t, err)
+
+	// Expect only ONE call to AddPortMapping despite multiple AddMapping calls
+	expectPortMappingSuccess(mockNAT, "tcp", 10000, 1234)
+
+	// First call should trigger NAT operation
+	require.NoError(t, nat.AddMapping(context.Background(), "tcp", 10000))
+
+	// Verify mapping was created
+	mapped, found := nat.GetMapping("tcp", 10000)
+	require.True(t, found, "expected port mapping")
+	addr, _ := netip.AddrFromSlice(net.IPv4(1, 2, 3, 4))
+	require.Equal(t, netip.AddrPortFrom(addr, 1234), mapped)
+
+	// Second and third calls should NOT trigger NAT operations (no additional expectations)
+	// This simulates what happens when multiple transports use the same port
+	require.NoError(t, nat.AddMapping(context.Background(), "tcp", 10000))
+	require.NoError(t, nat.AddMapping(context.Background(), "tcp", 10000))
+
+	// Mapping should still exist
+	mapped, found = nat.GetMapping("tcp", 10000)
+	require.True(t, found, "expected port mapping")
+	require.Equal(t, netip.AddrPortFrom(addr, 1234), mapped)
+}
+
 // TestNATRediscoveryOnConnectionError tests automatic NAT rediscovery after router restart
 // to ensure mappings are restored when router's NAT service (e.g. miniupnpd) changes its listening port
 // (a regression test for https://github.com/libp2p/go-libp2p/issues/3224#issuecomment-2866844723).

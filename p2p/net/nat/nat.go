@@ -163,13 +163,21 @@ func (nat *NAT) AddMapping(ctx context.Context, protocol string, port int) error
 		return errors.New("closed")
 	}
 
+	// Check if the mapping already exists to avoid duplicate work
+	e := entry{protocol: protocol, port: port}
+	if _, exists := nat.mappings[e]; exists {
+		return nil
+	}
+
+	log.Info("Starting maintenance of port mapping", "protocol", protocol, "port", port)
+
 	// do it once synchronously, so first mapping is done right away, and before exiting,
 	// allowing users -- in the optimistic case -- to use results right after.
 	extPort := nat.establishMapping(ctx, protocol, port)
 	// Don't validate the mapping here, we refresh the mappings based on this map.
 	// We can try getting a port again in case it succeeds. In the worst case,
 	// this is one extra LAN request every few minutes.
-	nat.mappings[entry{protocol: protocol, port: port}] = extPort
+	nat.mappings[e] = extPort
 	return nil
 }
 
