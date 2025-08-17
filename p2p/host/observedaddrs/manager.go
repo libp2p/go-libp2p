@@ -167,26 +167,17 @@ func NewManager(eventbus event.Bus, net network.Network) (*Manager, error) {
 		return nil, err
 	}
 
-	// Maybe this should be done in start, but that makes testing without a swarm difficult.
-	nb := &network.NotifyBundle{
-		DisconnectedF: func(_ network.Network, c network.Conn) {
-			o.RemoveConn(c)
-		},
-	}
-	o.stopNotify = func() {
-		net.StopNotify(nb)
-	}
 	return o, nil
 }
 
 // newManagerWithListenAddrs uses the listenAddrs directly to simplify creation in tests.
-func newManagerWithListenAddrs(eventbus event.Bus, listenAddrs func() []ma.Multiaddr) (*Manager, error) {
+func newManagerWithListenAddrs(bus event.Bus, listenAddrs func() []ma.Multiaddr) (*Manager, error) {
 	o := &Manager{
 		externalAddrs:       make(map[string]map[string]*observerSet),
 		connObservedTWAddrs: make(map[connMultiaddrs]ma.Multiaddr),
 		wch:                 make(chan observation, observedAddrManagerWorkerChannelSize),
 		listenAddrs:         listenAddrs,
-		eventbus:            eventbus,
+		eventbus:            bus,
 		stopNotify:          func() {},
 	}
 	o.ctx, o.ctxCancel = context.WithCancel(context.Background())
@@ -194,18 +185,30 @@ func newManagerWithListenAddrs(eventbus event.Bus, listenAddrs func() []ma.Multi
 }
 
 // Start tracking addrs
-func (o *Manager) Start() {
+func (o *Manager) Start(n network.Network) {
+	nb := &network.NotifyBundle{
+		DisconnectedF: func(_ network.Network, c network.Conn) {
+			o.removeConn(c)
+		},
+	}
+
 	sub, err := o.eventbus.Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.Name("observed-addrs-manager"))
 	if err != nil {
-		log.Errorf("failed to start observed addrs manager")
+		log.Errorf("failed to start observed addrs manager: identify subscription failed: %s", err)
 		return
 	}
 	emitter, err := o.eventbus.Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
 	if err != nil {
-		log.Errorf("failed to start nat device type changed emitter: %s", err)
+		log.Errorf("failed to start observed addrs manager: nat device type changed emitter error: %s", err)
 		sub.Close()
 		return
 	}
+
+	n.Notify(nb)
+	o.stopNotify = func() {
+		n.StopNotify(nb)
+	}
+
 	o.wg.Add(2)
 	go o.eventHandler(sub, emitter)
 	go o.worker()
@@ -484,7 +487,7 @@ func (o *Manager) addExternalAddrsUnlocked(observedTWAddr ma.Multiaddr, observer
 	s.ObservedBy[observer]++
 }
 
-func (o *Manager) RemoveConn(conn connMultiaddrs) {
+func (o *Manager) removeConn(conn connMultiaddrs) {
 	if conn == nil {
 		return
 	}

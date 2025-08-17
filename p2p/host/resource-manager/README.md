@@ -464,7 +464,7 @@ seen the `"resource limit exceeded"` error over time. You can also check the
 `rcmgr_blocked_resources` metric to see how many times the resource manager has
 blocked a resource over time.
 
-![Example graph of blocked resources over time](https://bafkreibul6qipnax5s42abv3jc6bolhd7pju3zbl4rcvdaklmk52f6cznu.ipfs.w3s.link/)
+![Example graph of blocked resources over time](https://bafkreibul6qipnax5s42abv3jc6bolhd7pju3zbl4rcvdaklmk52f6cznu.ipfs.io/)
 
 If the resource is blocked by a protocol-level scope, take a look at the various
 resource usages in the metrics. For example, if you run into a new stream being blocked,

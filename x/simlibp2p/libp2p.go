@@ -170,7 +170,7 @@ func newBlankHost(opts BlankHostOpts) (*wrappedHost, error) {
 
 	host := blankhost.NewBlankHost(swarm, blankhost.WithEventBus(eb), blankhost.WithConnectionManager(cm))
 
-	idService, err := identify.NewIDService(host, identify.DisableObservedAddrManager())
+	idService, err := identify.NewIDService(host)
 	if err != nil {
 		return nil, err
 	}

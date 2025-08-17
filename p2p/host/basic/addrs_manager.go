@@ -161,33 +161,27 @@ func (a *addrsManager) updateAddrsSync() {
 	}
 }
 
-func closeIfError(err error, closer io.Closer, name string) error {
-	if err != nil {
-		err1 := closer.Close()
-		if err1 != nil {
-			err1 = fmt.Errorf("error closing %s: %w", name, err1)
-		}
-		return errors.Join(err, err1)
-	}
-	return nil
-}
-
 func (a *addrsManager) startBackgroundWorker() (retErr error) {
-	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("addrs-manager"))
+	autoRelayAddrsSub, err := a.bus.Subscribe(new(event.EvtAutoRelayAddrsUpdated), eventbus.Name("addrs-manager autorelay sub"))
 	if err != nil {
 		return fmt.Errorf("error subscribing to auto relay addrs: %s", err)
 	}
-	defer func() { retErr = closeIfError(retErr, autoRelayAddrsSub, "autorelay subscription") }()
-
-	autonatReachabilitySub, err := a.bus.Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("addrs-manager"))
+	mc := multiCloser{autoRelayAddrsSub}
+	autonatReachabilitySub, err := a.bus.Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("addrs-manager autonatv1 sub"))
 	if err != nil {
-		return fmt.Errorf("error subscribing to autonat reachability: %s", err)
+		return errors.Join(
+			fmt.Errorf("error subscribing to autonat reachability: %s", err),
+			mc.Close(),
+		)
 	}
-	defer func() { retErr = closeIfError(retErr, autonatReachabilitySub, "autonatReachability subscription") }()
+	mc = append(mc, autonatReachabilitySub)
 
 	emitter, err := a.bus.Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
 	if err != nil {
-		return fmt.Errorf("error creating reachability subscriber: %s", err)
+		return errors.Join(
+			fmt.Errorf("error creating reachability subscriber: %s", err),
+			mc.Close(),
+		)
 	}
 
 	var relayAddrs []ma.Multiaddr
@@ -659,4 +653,22 @@ func removeNotInSource(addrs, source []ma.Multiaddr) []ma.Multiaddr {
 		}
 	}
 	return addrs[:i]
+}
+
+type multiCloser []io.Closer
+
+func (mc *multiCloser) Close() error {
+	var errs []error
+	for _, closer := range *mc {
+		if err := closer.Close(); err != nil {
+			var closerName string
+			if named, ok := closer.(interface{ Name() string }); ok {
+				closerName = named.Name()
+			} else {
+				closerName = fmt.Sprintf("%T", closer)
+			}
+			errs = append(errs, fmt.Errorf("error closing %s: %w", closerName, err))
+		}
+	}
+	return errors.Join(errs...)
 }

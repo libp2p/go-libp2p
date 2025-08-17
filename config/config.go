@@ -540,7 +540,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			}
 			lifecycle.Append(fx.Hook{
 				OnStart: func(context.Context) error {
-					o.Start()
+					o.Start(s)
 					return nil
 				},
 				OnStop: func(context.Context) error {
