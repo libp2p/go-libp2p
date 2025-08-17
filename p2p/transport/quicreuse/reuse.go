@@ -54,9 +54,7 @@ func (c *singleOwnerTransport) ReadNonQUICPacket(ctx context.Context, b []byte) 
 }
 
 func (c *singleOwnerTransport) Close() error {
-	// TODO(when we drop support for go 1.19) use errors.Join
-	c.Transport.Close()
-	return c.packetConn.Close()
+	return errors.Join(c.Transport.Close(), c.packetConn.Close())
 }
 
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
@@ -88,25 +86,44 @@ type refcountedTransport struct {
 	// channel to signal to the owner that we are done with it.
 	borrowDoneSignal chan struct{}
 
-	assocations map[any]struct{}
+	// Store associations as association -> set of listener objects
+	associations map[any]map[*listener]struct{}
 }
 
 type connContextFunc = func(context.Context, *quic.ClientInfo) (context.Context, error)
 
-// associate an arbitrary value with this transport.
+// associateForListener associates an arbitrary value with this transport for a specific listener.
 // This lets us "tag" the refcountedTransport when listening so we can use it
-// later for dialing. Necessary for holepunching and learning about our own
-// observed listening address.
-func (c *refcountedTransport) associate(a any) {
+// later for dialing. The listener parameter allows proper cleanup when the listener closes.
+// Necessary for holepunching and learning about our own observed listening address.
+func (c *refcountedTransport) associateForListener(a any, ln *listener) {
 	if a == nil {
 		return
 	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if c.assocations == nil {
-		c.assocations = make(map[any]struct{})
+	if c.associations == nil {
+		c.associations = make(map[any]map[*listener]struct{})
 	}
-	c.assocations[a] = struct{}{}
+	if c.associations[a] == nil {
+		c.associations[a] = make(map[*listener]struct{})
+	}
+	c.associations[a][ln] = struct{}{}
+}
+
+// RemoveAssociationsForListener removes ALL associations added by a specific listener
+func (c *refcountedTransport) RemoveAssociationsForListener(ln *listener) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// Remove this listener from all associations
+	for association, listeners := range c.associations {
+		delete(listeners, ln)
+		// If no listeners remain for this association, remove the association entirely
+		if len(listeners) == 0 {
+			delete(c.associations, association)
+		}
+	}
 }
 
 // hasAssociation returns true if the transport has the given association.
@@ -117,8 +134,8 @@ func (c *refcountedTransport) hasAssociation(a any) bool {
 	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	_, ok := c.assocations[a]
-	return ok
+	listeners, ok := c.associations[a]
+	return ok && len(listeners) > 0
 }
 
 func (c *refcountedTransport) IncreaseCount() {
@@ -365,33 +382,6 @@ func (r *reuse) AddTransport(tr *refcountedTransport, laddr *net.UDPAddr) error 
 	}
 	r.globalDialers[laddr.Port] = tr
 	return nil
-}
-
-func (r *reuse) AssertTransportExists(tr RefCountedQUICTransport) error {
-	t, ok := tr.(*refcountedTransport)
-	if !ok {
-		return fmt.Errorf("invalid transport type: expected: *refcountedTransport, got: %T", tr)
-	}
-	laddr := t.LocalAddr().(*net.UDPAddr)
-	if laddr.IP.IsUnspecified() {
-		if lt, ok := r.globalListeners[laddr.Port]; ok {
-			if lt == t {
-				return nil
-			}
-			return errors.New("two global listeners on the same port")
-		}
-		return errors.New("transport not found")
-	}
-	if m, ok := r.unicast[laddr.IP.String()]; ok {
-		if lt, ok := m[laddr.Port]; ok {
-			if lt == t {
-				return nil
-			}
-			return errors.New("two unicast listeners on same ip:port")
-		}
-		return errors.New("transport not found")
-	}
-	return errors.New("transport not found")
 }
 
 func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcountedTransport, error) {

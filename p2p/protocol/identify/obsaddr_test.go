@@ -428,7 +428,7 @@ func TestObservedAddrManager(t *testing.T) {
 
 		tcpNAT, udpNAT := o.getNATType()
 		require.Equal(t, tcpNAT, network.NATDeviceTypeUnknown)
-		require.Equal(t, udpNAT, network.NATDeviceTypeCone)
+		require.Equal(t, udpNAT, network.NATDeviceTypeEndpointIndependent)
 	})
 	t.Run("NATTypeSymmetric", func(t *testing.T) {
 		o := newObservedAddrMgr()
@@ -455,8 +455,8 @@ func TestObservedAddrManager(t *testing.T) {
 		}, 1*time.Second, 100*time.Millisecond)
 
 		tcpNAT, udpNAT := o.getNATType()
-		require.Equal(t, tcpNAT, network.NATDeviceTypeSymmetric)
-		require.Equal(t, udpNAT, network.NATDeviceTypeSymmetric)
+		require.Equal(t, tcpNAT, network.NATDeviceTypeEndpointDependent)
+		require.Equal(t, udpNAT, network.NATDeviceTypeEndpointDependent)
 
 		for i := 0; i < N; i++ {
 			o.removeConn(tcpConns[i])
@@ -518,7 +518,7 @@ func TestObservedAddrManager(t *testing.T) {
 		}
 		evt := e.(event.EvtNATDeviceTypeChanged)
 		require.Equal(t, evt.TransportProtocol, network.NATTransportUDP)
-		require.Equal(t, evt.NatDeviceType, network.NATDeviceTypeCone)
+		require.Equal(t, evt.NatDeviceType, network.NATDeviceTypeEndpointIndependent)
 	})
 	t.Run("Many connection many observations IP4 And IP6", func(t *testing.T) {
 		o := newObservedAddrMgr()

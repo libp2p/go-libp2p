@@ -95,7 +95,7 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 
 	_, err = cm.ListenQUIC(raddr, &tls.Config{NextProtos: []string{"proto"}}, nil)
 	require.NoError(t, err)
-	quicTr, err := cm.transportForListen(nil, netw, naddr)
+	quicTr, err := cm.transportForListen(netw, naddr)
 	require.NoError(t, err)
 	defer quicTr.Close()
 	if _, ok := quicTr.(*singleOwnerTransport).Transport.(*wrappedQUICTransport).Conn.(quic.OOBCapablePacketConn); !ok {
@@ -488,4 +488,140 @@ func TestConnContext(t *testing.T) {
 			require.Equal(t, "success", c.Context().Value(ctxKey{}))
 		})
 	}
+}
+
+func TestAssociationCleanup(t *testing.T) {
+	cm, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	defer cm.Close()
+
+	// Create 3 listeners with 3 different associations
+	lp2pTLS := &tls.Config{NextProtos: []string{"libp2p"}}
+	assoc1 := "test-association-1"
+	assoc2 := "test-association-2"
+	assoc3 := "test-association-3"
+
+	ln1, err := cm.ListenQUICAndAssociate(assoc1, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	defer ln1.Close()
+
+	addr := ln1.Multiaddrs()[0]
+	port, err := addr.ValueForProtocol(ma.P_UDP)
+	require.NoError(t, err)
+
+	h3TLS := &tls.Config{NextProtos: []string{"h3"}}
+	ln2, err := cm.ListenQUICAndAssociate(assoc2, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic-v1", port)), h3TLS, nil)
+	require.NoError(t, err)
+	defer ln2.Close()
+
+	ln3, err := cm.ListenQUICAndAssociate(assoc3, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	defer ln3.Close()
+
+	// Get the listen addresses for verification
+	addr1 := ln1.Addr().String()
+	addr2 := ln2.Addr().String()
+	addr3 := ln3.Addr().String()
+	require.Equal(t, addr1, addr2)
+
+	// Test that dialing with assoc1 uses the first listener's address
+	dialAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234}
+
+	numTries := 100
+
+	for i := 0; i < numTries; i++ {
+		tr, err := cm.TransportWithAssociationForDial(assoc1, "udp4", dialAddr)
+		require.NoError(t, err)
+		require.Equal(t, addr1, tr.LocalAddr().String(), "assoc1 should use addr1")
+	}
+
+	// Close the first listener
+	ln1.Close()
+
+	// Call TransportWithAssociationForDial 10 times with assoc1 and check if we get at least one different address
+	foundDifferentAddr := false
+	for i := 0; i < numTries; i++ {
+		tr, err := cm.TransportWithAssociationForDial(assoc1, "udp4", dialAddr)
+		require.NoError(t, err)
+		actualAddr := tr.LocalAddr().String()
+		if actualAddr != addr1 {
+			foundDifferentAddr = true
+			break
+		}
+	}
+	require.True(t, foundDifferentAddr, "assoc1 should use a different address than addr1 at least once after ln1 is closed")
+
+	for i := 0; i < numTries; i++ {
+		// Test that dialing with assoc2 still uses the second listener's address
+		tr2Still, err := cm.TransportWithAssociationForDial(assoc2, "udp4", dialAddr)
+		require.NoError(t, err)
+		require.Equal(t, addr2, tr2Still.LocalAddr().String(), "assoc2 should still use addr2")
+	}
+
+	// Close the second listener
+	ln2.Close()
+
+	// Call TransportWithAssociationForDial 10 times with assoc2 and check if we get at least one different address
+	foundDifferentAddr2 := false
+	for i := 0; i < numTries; i++ {
+		tr, err := cm.TransportWithAssociationForDial(assoc2, "udp4", dialAddr)
+		require.NoError(t, err)
+		actualAddr := tr.LocalAddr().String()
+		if actualAddr != addr2 {
+			foundDifferentAddr2 = true
+		}
+	}
+	require.True(t, foundDifferentAddr2, "assoc2 should use a different address than addr2 at least once after ln2 is closed")
+
+	for i := 0; i < numTries; i++ {
+		// Test that dialing with assoc3 still uses the third listener's address
+		tr3Still, err := cm.TransportWithAssociationForDial(assoc3, "udp4", dialAddr)
+		require.NoError(t, err)
+		require.Equal(t, addr3, tr3Still.LocalAddr().String(), "assoc3 should still use addr3")
+	}
+}
+
+func TestConnManagerIsolation(t *testing.T) {
+	// Create two separate ConnManager instances
+	cm1, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	defer cm1.Close()
+
+	cm2, err := NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
+	require.NoError(t, err)
+	defer cm2.Close()
+
+	// Create listeners in both ConnManagers
+	lp2pTLS := &tls.Config{NextProtos: []string{"libp2p"}}
+	assoc1 := "cm1-association"
+	assoc2 := "cm2-association"
+
+	ln1, err := cm1.ListenQUICAndAssociate(assoc1, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	defer ln1.Close()
+
+	ln2, err := cm2.ListenQUICAndAssociate(assoc2, ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), lp2pTLS, nil)
+	require.NoError(t, err)
+	defer ln2.Close()
+
+	// Verify that each ConnManager has its own isolated associations
+
+	// Verify associations are isolated
+	cm1.quicListenersMu.Lock()
+	key1 := ln1.Addr().String()
+	entry1 := cm1.quicListeners[key1]
+	tr1, ok := entry1.ln.transport.(*refcountedTransport)
+	require.True(t, ok)
+	require.True(t, tr1.hasAssociation(assoc1))
+	require.False(t, tr1.hasAssociation(assoc2))
+	cm1.quicListenersMu.Unlock()
+
+	cm2.quicListenersMu.Lock()
+	key2 := ln2.Addr().String()
+	entry2 := cm2.quicListeners[key2]
+	tr2, ok := entry2.ln.transport.(*refcountedTransport)
+	require.True(t, ok)
+	require.True(t, tr2.hasAssociation(assoc2))
+	require.False(t, tr2.hasAssociation(assoc1))
+	cm2.quicListenersMu.Unlock()
 }

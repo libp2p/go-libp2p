@@ -580,16 +580,16 @@ func (o *ObservedAddrManager) getNATType() (tcpNATType, udpNATType network.NATDe
 	// hole punching based on outputs of observed address manager will succeed
 	if tcpTotal >= 3*maxExternalThinWaistAddrsPerLocalAddr {
 		if tcpTopCounts >= tcpTotal/2 {
-			tcpNATType = network.NATDeviceTypeCone
+			tcpNATType = network.NATDeviceTypeEndpointIndependent
 		} else {
-			tcpNATType = network.NATDeviceTypeSymmetric
+			tcpNATType = network.NATDeviceTypeEndpointDependent
 		}
 	}
 	if udpTotal >= 3*maxExternalThinWaistAddrsPerLocalAddr {
 		if udpTopCounts >= udpTotal/2 {
-			udpNATType = network.NATDeviceTypeCone
+			udpNATType = network.NATDeviceTypeEndpointIndependent
 		} else {
-			udpNATType = network.NATDeviceTypeSymmetric
+			udpNATType = network.NATDeviceTypeEndpointDependent
 		}
 	}
 	return

@@ -177,6 +177,7 @@ type addrsManagerArgs struct {
 	AddrsFactory         AddrsFactory
 	ObservedAddrsManager observedAddrsManager
 	ListenAddrs          func() []ma.Multiaddr
+	AddCertHashes        func([]ma.Multiaddr) []ma.Multiaddr
 	AutoNATClient        autonatv2Client
 	Bus                  event.Bus
 }
@@ -196,8 +197,15 @@ func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTe
 		args.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 	}
 	addrsUpdatedChan := make(chan struct{}, 1)
+
+	addCertHashes := func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		return addrs
+	}
+	if args.AddCertHashes != nil {
+		addCertHashes = args.AddCertHashes
+	}
 	am, err := newAddrsManager(
-		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, nil, args.ObservedAddrsManager, addrsUpdatedChan, args.AutoNATClient, true, prometheus.DefaultRegisterer,
+		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, addCertHashes, args.ObservedAddrsManager, addrsUpdatedChan, args.AutoNATClient, true, prometheus.DefaultRegisterer,
 	)
 	require.NoError(t, err)
 

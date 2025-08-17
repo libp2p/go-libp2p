@@ -12,11 +12,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
-	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -44,7 +41,7 @@ type addrsManager struct {
 	natManager               NATManager
 	addrsFactory             AddrsFactory
 	listenAddrs              func() []ma.Multiaddr
-	transportForListening    func(ma.Multiaddr) transport.Transport
+	addCertHashes            func([]ma.Multiaddr) []ma.Multiaddr
 	observedAddrsManager     observedAddrsManager
 	interfaceAddrs           *interfaceAddrsCache
 	addrsReachabilityTracker *addrsReachabilityTracker
@@ -74,7 +71,7 @@ func newAddrsManager(
 	natmgr NATManager,
 	addrsFactory AddrsFactory,
 	listenAddrs func() []ma.Multiaddr,
-	transportForListening func(ma.Multiaddr) transport.Transport,
+	addCertHashes func([]ma.Multiaddr) []ma.Multiaddr,
 	observedAddrsManager observedAddrsManager,
 	addrsUpdatedChan chan struct{},
 	client autonatv2Client,
@@ -85,7 +82,7 @@ func newAddrsManager(
 	as := &addrsManager{
 		bus:                       bus,
 		listenAddrs:               listenAddrs,
-		transportForListening:     transportForListening,
+		addCertHashes:             addCertHashes,
 		observedAddrsManager:      observedAddrsManager,
 		natManager:                natmgr,
 		addrsFactory:              addrsFactory,
@@ -512,51 +509,6 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddr ma.Mul
 		dst = append(dst, obsAddrs...)
 	}
 	return dst
-}
-
-func (a *addrsManager) addCertHashes(addrs []ma.Multiaddr) []ma.Multiaddr {
-	if a.transportForListening == nil {
-		return addrs
-	}
-
-	// TODO(sukunrt): Move this to swarm.
-	// There are two parts to determining our external address
-	// 1. From the NAT device, or identify, or other such STUN like mechanism.
-	// All that matters here is (internal_ip, internal_port, tcp) => (external_ip, external_port, tcp)
-	// The rest of the address should be cut and appended to the external one.
-	// 2. The user provides us with the address (/ip4/1.2.3.4/udp/1/webrtc-direct) and we add the certhash.
-	// This API should be where the transports are, i.e. swarm.
-	//
-	// It would have been nice to remove this completely and just work with
-	// mapping the interface thinwaist addresses (tcp, 192.168.18.18:4000 => 1.2.3.4:4577)
-	// but that is only convenient if we're using the same port for listening on
-	// all transports which share the same thinwaist protocol. If you listen
-	// on 4001 for tcp, and 4002 for websocket, then it's a terrible API.
-	type addCertHasher interface {
-		AddCertHashes(m ma.Multiaddr) (ma.Multiaddr, bool)
-	}
-
-	for i, addr := range addrs {
-		wtOK, wtN := libp2pwebtransport.IsWebtransportMultiaddr(addr)
-		webrtcOK, webrtcN := libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
-		if (wtOK && wtN == 0) || (webrtcOK && webrtcN == 0) {
-			t := a.transportForListening(addr)
-			if t == nil {
-				continue
-			}
-			tpt, ok := t.(addCertHasher)
-			if !ok {
-				continue
-			}
-			addrWithCerthash, added := tpt.AddCertHashes(addr)
-			if !added {
-				log.Warnf("Couldn't add certhashes to multiaddr: %s", addr)
-				continue
-			}
-			addrs[i] = addrWithCerthash
-		}
-	}
-	return addrs
 }
 
 func areAddrsDifferent(prev, current []ma.Multiaddr) bool {

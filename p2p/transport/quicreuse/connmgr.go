@@ -2,13 +2,13 @@
 // for reusing QUIC transports for various purposes, like listening & dialing, having
 // multiple QUIC listeners on the same address with different ALPNs, and sharing the
 // same address with non QUIC transports like WebRTC.
+
 package quicreuse
 
 import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -68,6 +68,8 @@ type ConnManager struct {
 	connContext connContextFunc
 
 	verifySourceAddress func(addr net.Addr) bool
+
+	qlogTracerDir string
 }
 
 type quicListenerEntry struct {
@@ -148,8 +150,14 @@ func (c *ConnManager) getTracer() func(context.Context, quiclogging.Perspective,
 			}
 		}
 		var tracer *quiclogging.ConnectionTracer
-		if qlogTracerDir != "" {
-			tracer = qloggerForDir(qlogTracerDir, p, ci)
+		var tracerDir = c.qlogTracerDir
+		if tracerDir == "" {
+			// Fallback to the global qlogTracerDir
+			tracerDir = qlogTracerDir
+		}
+
+		if tracerDir != "" {
+			tracer = qloggerForDir(tracerDir, p, ci)
 			if promTracer != nil {
 				tracer = quiclogging.NewMultiplexedConnectionTracer(promTracer,
 					tracer)
@@ -224,7 +232,7 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 	key := laddr.String()
 	entry, ok := c.quicListeners[key]
 	if !ok {
-		tr, err := c.transportForListen(association, netw, laddr)
+		tr, err := c.transportForListen(netw, laddr)
 		if err != nil {
 			return nil, err
 		}
@@ -234,20 +242,15 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		}
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
-	} else if c.enableReuseport && association != nil {
-		reuse, err := c.getReuse(netw)
-		if err != nil {
-			return nil, fmt.Errorf("reuse error: %w", err)
-		}
-		err = reuse.AssertTransportExists(entry.ln.transport)
-		if err != nil {
-			return nil, fmt.Errorf("reuse assert transport failed: %w", err)
-		}
-		if tr, ok := entry.ln.transport.(*refcountedTransport); ok {
-			tr.associate(association)
+	}
+	if c.enableReuseport && association != nil {
+		if _, ok := entry.ln.transport.(*refcountedTransport); !ok {
+			log.Warnf("reuseport is enabled, association is non-nil, but the transport is not a refcountedTransport.")
 		}
 	}
-	l, err := entry.ln.Add(tlsConf, allowWindowIncrease, func() { c.onListenerClosed(key) })
+	l, err := entry.ln.Add(association, tlsConf, allowWindowIncrease, func() {
+		c.onListenerClosed(key)
+	})
 	if err != nil {
 		if entry.refCount <= 0 {
 			entry.ln.Close()
@@ -296,7 +299,7 @@ func (c *ConnManager) SharedNonQUICPacketConn(_ string, laddr *net.UDPAddr) (net
 	return nil, errors.New("expected to be able to share with a QUIC listener, but the QUIC listener is not using a refcountedTransport. `DisableReuseport` should not be set")
 }
 
-func (c *ConnManager) transportForListen(association any, network string, laddr *net.UDPAddr) (RefCountedQUICTransport, error) {
+func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (RefCountedQUICTransport, error) {
 	if c.enableReuseport {
 		reuse, err := c.getReuse(network)
 		if err != nil {
@@ -306,7 +309,6 @@ func (c *ConnManager) transportForListen(association any, network string, laddr 
 		if err != nil {
 			return nil, err
 		}
-		tr.associate(association)
 		return tr, nil
 	}
 

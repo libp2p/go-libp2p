@@ -91,7 +91,7 @@ func (l *quicListener) allowWindowIncrease(conn *quic.Conn, delta uint64) bool {
 	return conf.allowWindowIncrease(conn, delta)
 }
 
-func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool, onRemove func()) (Listener, error) {
+func (l *quicListener) Add(association any, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool, onRemove func()) (*listener, error) {
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
@@ -105,14 +105,32 @@ func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn *q
 		}
 	}
 
-	ln := newSingleListener(l.l.Addr(), l.addrs, func() {
+	ln := &listener{
+		queue:             make(chan *quic.Conn, queueLen),
+		acceptLoopRunning: l.running,
+		addr:              l.l.Addr(),
+		addrs:             l.addrs,
+	}
+	if association != nil {
+		if tr, ok := l.transport.(*refcountedTransport); ok {
+			tr.associateForListener(association, ln)
+		}
+	}
+
+	ln.remove = func() {
+		if association != nil {
+			if tr, ok := l.transport.(*refcountedTransport); ok {
+				tr.RemoveAssociationsForListener(ln)
+			}
+		}
 		l.protocolsMu.Lock()
 		for _, proto := range tlsConf.NextProtos {
 			delete(l.protocols, proto)
 		}
 		l.protocolsMu.Unlock()
 		onRemove()
-	}, l.running)
+	}
+
 	for _, proto := range tlsConf.NextProtos {
 		l.protocols[proto] = protoConf{
 			ln:                  ln,
@@ -166,16 +184,6 @@ type listener struct {
 }
 
 var _ Listener = &listener{}
-
-func newSingleListener(addr net.Addr, addrs []ma.Multiaddr, remove func(), running chan struct{}) *listener {
-	return &listener{
-		queue:             make(chan *quic.Conn, queueLen),
-		acceptLoopRunning: running,
-		remove:            remove,
-		addr:              addr,
-		addrs:             addrs,
-	}
-}
 
 func (l *listener) add(c *quic.Conn) {
 	select {
