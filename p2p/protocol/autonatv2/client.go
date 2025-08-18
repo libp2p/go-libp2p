@@ -60,7 +60,7 @@ func (ac *client) Close() {
 
 // GetReachability verifies address reachability with a AutoNAT v2 server p.
 func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
-	result, err := ac.getReachability(ctx, p, reqs)
+	result, err := ac.getReachabilityInternal(ctx, p, reqs)
 
 	// Track metrics
 	if ac.metricsTracer != nil {
@@ -68,6 +68,84 @@ func (ac *client) GetReachability(ctx context.Context, p peer.ID, reqs []Request
 	}
 
 	return result, err
+}
+
+func (ac *client) getReachabilityInternal(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
+	// Check if we have a connection already
+	if ac.host.Network().Connectedness(p) != network.Connected {
+		if err := ac.host.Connect(ctx, peer.AddrInfo{ID: p}); err != nil {
+			return Result{}, err
+		}
+	}
+
+	// Create a new stream
+	s, err := ac.host.NewStream(ctx, p, DialProtocol)
+	if err != nil {
+		return Result{}, err
+	}
+	defer s.Close()
+
+	// Write the dial request
+	req := pb.Message{
+		Type:    pb.Message_DIAL.Enum(),
+		Version: proto.Int32(AutoNATProtocolVersion),
+	}
+	for _, r := range reqs {
+		// For TCP addresses with shared listeners, we need to ensure proper handling
+		protos := r.Addr.Protocols()
+		isSharedTCP := false
+		if len(protos) > 0 && protos[len(protos)-1].Code == ma.P_TCP {
+			// Check if this is a shared TCP listener
+			for _, comp := range r.Addr.Components() {
+				if comp.Protocol().Code == ma.P_TCP {
+					isSharedTCP = true
+					break
+				}
+			}
+		}
+
+		// Include the address in the request
+		req.Addresses = append(req.Addresses, &pb.Message_Address{
+			Address: r.Addr.Bytes(),
+			Idx:     proto.Int32(int32(r.Idx)),
+		})
+	}
+
+	w := protoio.NewDelimitedWriter(s)
+	if err := w.WriteMsg(&req); err != nil {
+		return Result{}, err
+	}
+
+	r := protoio.NewDelimitedReader(s, network.MessageSizeMax)
+	resp := &pb.Message{}
+	if err := r.ReadMsg(resp); err != nil {
+		return Result{}, err
+	}
+
+	if resp.GetType() != pb.Message_DIAL_RESPONSE {
+		return Result{}, fmt.Errorf("unexpected message type: %s", resp.GetType())
+	}
+
+	// Process the response
+	status := resp.GetStatus()
+	switch status {
+	case pb.Message_OK:
+		addr, err := ma.NewMultiaddrBytes(resp.GetAddress().GetAddress())
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{
+			Reachable: true,
+			Addr:      addr,
+			Idx:       int(resp.GetAddress().GetIdx()),
+		}, nil
+	case pb.Message_E_DIAL_ERROR:
+		return Result{}, ErrDialError
+	case pb.Message_E_DIAL_REFUSED:
+		return Result{}, ErrDialRefused
+	default:
+		return Result{}, fmt.Errorf("unknown status: %d", status)
+	}
 }
 
 func (ac *client) getReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
