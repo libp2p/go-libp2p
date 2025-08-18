@@ -71,7 +71,7 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 }
 
 // ListenClose stop and delete listeners for all of the given addresses. If an
-// any address belongs to one of the addreses a Listener provides, then the
+// any address belongs to one of the addresses a Listener provides, then the
 // Listener will close for *all* addresses it provides. For example if you close
 // and address with `/quic`, then the QUIC listener will close and also close
 // any `/quic-v1` address.

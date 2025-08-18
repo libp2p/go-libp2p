@@ -230,7 +230,7 @@ func (an *AutoNAT) updatePeer(p peer.ID) {
 	an.mx.Lock()
 	defer an.mx.Unlock()
 
-	// There are no ordering gurantees between identify and swarm events. Check peerstore
+	// There are no ordering guarantees between identify and swarm events. Check peerstore
 	// and swarm for the current state
 	protos, err := an.host.Peerstore().SupportsProtocols(p, DialProtocol)
 	connectedness := an.host.Network().Connectedness(p)

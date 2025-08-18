@@ -63,7 +63,7 @@ func (s *secureSession) runHandshake(ctx context.Context) (err error) {
 		}
 	}
 
-	// We can re-use this buffer for all handshake messages.
+	// We can reuse this buffer for all handshake messages.
 	hbuf := pool.Get(2 << 10)
 	defer pool.Put(hbuf)
 

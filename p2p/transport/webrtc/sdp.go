@@ -123,7 +123,7 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 // to a string format recognised by pion for fingerprint
 // algorithms
 func getSupportedSDPString(code uint64) (string, error) {
-	// values based on (cryto.Hash).String()
+	// values based on (crypto.Hash).String()
 	switch code {
 	case multihash.MD5:
 		return "md5", nil

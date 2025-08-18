@@ -254,13 +254,13 @@ func (pn *peernet) removeConn(c *conn) {
 	pn.Lock()
 	cs, found := pn.connsByLink[c.link]
 	if !found || len(cs) < 1 {
-		panic(fmt.Sprintf("attempting to remove a conn that doesnt exist %p", c.link))
+		panic(fmt.Sprintf("attempting to remove a conn that doesn't exist %p", c.link))
 	}
 	delete(cs, c)
 
 	cs, found = pn.connsByPeer[c.remote]
 	if !found {
-		panic(fmt.Sprintf("attempting to remove a conn that doesnt exist %v", c.remote))
+		panic(fmt.Sprintf("attempting to remove a conn that doesn't exist %v", c.remote))
 	}
 	delete(cs, c)
 	pn.Unlock()
