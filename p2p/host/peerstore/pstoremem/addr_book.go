@@ -498,7 +498,7 @@ func (mab *memoryAddrBook) GetPeerRecord(p peer.ID) *record.Envelope {
 	if _, ok := mab.addrs.Addrs[p]; !ok {
 		return nil
 	}
-	// The record may have expired, but not gargage collected.
+	// The record may have expired, but not garbage collected.
 	if len(validAddrs(mab.clock.Now(), mab.addrs.Addrs[p])) == 0 {
 		return nil
 	}

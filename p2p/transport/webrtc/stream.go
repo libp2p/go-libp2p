@@ -241,7 +241,7 @@ func (s *stream) spawnControlMessageReader() {
 			s.mx.Lock()
 			defer s.mx.Unlock()
 			// From this point onwards only this goroutine will do reader.ReadMsg.
-			// We just wanted to ensure any exising readers have exited.
+			// We just wanted to ensure any existing readers have exited.
 			// Read calls from this point onwards will exit immediately on checking
 			// s.readState
 			s.readerMx.Unlock()

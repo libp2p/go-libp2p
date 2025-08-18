@@ -44,7 +44,7 @@ func discoverSearchTarget(ctx context.Context, target string) (nats []NAT, errs 
 }
 
 // discoverUPNP_GenIGDev is a fallback for routers that fail to respond to our
-// targetted SSDP queries. It will query all devices and try to find any
+// targeted SSDP queries. It will query all devices and try to find any
 // InternetGatewayDevice.
 func discoverUPNP_GenIGDev(ctx context.Context) (nats []NAT, errs []error) {
 	DeviceList, err := ssdp.Search(ssdp.All, 5, "")
@@ -84,7 +84,7 @@ func discoverUPNP_GenIGDev(ctx context.Context) (nats []NAT, errs []error) {
 	return
 }
 
-// serviceVisitor is a vistor function that visits all services of a root
+// serviceVisitor is a visitor function that visits all services of a root
 // device and collects NATs.
 //
 // It works on InternetGateway V1 and V2 devices. For V1 devices, V2 services should not be encountered, and the visitor will collect an error in that case.
