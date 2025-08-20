@@ -126,16 +126,19 @@ func canBeNil(t reflect.Type) bool {
 }
 
 // Build resolves only what's needed to populate exported fields in result.
+// Now supports arbitrarily nested provider namespaces inside config
+// (exported struct / *struct fields are recursively visited).
 //
-// Supported providers in config:
-//   - Provide[T]                 // single constructor or value for T
-//   - []Provide[T]               // list of constructors/values contributing to []T
-//   - func(...Deps) T / (T,error)
-//   - value of type T
+// Supported providers in config (at any nesting depth):
+//   - Provide[T]                    // single constructor or value for T
+//   - []Provide[T]                  // list of constructors/values contributing to []T
+//   - func(...Deps) T / (T,error)   // singular constructor for T
+//   - value of type T               // preprovided singular value
 //   - []func(...Deps) T/(T,error)   // contributes to []T
 //   - []T                           // contributes to []T
 //
 // Non-func, non-zero exported fields remain prebound instances.
+// Pre-populated (non-zero) fields in result are also prebound.
 // result must be a pointer to a struct.
 func Build[C any, R any](config C, result R) error {
 	cfgV := reflect.ValueOf(config)
@@ -170,72 +173,102 @@ func Build[C any, R any](config C, result R) error {
 	listProviders := map[reflect.Type][]ctor{}       // elem out type -> ctors
 	listPresence := map[reflect.Type]bool{}          // elem T present explicitly (even if empty)
 
-	cfgT := cfgV.Type()
-	for i := 0; i < cfgT.NumField(); i++ {
-		sf := cfgT.Field(i)
-		if sf.PkgPath != "" { // unexported
-			continue
-		}
-		fv := cfgV.Field(i)
-
-		// 1) Provide[T] (singular)
-		if pi, ok := asProvide(fv); ok {
-			outT := pi.diOutType()
-			payload := pi.diPayload()
-			if payload == nil {
-				// Provide[T]{nil} => contributes a nil value for T
-				values[outT] = reflect.Zero(outT)
+	// Seed from pre-populated result fields (treat as prebound)
+	{
+		resT := resStruct.Type()
+		for i := 0; i < resT.NumField(); i++ {
+			sf := resT.Field(i)
+			if sf.PkgPath != "" {
 				continue
 			}
-			pt := reflect.TypeOf(payload)
-			if pt.Kind() == reflect.Func {
-				// constructor
-				if err := validateCtorSignature(pt, sf.Name); err != nil {
-					return err
-				}
-				out := pt.Out(0)
-				// Store by the function's concrete out type (may be a concrete impl of interface T)
-				providers[out] = append(providers[out], ctor{name: sf.Name, fn: reflect.ValueOf(payload), out: out})
-			} else {
-				// value
-				values[pt] = reflect.ValueOf(payload)
+			fv := resStruct.Field(i)
+			if !fv.IsZero() {
+				values[fv.Type()] = fv
 			}
-			continue
+		}
+	}
+
+	// Collect providers/values recursively from cfgV.
+	var collect func(v reflect.Value, path string) error
+	collect = func(v reflect.Value, path string) error {
+		if !v.IsValid() {
+			return nil
+		}
+		// Deref pointers
+		for v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				return nil
+			}
+			v = v.Elem()
+		}
+		if v.Kind() != reflect.Struct {
+			return nil
 		}
 
-		// 2) []Provide[T] (list)
-		if fv.Kind() == reflect.Slice {
-			// Try to interpret elements as Provide[*]
-			if fv.Type().Elem().Kind() == reflect.Struct {
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			sf := t.Field(i)
+			if sf.PkgPath != "" { // unexported
+				continue
+			}
+			fv := v.Field(i)
+			name := sf.Name
+			if path != "" {
+				name = path + "." + sf.Name
+			}
+
+			// Provide[T] (singular) must be recognized BEFORE treating structs as namespaces.
+			if pi, ok := asProvide(fv); ok {
+				outT := pi.diOutType()
+				payload := pi.diPayload()
+				if payload == nil {
+					values[outT] = reflect.Zero(outT)
+					continue
+				}
+				pt := reflect.TypeOf(payload)
+				if pt.Kind() == reflect.Func {
+					if err := validateCtorSignature(pt, name); err != nil {
+						return err
+					}
+					providers[pt.Out(0)] = append(providers[pt.Out(0)], ctor{name: name, fn: reflect.ValueOf(payload), out: pt.Out(0)})
+				} else {
+					values[pt] = reflect.ValueOf(payload)
+				}
+				continue
+			}
+
+			// Namespace recursion for embedded structs
+			if sf.Anonymous && sf.Type.Kind() == reflect.Struct {
+				if err := collect(fv, name); err != nil {
+					return err
+				}
+				continue
+			}
+
+			// []Provide[T] (list)
+			if fv.Kind() == reflect.Slice && fv.Type().Elem().Kind() == reflect.Struct {
 				if _, ok := reflect.New(fv.Type().Elem()).Elem().Interface().(provideI); ok {
-					// mark presence for the aggregated Out types even if empty,
-					// so []T can resolve to empty when this list is explicitly present
 					if fv.Len() == 0 {
-						// Unfortunately we cannot retrieve Out from an empty slice directly.
-						// We'll rely on consumers being present when non-empty.
-						// If needed, you can add a phantom element pattern, but typically not required.
+						// cannot infer T for presence when empty []Provide[T]
 					}
 					for j := 0; j < fv.Len(); j++ {
 						pi := fv.Index(j).Interface().(provideI)
 						outT := pi.diOutType()
 						listPresence[outT] = true
-
 						payload := pi.diPayload()
 						if payload == nil {
-							// nil element for a nilable Out
 							listValues[outT] = append(listValues[outT], reflect.Zero(outT))
 							continue
 						}
 						pt := reflect.TypeOf(payload)
 						if pt.Kind() == reflect.Func {
-							if err := validateCtorSignature(pt, fmt.Sprintf("%s[%d]", sf.Name, j)); err != nil {
+							if err := validateCtorSignature(pt, fmt.Sprintf("%s[%d]", name, j)); err != nil {
 								return err
 							}
-							out := pt.Out(0)
-							listProviders[out] = append(listProviders[out], ctor{
-								name: fmt.Sprintf("%s[%d]", sf.Name, j),
+							listProviders[pt.Out(0)] = append(listProviders[pt.Out(0)], ctor{
+								name: fmt.Sprintf("%s[%d]", name, j),
 								fn:   reflect.ValueOf(payload),
-								out:  out,
+								out:  pt.Out(0),
 							})
 						} else {
 							listValues[pt] = append(listValues[pt], reflect.ValueOf(payload))
@@ -244,52 +277,52 @@ func Build[C any, R any](config C, result R) error {
 					continue
 				}
 			}
-		}
 
-		// 3) Fallback to earlier forms (singular func/value; list of funcs/values)
-		switch sf.Type.Kind() {
-		case reflect.Func:
-			ft := fv.Type()
-			if err := validateCtorSignature(ft, sf.Name); err != nil {
-				return err
-			}
-			out := ft.Out(0)
-			providers[out] = append(providers[out], ctor{name: sf.Name, fn: fv, out: out})
+			// Fallback to earlier forms (singular func/value; list of funcs/values)
+			switch sf.Type.Kind() {
+			case reflect.Func:
+				ft := fv.Type()
+				if err := validateCtorSignature(ft, name); err != nil {
+					return err
+				}
+				providers[ft.Out(0)] = append(providers[ft.Out(0)], ctor{name: name, fn: fv, out: ft.Out(0)})
 
-		case reflect.Slice:
-			elemT := sf.Type.Elem()
-			if elemT.Kind() == reflect.Func {
-				// list of constructors
-				for j := 0; j < fv.Len(); j++ {
-					fn := fv.Index(j)
-					ft := fn.Type()
-					if err := validateCtorSignature(ft, fmt.Sprintf("%s[%d]", sf.Name, j)); err != nil {
-						return err
+			case reflect.Slice:
+				elemT := sf.Type.Elem()
+				if elemT.Kind() == reflect.Func {
+					for j := 0; j < fv.Len(); j++ {
+						fn := fv.Index(j)
+						ft := fn.Type()
+						if err := validateCtorSignature(ft, fmt.Sprintf("%s[%d]", name, j)); err != nil {
+							return err
+						}
+						listProviders[ft.Out(0)] = append(listProviders[ft.Out(0)], ctor{
+							name: fmt.Sprintf("%s[%d]", name, j),
+							fn:   fn, out: ft.Out(0),
+						})
 					}
-					out := ft.Out(0)
-					listProviders[out] = append(listProviders[out], ctor{
-						name: fmt.Sprintf("%s[%d]", sf.Name, j),
-						fn:   fn,
-						out:  out,
-					})
+				} else {
+					if fv.Len() == 0 {
+						listPresence[elemT] = true // explicit empty list present
+					}
+					for j := 0; j < fv.Len(); j++ {
+						vj := fv.Index(j)
+						listValues[vj.Type()] = append(listValues[vj.Type()], vj)
+					}
 				}
-			} else {
-				// list of values contributes to []T
-				if fv.Len() == 0 {
-					listPresence[elemT] = true // explicit empty list present
-				}
-				for j := 0; j < fv.Len(); j++ {
-					v := fv.Index(j)
-					listValues[v.Type()] = append(listValues[v.Type()], v)
-				}
-			}
 
-		default:
-			// preprovided singular instance
-			if !fv.IsZero() {
-				values[fv.Type()] = fv
+			default:
+				// preprovided singular instance (non-zero only)
+				if !fv.IsZero() {
+					values[fv.Type()] = fv
+				}
 			}
 		}
+		return nil
+	}
+
+	if err := collect(cfgV, ""); err != nil {
+		return err
 	}
 
 	// Resolver with memoization & cycles
@@ -353,14 +386,10 @@ func Build[C any, R any](config C, result R) error {
 			// If an explicit provider for elem T exists (e.g., []Provide[T] or []T present but empty),
 			// we should still succeed with an empty slice.
 			if !found {
-				// Try presence by exact elem type (works when []T or []Provide[T] declared but empty)
 				if listPresence[elem] {
 					values[t] = reflect.MakeSlice(t, 0, 0)
 					return values[t], nil
 				}
-				// Also, if we had presence via []Provide[Concrete] where Concrete implements elem interface,
-				// listPresence won't know. In practice, presence is meaningful when items exist; otherwise,
-				// we require at least one explicit presence for the interface elem type.
 				return reflect.Value{}, fmt.Errorf("no provider for %s", t)
 			}
 
@@ -495,7 +524,6 @@ func asProvide(v reflect.Value) (provideI, bool) {
 	if !v.IsValid() {
 		return nil, false
 	}
-	// Must take interface on the value (not pointer) since Provide has value-receiver methods above.
 	x := v.Interface()
 	pi, ok := x.(provideI)
 	return pi, ok
