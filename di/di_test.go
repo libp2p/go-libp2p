@@ -253,3 +253,23 @@ func TestBuildWithPreSuppliedValue(t *testing.T) {
 		t.Fatalf("expected B referencing A, got %+v", res.B)
 	}
 }
+
+func TestTypeAlias(t *testing.T) {
+	type ANum int
+	type Config struct {
+		A ANum
+		B int
+	}
+
+	type Result struct {
+		A ANum
+	}
+	var res Result
+	err := Build(Config{3, 4}, &res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.A != 3 {
+		t.Fatalf("expected A=3, got %v", res.A)
+	}
+}
