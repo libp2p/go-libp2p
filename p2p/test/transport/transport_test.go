@@ -281,14 +281,15 @@ var transportsToTest = []TransportTestCase{
 		Name: "QUIC-CustomReuse",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
+			qr := libp2p.QUICReuse(config.Must(config.NewTypedFxProvide[*quicreuse.ConnManager](quicreuse.NewConnManager)))
 			if opts.NoListen {
-				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.QUICReuse(quicreuse.NewConnManager))
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, qr)
 			} else {
-				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
 				if !opts.NoRcmgr && opts.ResourceManager != nil {
-					qr = libp2p.QUICReuse(
-						quicreuse.NewConnManager,
-						quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress))
+					libp2pOpts = append(libp2pOpts,
+						libp2p.WithFxOption(config.SupplyConstructorOpts[*quicreuse.ConnManager](
+							quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress)),
+						))
 				}
 				libp2pOpts = append(libp2pOpts,
 					qr,
@@ -318,15 +319,15 @@ var transportsToTest = []TransportTestCase{
 		Name: "WebTransport-CustomReuse",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
+			qr := libp2p.QUICReuse(config.Must(config.NewTypedFxProvide[*quicreuse.ConnManager](quicreuse.NewConnManager)))
 			if opts.NoListen {
-				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, libp2p.QUICReuse(quicreuse.NewConnManager))
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs, qr)
 			} else {
-				qr := libp2p.QUICReuse(quicreuse.NewConnManager)
 				if !opts.NoRcmgr && opts.ResourceManager != nil {
-					qr = libp2p.QUICReuse(
-						quicreuse.NewConnManager,
-						quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress),
-					)
+					libp2pOpts = append(libp2pOpts,
+						libp2p.WithFxOption(config.SupplyConstructorOpts[*quicreuse.ConnManager](
+							quicreuse.VerifySourceAddress(opts.ResourceManager.VerifySourceAddress)),
+						))
 				}
 				libp2pOpts = append(libp2pOpts,
 					qr,

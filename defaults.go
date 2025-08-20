@@ -5,7 +5,9 @@ package libp2p
 import (
 	"crypto/rand"
 
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
@@ -19,6 +21,7 @@ import (
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/fx"
 
 	"github.com/multiformats/go-multiaddr"
 )
@@ -65,7 +68,13 @@ var DefaultPeerstore Option = func(cfg *Config) error {
 	if err != nil {
 		return err
 	}
-	return cfg.Apply(Peerstore(ps))
+	return cfg.Apply(Peerstore(config.Must(config.NewTypedFxProvide[peerstore.Peerstore](
+		func() (peerstore.Peerstore, error) {
+			return ps, err
+		}, fx.OnStop(func(ps peerstore.Peerstore) error {
+			return ps.Close()
+		}))),
+	))
 }
 
 // RandomIdentity generates a random identity. (default behaviour)
@@ -207,6 +216,13 @@ var defaults = []struct {
 			return !cfg.CustomIPv6BlackHoleSuccessCounter && cfg.IPv6BlackHoleSuccessCounter == nil
 		},
 		opt: defaultIPv6BlackHoleDetector,
+	},
+	{
+		fallback: func(cfg *Config) bool { return cfg.QUICReuse == nil },
+		opt: func(cfg *Config) error {
+			cfg.QUICReuse = config.DefaultQUICReuse
+			return nil
+		},
 	},
 }
 

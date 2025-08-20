@@ -197,7 +197,7 @@ func TestPing(t *testing.T) {
 
 	h1, s := newHost()
 	h2, _ := newHost()
-	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{h2.ID(), h2.Addrs()}))
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
 	res := <-s.Ping(context.Background(), h2.ID())
 	require.NoError(t, res.Error)
 	t.Log(res.RTT)
@@ -227,7 +227,7 @@ func TestIdentify(t *testing.T) {
 	sub2, err := eb2.Subscribe(new(event.EvtPeerIdentificationCompleted))
 	require.NoError(t, err)
 
-	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{h2.ID(), h2.Addrs()}))
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
 	c := h1.Network().Conns()[0]
 	<-s.IdentifyWait(c)
 	res := (<-sub1.Out()).(event.EvtPeerIdentificationCompleted)

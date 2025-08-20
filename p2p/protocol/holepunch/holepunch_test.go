@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -636,21 +637,22 @@ func (m *MockSourceIPSelector) PreferredSourceIPForDestination(_ *net.UDPAddr) (
 
 func quicSimConn(isPubliclyReachably bool, router *simconn.SimpleFirewallRouter) libp2p.Option {
 	m := &MockSourceIPSelector{}
-	return libp2p.QUICReuse(
-		quicreuse.NewConnManager,
-		quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
-			return m, nil
-		}),
-		quicreuse.OverrideListenUDP(func(_ string, address *net.UDPAddr) (net.PacketConn, error) {
-			m.ip.Store(&address.IP)
-			c := simconn.NewSimConn(address, router)
-			if isPubliclyReachably {
-				router.AddPubliclyReachableNode(address, c)
-			} else {
-				router.AddNode(address, c)
-			}
-			return c, nil
-		}))
+	return libp2p.WithFxOption(
+		config.SupplyConstructorOpts[*quicreuse.ConnManager](
+			quicreuse.OverrideSourceIPSelector(func() (quicreuse.SourceIPSelector, error) {
+				return m, nil
+			}),
+			quicreuse.OverrideListenUDP(func(_ string, address *net.UDPAddr) (net.PacketConn, error) {
+				m.ip.Store(&address.IP)
+				c := simconn.NewSimConn(address, router)
+				if isPubliclyReachably {
+					router.AddPubliclyReachableNode(address, c)
+				} else {
+					router.AddNode(address, c)
+				}
+				return c, nil
+			})),
+	)
 }
 
 func addHolePunchService(t *testing.T, h host.Host, extraAddrs []ma.Multiaddr, opts ...holepunch.Option) *holepunch.Service {

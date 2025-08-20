@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -576,7 +577,13 @@ func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
 	t.Run("setup with no reuseport. Should fail", func(t *testing.T) {
 		oldPort := port
 		newPort := newRandomPort(t)
-		h1, err := New(ListenAddrStrings(swapPort(order[0], oldPort, newPort)...), Transport(quic.NewTransport), Transport(libp2pwebrtc.New), QUICReuse(quicreuse.NewConnManager, quicreuse.DisableReuseport()))
+		h1, err := New(
+			ListenAddrStrings(swapPort(order[0], oldPort, newPort)...),
+			Transport(quic.NewTransport),
+			Transport(libp2pwebrtc.New),
+			QUICReuse(
+				config.Must(config.NewTypedFxProvide[*quicreuse.ConnManager](quicreuse.NewConnManager)),
+				quicreuse.DisableReuseport()))
 		require.NoError(t, err) // It's a bug/feature that swarm.Listen does not error if at least one transport succeeds in listening.
 		defer h1.Close()
 		// Check that webrtc did fail to listen
@@ -587,7 +594,13 @@ func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
 	t.Run("setup with autonat", func(t *testing.T) {
 		oldPort := port
 		newPort := newRandomPort(t)
-		h1, err := New(EnableAutoNATv2(), ListenAddrStrings(swapPort(order[0], oldPort, newPort)...), Transport(quic.NewTransport), Transport(libp2pwebrtc.New), QUICReuse(quicreuse.NewConnManager, quicreuse.DisableReuseport()))
+		h1, err := New(EnableAutoNATv2(),
+			ListenAddrStrings(swapPort(order[0], oldPort, newPort)...),
+			Transport(quic.NewTransport),
+			Transport(libp2pwebrtc.New),
+			QUICReuse(
+				config.Must(config.NewTypedFxProvide[*quicreuse.ConnManager](quicreuse.NewConnManager)),
+				quicreuse.DisableReuseport()))
 		require.NoError(t, err) // It's a bug/feature that swarm.Listen does not error if at least one transport succeeds in listening.
 		defer h1.Close()
 		// Check that webrtc did fail to listen

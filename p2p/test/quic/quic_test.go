@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
@@ -28,7 +29,7 @@ func getQUICMultiaddrCode(addr ma.Multiaddr) int {
 
 func TestQUICAndWebTransport(t *testing.T) {
 	h1, err := libp2p.New(
-		libp2p.QUICReuse(quicreuse.NewConnManager),
+		libp2p.QUICReuse(config.Must(config.NewTypedFxProvide[*quicreuse.ConnManager](quicreuse.NewConnManager))),
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
 		libp2p.ListenAddrStrings(
