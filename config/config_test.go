@@ -1,11 +1,14 @@
 package config
 
 import (
+	"context"
+	"io"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/di"
-	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 )
 
 func TestNilOption(t *testing.T) {
@@ -26,22 +29,19 @@ func TestNilOption(t *testing.T) {
 	}
 }
 
-func TestDi(t *testing.T) {
+func newHost(t *testing.T) host.Host {
 	type Result struct {
-		Swarm *swarm.Swarm
-		Host  host.Host
-		L     *Lifecycle
+		Host host.Host
+		L    *Lifecycle
+		_    []di.SideEffect
 	}
 	var r Result
-	if err := di.Build(DefaultConfig2, &r); err != nil {
+	if err := di.Build(DefaultConfig, &r); err != nil {
 		t.Fatal(err)
 	}
 
-	if r.Swarm == nil {
+	if r.Host == nil {
 		t.Fatal("swarm is nil")
-	}
-	if r.Swarm.LocalPeer() == "" {
-		t.Fatal("local peer is empty")
 	}
 
 	if err := r.L.Start(); err != nil {
@@ -52,7 +52,41 @@ func TestDi(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	return r.Host
+}
 
-	t.Logf("Swarm Peer ID: %s\n", r.Swarm.LocalPeer())
-	t.Logf("Host Peer ID: %s\n", r.Host.ID())
+func TestDi(t *testing.T) {
+	a := newHost(t)
+	b := newHost(t)
+
+	b.SetStreamHandler("/echo/1", func(s network.Stream) {
+		io.Copy(s, s)
+		s.Close()
+	})
+	a.Connect(context.Background(), peer.AddrInfo{
+		ID:    b.ID(),
+		Addrs: b.Addrs(),
+	})
+
+	s, err := a.NewStream(context.Background(), b.ID(), "/echo/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	msgBack, err := io.ReadAll(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(msgBack) != "hello" {
+		t.Fatalf("expected 'hello', got '%s'", string(msgBack))
+	}
+
+	t.Logf("A Peer ID: %s\n", a.ID())
+	t.Logf("B Peer ID: %s\n", b.ID())
 }

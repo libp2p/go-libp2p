@@ -24,7 +24,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/di"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
@@ -33,7 +32,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
-	netconnmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
@@ -44,7 +42,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
-	mstream "github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -78,6 +75,7 @@ type Security struct {
 }
 
 type Lifecycle struct {
+	swarm    *swarm.Swarm
 	startFns []func() error
 	closers  []io.Closer
 }
@@ -107,115 +105,6 @@ func (l *Lifecycle) Close() error {
 		}
 	}
 	return errors.Join(errs...)
-}
-
-type ListenAddrs []ma.Multiaddr
-
-type SwarmConfig struct {
-	ListenAddrs ListenAddrs
-	Swarm       di.Provide[*swarm.Swarm]
-}
-
-type Config2 struct {
-	Lifecycle *Lifecycle
-
-	ResourceManager di.Provide[network.ResourceManager]
-
-	QUICReuse di.Provide[*quicreuse.ConnManager]
-
-	statelessResetKey func(crypto.PrivKey) (quic.StatelessResetKey, error)
-	tokenKey          func(crypto.PrivKey) (quic.TokenGeneratorKey, error)
-
-	EventBus    event.Bus
-	Peerstore   func() (peerstore.Peerstore, error)
-	ConnManager func() (connmgr.ConnManager, error)
-
-	PrivateKey func() (crypto.PrivKey, error)
-	PeerID     func(crypto.PrivKey) (peer.ID, error)
-	SwarmConfig
-
-	Host di.Provide[host.Host]
-}
-
-var DefaultConfig2 = Config2{
-	Lifecycle: &Lifecycle{},
-
-	ResourceManager: di.MustProvide[network.ResourceManager](func() (network.ResourceManager, error) {
-		// Default memory limit: 1/8th of total memory, minimum 128MB, maximum 1GB
-		limits := rcmgr.DefaultLimits
-		// TODO
-		// SetDefaultServiceLimits(&limits)
-		return rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(limits.AutoScale()))
-	}),
-
-	QUICReuse: di.MustProvide[*quicreuse.ConnManager](func(l *Lifecycle, statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey) (*quicreuse.ConnManager, error) {
-		return quicreuse.NewConnManager(statelessResetKey, tokenKey)
-	}),
-	statelessResetKey: PrivKeyToStatelessResetKey,
-	tokenKey:          PrivKeyToTokenGeneratorKey,
-
-	EventBus: eventbus.NewBus(),
-	Peerstore: func() (peerstore.Peerstore, error) {
-		return pstoremem.NewPeerstore()
-	},
-	ConnManager: func() (connmgr.ConnManager, error) {
-		return netconnmgr.NewConnManager(160, 192)
-	},
-
-	PrivateKey: func() (crypto.PrivKey, error) {
-		priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
-		return priv, err
-	},
-	PeerID: peer.IDFromPrivateKey,
-	SwarmConfig: SwarmConfig{
-		ListenAddrs: []ma.Multiaddr{},
-		Swarm: di.MustProvide[*swarm.Swarm](func(
-			l *Lifecycle,
-			p peer.ID,
-			ps peerstore.Peerstore,
-			b event.Bus,
-			listenAddrs ListenAddrs,
-
-		) (*swarm.Swarm, error) {
-			s, err := swarm.NewSwarm(p, ps, b)
-			if err != nil {
-				return nil, err
-			}
-			l.OnStart(func() error {
-				return s.Listen(slices.Clone(listenAddrs)...)
-			})
-			l.OnClose(s)
-
-			return s, nil
-		}),
-	},
-
-	Host: di.MustProvide[host.Host](func(
-		l *Lifecycle,
-		network *swarm.Swarm,
-		connmgr connmgr.ConnManager,
-		b event.Bus,
-	) (host.Host, error) {
-		mux := mstream.NewMultistreamMuxer[protocol.ID]()
-		h := &blankhost.BlankHost{
-			N:       network,
-			M:       mux,
-			ConnMgr: connmgr,
-			E:       b,
-			// Users can do this manually, but can't opt out of it otherwise.
-			SkipInitSignedRecord: true,
-		}
-		l.OnStart(func() error {
-			return h.Start()
-		})
-		l.OnClose(h)
-		return h, nil
-
-	}),
-}
-
-type NodeResult struct {
-	Host host.Host
 }
 
 // Config describes a set of settings for a libp2p node
