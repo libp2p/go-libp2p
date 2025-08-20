@@ -44,6 +44,27 @@ type Provide[Out any] struct {
 	fOrV any
 }
 
+// SideEffect is a sentinel value representing a constructor used only for side
+// effects such as introducing two components together without a circular
+// dependency.
+type SideEffect struct{}
+
+func NewSideEffect(f any) (Provide[SideEffect], error) {
+	return NewProvide[SideEffect](f)
+	// t := reflect.TypeOf(f)
+	// if t.Kind() == reflect.Func && t.NumOut() == 1 {
+	// 	if isErrorType(t.Out(0)) {
+	// 		return Provide[SideEffect]{fOrV: f}, nil
+	// 	}
+	// }
+
+	// return Provide[SideEffect]{fOrV: f}, fmt.Errorf("NewSideEffect: Invalid signature. Requires a function that returns only an error")
+}
+
+func MustSideEffect(f any) Provide[SideEffect] {
+	return Must(NewSideEffect(f))
+}
+
 type provideI interface {
 	diOutType() reflect.Type
 	diPayload() any
@@ -247,10 +268,13 @@ func Build[C any, R any](config C, result R) error {
 
 			// []Provide[T] (list)
 			if fv.Kind() == reflect.Slice && fv.Type().Elem().Kind() == reflect.Struct {
-				if _, ok := reflect.New(fv.Type().Elem()).Elem().Interface().(provideI); ok {
-					if fv.Len() == 0 {
-						// cannot infer T for presence when empty []Provide[T]
+				if provideElem, ok := reflect.New(fv.Type().Elem()).Elem().Interface().(provideI); ok {
+					if fv.Len() == 0 && !fv.IsNil() {
+						// Set presence of empty list
+						outT := provideElem.diOutType()
+						listPresence[outT] = true
 					}
+
 					for j := 0; j < fv.Len(); j++ {
 						pi := fv.Index(j).Interface().(provideI)
 						outT := pi.diOutType()
@@ -471,7 +495,7 @@ func Build[C any, R any](config C, result R) error {
 	resT := resStruct.Type()
 	for i := 0; i < resT.NumField(); i++ {
 		sf := resT.Field(i)
-		if sf.PkgPath != "" {
+		if sf.Name != "_" && sf.PkgPath != "" {
 			continue
 		}
 		fv := resStruct.Field(i)
@@ -484,7 +508,9 @@ func Build[C any, R any](config C, result R) error {
 			continue
 		}
 		if isAssignableOrImpl(v.Type(), sf.Type) {
-			fv.Set(v)
+			if sf.Name != "_" {
+				fv.Set(v)
+			}
 		} else {
 			missing = append(missing, fmt.Sprintf("%s (%s): produced %s not assignable", sf.Name, sf.Type, v.Type()))
 		}
