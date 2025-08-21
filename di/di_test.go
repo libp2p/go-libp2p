@@ -275,13 +275,20 @@ func TestTypeAlias(t *testing.T) {
 }
 
 func TestReferenceConfig(t *testing.T) {
+	type NestedConfig struct {
+		OtherSetting   bool
+		NestedDecision func(c NestedConfig) uint
+	}
+
 	type Config struct {
+		NestedConfig
 		SomeSetting bool
 		Inner       func(c Config) int
 	}
 
 	type Result struct {
 		A int
+		B uint
 	}
 	var res Result
 	err := Build(Config{
@@ -292,11 +299,42 @@ func TestReferenceConfig(t *testing.T) {
 			}
 			return 0
 		},
+		NestedConfig: NestedConfig{
+			OtherSetting: true,
+			NestedDecision: func(c NestedConfig) uint {
+				if c.OtherSetting {
+					return 1
+				}
+				return 0
+			},
+		},
 	}, &res)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if res.A != 1 {
 		t.Fatalf("expected A=1, got %v", res.A)
+	}
+	if res.B != 1 {
+		t.Fatalf("expected B=1, got %v", res.A)
+	}
+}
+
+func TestNew(t *testing.T) {
+	type Config struct {
+		A int
+	}
+
+	type Result struct {
+		A int
+	}
+
+	cfg := Config{A: 42}
+	res, err := New[Result](cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.A != 42 {
+		t.Fatalf("expected A=42, got %v", res.A)
 	}
 }

@@ -146,6 +146,12 @@ func canBeNil(t reflect.Type) bool {
 	}
 }
 
+func New[R any, C any](config C) (R, error) {
+	var r R
+	err := Build(config, &r)
+	return r, err
+}
+
 // Build resolves only what's needed to populate exported fields in result.
 // Now supports arbitrarily nested provider namespaces inside config
 // (exported struct / *struct fields are recursively visited).
@@ -260,6 +266,9 @@ func Build[C any, R any](config C, result R) error {
 
 			// Namespace recursion for embedded structs
 			if sf.Anonymous && sf.Type.Kind() == reflect.Struct {
+				// Provide access to the nested config value itself
+				values[sf.Type] = fv
+
 				if err := collect(fv, name); err != nil {
 					return err
 				}
@@ -344,6 +353,9 @@ func Build[C any, R any](config C, result R) error {
 		}
 		return nil
 	}
+
+	// Provide access to the Config value itself
+	values[cfgV.Type()] = cfgV
 
 	if err := collect(cfgV, ""); err != nil {
 		return err
