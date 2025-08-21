@@ -200,10 +200,9 @@ func Build[C any, R any](config C, result R) error {
 	}
 
 	resV := reflect.ValueOf(result)
-	if !resV.IsValid() || resV.Kind() != reflect.Pointer || resV.Elem().Kind() != reflect.Struct {
-		return errors.New("result must be a pointer to struct")
+	if !resV.IsValid() || resV.Kind() != reflect.Pointer {
+		return errors.New("result must be a pointer to struct or a pointer to a value")
 	}
-	resStruct := resV.Elem()
 
 	c := &collector{
 		values:        make(map[reflect.Type]reflect.Value),
@@ -214,30 +213,25 @@ func Build[C any, R any](config C, result R) error {
 		resolving:     make(map[reflect.Type]bool),
 	}
 
-	// Seed from pre-populated result fields (treat as prebound)
-	{
-		resT := resStruct.Type()
-		for i := 0; i < resT.NumField(); i++ {
-			sf := resT.Field(i)
-			if sf.PkgPath != "" {
-				continue
-			}
-			fv := resStruct.Field(i)
-			if !fv.IsZero() {
-				c.values[fv.Type()] = fv
-			}
-		}
-	}
-
 	// Provide access to the Config value itself
 	c.values[cfgV.Type()] = cfgV
-
 	if err := c.collect(cfgV, ""); err != nil {
 		return err
 	}
 
-	// Populate result fields lazily
+	// Can we just resolve the direct result type?
+	if v, err := c.resolve(resV.Elem().Type()); err == nil {
+		resV.Elem().Set(v)
+		return nil
+	}
+
+	if resV.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("couldn't build result direct, and can not fill result as it is not a struct")
+	}
+
+	// Populate result fields of the struct
 	var missing []string
+	resStruct := resV.Elem()
 	resT := resStruct.Type()
 	for i := 0; i < resT.NumField(); i++ {
 		sf := resT.Field(i)
@@ -253,12 +247,10 @@ func Build[C any, R any](config C, result R) error {
 			missing = append(missing, fmt.Sprintf("%s (%s): %v", sf.Name, sf.Type, err))
 			continue
 		}
-		if isAssignableOrImpl(v.Type(), sf.Type) {
-			if sf.Name != "_" {
-				fv.Set(v)
-			}
-		} else {
-			missing = append(missing, fmt.Sprintf("%s (%s): produced %s not assignable", sf.Name, sf.Type, v.Type()))
+
+		// Evaluate, but do not set underscore field names
+		if sf.Name != "_" {
+			fv.Set(v)
 		}
 	}
 	if len(missing) > 0 {

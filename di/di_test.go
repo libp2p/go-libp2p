@@ -338,3 +338,27 @@ func TestNew(t *testing.T) {
 		t.Fatalf("expected A=42, got %v", res.A)
 	}
 }
+
+func TestSpecificTypes(t *testing.T) {
+	type Config struct {
+		A int
+	}
+
+	cfg := Config{A: 42}
+	res, err := New[int](cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res != 42 {
+		t.Fatalf("expected A=42, got %v", res)
+	}
+
+	var res2 int
+	err = Build(Config{A: 42}, &res2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res2 != 42 {
+		t.Fatalf("expected A=42, got %v", res2)
+	}
+}
