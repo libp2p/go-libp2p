@@ -86,6 +86,7 @@ var ConfigFromEnv func() *Config = sync.OnceValue(func() *Config {
 	c := &Config{
 		fallbackLvl:   fallback,
 		systemToLevel: systemToLevel,
+		addSource:     true,
 	}
 
 	logFmt := os.Getenv("GOLOG_LOG_FORMAT")
@@ -97,8 +98,8 @@ var ConfigFromEnv func() *Config = sync.OnceValue(func() *Config {
 	}
 
 	logFmt = os.Getenv("GOLOG_LOG_ADD_SOURCE")
-	if logFmt != "" && logFmt != "0" {
-		c.addSource = true
+	if logFmt == "0" || logFmt == "false" {
+		c.addSource = false
 	}
 
 	labels := os.Getenv("GOLOG_LOG_LABELS")
