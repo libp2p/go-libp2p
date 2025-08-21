@@ -431,9 +431,9 @@ func TestMain(m *testing.M) {
 		// This will return eventually (5s timeout) but doesn't take a context.
 		goleak.IgnoreAnyFunction("github.com/koron/go-ssdp.Search"),
 		goleak.IgnoreAnyFunction("github.com/pion/sctp.(*Stream).SetReadDeadline.func1"),
-		// Logging & Stats
-		goleak.IgnoreTopFunction("github.com/libp2p/go-libp2p/gologshim/writer.(*MirrorWriter).logRoutine"),
+		// Stats
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
+		// nat-pmp
 		goleak.IgnoreAnyFunction("github.com/jackpal/go-nat-pmp.(*Client).GetExternalAddress"),
 	)
 }
