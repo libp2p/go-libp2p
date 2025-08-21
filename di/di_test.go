@@ -273,3 +273,30 @@ func TestTypeAlias(t *testing.T) {
 		t.Fatalf("expected A=3, got %v", res.A)
 	}
 }
+
+func TestReferenceConfig(t *testing.T) {
+	type Config struct {
+		SomeSetting bool
+		Inner       func(c Config) int
+	}
+
+	type Result struct {
+		A int
+	}
+	var res Result
+	err := Build(Config{
+		SomeSetting: true,
+		Inner: func(c Config) int {
+			if c.SomeSetting {
+				return 1
+			}
+			return 0
+		},
+	}, &res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.A != 1 {
+		t.Fatalf("expected A=1, got %v", res.A)
+	}
+}
