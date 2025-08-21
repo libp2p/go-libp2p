@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/ipfs/go-log/v2"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
