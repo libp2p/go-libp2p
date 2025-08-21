@@ -45,7 +45,7 @@ func logWithSkip(ctx context.Context, l *slog.Logger, level slog.Level, skip int
 func LogMisbehavingPeer(p peer.ID, peerAddr multiaddr.Multiaddr, component string, err error, msg string) {
 	logWithSkip(context.Background(), log, slog.LevelWarn, 1, "CANONICAL_MISBEHAVING_PEER",
 		"peer", p,
-		"addr", peerAddr.String(),
+		"addr", peerAddr,
 		"component", component,
 		"err", err,
 		"msg", msg)
