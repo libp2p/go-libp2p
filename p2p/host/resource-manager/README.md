@@ -47,7 +47,7 @@ limits := cfg.Build(scaledDefaultLimits)
 // The resource manager expects a limiter, se we create one from our limits.
 limiter := rcmgr.NewFixedLimiter(limits)
 
-// Metrics are enabled by default. If you want to disable metrics, use the 
+// Metrics are enabled by default. If you want to disable metrics, use the
 // WithMetricsDisabled option
 // Initialize the resource manager
 rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithMetricsDisabled())
@@ -463,8 +463,6 @@ To check if it's a recurring problem you can count the number of times you've
 seen the `"resource limit exceeded"` error over time. You can also check the
 `rcmgr_blocked_resources` metric to see how many times the resource manager has
 blocked a resource over time.
-
-![Example graph of blocked resources over time](https://bafkreibul6qipnax5s42abv3jc6bolhd7pju3zbl4rcvdaklmk52f6cznu.ipfs.io/)
 
 If the resource is blocked by a protocol-level scope, take a look at the various
 resource usages in the metrics. For example, if you run into a new stream being blocked,
