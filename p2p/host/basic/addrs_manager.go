@@ -227,7 +227,7 @@ func (a *addrsManager) background(autoRelayAddrsSub, autonatReachabilitySub even
 		}
 		err = emitter.Close()
 		if err != nil {
-			log.Warnf("error closing host reachability emitter: %s", err)
+			log.Warn("error closing host reachability emitter", "err", err)
 		}
 	}()
 

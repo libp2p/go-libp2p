@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
@@ -158,7 +158,7 @@ func NewManager(eventbus event.Bus, net network.Network) (*Manager, error) {
 		la := net.ListenAddresses()
 		ila, err := net.InterfaceListenAddresses()
 		if err != nil {
-			log.Warnf("error getting interface listen addresses: %s", err)
+			log.Warn("error getting interface listen addresses", "err", err)
 		}
 		return append(la, ila...)
 	}
@@ -194,12 +194,12 @@ func (o *Manager) Start(n network.Network) {
 
 	sub, err := o.eventbus.Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.Name("observed-addrs-manager"))
 	if err != nil {
-		log.Errorf("failed to start observed addrs manager: identify subscription failed: %s", err)
+		log.Error("failed to start observed addrs manager: identify subscription failed.", "err", err)
 		return
 	}
 	emitter, err := o.eventbus.Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
 	if err != nil {
-		log.Errorf("failed to start observed addrs manager: nat device type changed emitter error: %s", err)
+		log.Error("failed to start observed addrs manager: nat device type changed emitter error.", "err", err)
 		sub.Close()
 		return
 	}
@@ -387,12 +387,7 @@ func (o *Manager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multi
 
 	localTW, err := thinWaistForm(conn.LocalMultiaddr())
 	if err != nil {
-<<<<<<< HEAD:p2p/host/observedaddrs/manager.go
-||||||| parent of ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
-		log.Infof("failed to get interface listen addrs", err)
-=======
 		log.Info("failed to get interface listen addrs", "err", err)
->>>>>>> ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
 		return false, thinWaist{}, thinWaist{}
 	}
 
@@ -415,50 +410,12 @@ func (o *Manager) shouldRecordObservation(conn connMultiaddrs, observed ma.Multi
 	if err != nil {
 		return false, thinWaist{}, thinWaist{}
 	}
-<<<<<<< HEAD:p2p/host/observedaddrs/manager.go
 	if !hasConsistentTransport(localTW.TW, observedTW.TW) {
-		log.Debugf("invalid observed address %s for local address %s", observed, localTW.Addr)
-||||||| parent of ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
-	observedTW, err = thinWaistForm(o.normalize(observed))
-	if err != nil {
-		return false, thinWaist{}, thinWaist{}
-	}
-
-	hostAddrs := o.hostAddrs()
-	for i, a := range hostAddrs {
-		hostAddrs[i] = o.normalize(a)
-	}
-
-	// We should reject the connection if the observation doesn't match the
-	// transports of one of our advertised addresses.
-	if !HasConsistentTransport(observed, hostAddrs) &&
-		!HasConsistentTransport(observed, listenAddrs) {
-		log.Debugw(
-			"observed multiaddr doesn't match the transports of any announced addresses",
-			"from", conn.RemoteMultiaddr(),
-			"observed", observed,
-		)
-=======
-	observedTW, err = thinWaistForm(o.normalize(observed))
-	if err != nil {
-		return false, thinWaist{}, thinWaist{}
-	}
-
-	hostAddrs := o.hostAddrs()
-	for i, a := range hostAddrs {
-		hostAddrs[i] = o.normalize(a)
-	}
-
-	// We should reject the connection if the observation doesn't match the
-	// transports of one of our advertised addresses.
-	if !HasConsistentTransport(observed, hostAddrs) &&
-		!HasConsistentTransport(observed, listenAddrs) {
 		log.Debug(
-			"observed multiaddr doesn't match the transports of any announced addresses",
-			"from", conn.RemoteMultiaddr(),
+			"invalid observed address for local address",
 			"observed", observed,
+			"local", localTW.Addr,
 		)
->>>>>>> ef73b064f (Migrate to log/slog):p2p/protocol/identify/obsaddr.go
 		return false, thinWaist{}, thinWaist{}
 	}
 
