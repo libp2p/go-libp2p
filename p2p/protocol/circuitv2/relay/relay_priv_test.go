@@ -34,7 +34,7 @@ func TestMakeReservationWithP2PAddrs(t *testing.T) {
 		ma.StringCast("/ip4/1.2.3.4/tcp/1236/p2p/" + otherID.String()), // Some other peer (?? Not expected, but we could get anything in this func)
 	}
 
-	rsvp := makeReservationMsg(selfKey, selfID, addrs, reserverID, time.Now().Add(time.Minute))
+	rsvp := makeReservationMsg(nil, nil, selfKey, selfID, addrs, reserverID, time.Now().Add(time.Minute))
 	require.NotNil(t, rsvp)
 
 	expectedAddrs := []string{
