@@ -379,7 +379,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "How many streams does each protocol have open.\n\nA protocol is similiar to a service except there may be many protocols for a single service. A service may have \nmultiple protocols for backwards compatibility. For example, bitswap the service is a single entity, but it supports bitswap protocols v1.1 and v1.2.\n\nA service is attached to a stream manually by the protocol developer. A service may be missing if there is no `StreamScope.SetService` call.",
+      "description": "How many streams does each protocol have open.\n\nA protocol is similar to a service except there may be many protocols for a single service. A service may have \nmultiple protocols for backwards compatibility. For example, bitswap the service is a single entity, but it supports bitswap protocols v1.1 and v1.2.\n\nA service is attached to a stream manually by the protocol developer. A service may be missing if there is no `StreamScope.SetService` call.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -751,7 +751,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "# Libp2p Connections\n\nBroken down by [Resource Scope](https://github.com/libp2p/go-libp2p/blob/master/p2p/host/resource-manager/README.md#resource-scopes). \nScopes represent what is imposing limits on this resource. For connections, we have three main scopes:\n\n1. System. The total number of connections owned by the process. Includes both application usable connections + the number of transient connections.\n2. Transient. The total number of connections that are being upgraded into usable connections in the process.\n3. Peer. The total number of connections associated with this peer. When a connection has this scope it is usable by the application.\n\nAn example of a System connection is a connection you can open a libp2p stream on and send data.\nA transient connection is not yet usable for application data since it may be negotiating \na security handshake or a multiplexer.\n\nConnections start in the transient scope and move over to the System and Peer scopes once they are ready to be used.\n\nIt would be unusual to see a lot of transient connections. It would also be unusal to see a peer with a lot of connections.",
+        "content": "# Libp2p Connections\n\nBroken down by [Resource Scope](https://github.com/libp2p/go-libp2p/blob/master/p2p/host/resource-manager/README.md#resource-scopes). \nScopes represent what is imposing limits on this resource. For connections, we have three main scopes:\n\n1. System. The total number of connections owned by the process. Includes both application usable connections + the number of transient connections.\n2. Transient. The total number of connections that are being upgraded into usable connections in the process.\n3. Peer. The total number of connections associated with this peer. When a connection has this scope it is usable by the application.\n\nAn example of a System connection is a connection you can open a libp2p stream on and send data.\nA transient connection is not yet usable for application data since it may be negotiating \na security handshake or a multiplexer.\n\nConnections start in the transient scope and move over to the System and Peer scopes once they are ready to be used.\n\nIt would be unusual to see a lot of transient connections. It would also be unusual to see a peer with a lot of connections.",
         "mode": "markdown"
       },
       "pluginVersion": "9.3.6",
@@ -1217,7 +1217,7 @@
           "refId": "A"
         }
       ],
-      "title": "Curent outbound connections per peer histogram. Across all instances",
+      "title": "Current outbound connections per peer histogram. Across all instances",
       "type": "bargauge"
     },
     {
