@@ -86,6 +86,10 @@ func (c *conn) Close() error {
 	return nil
 }
 
+func (c *conn) As(_ any) bool {
+	return false
+}
+
 func (c *conn) teardown() {
 	for _, s := range c.allStreams() {
 		s.Reset()

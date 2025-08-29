@@ -833,6 +833,10 @@ func wrapWithMetrics(capableConn transport.CapableConn, metricsTracer MetricsTra
 	return c
 }
 
+func (c *connWithMetrics) As(target any) bool {
+	return c.CapableConn.As(target)
+}
+
 func (c *connWithMetrics) completedHandshake() {
 	c.metricsTracer.CompletedHandshake(time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
 }
