@@ -6,9 +6,9 @@ import (
 	"errors"
 	"io"
 
-	pb "github.com/libp2p/go-libp2p/core/crypto/pb"
 	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/schemes"
+	pb "github.com/libp2p/go-libp2p/core/crypto/pb"
 	"github.com/libp2p/go-libp2p/core/internal/catch"
 )
 
@@ -23,6 +23,9 @@ type Dilithium5PublicKey struct {
 }
 
 // GenerateDilithium5Key generates a new Dilithium5 private and public key pair.
+// Note: The src io.Reader parameter is accepted for API compatibility but is currently
+// ignored because CIRCL's schemes.GenerateKey() takes no RNG parameter; crypto/rand is
+// used internally by CIRCL.
 func GenerateDilithium5Key(src io.Reader) (PrivKey, PubKey, error) {
 	scheme := schemes.ByName("Dilithium5")
 	if scheme == nil {

@@ -52,6 +52,15 @@ var (
 		Ed25519,
 		Secp256k1,
 		ECDSA,
+		// Post-Quantum Signature Schemes
+		Dilithium2,
+		Dilithium3,
+		Dilithium5,
+		MLDSA44,
+		MLDSA65,
+		MLDSA87,
+		Ed25519Dilithium2,
+		Ed448Dilithium3,
 	}
 )
 
@@ -68,12 +77,12 @@ var PubKeyUnmarshallers = map[pb.KeyType]PubKeyUnmarshaller{
 	pb.KeyType_Secp256k1: UnmarshalSecp256k1PublicKey,
 	pb.KeyType_ECDSA:     UnmarshalECDSAPublicKey,
 	// Post-Quantum Signature Schemes
-	pb.KeyType_Dilithium2:       UnmarshalDilithium2PublicKey,
-	pb.KeyType_Dilithium3:       UnmarshalDilithium3PublicKey,
-	pb.KeyType_Dilithium5:       UnmarshalDilithium5PublicKey,
-	pb.KeyType_MLDSA44:          UnmarshalMLDSA44PublicKey,
-	pb.KeyType_MLDSA65:          UnmarshalMLDSA65PublicKey,
-	pb.KeyType_MLDSA87:          UnmarshalMLDSA87PublicKey,
+	pb.KeyType_Dilithium2:        UnmarshalDilithium2PublicKey,
+	pb.KeyType_Dilithium3:        UnmarshalDilithium3PublicKey,
+	pb.KeyType_Dilithium5:        UnmarshalDilithium5PublicKey,
+	pb.KeyType_MLDSA44:           UnmarshalMLDSA44PublicKey,
+	pb.KeyType_MLDSA65:           UnmarshalMLDSA65PublicKey,
+	pb.KeyType_MLDSA87:           UnmarshalMLDSA87PublicKey,
 	pb.KeyType_Ed25519Dilithium2: UnmarshalEd25519Dilithium2PublicKey,
 	pb.KeyType_Ed448Dilithium3:   UnmarshalEd448Dilithium3PublicKey,
 }
@@ -85,12 +94,12 @@ var PrivKeyUnmarshallers = map[pb.KeyType]PrivKeyUnmarshaller{
 	pb.KeyType_Secp256k1: UnmarshalSecp256k1PrivateKey,
 	pb.KeyType_ECDSA:     UnmarshalECDSAPrivateKey,
 	// Post-Quantum Signature Schemes
-	pb.KeyType_Dilithium2:       UnmarshalDilithium2PrivateKey,
-	pb.KeyType_Dilithium3:       UnmarshalDilithium3PrivateKey,
-	pb.KeyType_Dilithium5:       UnmarshalDilithium5PrivateKey,
-	pb.KeyType_MLDSA44:          UnmarshalMLDSA44PrivateKey,
-	pb.KeyType_MLDSA65:          UnmarshalMLDSA65PrivateKey,
-	pb.KeyType_MLDSA87:          UnmarshalMLDSA87PrivateKey,
+	pb.KeyType_Dilithium2:        UnmarshalDilithium2PrivateKey,
+	pb.KeyType_Dilithium3:        UnmarshalDilithium3PrivateKey,
+	pb.KeyType_Dilithium5:        UnmarshalDilithium5PrivateKey,
+	pb.KeyType_MLDSA44:           UnmarshalMLDSA44PrivateKey,
+	pb.KeyType_MLDSA65:           UnmarshalMLDSA65PrivateKey,
+	pb.KeyType_MLDSA87:           UnmarshalMLDSA87PrivateKey,
 	pb.KeyType_Ed25519Dilithium2: UnmarshalEd25519Dilithium2PrivateKey,
 	pb.KeyType_Ed448Dilithium3:   UnmarshalEd448Dilithium3PrivateKey,
 }

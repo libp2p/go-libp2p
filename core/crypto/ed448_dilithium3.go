@@ -6,9 +6,9 @@ import (
 	"errors"
 	"io"
 
-	pb "github.com/libp2p/go-libp2p/core/crypto/pb"
 	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/schemes"
+	pb "github.com/libp2p/go-libp2p/core/crypto/pb"
 	"github.com/libp2p/go-libp2p/core/internal/catch"
 )
 
@@ -23,6 +23,9 @@ type Ed448Dilithium3PublicKey struct {
 }
 
 // GenerateEd448Dilithium3Key generates a new Ed448-Dilithium3 hybrid private and public key pair.
+// Note: The src io.Reader parameter is accepted for API compatibility but is currently
+// ignored because CIRCL's schemes.GenerateKey() takes no RNG parameter; crypto/rand is
+// used internally by CIRCL.
 func GenerateEd448Dilithium3Key(src io.Reader) (PrivKey, PubKey, error) {
 	scheme := schemes.ByName("Ed448-Dilithium3")
 	if scheme == nil {
