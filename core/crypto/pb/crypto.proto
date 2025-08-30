@@ -9,6 +9,15 @@ enum KeyType {
 	Ed25519 = 1;
 	Secp256k1 = 2;
 	ECDSA = 3;
+	// Post-Quantum Signature Schemes
+	Dilithium2 = 4;
+	Dilithium3 = 5;
+	Dilithium5 = 6;
+	MLDSA44 = 7;
+	MLDSA65 = 8;
+	MLDSA87 = 9;
+	Ed25519Dilithium2 = 10;
+	Ed448Dilithium3 = 11;
 }
 
 message PublicKey {

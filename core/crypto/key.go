@@ -24,6 +24,23 @@ const (
 	Secp256k1
 	// ECDSA is an enum for the supported ECDSA key type
 	ECDSA
+	// Post-Quantum Signature Schemes
+	// Dilithium2 is an enum for the supported Dilithium2 key type
+	Dilithium2
+	// Dilithium3 is an enum for the supported Dilithium3 key type
+	Dilithium3
+	// Dilithium5 is an enum for the supported Dilithium5 key type
+	Dilithium5
+	// MLDSA44 is an enum for the supported ML-DSA-44 key type
+	MLDSA44
+	// MLDSA65 is an enum for the supported ML-DSA-65 key type
+	MLDSA65
+	// MLDSA87 is an enum for the supported ML-DSA-87 key type
+	MLDSA87
+	// Ed25519Dilithium2 is an enum for the supported Ed25519-Dilithium2 hybrid key type
+	Ed25519Dilithium2
+	// Ed448Dilithium3 is an enum for the supported Ed448-Dilithium3 hybrid key type
+	Ed448Dilithium3
 )
 
 var (
@@ -50,6 +67,15 @@ var PubKeyUnmarshallers = map[pb.KeyType]PubKeyUnmarshaller{
 	pb.KeyType_Ed25519:   UnmarshalEd25519PublicKey,
 	pb.KeyType_Secp256k1: UnmarshalSecp256k1PublicKey,
 	pb.KeyType_ECDSA:     UnmarshalECDSAPublicKey,
+	// Post-Quantum Signature Schemes
+	pb.KeyType_Dilithium2:       UnmarshalDilithium2PublicKey,
+	pb.KeyType_Dilithium3:       UnmarshalDilithium3PublicKey,
+	pb.KeyType_Dilithium5:       UnmarshalDilithium5PublicKey,
+	pb.KeyType_MLDSA44:          UnmarshalMLDSA44PublicKey,
+	pb.KeyType_MLDSA65:          UnmarshalMLDSA65PublicKey,
+	pb.KeyType_MLDSA87:          UnmarshalMLDSA87PublicKey,
+	pb.KeyType_Ed25519Dilithium2: UnmarshalEd25519Dilithium2PublicKey,
+	pb.KeyType_Ed448Dilithium3:   UnmarshalEd448Dilithium3PublicKey,
 }
 
 // PrivKeyUnmarshallers is a map of unmarshallers by key type
@@ -58,6 +84,15 @@ var PrivKeyUnmarshallers = map[pb.KeyType]PrivKeyUnmarshaller{
 	pb.KeyType_Ed25519:   UnmarshalEd25519PrivateKey,
 	pb.KeyType_Secp256k1: UnmarshalSecp256k1PrivateKey,
 	pb.KeyType_ECDSA:     UnmarshalECDSAPrivateKey,
+	// Post-Quantum Signature Schemes
+	pb.KeyType_Dilithium2:       UnmarshalDilithium2PrivateKey,
+	pb.KeyType_Dilithium3:       UnmarshalDilithium3PrivateKey,
+	pb.KeyType_Dilithium5:       UnmarshalDilithium5PrivateKey,
+	pb.KeyType_MLDSA44:          UnmarshalMLDSA44PrivateKey,
+	pb.KeyType_MLDSA65:          UnmarshalMLDSA65PrivateKey,
+	pb.KeyType_MLDSA87:          UnmarshalMLDSA87PrivateKey,
+	pb.KeyType_Ed25519Dilithium2: UnmarshalEd25519Dilithium2PrivateKey,
+	pb.KeyType_Ed448Dilithium3:   UnmarshalEd448Dilithium3PrivateKey,
 }
 
 // Key represents a crypto key that can be compared to another key
@@ -113,6 +148,22 @@ func GenerateKeyPairWithReader(typ, bits int, src io.Reader) (PrivKey, PubKey, e
 		return GenerateSecp256k1Key(src)
 	case ECDSA:
 		return GenerateECDSAKeyPair(src)
+	case Dilithium2:
+		return GenerateDilithium2Key(src)
+	case Dilithium3:
+		return GenerateDilithium3Key(src)
+	case Dilithium5:
+		return GenerateDilithium5Key(src)
+	case MLDSA44:
+		return GenerateMLDSA44Key(src)
+	case MLDSA65:
+		return GenerateMLDSA65Key(src)
+	case MLDSA87:
+		return GenerateMLDSA87Key(src)
+	case Ed25519Dilithium2:
+		return GenerateEd25519Dilithium2Key(src)
+	case Ed448Dilithium3:
+		return GenerateEd448Dilithium3Key(src)
 	default:
 		return nil, nil, ErrBadKeyType
 	}

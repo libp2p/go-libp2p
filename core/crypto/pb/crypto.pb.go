@@ -28,21 +28,46 @@ const (
 	KeyType_Ed25519   KeyType = 1
 	KeyType_Secp256k1 KeyType = 2
 	KeyType_ECDSA     KeyType = 3
+	// Post-Quantum Signature Schemes
+	KeyType_Dilithium2        KeyType = 4
+	KeyType_Dilithium3        KeyType = 5
+	KeyType_Dilithium5        KeyType = 6
+	KeyType_MLDSA44           KeyType = 7
+	KeyType_MLDSA65           KeyType = 8
+	KeyType_MLDSA87           KeyType = 9
+	KeyType_Ed25519Dilithium2 KeyType = 10
+	KeyType_Ed448Dilithium3   KeyType = 11
 )
 
 // Enum value maps for KeyType.
 var (
 	KeyType_name = map[int32]string{
-		0: "RSA",
-		1: "Ed25519",
-		2: "Secp256k1",
-		3: "ECDSA",
+		0:  "RSA",
+		1:  "Ed25519",
+		2:  "Secp256k1",
+		3:  "ECDSA",
+		4:  "Dilithium2",
+		5:  "Dilithium3",
+		6:  "Dilithium5",
+		7:  "MLDSA44",
+		8:  "MLDSA65",
+		9:  "MLDSA87",
+		10: "Ed25519Dilithium2",
+		11: "Ed448Dilithium3",
 	}
 	KeyType_value = map[string]int32{
-		"RSA":       0,
-		"Ed25519":   1,
-		"Secp256k1": 2,
-		"ECDSA":     3,
+		"RSA":               0,
+		"Ed25519":           1,
+		"Secp256k1":         2,
+		"ECDSA":             3,
+		"Dilithium2":        4,
+		"Dilithium3":        5,
+		"Dilithium5":        6,
+		"MLDSA44":           7,
+		"MLDSA65":           8,
+		"MLDSA87":           9,
+		"Ed25519Dilithium2": 10,
+		"Ed448Dilithium3":   11,
 	}
 )
 
@@ -198,12 +223,24 @@ const file_core_crypto_pb_crypto_proto_rawDesc = "" +
 	"\n" +
 	"PrivateKey\x12&\n" +
 	"\x04Type\x18\x01 \x02(\x0e2\x12.crypto.pb.KeyTypeR\x04Type\x12\x12\n" +
-	"\x04Data\x18\x02 \x02(\fR\x04Data*9\n" +
+	"\x04Data\x18\x02 \x02(\fR\x04Data*\xbc\x01\n" +
 	"\aKeyType\x12\a\n" +
 	"\x03RSA\x10\x00\x12\v\n" +
 	"\aEd25519\x10\x01\x12\r\n" +
 	"\tSecp256k1\x10\x02\x12\t\n" +
-	"\x05ECDSA\x10\x03B,Z*github.com/libp2p/go-libp2p/core/crypto/pb"
+	"\x05ECDSA\x10\x03\x12\x0e\n" +
+	"\n" +
+	"Dilithium2\x10\x04\x12\x0e\n" +
+	"\n" +
+	"Dilithium3\x10\x05\x12\x0e\n" +
+	"\n" +
+	"Dilithium5\x10\x06\x12\v\n" +
+	"\aMLDSA44\x10\a\x12\v\n" +
+	"\aMLDSA65\x10\b\x12\v\n" +
+	"\aMLDSA87\x10\t\x12\x15\n" +
+	"\x11Ed25519Dilithium2\x10\n" +
+	"\x12\x13\n" +
+	"\x0fEd448Dilithium3\x10\vB,Z*github.com/libp2p/go-libp2p/core/crypto/pb"
 
 var (
 	file_core_crypto_pb_crypto_proto_rawDescOnce sync.Once
