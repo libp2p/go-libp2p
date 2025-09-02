@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
@@ -48,6 +49,8 @@ type mdnsService struct {
 	server     *zeroconf.Server
 
 	notifee Notifee
+
+	mu sync.Mutex
 }
 
 func NewMdnsService(host host.Host, serviceName string, notifee Notifee) *mdnsService {
@@ -69,10 +72,53 @@ func (s *mdnsService) Start() error {
 		return err
 	}
 	s.startResolver(s.ctx)
+
+	ipEvt, err := s.host.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
+	if err != nil {
+		if err = s.Close(); err != nil {
+			log.Errorf("failed to close mdns service: %s", err)
+		}
+		return err
+	}
+	go func() {
+		defer func() {
+			if err := ipEvt.Close(); err != nil {
+				log.Errorf("failed to close ipEvt: %s", err)
+			}
+		}()
+
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case evt := <-ipEvt.Out():
+				if _, ok := evt.(event.EvtLocalAddressesUpdated); ok {
+					s.mu.Lock()
+					s.ctxCancel()
+					if s.server != nil {
+						s.server.Shutdown()
+						s.server = nil
+					}
+					s.resolverWG.Wait()
+					s.ctx, s.ctxCancel = context.WithCancel(context.Background())
+					s.startResolver(s.ctx)
+					if err = s.startServer(); err != nil {
+						log.Errorf("failed to restart mdns server: %s", err)
+					}
+
+					s.mu.Unlock()
+				}
+			}
+		}
+	}()
+
 	return nil
 }
 
 func (s *mdnsService) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.ctxCancel()
 	if s.server != nil {
 		s.server.Shutdown()
@@ -143,6 +189,7 @@ func (s *mdnsService) startServer() error {
 		txts,
 		nil,
 	)
+
 	if err != nil {
 		return err
 	}
