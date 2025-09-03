@@ -6,9 +6,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/canonicallog"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/canonicallog"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
