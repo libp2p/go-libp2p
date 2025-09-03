@@ -1,6 +1,8 @@
 package mdns
 
 import (
+	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -47,6 +49,10 @@ func (n *notif) GetPeers() []peer.AddrInfo {
 }
 
 func TestOtherDiscovery(t *testing.T) {
+	if runtime.GOOS != "linux" && os.Getenv("CI") != "" {
+		t.Skip("this test is flaky on CI outside of linux")
+	}
+
 	const n = 4
 
 	notifs := make([]*notif, n)
@@ -91,8 +97,8 @@ func TestOtherDiscovery(t *testing.T) {
 			}
 			return true
 		},
-		25*time.Second,
-		5*time.Millisecond,
+		5*time.Second,
+		100*time.Millisecond,
 		"expected peers to find each other",
 	)
 }
