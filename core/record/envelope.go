@@ -2,6 +2,7 @@ package record
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -12,7 +13,6 @@ import (
 
 	pool "github.com/libp2p/go-buffer-pool"
 
-	"github.com/multiformats/go-varint"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -278,7 +278,7 @@ func makeUnsigned(domain string, payloadType []byte, payload []byte) ([]byte, er
 
 	for i, f := range fields {
 		l := len(f)
-		flen[i] = varint.ToUvarint(uint64(l))
+		flen[i] = binary.AppendUvarint(nil, uint64(l))
 		size += l + len(flen[i])
 	}
 
