@@ -21,7 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/sec"
-	"github.com/libp2p/go-libp2p/core/sec/insecure"
+	"github.com/libp2p/go-libp2p/p2p/security/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
 	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
