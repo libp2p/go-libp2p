@@ -1,6 +1,6 @@
 // Package insecure provides an insecure, unencrypted implementation of the SecureConn and SecureTransport interfaces.
 //
-// Recommended only for testing and other non-production usage.
+// Not Recommended
 package insecure
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
-	"github.com/libp2p/go-libp2p/core/sec/insecure/pb"
+	"github.com/libp2p/go-libp2p/p2p/security/insecure/pb"
 
 	"github.com/libp2p/go-msgio"
 

@@ -9,7 +9,7 @@ import (
 	_ "github.com/libp2p/go-libp2p/core/crypto/pb"
 	_ "github.com/libp2p/go-libp2p/core/peer/pb"
 	_ "github.com/libp2p/go-libp2p/core/record/pb"
-	_ "github.com/libp2p/go-libp2p/core/sec/insecure/pb"
+	_ "github.com/libp2p/go-libp2p/p2p/security/insecure/pb"
 	_ "github.com/libp2p/go-libp2p/p2p/host/autonat/pb"
 	_ "github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoreds/pb"
 	_ "github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
