@@ -9,7 +9,7 @@ retract v0.36.0 // Accidentally modified the tag.
 require (
 	github.com/benbjohnson/clock v1.3.5
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/flynn/noise v1.1.0
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.5.3
@@ -23,7 +23,7 @@ require (
 	github.com/klauspost/compress v1.18.0
 	github.com/koron/go-ssdp v0.0.6
 	github.com/libp2p/go-buffer-pool v0.1.0
-	github.com/libp2p/go-flow-metrics v0.2.0
+	github.com/libp2p/go-flow-metrics v0.2.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.4.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0
@@ -34,13 +34,13 @@ require (
 	github.com/marcopolo/simnet v0.0.1
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b
-	github.com/mr-tron/base58 v1.2.0
+	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0
 	github.com/multiformats/go-multiaddr v0.16.0
 	github.com/multiformats/go-multiaddr-dns v0.4.1
 	github.com/multiformats/go-multiaddr-fmt v0.1.0
 	github.com/multiformats/go-multibase v0.2.0
-	github.com/multiformats/go-multicodec v0.9.1
+	github.com/multiformats/go-multicodec v0.9.1 // indirect
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.1
 	github.com/multiformats/go-varint v0.0.7
@@ -66,6 +66,8 @@ require (
 	golang.org/x/tools v0.34.0
 	google.golang.org/protobuf v1.36.6
 )
+
+require github.com/libp2p/go-libp2p/core v0.0.0-00010101000000-000000000000
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -108,3 +110,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
+
+replace github.com/libp2p/go-libp2p/core => ./core
