@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v5.29.2
-// source: core/sec/insecure/pb/plaintext.proto
+// source: p2p/security/insecure/pb/plaintext.proto
 
 package pb
 
@@ -32,7 +32,7 @@ type Exchange struct {
 
 func (x *Exchange) Reset() {
 	*x = Exchange{}
-	mi := &file_core_sec_insecure_pb_plaintext_proto_msgTypes[0]
+	mi := &file_p2p_security_insecure_pb_plaintext_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +44,7 @@ func (x *Exchange) String() string {
 func (*Exchange) ProtoMessage() {}
 
 func (x *Exchange) ProtoReflect() protoreflect.Message {
-	mi := &file_core_sec_insecure_pb_plaintext_proto_msgTypes[0]
+	mi := &file_p2p_security_insecure_pb_plaintext_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57,7 +57,7 @@ func (x *Exchange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Exchange.ProtoReflect.Descriptor instead.
 func (*Exchange) Descriptor() ([]byte, []int) {
-	return file_core_sec_insecure_pb_plaintext_proto_rawDescGZIP(), []int{0}
+	return file_p2p_security_insecure_pb_plaintext_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Exchange) GetId() []byte {
@@ -74,33 +74,33 @@ func (x *Exchange) GetPubkey() *pb.PublicKey {
 	return nil
 }
 
-var File_core_sec_insecure_pb_plaintext_proto protoreflect.FileDescriptor
+var File_p2p_security_insecure_pb_plaintext_proto protoreflect.FileDescriptor
 
-const file_core_sec_insecure_pb_plaintext_proto_rawDesc = "" +
+const file_p2p_security_insecure_pb_plaintext_proto_rawDesc = "" +
 	"\n" +
-	"$core/sec/insecure/pb/plaintext.proto\x12\fplaintext.pb\x1a\x1bcore/crypto/pb/crypto.proto\"H\n" +
+	"(p2p/security/insecure/pb/plaintext.proto\x12\fplaintext.pb\x1a\x1bcore/crypto/pb/crypto.proto\"H\n" +
 	"\bExchange\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12,\n" +
-	"\x06pubkey\x18\x02 \x01(\v2\x14.crypto.pb.PublicKeyR\x06pubkeyB2Z0github.com/libp2p/go-libp2p/core/sec/insecure/pb"
+	"\x06pubkey\x18\x02 \x01(\v2\x14.crypto.pb.PublicKeyR\x06pubkeyB6Z4github.com/libp2p/go-libp2p/p2p/security/insecure/pb"
 
 var (
-	file_core_sec_insecure_pb_plaintext_proto_rawDescOnce sync.Once
-	file_core_sec_insecure_pb_plaintext_proto_rawDescData []byte
+	file_p2p_security_insecure_pb_plaintext_proto_rawDescOnce sync.Once
+	file_p2p_security_insecure_pb_plaintext_proto_rawDescData []byte
 )
 
-func file_core_sec_insecure_pb_plaintext_proto_rawDescGZIP() []byte {
-	file_core_sec_insecure_pb_plaintext_proto_rawDescOnce.Do(func() {
-		file_core_sec_insecure_pb_plaintext_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_core_sec_insecure_pb_plaintext_proto_rawDesc), len(file_core_sec_insecure_pb_plaintext_proto_rawDesc)))
+func file_p2p_security_insecure_pb_plaintext_proto_rawDescGZIP() []byte {
+	file_p2p_security_insecure_pb_plaintext_proto_rawDescOnce.Do(func() {
+		file_p2p_security_insecure_pb_plaintext_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_p2p_security_insecure_pb_plaintext_proto_rawDesc), len(file_p2p_security_insecure_pb_plaintext_proto_rawDesc)))
 	})
-	return file_core_sec_insecure_pb_plaintext_proto_rawDescData
+	return file_p2p_security_insecure_pb_plaintext_proto_rawDescData
 }
 
-var file_core_sec_insecure_pb_plaintext_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_core_sec_insecure_pb_plaintext_proto_goTypes = []any{
+var file_p2p_security_insecure_pb_plaintext_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_p2p_security_insecure_pb_plaintext_proto_goTypes = []any{
 	(*Exchange)(nil),     // 0: plaintext.pb.Exchange
 	(*pb.PublicKey)(nil), // 1: crypto.pb.PublicKey
 }
-var file_core_sec_insecure_pb_plaintext_proto_depIdxs = []int32{
+var file_p2p_security_insecure_pb_plaintext_proto_depIdxs = []int32{
 	1, // 0: plaintext.pb.Exchange.pubkey:type_name -> crypto.pb.PublicKey
 	1, // [1:1] is the sub-list for method output_type
 	1, // [1:1] is the sub-list for method input_type
@@ -109,26 +109,26 @@ var file_core_sec_insecure_pb_plaintext_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_core_sec_insecure_pb_plaintext_proto_init() }
-func file_core_sec_insecure_pb_plaintext_proto_init() {
-	if File_core_sec_insecure_pb_plaintext_proto != nil {
+func init() { file_p2p_security_insecure_pb_plaintext_proto_init() }
+func file_p2p_security_insecure_pb_plaintext_proto_init() {
+	if File_p2p_security_insecure_pb_plaintext_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_core_sec_insecure_pb_plaintext_proto_rawDesc), len(file_core_sec_insecure_pb_plaintext_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_p2p_security_insecure_pb_plaintext_proto_rawDesc), len(file_p2p_security_insecure_pb_plaintext_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_core_sec_insecure_pb_plaintext_proto_goTypes,
-		DependencyIndexes: file_core_sec_insecure_pb_plaintext_proto_depIdxs,
-		MessageInfos:      file_core_sec_insecure_pb_plaintext_proto_msgTypes,
+		GoTypes:           file_p2p_security_insecure_pb_plaintext_proto_goTypes,
+		DependencyIndexes: file_p2p_security_insecure_pb_plaintext_proto_depIdxs,
+		MessageInfos:      file_p2p_security_insecure_pb_plaintext_proto_msgTypes,
 	}.Build()
-	File_core_sec_insecure_pb_plaintext_proto = out.File
-	file_core_sec_insecure_pb_plaintext_proto_goTypes = nil
-	file_core_sec_insecure_pb_plaintext_proto_depIdxs = nil
+	File_p2p_security_insecure_pb_plaintext_proto = out.File
+	file_p2p_security_insecure_pb_plaintext_proto_goTypes = nil
+	file_p2p_security_insecure_pb_plaintext_proto_depIdxs = nil
 }
