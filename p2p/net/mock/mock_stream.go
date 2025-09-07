@@ -69,6 +69,14 @@ func newStream(w *io.PipeWriter, r *io.PipeReader, dir network.Direction) *strea
 	return s
 }
 
+func (s *stream) LocalAddr() net.Addr {
+	return s.rstream.Conn().LocalPeer()
+}
+
+func (s *stream) RemoteAddr() net.Addr {
+	return s.rstream.Conn().RemotePeer()
+}
+
 // How to handle errors with writes?
 func (s *stream) Write(p []byte) (n int, err error) {
 	l := s.conn.link

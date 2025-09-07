@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -182,4 +183,12 @@ func (s *Stream) Stat() network.Stats {
 
 func (s *Stream) Scope() network.StreamScope {
 	return s.scope
+}
+
+func (s *Stream) LocalAddr() net.Addr {
+	return s.Conn().LocalPeer()
+}
+
+func (s *Stream) RemoteAddr() net.Addr {
+	return s.Conn().RemotePeer()
 }

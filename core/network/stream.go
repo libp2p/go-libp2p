@@ -1,6 +1,8 @@
 package network
 
 import (
+	"net"
+
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
@@ -11,6 +13,7 @@ import (
 // Streams are backed by a multiplexer underneath the hood.
 type Stream interface {
 	MuxedStream
+	net.Conn
 
 	// ID returns an identifier that uniquely identifies this Stream within this
 	// host, during this run. Stream IDs may repeat across restarts.

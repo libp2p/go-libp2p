@@ -48,6 +48,11 @@ func (id ID) Loggable() map[string]interface{} {
 	}
 }
 
+// Network returns the static string "libp2p" in order to implement the net.Addr interface
+func (id ID) Network() string {
+	return "libp2p"
+}
+
 func (id ID) String() string {
 	return b58.Encode([]byte(id))
 }
