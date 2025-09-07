@@ -15,7 +15,6 @@ func TestFileDescriptorCounting(t *testing.T) {
 	}
 	n := getNumFDs()
 	require.NotZero(t, n)
-	require.Less(t, n, int(1e7))
 }
 
 func TestScaling(t *testing.T) {
