@@ -5,10 +5,10 @@ import (
 	"io"
 	"testing"
 
+	"git.sr.ht/~marcopolo/di"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/di"
 )
 
 func TestNilOption(t *testing.T) {

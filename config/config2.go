@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/rand"
+	"fmt"
 	"net"
 	"slices"
 	"time"
@@ -16,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/di"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
@@ -40,6 +40,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
+
+	"git.sr.ht/~marcopolo/di"
 )
 
 type ListenAddrs []ma.Multiaddr
@@ -106,7 +108,7 @@ type AutoNatPeerStore peerstore.Peerstore
 type AutoNATHost host.Host
 type AutoNatConfig struct {
 	PrivateKey func() (AutoNatPrivKey, error)
-	PeerStore  di.Provide[AutoNatPeerStore]
+	Peerstore  di.Provide[AutoNatPeerStore]
 
 	AutoNATV2Host di.Provide[AutoNATHost]
 }
@@ -331,7 +333,9 @@ var DefaultConfig = Config2{
 			)
 		}),
 	},
-	DialConfig: DialConfig{},
+	DialConfig: DialConfig{
+		DialTimeout: di.MustProvide[time.Duration](10 * time.Second),
+	},
 	MetricsConfig: MetricsConfig{
 		PrometheusRegisterer: prometheus.DefaultRegisterer,
 	},
@@ -341,7 +345,7 @@ var DefaultConfig = Config2{
 			priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 			return AutoNatPrivKey(priv), err
 		},
-		PeerStore: di.MustProvide[AutoNatPeerStore](
+		Peerstore: di.MustProvide[AutoNatPeerStore](
 			func() (AutoNatPeerStore, error) {
 				ps, err := pstoremem.NewPeerstore()
 				return AutoNatPeerStore(ps), err
@@ -349,14 +353,59 @@ var DefaultConfig = Config2{
 		),
 
 		AutoNATV2Host: di.MustProvide[AutoNATHost](
-			func(k AutoNatPrivKey, ps AutoNatPeerStore, swarmCfg SwarmConfig, tptConfig TransportsConfig) (AutoNATHost, error) {
-				panic("todo")
+			func(
+				config Config2,
+				k AutoNatPrivKey,
+				ps AutoNatPeerStore,
+				l *Lifecycle,
+			) (AutoNATHost, error) {
+				// Use the same settings as the normal host, but we override some
+				autonatCfg := config
+				autonatCfg.ListenAddrs = nil
+				autonatCfg.Peerstore = func() (peerstore.Peerstore, error) {
+					return ps, nil
+				}
+				autonatCfg.PrivateKey = func() (crypto.PrivKey, error) {
+					return k, nil
+				}
+				autonatCfg.Lifecycle = func() *Lifecycle {
+					// Use the same lifecycle as our parent config
+					return l
+				}
+				// TODO: add ability to get swarm read only state
+				autonatCfg.Host = di.MustProvide[host.Host](func(
+					l *Lifecycle,
+					swarm *swarm.Swarm,
+				) host.Host {
+					mux := mstream.NewMultistreamMuxer[protocol.ID]()
+					h := &blankhost.BlankHost{
+						N:       swarm,
+						M:       mux,
+						ConnMgr: connmgr.NullConnMgr{},
+						E:       nil,
+						// Don't need this for autonat
+						SkipInitSignedRecord: true,
+					}
+					l.OnStart(func() error {
+						fmt.Println("Starting autonat host")
+						return h.Start()
+					})
+					l.OnClose(h)
+					return h
+				})
+				type Result struct {
+					Host host.Host
+					_    []di.SideEffect
+				}
+
+				res, err := di.New[Result](autonatCfg)
+				return res.Host, err
 			},
 		),
 	},
 
 	SideEffects: []di.Provide[di.SideEffect]{
-		di.MustSideEffect(func(s *swarm.Swarm, tpts []transport.Transport) (di.SideEffect, error) {
+		di.MustProvide[di.SideEffect](func(s *swarm.Swarm, tpts []transport.Transport) (di.SideEffect, error) {
 			for _, t := range tpts {
 				err := s.AddTransport(t)
 				if err != nil {
@@ -371,8 +420,10 @@ var DefaultConfig = Config2{
 		l *Lifecycle,
 		network *swarm.Swarm,
 		connmgr connmgr.ConnManager,
+		autonatHost AutoNATHost,
 		b event.Bus,
 	) (host.Host, error) {
+		_ = autonatHost
 		mux := mstream.NewMultistreamMuxer[protocol.ID]()
 		h := &blankhost.BlankHost{
 			N:       network,

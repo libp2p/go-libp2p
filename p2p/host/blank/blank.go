@@ -170,7 +170,11 @@ func (bh *BlankHost) Addrs() []ma.Multiaddr {
 }
 
 func (bh *BlankHost) Close() error {
-	return bh.N.Close()
+	var err error
+	if bh.onStop != nil {
+		err = bh.Stop()
+	}
+	return errors.Join(err, bh.N.Close())
 }
 
 func (bh *BlankHost) Connect(ctx context.Context, ai peer.AddrInfo) error {

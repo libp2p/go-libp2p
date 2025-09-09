@@ -1,6 +1,6 @@
 module github.com/libp2p/go-libp2p
 
-go 1.23.8
+go 1.24.0
 
 retract v0.26.1 // Tag was applied incorrectly due to a bug in the release workflow.
 
@@ -69,6 +69,7 @@ require (
 )
 
 require (
+	git.sr.ht/~marcopolo/di v0.0.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
