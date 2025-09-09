@@ -101,6 +101,16 @@ type QUICConfig struct {
 	TokenKey          func(crypto.PrivKey) (quic.TokenGeneratorKey, error)
 }
 
+type AutoNatPrivKey crypto.PrivKey
+type AutoNatPeerStore peerstore.Peerstore
+type AutoNATHost host.Host
+type AutoNatConfig struct {
+	PrivateKey func() (AutoNatPrivKey, error)
+	PeerStore  di.Provide[AutoNatPeerStore]
+
+	AutoNATV2Host di.Provide[AutoNATHost]
+}
+
 type Config2 struct {
 	Lifecycle func() *Lifecycle
 
@@ -124,6 +134,8 @@ type Config2 struct {
 	UpgraderConfig
 	DialConfig
 	MetricsConfig
+
+	AutoNatConfig
 
 	SideEffects []di.Provide[di.SideEffect]
 
@@ -322,6 +334,25 @@ var DefaultConfig = Config2{
 	DialConfig: DialConfig{},
 	MetricsConfig: MetricsConfig{
 		PrometheusRegisterer: prometheus.DefaultRegisterer,
+	},
+
+	AutoNatConfig: AutoNatConfig{
+		PrivateKey: func() (AutoNatPrivKey, error) {
+			priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
+			return AutoNatPrivKey(priv), err
+		},
+		PeerStore: di.MustProvide[AutoNatPeerStore](
+			func() (AutoNatPeerStore, error) {
+				ps, err := pstoremem.NewPeerstore()
+				return AutoNatPeerStore(ps), err
+			},
+		),
+
+		AutoNATV2Host: di.MustProvide[AutoNATHost](
+			func(k AutoNatPrivKey, ps AutoNatPeerStore, swarmCfg SwarmConfig, tptConfig TransportsConfig) (AutoNATHost, error) {
+				panic("todo")
+			},
+		),
 	},
 
 	SideEffects: []di.Provide[di.SideEffect]{
