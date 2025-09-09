@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"os"
 
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
@@ -114,6 +115,19 @@ func selfSignedTLSConfig(t *testing.T) *tls.Config {
 		Certificates: []tls.Certificate{cert},
 	}
 	return tlsConfig
+}
+
+func isWebRTCIPv6Supported() bool {
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		return false
+	}
+	
+	conn, err := net.Dial("tcp6", "[::1]:0")
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 var transportsToTest = []TransportTestCase{
@@ -577,6 +591,9 @@ var transportsToTest = []TransportTestCase{
 	{
 		Name: "WebRTC (IPv6)",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			if !isWebRTCIPv6Supported() {
+				t.Skip("WebRTC IPv6 not supported in this environment")
+			}
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
 			if opts.NoListen {
