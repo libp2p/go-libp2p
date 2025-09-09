@@ -130,6 +130,78 @@ func isWebRTCIPv6Supported() bool {
 	return true
 }
 
+func isIPv6WebRTCSupported(t *testing.T) bool {
+	t.Helper()
+	
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		t.Log("Running in CI environment - performing IPv6 connectivity checks")
+		
+		addrs, err := net.LookupHost("localhost")
+		if err != nil {
+			t.Logf("Cannot resolve localhost: %v", err)
+			return false
+		}
+		
+		hasIPv6Localhost := false
+		for _, addr := range addrs {
+			if strings.Contains(addr, "::1") {
+				hasIPv6Localhost = true
+				break
+			}
+		}
+		
+		if !hasIPv6Localhost {
+			t.Log("IPv6 localhost (::1) not found in localhost resolution")
+			return false
+		}
+		
+		conn, err := net.ListenPacket("udp6", "[::1]:0")
+		if err != nil {
+			t.Logf("Cannot create IPv6 UDP socket: %v", err)
+			return false
+		}
+		conn.Close()
+		
+		listener, err := net.Listen("tcp6", "[::1]:0")
+		if err != nil {
+			t.Logf("Cannot bind to IPv6 localhost TCP: %v", err)
+			return false
+		}
+		listener.Close()
+		
+		done := make(chan bool, 1)
+		go func() {
+			defer func() { done <- true }()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			
+			dialer := &net.Dialer{}
+			conn, err := dialer.DialContext(ctx, "tcp6", "[::1]:22") // SSH port, commonly open
+			if err == nil {
+				conn.Close()
+			}
+		}()
+		
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Log("IPv6 connectivity test timed out - network stack may be incomplete")
+			return false
+		}
+		
+		t.Log("IPv6 connectivity checks passed")
+		return true
+	}
+	
+	conn, err := net.ListenPacket("udp6", "[::1]:0")
+	if err != nil {
+		t.Logf("IPv6 UDP not available: %v", err)
+		return false
+	}
+	conn.Close()
+	return true
+}
+
 var transportsToTest = []TransportTestCase{
 	{
 		Name: "TCP / Noise / Yamux",
@@ -591,8 +663,8 @@ var transportsToTest = []TransportTestCase{
 	{
 		Name: "WebRTC (IPv6)",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
-			if !isWebRTCIPv6Supported() {
-				t.Skip("WebRTC IPv6 not supported in this environment")
+			if !isIPv6WebRTCSupported(t) {
+				t.Skip("WebRTC over IPv6 not supported in this environment - skipping to avoid false failures")
 			}
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
