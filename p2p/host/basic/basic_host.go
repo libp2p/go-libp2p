@@ -237,8 +237,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		autonatv2Client,
 		opts.EnableMetrics,
 		opts.PrometheusRegisterer,
-		opts.DisableSignedPeerRecord,
-		h.Peerstore().PrivKey(h.ID()),
 		h.Peerstore(),
 		h.ID(),
 	)

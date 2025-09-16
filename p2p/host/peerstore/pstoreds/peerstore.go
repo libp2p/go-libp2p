@@ -8,11 +8,13 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/record"
 	pstore "github.com/libp2p/go-libp2p/p2p/host/peerstore"
 
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	"github.com/multiformats/go-base32"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // Configuration object for the peerstore.
@@ -175,6 +177,33 @@ func (ps *pstoreds) PeerInfo(p peer.ID) peer.AddrInfo {
 		ID:    p,
 		Addrs: ps.dsAddrBook.Addrs(p),
 	}
+}
+
+func (ps *pstoreds) UpdateHostAddrs(hostID peer.ID, currentAddrs, removedAddrs, peerRecordAddrs []ma.Multiaddr) error {
+	// update host addresses in the peer store
+	ps.dsAddrBook.SetAddrs(hostID, currentAddrs, peerstore.PermanentAddrTTL)
+	ps.dsAddrBook.SetAddrs(hostID, removedAddrs, 0)
+
+	signKey := ps.dsKeyBook.PrivKey(hostID)
+	if signKey == nil {
+		log.Debug("no sign key found for host", "host", hostID)
+		// don't return an error here. It's fine to not have a signed peer record.
+		return nil
+	}
+
+	pr := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
+		ID:    hostID,
+		Addrs: peerRecordAddrs,
+	})
+	rec, err := record.Seal(pr, signKey)
+	if err != nil {
+		return fmt.Errorf("error sealing peer record: %s", err)
+	}
+	_, err = ps.dsAddrBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL)
+	if err != nil {
+		return fmt.Errorf("error consuming peer record: %s", err)
+	}
+	return nil
 }
 
 // RemovePeer removes entries associated with a peer from:

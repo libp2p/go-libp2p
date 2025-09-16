@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -31,11 +30,6 @@ const maxObservedAddrsPerListenAddr = 3
 var addrChangeTickrInterval = 5 * time.Second
 
 const maxPeerRecordSize = 8 * 1024 // 8k to be compatible with identify's limit
-
-// addrStore is a minimal interface for storing peer addresses
-type addrStore interface {
-	SetAddrs(peer.ID, []ma.Multiaddr, time.Duration)
-}
 
 // ObservedAddrsManager maps our local listen addrs to externally observed addrs.
 type ObservedAddrsManager interface {
@@ -74,10 +68,8 @@ type addrsManager struct {
 	addrsMx      sync.RWMutex
 	currentAddrs hostAddrs
 
-	signKey           crypto.PrivKey
-	addrStore         addrStore
-	signedRecordStore peerstore.CertifiedAddrBook
-	hostID            peer.ID
+	peerstore peerstore.Peerstore
+	hostID    peer.ID
 
 	wg        sync.WaitGroup
 	ctx       context.Context
@@ -94,9 +86,7 @@ func newAddrsManager(
 	client autonatv2Client,
 	enableMetrics bool,
 	registerer prometheus.Registerer,
-	disableSignedPeerRecord bool,
-	signKey crypto.PrivKey,
-	addrStore addrStore,
+	pstore peerstore.Peerstore,
 	hostID peer.ID,
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -110,22 +100,13 @@ func newAddrsManager(
 		triggerAddrsUpdateChan:    make(chan chan struct{}, 1),
 		triggerReachabilityUpdate: make(chan struct{}, 1),
 		interfaceAddrs:            &interfaceAddrsCache{},
-		signKey:                   signKey,
-		addrStore:                 addrStore,
+		peerstore:                 pstore,
 		hostID:                    hostID,
 		ctx:                       ctx,
 		ctxCancel:                 cancel,
 	}
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
-
-	if !disableSignedPeerRecord {
-		var ok bool
-		as.signedRecordStore, ok = as.addrStore.(peerstore.CertifiedAddrBook)
-		if !ok {
-			return nil, errors.New("peerstore doesn't implement CertifiedAddrBook interface")
-		}
-	}
 
 	if client != nil {
 		var metricsTracker MetricsTracker
@@ -347,26 +328,10 @@ func (a *addrsManager) updateAddrs(prevHostAddrs hostAddrs, relayAddrs []ma.Mult
 
 // updatePeerStore updates the peer store for the host
 func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs []ma.Multiaddr) {
-	// update host addresses in the peer store
-	a.addrStore.SetAddrs(a.hostID, currentAddrs, peerstore.PermanentAddrTTL)
-	a.addrStore.SetAddrs(a.hostID, removedAddrs, 0)
-
-	var sr *record.Envelope
-	// Our addresses have changed.
-	// store the signed peer record in the peer store.
-	if a.signedRecordStore != nil {
-		var err error
-		// add signed peer record to the event
-		// in case of an error drop this event.
-		sr, err = a.makeSignedPeerRecord(currentAddrs)
-		if err != nil {
-			log.Error("error creating a signed peer record from the set of current addresses", "err", err)
-			return
-		}
-		if _, err := a.signedRecordStore.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
-			log.Error("failed to persist signed peer record in peer store", "err", err)
-			return
-		}
+	peerRecordAddrs := trimHostAddrList(currentAddrs, maxPeerRecordSize-1024) // 1024 B of buffer for things other than addrs in peerstore
+	err := a.peerstore.UpdateHostAddrs(a.hostID, currentAddrs, removedAddrs, peerRecordAddrs)
+	if err != nil {
+		log.Error("error updating peer store", "err", err)
 	}
 }
 
@@ -378,7 +343,7 @@ func (a *addrsManager) notifyAddrsUpdated(emitter event.Emitter, localAddrsEmitt
 		}
 	}
 	if areAddrsDifferent(previous.addrs, current.addrs) {
-		log.Debug("host addresses updated", "addrs", current.localAddrs)
+		log.Debug("host addresses updated", "addrs", current.addrs)
 		a.emitLocalAddrsUpdated(localAddrsEmitter, current.addrs, previous.addrs)
 	}
 
@@ -562,30 +527,6 @@ func (a *addrsManager) appendObservedAddrs(dst []ma.Multiaddr, listenAddrs, ifac
 	return dst
 }
 
-// makeSignedPeerRecord creates a signed peer record for the given addresses
-func (a *addrsManager) makeSignedPeerRecord(addrs []ma.Multiaddr) (*record.Envelope, error) {
-	if a.signKey == nil {
-		return nil, errors.New("signKey is nil")
-	}
-	// Limit the length of currentAddrs to ensure that our signed peer records aren't rejected
-	peerRecordSize := 64 // HostID
-	k, err := a.signKey.Raw()
-	var nk int
-	if err == nil {
-		nk = len(k)
-	} else {
-		nk = 1024 // In case of error, use a large enough value.
-	}
-	peerRecordSize += 2 * nk // 1 for signature, 1 for public key
-	// we want the final address list to be small for keeping the signed peer record in size
-	addrs = trimHostAddrList(addrs, maxPeerRecordSize-peerRecordSize-256) // 256 B of buffer
-	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
-		ID:    a.hostID,
-		Addrs: addrs,
-	})
-	return record.Seal(rec, a.signKey)
-}
-
 // emitLocalAddrsUpdated emits an EvtLocalAddressesUpdated event and updates the addresses in the peerstore.
 func (a *addrsManager) emitLocalAddrsUpdated(emitter event.Emitter, currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
 	added, maintained, removed := diffAddrs(lastAddrs, currentAddrs)
@@ -594,8 +535,11 @@ func (a *addrsManager) emitLocalAddrsUpdated(emitter event.Emitter, currentAddrs
 	}
 
 	var sr *record.Envelope
-	if a.signedRecordStore != nil {
-		sr = a.signedRecordStore.GetPeerRecord(a.hostID)
+	if a.peerstore != nil {
+		ca, ok := a.peerstore.(peerstore.CertifiedAddrBook)
+		if ok {
+			sr = ca.GetPeerRecord(a.hostID)
+		}
 	}
 
 	evt := &event.EvtLocalAddressesUpdated{

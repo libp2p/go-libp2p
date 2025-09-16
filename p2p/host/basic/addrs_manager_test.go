@@ -57,11 +57,10 @@ func (m *mockObservedAddrs) AddrsFor(local ma.Multiaddr) []ma.Multiaddr { return
 
 var _ ObservedAddrsManager = &mockObservedAddrs{}
 
-type addrStoreArgs struct {
-	AddrStore               addrStore
-	SignKey                 crypto.PrivKey
-	HostID                  peer.ID
-	DisableSignedPeerRecord bool
+type peerstoreArgs struct {
+	Peerstore peerstore.Peerstore
+	HostID    peer.ID
+	SignKey   crypto.PrivKey
 }
 
 type addrsManagerArgs struct {
@@ -72,7 +71,7 @@ type addrsManagerArgs struct {
 	AddCertHashes        func([]ma.Multiaddr) []ma.Multiaddr
 	AutoNATClient        autonatv2Client
 	Bus                  event.Bus
-	AddrStoreArgs        addrStoreArgs
+	PeerstoreArgs        peerstoreArgs
 }
 
 type addrsManagerTestCase struct {
@@ -96,14 +95,14 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 	if args.AddCertHashes != nil {
 		addCertHashes = args.AddCertHashes
 	}
-	signKey := args.AddrStoreArgs.SignKey
-	addrStore := args.AddrStoreArgs.AddrStore
-	pid := args.AddrStoreArgs.HostID
-	if args.AddrStoreArgs == (addrStoreArgs{}) {
+	peerstore := args.PeerstoreArgs.Peerstore
+	pid := args.PeerstoreArgs.HostID
+	signKey := args.PeerstoreArgs.SignKey
+	if peerstore == nil {
 		var err error
 		signKey, _, err = crypto.GenerateEd25519Key(rand.Reader)
 		require.NoError(tb, err)
-		addrStore, err = pstoremem.NewPeerstore()
+		peerstore, err = pstoremem.NewPeerstore()
 		require.NoError(tb, err)
 		pid, err = peer.IDFromPrivateKey(signKey)
 		require.NoError(tb, err)
@@ -118,9 +117,7 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		args.AutoNATClient,
 		true,
 		prometheus.DefaultRegisterer,
-		false,
-		signKey,
-		addrStore,
+		peerstore,
 		pid,
 	)
 	require.NoError(tb, err)
@@ -456,6 +453,7 @@ func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 	require.NoError(t, err)
 	pid, err := peer.IDFromPrivateKey(signKey)
 	require.NoError(t, err)
+	require.NoError(t, pstore.AddPrivKey(pid, signKey))
 
 	var update atomic.Bool
 	am := newAddrsManagerTestCase(t, addrsManagerArgs{
@@ -466,8 +464,8 @@ func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 			}
 			return []ma.Multiaddr{quic2}
 		},
-		AddrStoreArgs: addrStoreArgs{
-			AddrStore: pstore,
+		PeerstoreArgs: peerstoreArgs{
+			Peerstore: pstore,
 			HostID:    pid,
 			SignKey:   signKey,
 		},
@@ -475,6 +473,7 @@ func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 	defer am.Close()
 	matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic1}, pstore.Addrs(pid))
 	ev := cab.GetPeerRecord(pid)
+	require.NotNil(t, ev)
 	pr := peerRecordFromEnvelope(t, ev)
 	require.Equal(t, pr.Addrs, []ma.Multiaddr{quic1})
 	update.Store(true)

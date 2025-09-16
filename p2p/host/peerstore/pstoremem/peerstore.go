@@ -6,7 +6,9 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/record"
 	pstore "github.com/libp2p/go-libp2p/p2p/host/peerstore"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type pstoremem struct {
@@ -96,6 +98,33 @@ func (ps *pstoremem) PeerInfo(p peer.ID) peer.AddrInfo {
 		ID:    p,
 		Addrs: ps.memoryAddrBook.Addrs(p),
 	}
+}
+
+func (ps *pstoremem) UpdateHostAddrs(hostID peer.ID, currentAddrs, removedAddrs, peerRecordAddrs []ma.Multiaddr) error {
+	// update host addresses in the peer store
+	ps.memoryAddrBook.SetAddrs(hostID, currentAddrs, peerstore.PermanentAddrTTL)
+	ps.memoryAddrBook.SetAddrs(hostID, removedAddrs, 0)
+
+	signKey := ps.memoryKeyBook.PrivKey(hostID)
+	if signKey == nil {
+		log.Debug("no sign key found for host", "host", hostID)
+		// don't return an error here. It's fine to not have a signed peer record.
+		return nil
+	}
+
+	pr := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
+		ID:    hostID,
+		Addrs: peerRecordAddrs,
+	})
+	rec, err := record.Seal(pr, signKey)
+	if err != nil {
+		return fmt.Errorf("error sealing peer record: %s", err)
+	}
+	_, err = ps.memoryAddrBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL)
+	if err != nil {
+		return fmt.Errorf("error consuming peer record: %s", err)
+	}
+	return nil
 }
 
 // RemovePeer removes entries associated with a peer from:
