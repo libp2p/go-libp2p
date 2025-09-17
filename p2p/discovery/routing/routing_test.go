@@ -76,8 +76,7 @@ func (m *mockRouting) FindProvidersAsync(ctx context.Context, cid cid.Cid, _ int
 }
 
 func TestRoutingDiscovery(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1 := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := bhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -110,8 +109,7 @@ func TestRoutingDiscovery(t *testing.T) {
 }
 
 func TestDiscoveryRouting(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1 := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := bhost.NewBlankHost(swarmt.GenSwarm(t))

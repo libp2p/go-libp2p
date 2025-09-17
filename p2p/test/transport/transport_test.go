@@ -860,8 +860,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 
 			// runs a test to verify we can extract the peer ID from a target with just its address
 			t.Helper()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			// Use a bogus peer ID so that when we connect to the target we get an error telling
 			// us the targets real peer ID

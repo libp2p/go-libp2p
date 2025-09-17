@@ -43,8 +43,7 @@ func makeAutoNATClient(t *testing.T) (host.Host, Client) {
 
 // Note: these tests assume that the host has only private network addresses!
 func TestAutoNATServiceDialRefused(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	c := makeAutoNATConfig(t)
 	defer c.host.Close()
@@ -68,8 +67,7 @@ func TestAutoNATServiceDialRefused(t *testing.T) {
 }
 
 func TestAutoNATServiceDialSuccess(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	c := makeAutoNATConfig(t)
 	defer c.host.Close()
@@ -88,8 +86,7 @@ func TestAutoNATServiceDialSuccess(t *testing.T) {
 }
 
 func TestAutoNATServiceDialRateLimiter(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	c := makeAutoNATConfig(t)
 	defer c.host.Close()
@@ -128,8 +125,7 @@ func TestAutoNATServiceDialRateLimiter(t *testing.T) {
 }
 
 func TestAutoNATServiceGlobalLimiter(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	c := makeAutoNATConfig(t)
 	defer c.host.Close()

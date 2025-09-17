@@ -2,7 +2,6 @@ package gostream
 
 import (
 	"bufio"
-	"context"
 	"io"
 	"testing"
 	"time"
@@ -38,8 +37,7 @@ func TestServerClient(t *testing.T) {
 	clientHost.Peerstore().AddAddrs(srvHost.ID(), srvHost.Addrs(), peerstore.PermanentAddrTTL)
 
 	var tag protocol.ID = "/testitytest"
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	done := make(chan struct{})
 	go func() {

@@ -81,8 +81,7 @@ func TestLimiterBasicDials(t *testing.T) {
 
 	resch := make(chan transport.DialUpdate)
 	pid := peer.ID("testpeer")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	tryDialAddrs(ctx, l, pid, bads, resch)
 

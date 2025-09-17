@@ -375,8 +375,7 @@ func TestHostProtoPreference(t *testing.T) {
 }
 
 func TestHostProtoMismatch(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1, h2 := getHostPair(t)
 	defer h1.Close()
@@ -469,8 +468,7 @@ func TestHostProtoPreknowledge(t *testing.T) {
 }
 
 func TestNewDialOld(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1, h2 := getHostPair(t)
 	defer h1.Close()
@@ -541,8 +539,7 @@ func TestNewStreamResolve(t *testing.T) {
 }
 
 func TestProtoDowngrade(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1, h2 := getHostPair(t)
 	defer h1.Close()
@@ -756,8 +753,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 }
 
 func TestNegotiationCancel(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1, h2 := getHostPair(t)
 	defer h1.Close()

@@ -97,8 +97,7 @@ func addTransport(t *testing.T, h host.Host, upgrader transport.Upgrader) {
 }
 
 func TestBasicRelay(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	hosts, upgraders := getNetHosts(t, ctx, 3)
 	addTransport(t, hosts[0], upgraders[0])
@@ -205,8 +204,7 @@ func TestBasicRelay(t *testing.T) {
 }
 
 func TestRelayLimitTime(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	hosts, upgraders := getNetHosts(t, ctx, 3)
 	addTransport(t, hosts[0], upgraders[0])
@@ -279,8 +277,7 @@ func TestRelayLimitTime(t *testing.T) {
 }
 
 func TestRelayLimitData(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	hosts, upgraders := getNetHosts(t, ctx, 3)
 	addTransport(t, hosts[0], upgraders[0])

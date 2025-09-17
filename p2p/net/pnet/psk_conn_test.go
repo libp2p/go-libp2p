@@ -24,8 +24,7 @@ func setupPSKConns(_ context.Context, t *testing.T) (net.Conn, net.Conn) {
 }
 
 func TestPSKSimpelMessges(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
+	ctx := t.Context()
 
 	psk1, psk2 := setupPSKConns(ctx, t)
 	msg1 := []byte("hello world")
@@ -56,8 +55,7 @@ func TestPSKSimpelMessges(t *testing.T) {
 }
 
 func TestPSKFragmentation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
+	ctx := t.Context()
 
 	psk1, psk2 := setupPSKConns(ctx, t)
 

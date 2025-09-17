@@ -88,8 +88,7 @@ func printConns(n network.Network) string {
 }
 
 func TestNetworkOpenStream(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	testString := "hello ipfs"
 

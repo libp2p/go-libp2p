@@ -1,7 +1,6 @@
 package backpressure_tests
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -20,8 +19,7 @@ var log = logging.Logger("backpressure")
 // TestStBackpressureStreamWrite tests whether streams see proper
 // backpressure when writing data over the network streams.
 func TestStBackpressureStreamWrite(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)

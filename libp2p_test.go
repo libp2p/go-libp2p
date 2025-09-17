@@ -550,8 +550,7 @@ func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
 			}
 
 			t.Run("quic client can connect", func(t *testing.T) {
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
+				ctx := t.Context()
 				p := ping.NewPingService(quicClient)
 				resCh := p.Ping(ctx, h1.ID())
 				res := <-resCh
@@ -559,8 +558,7 @@ func TestWebRTCReuseAddrWithQUIC(t *testing.T) {
 			})
 
 			t.Run("webrtc client can connect", func(t *testing.T) {
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
+				ctx := t.Context()
 				p := ping.NewPingService(webrtcClient)
 				resCh := p.Ping(ctx, h1.ID())
 				res := <-resCh

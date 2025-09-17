@@ -363,8 +363,7 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 // TestIdentifyPushWhileIdentifyingConn tests that the host waits to push updates if an identify is ongoing.
 func TestIdentifyPushWhileIdentifyingConn(t *testing.T) {
 	t.Skip()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -436,8 +435,7 @@ func TestIdentifyPushWhileIdentifyingConn(t *testing.T) {
 }
 
 func TestIdentifyPushOnAddrChange(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -510,8 +508,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 }
 
 func TestUserAgent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1, err := libp2p.New(libp2p.UserAgent("foo"), libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
 	if err != nil {
@@ -542,8 +539,7 @@ func TestNotListening(t *testing.T) {
 	// Make sure we don't panic if we're not listening on any addresses.
 	//
 	// https://github.com/libp2p/go-libp2p/issues/939
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1, err := libp2p.New(libp2p.NoListenAddrs)
 	if err != nil {
@@ -564,8 +560,7 @@ func TestNotListening(t *testing.T) {
 }
 
 func TestSendPush(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -729,8 +724,7 @@ func randString(n int) string {
 }
 
 func TestLargePushMessage(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -805,8 +799,7 @@ func TestLargePushMessage(t *testing.T) {
 }
 
 func TestIdentifyResponseReadTimeout(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -845,8 +838,7 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 }
 
 func TestIncomingIDStreamsTimeout(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	protocols := []protocol.ID{identify.IDPush}
 
