@@ -4,3 +4,5 @@
 *.sqlog
 *.qlog.zst
 *.sqlog.zst
+go.work
+go.work.sum
