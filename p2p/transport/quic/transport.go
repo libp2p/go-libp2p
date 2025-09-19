@@ -35,7 +35,7 @@ var ErrHolePunching = errors.New("hole punching attempted; no active dial")
 var HolePunchTimeout = 5 * time.Second
 
 // The Transport implements the tpt.Transport interface for QUIC connections.
-type transport struct {
+type Transport struct {
 	privKey     ic.PrivKey
 	localPeer   peer.ID
 	identity    *p2ptls.Identity
@@ -57,7 +57,7 @@ type transport struct {
 	listeners map[string][]*virtualListener
 }
 
-var _ tpt.Transport = &transport{}
+var _ tpt.Transport = &Transport{}
 
 type holePunchKey struct {
 	addr string
@@ -70,7 +70,7 @@ type activeHolePunch struct {
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
+func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (*Transport, error) {
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
@@ -88,7 +88,7 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		rcmgr = &network.NullResourceManager{}
 	}
 
-	return &transport{
+	return &Transport{
 		privKey:      key,
 		localPeer:    localPeer,
 		identity:     identity,
@@ -103,12 +103,12 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 	}, nil
 }
 
-func (t *transport) ListenOrder() int {
+func (t *Transport) ListenOrder() int {
 	return ListenOrder
 }
 
 // Dial dials a new QUIC connection
-func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (_c tpt.CapableConn, _err error) {
+func (t *Transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (_c tpt.CapableConn, _err error) {
 	if ok, isClient, _ := network.GetSimultaneousConnect(ctx); ok && !isClient {
 		return t.holePunch(ctx, raddr, p)
 	}
@@ -127,7 +127,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (_c
 	return c, nil
 }
 
-func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
+func (t *Transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
 	if err := scope.SetPeer(p); err != nil {
 		log.Debug("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "err", err)
 		return nil, err
@@ -174,19 +174,19 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	return c, nil
 }
 
-func (t *transport) addConn(conn *quic.Conn, c *conn) {
+func (t *Transport) addConn(conn *quic.Conn, c *conn) {
 	t.connMx.Lock()
 	t.conns[conn] = c
 	t.connMx.Unlock()
 }
 
-func (t *transport) removeConn(conn *quic.Conn) {
+func (t *Transport) removeConn(conn *quic.Conn) {
 	t.connMx.Lock()
 	delete(t.conns, conn)
 	t.connMx.Unlock()
 }
 
-func (t *transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
+func (t *Transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
 	network, saddr, err := manet.DialArgs(raddr)
 	if err != nil {
 		return nil, err
@@ -277,12 +277,12 @@ loop:
 var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_QUIC_V1))
 
 // CanDial determines if we can dial to an address
-func (t *transport) CanDial(addr ma.Multiaddr) bool {
+func (t *Transport) CanDial(addr ma.Multiaddr) bool {
 	return dialMatcher.Matches(addr)
 }
 
 // Listen listens for new QUIC connections on the passed multiaddr.
-func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
+func (t *Transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	var tlsConf tls.Config
 	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 		// return a tls.Config that verifies the peer's certificate chain.
@@ -344,7 +344,7 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	return l, nil
 }
 
-func (t *transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
+func (t *Transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
 	// If the QUIC connection tries to increase the window before we've inserted it
 	// into our connections map (which we do right after dialing / accepting it),
 	// we have no way to account for that memory. This should be very rare.
@@ -359,24 +359,24 @@ func (t *transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
 }
 
 // Proxy returns true if this transport proxies.
-func (t *transport) Proxy() bool {
+func (t *Transport) Proxy() bool {
 	return false
 }
 
 // Protocols returns the set of protocols handled by this transport.
-func (t *transport) Protocols() []int {
+func (t *Transport) Protocols() []int {
 	return t.connManager.Protocols()
 }
 
-func (t *transport) String() string {
+func (t *Transport) String() string {
 	return "QUIC"
 }
 
-func (t *transport) Close() error {
+func (t *Transport) Close() error {
 	return nil
 }
 
-func (t *transport) CloseVirtualListener(l *virtualListener) error {
+func (t *Transport) CloseVirtualListener(l *virtualListener) error {
 	t.listenersMu.Lock()
 	defer t.listenersMu.Unlock()
 

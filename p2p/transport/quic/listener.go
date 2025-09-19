@@ -18,14 +18,14 @@ import (
 // A listener listens for QUIC connections.
 type listener struct {
 	reuseListener   quicreuse.Listener
-	transport       *transport
+	transport       *Transport
 	rcmgr           network.ResourceManager
 	privKey         ic.PrivKey
 	localPeer       peer.ID
 	localMultiaddrs map[quic.Version]ma.Multiaddr
 }
 
-func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (listener, error) {
+func newListener(ln quicreuse.Listener, t *Transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (listener, error) {
 	localMultiaddrs := make(map[quic.Version]ma.Multiaddr)
 	for _, addr := range ln.Multiaddrs() {
 		if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {

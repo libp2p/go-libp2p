@@ -104,7 +104,7 @@ func TestAcceptAfterClose(t *testing.T) {
 
 func TestCorrectNumberOfVirtualListeners(t *testing.T) {
 	tr := newTransport(t, nil)
-	tpt := tr.(*transport)
+	tpt := tr.(*Transport)
 	defer tr.(io.Closer).Close()
 
 	localAddrV1 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
@@ -129,7 +129,7 @@ func TestCleanupConnWhenBlocked(t *testing.T) {
 	})
 
 	server := newTransport(t, mockRcmgr)
-	serverTpt := server.(*transport)
+	serverTpt := server.(*Transport)
 	defer server.(io.Closer).Close()
 
 	localAddrV1 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")

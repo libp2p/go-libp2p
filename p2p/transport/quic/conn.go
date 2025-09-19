@@ -14,7 +14,7 @@ import (
 
 type conn struct {
 	quicConn  *quic.Conn
-	transport *transport
+	transport *Transport
 	scope     network.ConnManagementScope
 
 	localPeer      peer.ID
