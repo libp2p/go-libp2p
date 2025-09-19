@@ -108,7 +108,7 @@ func TestTransport(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, nil)
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -118,7 +118,7 @@ func TestTransport(t *testing.T) {
 		_, clientKey := newIdentity(t)
 		tr2, err := libp2pwebtransport.New(clientKey, nil, newConnManager(t), nil, nil)
 		require.NoError(t, err)
-		defer tr2.(io.Closer).Close()
+		defer tr2.Close()
 
 		conn, err := tr2.Dial(context.Background(), ln.Multiaddr(), serverID)
 		require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestHashVerification(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	done := make(chan struct{})
@@ -167,7 +167,7 @@ func TestHashVerification(t *testing.T) {
 	_, clientKey := newIdentity(t)
 	tr2, err := libp2pwebtransport.New(clientKey, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr2.(io.Closer).Close()
+	defer tr2.Close()
 
 	foobarHash := getCerthashComponent(t, []byte("foobar"))
 
@@ -212,7 +212,7 @@ func TestCanDial(t *testing.T) {
 	_, key := newIdentity(t)
 	tr, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 
 	for _, addr := range valid {
 		require.Truef(t, tr.CanDial(addr), "expected to be able to dial %s", addr)
@@ -237,7 +237,7 @@ func TestListenAddrValidity(t *testing.T) {
 	_, key := newIdentity(t)
 	tr, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 
 	for _, addr := range valid {
 		ln, err := tr.Listen(addr)
@@ -254,7 +254,7 @@ func TestListenerAddrs(t *testing.T) {
 	_, key := newIdentity(t)
 	tr, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 
 	ln1, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
@@ -277,7 +277,7 @@ func TestResourceManagerDialing(t *testing.T) {
 	_, key := newIdentity(t)
 	tr, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, rcmgr)
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	l, err := tr.Listen(addr)
 	require.NoError(t, err)
 
@@ -296,7 +296,7 @@ func TestResourceManagerListening(t *testing.T) {
 	clientID, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer cl.(io.Closer).Close()
+	defer cl.Close()
 
 	t.Run("blocking the connection", func(t *testing.T) {
 		serverID, key := newIdentity(t)
@@ -375,7 +375,7 @@ func TestConnectionGaterDialing(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -386,7 +386,7 @@ func TestConnectionGaterDialing(t *testing.T) {
 	_, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), connGater, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer cl.(io.Closer).Close()
+	defer cl.Close()
 	_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
 	require.EqualError(t, err, "secured connection gated")
 }
@@ -399,7 +399,7 @@ func TestConnectionGaterInterceptAccept(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), connGater, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -412,7 +412,7 @@ func TestConnectionGaterInterceptAccept(t *testing.T) {
 	_, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer cl.(io.Closer).Close()
+	defer cl.Close()
 	_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
 	require.EqualError(t, err, "received status 403")
 }
@@ -425,7 +425,7 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), connGater, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -433,7 +433,7 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 	clientID, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer cl.(io.Closer).Close()
+	defer cl.Close()
 
 	connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true)
 	connGater.EXPECT().InterceptSecured(network.DirInbound, clientID, gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
@@ -461,7 +461,7 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -471,7 +471,7 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 		_, key := newIdentity(t)
 		cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 		require.NoError(t, err)
-		defer cl.(io.Closer).Close()
+		defer cl.Close()
 		return cl.Dial(context.Background(), ln.Multiaddr(), serverID)
 	}
 
@@ -566,7 +566,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	serverRcmgr := &reportingRcmgr{report: serverWindowIncreases}
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, serverRcmgr)
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -594,7 +594,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	clientRcmgr := &reportingRcmgr{report: clientWindowIncreases}
 	tr2, err := libp2pwebtransport.New(clientKey, nil, newConnManager(t), nil, clientRcmgr)
 	require.NoError(t, err)
-	defer tr2.(io.Closer).Close()
+	defer tr2.Close()
 
 	var addr ma.Multiaddr
 	for _, comp := range ln.Multiaddr() {
@@ -842,7 +842,7 @@ func TestH3ConnClosed(t *testing.T) {
 	_, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, nil, libp2pwebtransport.WithHandshakeTimeout(1*time.Second))
 	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
+	defer tr.Close()
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
