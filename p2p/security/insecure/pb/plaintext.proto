@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+package plaintext.pb;
+
+import "core/crypto/pb/crypto.proto";
+
+option go_package = "github.com/libp2p/go-libp2p/p2p/security/insecure/pb";
+
+message Exchange {
+  optional bytes id = 1;
+  optional crypto.pb.PublicKey pubkey = 2;
+}
