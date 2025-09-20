@@ -449,3 +449,17 @@ func (mr *MockPeerstoreMockRecorder) UpdateAddrs(p, oldTTL, newTTL any) *gomock.
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAddrs", reflect.TypeOf((*MockPeerstore)(nil).UpdateAddrs), p, oldTTL, newTTL)
 }
+
+// UpdateHostAddrs mocks base method.
+func (m *MockPeerstore) UpdateHostAddrs(hostID peer.ID, currentAddrs, removedAddrs, peerRecordAddrs []multiaddr.Multiaddr) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateHostAddrs", hostID, currentAddrs, removedAddrs, peerRecordAddrs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateHostAddrs indicates an expected call of UpdateHostAddrs.
+func (mr *MockPeerstoreMockRecorder) UpdateHostAddrs(hostID, currentAddrs, removedAddrs, peerRecordAddrs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateHostAddrs", reflect.TypeOf((*MockPeerstore)(nil).UpdateHostAddrs), hostID, currentAddrs, removedAddrs, peerRecordAddrs)
+}

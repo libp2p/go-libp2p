@@ -70,6 +70,11 @@ type Peerstore interface {
 	// RemovePeer removes all the peer related information except its addresses. To remove the
 	// addresses use `AddrBook.ClearAddrs` or set the address ttls to 0.
 	RemovePeer(peer.ID)
+
+	// UpdateHostAddrs updates the addresses of the host in the peerstore. It also adds the signed
+	// peer record for the host if there's a private key available for the host in the KeyBook.
+	// This method should only be used to update the addresses of the Host that owns the peerstore.
+	UpdateHostAddrs(hostID peer.ID, currentAddrs, removedAddrs, peerRecordAddrs []ma.Multiaddr) error
 }
 
 // PeerMetadata can handle values of any type. Serializing values is
