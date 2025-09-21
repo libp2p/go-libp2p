@@ -1,5 +1,7 @@
 package routing
 
+import "maps"
+
 // Option is a single routing option.
 type Option func(opts *Options) error
 
@@ -27,10 +29,7 @@ func (opts *Options) ToOption() Option {
 	return func(nopts *Options) error {
 		*nopts = *opts
 		if opts.Other != nil {
-			nopts.Other = make(map[interface{}]interface{}, len(opts.Other))
-			for k, v := range opts.Other {
-				nopts.Other[k] = v
-			}
+			nopts.Other = maps.Clone(opts.Other)
 		}
 		return nil
 	}
