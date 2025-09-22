@@ -161,9 +161,9 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			hp.tracer.StartHolePunch(rp, addrs, rtt)
 			hp.tracer.HolePunchAttempt(pi.ID)
 			ctx, cancel := context.WithTimeout(hp.ctx, hp.directDialTimeout)
-			isClient := true
+			isClient := false
 			if hp.legacyBehavior {
-				isClient = false
+				isClient = true
 			}
 			err := holePunchConnect(ctx, hp.host, pi, isClient)
 			cancel()

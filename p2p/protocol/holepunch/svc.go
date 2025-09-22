@@ -284,9 +284,9 @@ func (s *Service) handleNewStream(str network.Stream) {
 	start := time.Now()
 	s.tracer.HolePunchAttempt(pi.ID)
 	ctx, cancel := context.WithTimeout(s.ctx, s.directDialTimeout)
-	isClient := false
+	isClient := true
 	if s.legacyBehavior {
-		isClient = true
+		isClient = false
 	}
 	err = holePunchConnect(ctx, s.host, pi, isClient)
 	cancel()
