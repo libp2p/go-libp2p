@@ -178,7 +178,9 @@ func (m *multiplexedListener) DemultiplexedListen(connType DemultiplexedConnType
 }
 
 func (m *multiplexedListener) run() error {
-	// Ensure this goroutine marks Done before Close waits on the WaitGroup to avoid deadlock.
+	// Defer Close() before wg.Done() so that wg.Done() runs first (LIFO),
+	// preventing Close() from waiting on a WaitGroup that still includes this goroutine.
+	defer m.Close()
 	defer m.wg.Done()
 	defer m.Close()
 	acceptQueue := make(chan struct{}, acceptQueueSize)
