@@ -495,3 +495,24 @@ func TestHitTimeout(t *testing.T) {
 
 	tcpConn.Close()
 }
+
+func TestListenerCloseDoesNotDeadlock(t *testing.T) {
+	// Ensure that closing a demultiplexed listener does not deadlock the run loop.
+	// This specifically guards the defer order in run(): wg.Done() must execute before Close() waits.
+	cm := NewConnMgr(false, upgrader(t))
+	l, err := cm.DemultiplexedListen(ma.StringCast("/ip4/127.0.0.1/tcp/0"), DemultiplexedConnType_MultistreamSelect)
+	require.NoError(t, err)
+
+	closed := make(chan struct{})
+	go func() {
+		_ = l.Close()
+		close(closed)
+	}()
+
+	select {
+	case <-closed:
+		// ok
+	case <-time.After(2 * time.Second):
+		t.Fatalf("listener Close() did not complete in time (potential deadlock)")
+	}
+}
