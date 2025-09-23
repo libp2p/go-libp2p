@@ -452,7 +452,7 @@ func BenchmarkAreAddrsDifferent(b *testing.B) {
 	b.Run("areAddrsDifferent", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			areAddrsDifferent(addrs[:], addrs[:])
 		}
 	})
@@ -464,8 +464,8 @@ func BenchmarkRemoveIfNotInSource(b *testing.B) {
 		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		removeNotInSource(slices.Clone(addrs[:5]), addrs[:])
 	}
 }

@@ -730,9 +730,9 @@ func BenchmarkAddrTracker(b *testing.B) {
 	}
 	t.UpdateAddrs(addrs)
 	b.ReportAllocs()
-	b.ResetTimer()
+
 	p := t.GetProbe()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		pp := t.GetProbe()
 		if len(pp) == 0 {
 			pp = p
