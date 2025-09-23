@@ -655,3 +655,8 @@ func ShareTCPListener() Option {
 		return nil
 	}
 }
+
+func EnableHolePunchingWithSpecCompliantBehavior(opts ...holepunch.Option) Option {
+	opts = append(opts, holepunch.WithSpecCompliantBehavior()) 
+	return EnableHolePunching(opts...)
+}

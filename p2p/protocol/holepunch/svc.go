@@ -105,7 +105,7 @@ func NewService(h host.Host, ids identify.IDService, listenAddrs func() []ma.Mul
 		listenAddrs:        listenAddrs,
 		hasPublicAddrsChan: make(chan struct{}),
 		directDialTimeout:  defaultDirectDialTimeout,
-		legacyBehavior:     true,
+		legacyBehavior:     false,
 	}
 
 	for _, opt := range opts {
@@ -248,51 +248,7 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 }
 
 func (s *Service) handleNewStream(str network.Stream) {
-	// Check directionality of the underlying connection.
-	// Peer A receives an inbound connection from peer B.
-	// Peer A opens a new hole punch stream to peer B.
-	// Peer B receives this stream, calling this function.
-	// Peer B sees the underlying connection as an outbound connection.
-	if str.Conn().Stat().Direction == network.DirInbound {
-		str.Reset()
-		return
-	}
-
-	if err := str.Scope().SetService(ServiceName); err != nil {
-		log.Debug("error attaching stream to holepunch service", "err", err)
-		str.Reset()
-		return
-	}
-
-	rp := str.Conn().RemotePeer()
-	rtt, addrs, ownAddrs, err := s.incomingHolePunch(str)
-	if err != nil {
-		s.tracer.ProtocolError(rp, err)
-		log.Debug("error handling holepunching stream", "peer", rp, "err", err)
-		str.Reset()
-		return
-	}
-	str.Close()
-
-	// Hole punch now by forcing a connect
-	pi := peer.AddrInfo{
-		ID:    rp,
-		Addrs: addrs,
-	}
-	s.tracer.StartHolePunch(rp, addrs, rtt)
-	log.Debug("starting hole punch", "peer", rp)
-	start := time.Now()
-	s.tracer.HolePunchAttempt(pi.ID)
-	ctx, cancel := context.WithTimeout(s.ctx, s.directDialTimeout)
-	isClient := false
-	if s.legacyBehavior {
-		isClient = true
-	}
-	err = holePunchConnect(ctx, s.host, pi, isClient)
-	cancel()
-	dt := time.Since(start)
-	s.tracer.EndHolePunch(rp, dt, err)
-	s.tracer.HolePunchFinished("receiver", 1, addrs, ownAddrs, getDirectConnection(s.host, rp))
+	s.handleNewStreamFixed(str)
 }
 
 // DirectConnect is only exposed for testing purposes.
@@ -303,4 +259,18 @@ func (s *Service) DirectConnect(p peer.ID) error {
 	holePuncher := s.holePuncher
 	s.holePuncherMx.Unlock()
 	return holePuncher.DirectConnect(p)
+}
+
+func WithSpecCompliantBehavior() Option {
+	return func(s *Service) error {
+		s.legacyBehavior = false
+		return nil
+	}
+}
+
+func WithBackwardsCompatibleBehavior() Option {
+	return func(s *Service) error {
+		s.legacyBehavior = false
+		return nil
+	}
 }

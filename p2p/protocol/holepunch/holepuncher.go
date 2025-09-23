@@ -14,7 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // ErrHolePunchActive is returned from DirectConnect when another hole punching attempt is currently running
@@ -64,7 +63,7 @@ func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma
 		filter:      filter,
 		listenAddrs: listenAddrs,
 
-		legacyBehavior: true,
+		legacyBehavior: false,
 	}
 	hp.ctx, hp.ctxCancel = context.WithCancel(context.Background())
 	h.Network().Notify((*netNotifiee)(hp))
@@ -107,82 +106,7 @@ func (hp *holePuncher) DirectConnect(p peer.ID) error {
 }
 
 func (hp *holePuncher) directConnect(rp peer.ID) error {
-	// short-circuit check to see if we already have a direct connection
-	if getDirectConnection(hp.host, rp) != nil {
-		log.Debug("already connected", "source_peer", hp.host.ID(), "destination_peer", rp)
-		return nil
-	}
-
-	log.Debug("attempting direct dial", "source_peer", hp.host.ID(), "destination_peer", rp, "addrs", hp.host.Peerstore().Addrs(rp))
-	// short-circuit hole punching if a direct dial works.
-	// attempt a direct connection ONLY if we have a public address for the remote peer
-	for _, a := range hp.host.Peerstore().Addrs(rp) {
-		if !isRelayAddress(a) && manet.IsPublicAddr(a) {
-			forceDirectConnCtx := network.WithForceDirectDial(hp.ctx, "hole-punching")
-			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, hp.directDialTimeout)
-
-			tstart := time.Now()
-			// This dials *all* addresses, public and private, from the peerstore.
-			err := hp.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
-			dt := time.Since(tstart)
-			cancel()
-
-			if err != nil {
-				hp.tracer.DirectDialFailed(rp, dt, err)
-				break
-			}
-			hp.tracer.DirectDialSuccessful(rp, dt)
-			log.Debug("direct connection to peer successful, no need for a hole punch", "destination_peer", rp)
-			return nil
-		}
-	}
-
-	log.Debug("got inbound proxy conn", "destination_peer", rp)
-
-	// hole punch
-	for i := 1; i <= maxRetries; i++ {
-		addrs, obsAddrs, rtt, err := hp.initiateHolePunch(rp)
-		if err != nil {
-			hp.tracer.ProtocolError(rp, err)
-			return err
-		}
-		synTime := rtt / 2
-		log.Debug("peer RTT and starting hole punch", "rtt", rtt, "syn_time", synTime)
-
-		// wait for sync to reach the other peer and then punch a hole for it in our NAT
-		// by attempting a connect to it.
-		timer := time.NewTimer(synTime)
-		select {
-		case start := <-timer.C:
-			pi := peer.AddrInfo{
-				ID:    rp,
-				Addrs: addrs,
-			}
-			hp.tracer.StartHolePunch(rp, addrs, rtt)
-			hp.tracer.HolePunchAttempt(pi.ID)
-			ctx, cancel := context.WithTimeout(hp.ctx, hp.directDialTimeout)
-			isClient := true
-			if hp.legacyBehavior {
-				isClient = false
-			}
-			err := holePunchConnect(ctx, hp.host, pi, isClient)
-			cancel()
-			dt := time.Since(start)
-			hp.tracer.EndHolePunch(rp, dt, err)
-			if err == nil {
-				log.Debug("hole punching with successful", "destination_peer", rp, "duration", dt)
-				hp.tracer.HolePunchFinished("initiator", i, addrs, obsAddrs, getDirectConnection(hp.host, rp))
-				return nil
-			}
-		case <-hp.ctx.Done():
-			timer.Stop()
-			return hp.ctx.Err()
-		}
-		if i == maxRetries {
-			hp.tracer.HolePunchFinished("initiator", maxRetries, addrs, obsAddrs, nil)
-		}
-	}
-	return fmt.Errorf("all retries for hole punch with peer %s failed", rp)
+	return hp.directConnectFixed(rp)
 }
 
 // initiateHolePunch opens a new hole punching coordination stream,
