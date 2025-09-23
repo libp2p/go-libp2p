@@ -38,6 +38,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -351,6 +352,95 @@ var transportsToTest = []TransportTestCase{
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
 			return h
+		},
+	},
+	{
+		Name: "circuit-v2",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			ctx := context.Background()
+			libp2pOpts := transformOpts(opts)
+			
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, 
+					libp2p.NoListenAddrs,
+					libp2p.EnableRelay(),
+				)
+				h, err := libp2p.New(libp2pOpts...)
+				require.NoError(t, err)
+				return h
+			} else {
+				relayHost, err := libp2p.New(
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+					libp2p.EnableRelay(),
+					libp2p.EnableRelayService(),
+					libp2p.ForceReachabilityPublic(),
+				)
+				require.NoError(t, err)
+				
+				libp2pOpts = append(libp2pOpts, 
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+					libp2p.EnableRelay(),
+				)
+				listenerHost, err := libp2p.New(libp2pOpts...)
+				require.NoError(t, err)
+				
+				err = listenerHost.Connect(ctx, peer.AddrInfo{
+					ID:    relayHost.ID(),
+					Addrs: relayHost.Addrs(),
+				})
+				require.NoError(t, err)
+				
+				_, err = client.Reserve(ctx, listenerHost, peer.AddrInfo{
+					ID:    relayHost.ID(),
+					Addrs: relayHost.Addrs(),
+				})
+				require.NoError(t, err)
+				
+				relayAddrs := relayHost.Addrs()
+				require.NotEmpty(t, relayAddrs)
+				
+				addrFactory := func([]ma.Multiaddr) []ma.Multiaddr {
+					var circuitAddrs []ma.Multiaddr
+					for _, relayAddr := range relayAddrs {
+						circuitAddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s/p2p-circuit/p2p/%s", 
+							relayAddr.String(), relayHost.ID().String(), listenerHost.ID().String()))
+						if err == nil {
+							circuitAddrs = append(circuitAddrs, circuitAddr)
+						}
+					}
+					return circuitAddrs
+				}
+				
+				finalLibp2pOpts := transformOpts(opts)
+				finalLibp2pOpts = append(finalLibp2pOpts, 
+					libp2p.Identity(listenerHost.Peerstore().PrivKey(listenerHost.ID())),
+					libp2p.EnableRelay(),
+					libp2p.AddrsFactory(addrFactory),
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+				)
+				
+				finalHost, err := libp2p.New(finalLibp2pOpts...)
+				require.NoError(t, err)
+				
+				err = finalHost.Connect(ctx, peer.AddrInfo{
+					ID:    relayHost.ID(),
+					Addrs: relayHost.Addrs(),
+				})
+				require.NoError(t, err)
+				
+				_, err = client.Reserve(ctx, finalHost, peer.AddrInfo{
+					ID:    relayHost.ID(),
+					Addrs: relayHost.Addrs(),
+				})
+				require.NoError(t, err)
+				
+				t.Cleanup(func() {
+					relayHost.Close()
+					listenerHost.Close()
+				})
+				
+				return finalHost
+			}
 		},
 	},
 }
