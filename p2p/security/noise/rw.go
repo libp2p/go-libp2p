@@ -54,7 +54,7 @@ func (s *secureSession) Read(buf []byte) (int, error) {
 		return 0, err
 	}
 
-	// If the buffer is atleast as big as the encrypted message size,
+	// If the buffer is at least as big as the encrypted message size,
 	// we can read AND decrypt in place.
 	if len(buf) >= nextMsgLen {
 		if err := s.readNextMsgInsecure(buf[:nextMsgLen]); err != nil {

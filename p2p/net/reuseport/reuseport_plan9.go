@@ -12,7 +12,7 @@ const (
 
 // reuseErrShouldRetry diagnoses whether to retry after a reuse error.
 // if we failed to bind, we should retry. if bind worked and this is a
-// real dial error (remote end didnt answer) then we should not retry.
+// real dial error (remote end didn't answer) then we should not retry.
 func reuseErrShouldRetry(err error) bool {
 	if err == nil {
 		return false // hey, it worked! no need to retry.
