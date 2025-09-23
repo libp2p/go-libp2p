@@ -357,7 +357,6 @@ var transportsToTest = []TransportTestCase{
 	{
 		Name: "circuit-v2",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
-			ctx := context.Background()
 			libp2pOpts := transformOpts(opts)
 			
 			if opts.NoListen {
@@ -365,10 +364,19 @@ var transportsToTest = []TransportTestCase{
 					libp2p.NoListenAddrs,
 					libp2p.EnableRelay(),
 				)
-				h, err := libp2p.New(libp2pOpts...)
-				require.NoError(t, err)
-				return h
 			} else {
+				libp2pOpts = append(libp2pOpts, 
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+					libp2p.EnableRelay(),
+				)
+			}
+			
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			
+			if !opts.NoListen {
+				ctx := context.Background()
+				
 				relayHost, err := libp2p.New(
 					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
 					libp2p.EnableRelay(),
@@ -377,70 +385,18 @@ var transportsToTest = []TransportTestCase{
 				)
 				require.NoError(t, err)
 				
-				libp2pOpts = append(libp2pOpts, 
-					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
-					libp2p.EnableRelay(),
-				)
-				listenerHost, err := libp2p.New(libp2pOpts...)
+				err = h.Connect(ctx, peer.AddrInfo{ID: relayHost.ID(), Addrs: relayHost.Addrs()})
 				require.NoError(t, err)
 				
-				err = listenerHost.Connect(ctx, peer.AddrInfo{
-					ID:    relayHost.ID(),
-					Addrs: relayHost.Addrs(),
-				})
-				require.NoError(t, err)
-				
-				_, err = client.Reserve(ctx, listenerHost, peer.AddrInfo{
-					ID:    relayHost.ID(),
-					Addrs: relayHost.Addrs(),
-				})
-				require.NoError(t, err)
-				
-				relayAddrs := relayHost.Addrs()
-				require.NotEmpty(t, relayAddrs)
-				
-				addrFactory := func([]ma.Multiaddr) []ma.Multiaddr {
-					var circuitAddrs []ma.Multiaddr
-					for _, relayAddr := range relayAddrs {
-						circuitAddr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s/p2p-circuit/p2p/%s", 
-							relayAddr.String(), relayHost.ID().String(), listenerHost.ID().String()))
-						if err == nil {
-							circuitAddrs = append(circuitAddrs, circuitAddr)
-						}
-					}
-					return circuitAddrs
-				}
-				
-				finalLibp2pOpts := transformOpts(opts)
-				finalLibp2pOpts = append(finalLibp2pOpts, 
-					libp2p.Identity(listenerHost.Peerstore().PrivKey(listenerHost.ID())),
-					libp2p.EnableRelay(),
-					libp2p.AddrsFactory(addrFactory),
-					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
-				)
-				
-				finalHost, err := libp2p.New(finalLibp2pOpts...)
-				require.NoError(t, err)
-				
-				err = finalHost.Connect(ctx, peer.AddrInfo{
-					ID:    relayHost.ID(),
-					Addrs: relayHost.Addrs(),
-				})
-				require.NoError(t, err)
-				
-				_, err = client.Reserve(ctx, finalHost, peer.AddrInfo{
-					ID:    relayHost.ID(),
-					Addrs: relayHost.Addrs(),
-				})
+				_, err = client.Reserve(ctx, h, peer.AddrInfo{ID: relayHost.ID(), Addrs: relayHost.Addrs()})
 				require.NoError(t, err)
 				
 				t.Cleanup(func() {
 					relayHost.Close()
-					listenerHost.Close()
 				})
-				
-				return finalHost
 			}
+			
+			return h
 		},
 	},
 }
