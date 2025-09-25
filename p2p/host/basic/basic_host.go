@@ -6,19 +6,16 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"slices"
 	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
@@ -32,7 +29,6 @@ import (
 
 	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	msmux "github.com/multiformats/go-multistream"
 )
 
@@ -45,8 +41,6 @@ var (
 	// DefaultAddrsFactory is the default value for HostOpts.AddrsFactory.
 	DefaultAddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 )
-
-const maxPeerRecordSize = 8 * 1024 // 8k to be compatible with identify's limit
 
 // AddrsFactory functions can be passed to New in order to override
 // addresses returned by Addrs.
@@ -79,19 +73,13 @@ type BasicHost struct {
 
 	emitters struct {
 		evtLocalProtocolsUpdated event.Emitter
-		evtLocalAddrsUpdated     event.Emitter
 	}
-
-	disableSignedPeerRecord bool
-	signKey                 crypto.PrivKey
-	caBook                  peerstore.CertifiedAddrBook
 
 	autoNATMx sync.RWMutex
 	autoNat   autonat.AutoNAT
 
-	autonatv2        *autonatv2.AutoNAT
-	addressManager   *addrsManager
-	addrsUpdatedChan chan struct{}
+	autonatv2      *autonatv2.AutoNAT
+	addressManager *addrsManager
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -173,21 +161,16 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	hostCtx, cancel := context.WithCancel(context.Background())
 	h := &BasicHost{
-		network:                 n,
-		psManager:               psManager,
-		mux:                     msmux.NewMultistreamMuxer[protocol.ID](),
-		negtimeout:              DefaultNegotiationTimeout,
-		eventbus:                opts.EventBus,
-		ctx:                     hostCtx,
-		ctxCancel:               cancel,
-		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
-		addrsUpdatedChan:        make(chan struct{}, 1),
+		network:    n,
+		psManager:  psManager,
+		mux:        msmux.NewMultistreamMuxer[protocol.ID](),
+		negtimeout: DefaultNegotiationTimeout,
+		eventbus:   opts.EventBus,
+		ctx:        hostCtx,
+		ctxCancel:  cancel,
 	}
 
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}, eventbus.Stateful); err != nil {
-		return nil, err
-	}
-	if h.emitters.evtLocalAddrsUpdated, err = h.eventbus.Emitter(&event.EvtLocalAddressesUpdated{}, eventbus.Stateful); err != nil {
 		return nil, err
 	}
 
@@ -201,7 +184,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}
 
 	// we can't set this as a default above because it depends on the *BasicHost.
-	if h.disableSignedPeerRecord {
+	if opts.DisableSignedPeerRecord {
 		idOpts = append(idOpts, identify.DisableSignedPeerRecord())
 	}
 	if opts.EnableMetrics {
@@ -251,10 +234,13 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		h.Network().ListenAddresses,
 		addCertHashesFunc,
 		opts.ObservedAddrsManager,
-		h.addrsUpdatedChan,
 		autonatv2Client,
 		opts.EnableMetrics,
 		opts.PrometheusRegisterer,
+		opts.DisableSignedPeerRecord,
+		h.Peerstore().PrivKey(h.ID()),
+		h.Peerstore(),
+		h.ID(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create address service: %w", err)
@@ -299,22 +285,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		h.pings = ping.NewPingService(h)
 	}
 
-	if !h.disableSignedPeerRecord {
-		h.signKey = h.Peerstore().PrivKey(h.ID())
-		cab, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
-		if !ok {
-			return nil, errors.New("peerstore should also be a certified address book")
-		}
-		h.caBook = cab
-
-		rec, err := h.makeSignedPeerRecord(h.addressManager.Addrs())
-		if err != nil {
-			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
-		}
-		if _, err := h.caBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
-			return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
-		}
-	}
 	n.SetStreamHandler(h.newStreamHandler)
 
 	return h, nil
@@ -337,21 +307,7 @@ func (h *BasicHost) Start() {
 		log.Error("address service failed to start", "err", err)
 	}
 
-	if !h.disableSignedPeerRecord {
-		// Ensure we have the correct peer record after Start returns
-		rec, err := h.makeSignedPeerRecord(h.addressManager.Addrs())
-		if err != nil {
-			log.Error("failed to create signed record", "err", err)
-		}
-		if _, err := h.caBook.ConsumePeerRecord(rec, peerstore.PermanentAddrTTL); err != nil {
-			log.Error("failed to persist signed record to peerstore", "err", err)
-		}
-	}
-
 	h.ids.Start()
-
-	h.refCount.Add(1)
-	go h.background()
 }
 
 // newStreamHandler is the remote-opened stream handler for network.Network
@@ -400,117 +356,6 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 	log.Debug("negotiated", "protocol", protoID, "duration", took)
 
 	handle(protoID, s)
-}
-
-func (h *BasicHost) makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddressesUpdated {
-	if prev == nil && current == nil {
-		return nil
-	}
-	prevmap := make(map[string]ma.Multiaddr, len(prev))
-	currmap := make(map[string]ma.Multiaddr, len(current))
-	evt := &event.EvtLocalAddressesUpdated{Diffs: true}
-	addrsAdded := false
-
-	for _, addr := range prev {
-		prevmap[string(addr.Bytes())] = addr
-	}
-	for _, addr := range current {
-		currmap[string(addr.Bytes())] = addr
-	}
-	for _, addr := range currmap {
-		_, ok := prevmap[string(addr.Bytes())]
-		updated := event.UpdatedAddress{Address: addr}
-		if ok {
-			updated.Action = event.Maintained
-		} else {
-			updated.Action = event.Added
-			addrsAdded = true
-		}
-		evt.Current = append(evt.Current, updated)
-		delete(prevmap, string(addr.Bytes()))
-	}
-	for _, addr := range prevmap {
-		updated := event.UpdatedAddress{Action: event.Removed, Address: addr}
-		evt.Removed = append(evt.Removed, updated)
-	}
-
-	if !addrsAdded && len(evt.Removed) == 0 {
-		return nil
-	}
-
-	// Our addresses have changed. Make a new signed peer record.
-	if !h.disableSignedPeerRecord {
-		// add signed peer record to the event
-		sr, err := h.makeSignedPeerRecord(current)
-		if err != nil {
-			log.Error("error creating a signed peer record from the set of current addresses", "err", err)
-			// drop this change
-			return nil
-		}
-		evt.SignedPeerRecord = sr
-	}
-
-	return evt
-}
-
-func (h *BasicHost) makeSignedPeerRecord(addrs []ma.Multiaddr) (*record.Envelope, error) {
-	// Limit the length of currentAddrs to ensure that our signed peer records aren't rejected
-	peerRecordSize := 64 // HostID
-	k, err := h.signKey.Raw()
-	if err != nil {
-		peerRecordSize += 2 * len(k) // 1 for signature, 1 for public key
-	}
-	// we want the final address list to be small for keeping the signed peer record in size
-	addrs = trimHostAddrList(addrs, maxPeerRecordSize-peerRecordSize-256) // 256 B of buffer
-	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{
-		ID:    h.ID(),
-		Addrs: addrs,
-	})
-	return record.Seal(rec, h.signKey)
-}
-
-func (h *BasicHost) background() {
-	defer h.refCount.Done()
-	var lastAddrs []ma.Multiaddr
-
-	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
-		changeEvt := h.makeUpdatedAddrEvent(lastAddrs, currentAddrs)
-		if changeEvt == nil {
-			return
-		}
-		// Our addresses have changed.
-		// store the signed peer record in the peer store.
-		if !h.disableSignedPeerRecord {
-			if _, err := h.caBook.ConsumePeerRecord(changeEvt.SignedPeerRecord, peerstore.PermanentAddrTTL); err != nil {
-				log.Error("failed to persist signed peer record in peer store", "err", err)
-				return
-			}
-		}
-		// update host addresses in the peer store
-		removedAddrs := make([]ma.Multiaddr, 0, len(changeEvt.Removed))
-		for _, ua := range changeEvt.Removed {
-			removedAddrs = append(removedAddrs, ua.Address)
-		}
-		h.Peerstore().SetAddrs(h.ID(), currentAddrs, peerstore.PermanentAddrTTL)
-		h.Peerstore().SetAddrs(h.ID(), removedAddrs, 0)
-
-		// emit addr change event
-		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
-			log.Warn("error emitting event for updated addrs", "err", err)
-		}
-	}
-
-	for {
-		curr := h.Addrs()
-		emitAddrChange(curr, lastAddrs)
-		lastAddrs = curr
-
-		select {
-		case <-h.addrsUpdatedChan:
-		case <-h.ctx.Done():
-			return
-		}
-	}
 }
 
 // ID returns the (local) peer.ID associated with this Host
@@ -755,58 +600,6 @@ func (h *BasicHost) ConfirmedAddrs() (reachable []ma.Multiaddr, unreachable []ma
 	return h.addressManager.ConfirmedAddrs()
 }
 
-func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
-	totalSize := 0
-	for _, a := range addrs {
-		totalSize += len(a.Bytes())
-	}
-	if totalSize <= maxSize {
-		return addrs
-	}
-
-	score := func(addr ma.Multiaddr) int {
-		var res int
-		if manet.IsPublicAddr(addr) {
-			res |= 1 << 12
-		} else if !manet.IsIPLoopback(addr) {
-			res |= 1 << 11
-		}
-		var protocolWeight int
-		ma.ForEach(addr, func(c ma.Component) bool {
-			switch c.Protocol().Code {
-			case ma.P_QUIC_V1:
-				protocolWeight = 5
-			case ma.P_TCP:
-				protocolWeight = 4
-			case ma.P_WSS:
-				protocolWeight = 3
-			case ma.P_WEBTRANSPORT:
-				protocolWeight = 2
-			case ma.P_WEBRTC_DIRECT:
-				protocolWeight = 1
-			case ma.P_P2P:
-				return false
-			}
-			return true
-		})
-		res |= 1 << protocolWeight
-		return res
-	}
-
-	slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
-		return score(b) - score(a) // b-a for reverse order
-	})
-	totalSize = 0
-	for i, a := range addrs {
-		totalSize += len(a.Bytes())
-		if totalSize > maxSize {
-			addrs = addrs[:i]
-			break
-		}
-	}
-	return addrs
-}
-
 // SetAutoNat sets the autonat service for the host.
 func (h *BasicHost) SetAutoNat(a autonat.AutoNAT) {
 	h.autoNATMx.Lock()
@@ -855,7 +648,6 @@ func (h *BasicHost) Close() error {
 		}
 
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
-		_ = h.emitters.evtLocalAddrsUpdated.Close()
 
 		if err := h.network.Close(); err != nil {
 			log.Error("swarm close failed", "err", err)

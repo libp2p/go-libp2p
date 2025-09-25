@@ -2,6 +2,7 @@ package basichost
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
@@ -9,9 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multiaddr/matest"
@@ -52,6 +57,13 @@ func (m *mockObservedAddrs) AddrsFor(local ma.Multiaddr) []ma.Multiaddr { return
 
 var _ ObservedAddrsManager = &mockObservedAddrs{}
 
+type addrStoreArgs struct {
+	AddrStore               addrStore
+	SignKey                 crypto.PrivKey
+	HostID                  peer.ID
+	DisableSignedPeerRecord bool
+}
+
 type addrsManagerArgs struct {
 	NATManager           NATManager
 	AddrsFactory         AddrsFactory
@@ -60,6 +72,7 @@ type addrsManagerArgs struct {
 	AddCertHashes        func([]ma.Multiaddr) []ma.Multiaddr
 	AutoNATClient        autonatv2Client
 	Bus                  event.Bus
+	AddrStoreArgs        addrStoreArgs
 }
 
 type addrsManagerTestCase struct {
@@ -76,13 +89,24 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 	if args.AddrsFactory == nil {
 		args.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 	}
-	addrsUpdatedChan := make(chan struct{}, 1)
 
 	addCertHashes := func(addrs []ma.Multiaddr) []ma.Multiaddr {
 		return addrs
 	}
 	if args.AddCertHashes != nil {
 		addCertHashes = args.AddCertHashes
+	}
+	signKey := args.AddrStoreArgs.SignKey
+	addrStore := args.AddrStoreArgs.AddrStore
+	pid := args.AddrStoreArgs.HostID
+	if args.AddrStoreArgs == (addrStoreArgs{}) {
+		var err error
+		signKey, _, err = crypto.GenerateEd25519Key(rand.Reader)
+		require.NoError(tb, err)
+		addrStore, err = pstoremem.NewPeerstore()
+		require.NoError(tb, err)
+		pid, err = peer.IDFromPrivateKey(signKey)
+		require.NoError(tb, err)
 	}
 	am, err := newAddrsManager(
 		eb,
@@ -91,10 +115,13 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		args.ListenAddrs,
 		addCertHashes,
 		args.ObservedAddrsManager,
-		addrsUpdatedChan,
 		args.AutoNATClient,
 		true,
 		prometheus.DefaultRegisterer,
+		false,
+		signKey,
+		addrStore,
+		pid,
 	)
 	require.NoError(tb, err)
 
@@ -176,6 +203,7 @@ func TestAddrsManager(t *testing.T) {
 			assert.ElementsMatch(collect, am.Addrs(), expected, "%s\n%s", am.Addrs(), expected)
 		}, 5*time.Second, 50*time.Millisecond)
 	})
+
 	t.Run("nat returns unspecified addr", func(t *testing.T) {
 		quicPort1 := ma.StringCast("/ip4/3.3.3.3/udp/1/quic-v1")
 		// port from nat, IP from observed addr
@@ -415,6 +443,47 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("expected final event for reachability change after probing")
 	}
+}
+
+func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
+	quic1 := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
+	quic2 := ma.StringCast("/ip4/1.2.3.5/udp/1/quic-v1")
+
+	pstore, err := pstoremem.NewPeerstore()
+	require.NoError(t, err)
+	cab, _ := peerstore.GetCertifiedAddrBook(pstore)
+	signKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	pid, err := peer.IDFromPrivateKey(signKey)
+	require.NoError(t, err)
+
+	var update atomic.Bool
+	am := newAddrsManagerTestCase(t, addrsManagerArgs{
+		ListenAddrs: func() []ma.Multiaddr { return nil },
+		AddrsFactory: func([]ma.Multiaddr) []ma.Multiaddr {
+			if !update.Load() {
+				return []ma.Multiaddr{quic1}
+			}
+			return []ma.Multiaddr{quic2}
+		},
+		AddrStoreArgs: addrStoreArgs{
+			AddrStore: pstore,
+			HostID:    pid,
+			SignKey:   signKey,
+		},
+	})
+	defer am.Close()
+	matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic1}, pstore.Addrs(pid))
+	ev := cab.GetPeerRecord(pid)
+	pr := peerRecordFromEnvelope(t, ev)
+	require.Equal(t, pr.Addrs, []ma.Multiaddr{quic1})
+	update.Store(true)
+	am.updateAddrsSync()
+	matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic2}, pstore.Addrs(pid))
+	ev = cab.GetPeerRecord(pid)
+	pr = peerRecordFromEnvelope(t, ev)
+	require.Equal(t, pr.Addrs, []ma.Multiaddr{quic2})
+
 }
 
 func TestRemoveIfNotInSource(t *testing.T) {

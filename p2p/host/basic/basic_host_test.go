@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -597,14 +596,7 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	ctx := context.Background()
 	taddrs := []ma.Multiaddr{ma.StringCast("/ip4/1.2.3.4/tcp/1234")}
 
-	starting := make(chan struct{}, 1)
-	var count atomic.Int32
 	h, err := NewHost(swarmt.GenSwarm(t), &HostOpts{AddrsFactory: func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		// The first call here is made from the constructor. Don't block.
-		if count.Add(1) == 1 {
-			return addrs
-		}
-		<-starting
 		return taddrs
 	}})
 	require.NoError(t, err)
@@ -615,7 +607,6 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 		t.Error(err)
 	}
 	defer sub.Close()
-	close(starting)
 	h.Start()
 
 	expected := event.EvtLocalAddressesUpdated{
