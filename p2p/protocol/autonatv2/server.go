@@ -527,6 +527,9 @@ func (r *rateLimiter) cleanup(now time.Time) {
 func (r *rateLimiter) CompleteRequest(p peer.ID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return
+	}
 	r.inProgressReqs[p]--
 	if r.inProgressReqs[p] <= 0 {
 		delete(r.inProgressReqs, p)
