@@ -40,10 +40,10 @@ const errorCodeConnectionGating = 0x47415445 // GATE in ASCII
 
 const certValidity = 14 * 24 * time.Hour
 
-type Option func(*transport) error
+type Option func(*Transport) error
 
 func WithClock(cl clock.Clock) Option {
-	return func(t *transport) error {
+	return func(t *Transport) error {
 		t.clock = cl
 		return nil
 	}
@@ -54,20 +54,20 @@ func WithClock(cl clock.Clock) Option {
 // When dialing a multiaddr that contains a /certhash component, this library will set InsecureSkipVerify and
 // overwrite the VerifyPeerCertificate callback.
 func WithTLSClientConfig(c *tls.Config) Option {
-	return func(t *transport) error {
+	return func(t *Transport) error {
 		t.tlsClientConf = c
 		return nil
 	}
 }
 
 func WithHandshakeTimeout(d time.Duration) Option {
-	return func(t *transport) error {
+	return func(t *Transport) error {
 		t.handshakeTimeout = d
 		return nil
 	}
 }
 
-type transport struct {
+type Transport struct {
 	privKey ic.PrivKey
 	pid     peer.ID
 	clock   clock.Clock
@@ -90,11 +90,11 @@ type transport struct {
 	handshakeTimeout time.Duration
 }
 
-var _ tpt.Transport = &transport{}
-var _ tpt.Resolver = &transport{}
-var _ io.Closer = &transport{}
+var _ tpt.Transport = &Transport{}
+var _ tpt.Resolver = &Transport{}
+var _ io.Closer = &Transport{}
 
-func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (*Transport, error) {
 	if len(psk) > 0 {
 		log.Error("WebTransport doesn't support private networks yet.")
 		return nil, errors.New("WebTransport doesn't support private networks yet")
@@ -106,7 +106,7 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 	if err != nil {
 		return nil, err
 	}
-	t := &transport{
+	t := &Transport{
 		pid:              id,
 		privKey:          key,
 		rcmgr:            rcmgr,
@@ -129,7 +129,7 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 	return t, nil
 }
 
-func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
+func (t *Transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
 	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
 	if err != nil {
 		log.Debug("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
@@ -145,7 +145,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 	return c, nil
 }
 
-func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
+func (t *Transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
 	_, addr, err := manet.DialArgs(raddr)
 	if err != nil {
 		return nil, err
@@ -188,7 +188,7 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	return conn, nil
 }
 
-func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, *quic.Conn, error) {
+func (t *Transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, *quic.Conn, error) {
 	var tlsConf *tls.Config
 	if t.tlsClientConf != nil {
 		tlsConf = t.tlsClientConf.Clone()
@@ -232,7 +232,7 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 	return sess, conn, err
 }
 
-func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p peer.ID, certHashes []multihash.DecodedMultihash) (*connSecurityMultiaddrs, error) {
+func (t *Transport) upgrade(ctx context.Context, sess *webtransport.Session, p peer.ID, certHashes []multihash.DecodedMultihash) (*connSecurityMultiaddrs, error) {
 	local, err := toWebtransportMultiaddr(sess.LocalAddr())
 	if err != nil {
 		return nil, fmt.Errorf("error determining local addr: %w", err)
@@ -302,12 +302,12 @@ func decodeCertHashesFromProtobuf(b [][]byte) ([]multihash.DecodedMultihash, err
 	return hashes, nil
 }
 
-func (t *transport) CanDial(addr ma.Multiaddr) bool {
+func (t *Transport) CanDial(addr ma.Multiaddr) bool {
 	ok, _ := IsWebtransportMultiaddr(addr)
 	return ok
 }
 
-func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
+func (t *Transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 	isWebTransport, certhashCount := IsWebtransportMultiaddr(laddr)
 	if !isWebTransport {
 		return nil, fmt.Errorf("cannot listen on non-WebTransport addr: %s", laddr)
@@ -341,15 +341,15 @@ func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 	return newListener(ln, t, t.staticTLSConf != nil)
 }
 
-func (t *transport) Protocols() []int {
+func (t *Transport) Protocols() []int {
 	return []int{ma.P_WEBTRANSPORT}
 }
 
-func (t *transport) Proxy() bool {
+func (t *Transport) Proxy() bool {
 	return false
 }
 
-func (t *transport) Close() error {
+func (t *Transport) Close() error {
 	t.listenOnce.Do(func() {})
 	if t.certManager != nil {
 		return t.certManager.Close()
@@ -357,7 +357,7 @@ func (t *transport) Close() error {
 	return nil
 }
 
-func (t *transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
+func (t *Transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
 	t.connMx.Lock()
 	defer t.connMx.Unlock()
 
@@ -368,13 +368,13 @@ func (t *transport) allowWindowIncrease(conn *quic.Conn, size uint64) bool {
 	return c.allowWindowIncrease(size)
 }
 
-func (t *transport) addConn(conn *quic.Conn, c *conn) {
+func (t *Transport) addConn(conn *quic.Conn, c *conn) {
 	t.connMx.Lock()
 	t.conns[conn] = c
 	t.connMx.Unlock()
 }
 
-func (t *transport) removeConn(conn *quic.Conn) {
+func (t *Transport) removeConn(conn *quic.Conn) {
 	t.connMx.Lock()
 	delete(t.conns, conn)
 	t.connMx.Unlock()
@@ -403,7 +403,7 @@ func extractSNI(maddr ma.Multiaddr) (sni string, foundSniComponent bool) {
 }
 
 // Resolve implements transport.Resolver
-func (t *transport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
+func (t *Transport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
 	sni, foundSniComponent := extractSNI(maddr)
 
 	if foundSniComponent || sni == "" {
@@ -433,7 +433,7 @@ func (t *transport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]ma.Multiad
 
 // AddCertHashes adds the current certificate hashes to a multiaddress.
 // If called before Listen, it's a no-op.
-func (t *transport) AddCertHashes(m ma.Multiaddr) (ma.Multiaddr, bool) {
+func (t *Transport) AddCertHashes(m ma.Multiaddr) (ma.Multiaddr, bool) {
 	if !t.hasCertManager.Load() {
 		return m, false
 	}

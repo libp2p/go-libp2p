@@ -28,7 +28,7 @@ func (c *connMultiaddrs) RemoteMultiaddr() ma.Multiaddr { return c.remote }
 type conn struct {
 	*connSecurityMultiaddrs
 
-	transport *transport
+	transport *Transport
 	session   *webtransport.Session
 
 	scope network.ConnManagementScope
@@ -37,7 +37,7 @@ type conn struct {
 
 var _ tpt.CapableConn = &conn{}
 
-func newConn(tr *transport, sess *webtransport.Session, sconn *connSecurityMultiaddrs, scope network.ConnManagementScope, qconn *quic.Conn) *conn {
+func newConn(tr *Transport, sess *webtransport.Session, sconn *connSecurityMultiaddrs, scope network.ConnManagementScope, qconn *quic.Conn) *conn {
 	return &conn{
 		connSecurityMultiaddrs: sconn,
 		transport:              tr,

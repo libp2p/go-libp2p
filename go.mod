@@ -7,6 +7,7 @@ retract v0.26.1 // Tag was applied incorrectly due to a bug in the release workf
 retract v0.36.0 // Accidentally modified the tag.
 
 require (
+	git.sr.ht/~marcopolo/di v0.0.4
 	github.com/benbjohnson/clock v1.3.5
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
