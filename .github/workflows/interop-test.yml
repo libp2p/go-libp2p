@@ -23,7 +23,7 @@ on:
 jobs:
   run-transport-interop:
     name: Run transport interoperability tests
-    runs-on: ${{ fromJSON(vars['INTEROP_TEST_RUNNER_UBUNTU'] || '"ubuntu-22.04"') }}
+    runs-on: ubuntu-22.04
     steps:
       - name: Free Disk Space (Ubuntu)
         if: vars['INTEROP_TEST_RUNNER_UBUNTU'] == ''
