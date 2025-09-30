@@ -25,7 +25,7 @@ jobs:
       GOTESTFLAGS: -cover -coverprofile=module-coverage.txt -coverpkg=./...
       GO386FLAGS: ""
       GORACEFLAGS: ""
-    runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
+    runs-on: ${{ format('"{0}-latest"', matrix.os)) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
       - name: Use msys2 on windows
