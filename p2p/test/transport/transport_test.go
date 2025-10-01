@@ -38,6 +38,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -350,6 +351,51 @@ var transportsToTest = []TransportTestCase{
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "circuit-v2",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, 
+					libp2p.NoListenAddrs,
+					libp2p.EnableRelay(),
+				)
+			} else {
+				libp2pOpts = append(libp2pOpts, 
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+					libp2p.EnableRelay(),
+				)
+			}
+			
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			
+			if !opts.NoListen {
+				ctx := context.Background()
+				
+				relayHost, err := libp2p.New(
+					libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+					libp2p.EnableRelay(),
+					libp2p.EnableRelayService(),
+					libp2p.ForceReachabilityPublic(),
+				)
+				require.NoError(t, err)
+				
+				err = h.Connect(ctx, peer.AddrInfo{ID: relayHost.ID(), Addrs: relayHost.Addrs()})
+				require.NoError(t, err)
+				
+				_, err = client.Reserve(ctx, h, peer.AddrInfo{ID: relayHost.ID(), Addrs: relayHost.Addrs()})
+				require.NoError(t, err)
+				
+				t.Cleanup(func() {
+					relayHost.Close()
+				})
+			}
+			
 			return h
 		},
 	},
