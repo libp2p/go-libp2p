@@ -18,9 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
-	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/prometheus/client_golang/prometheus"
@@ -57,13 +55,12 @@ type BasicHost struct {
 	// keep track of resources we need to wait on before shutting down
 	refCount sync.WaitGroup
 
-	network      network.Network
-	mux          *msmux.MultistreamMuxer[protocol.ID]
-	ids          identify.IDService
-	hps          *holepunch.Service
-	cmgr         connmgr.ConnManager
-	eventbus     event.Bus
-	relayManager *relaysvc.RelayManager
+	network  network.Network
+	mux      *msmux.MultistreamMuxer[protocol.ID]
+	ids      identify.IDService
+	hps      *holepunch.Service
+	cmgr     connmgr.ConnManager
+	eventbus event.Bus
 
 	negtimeout time.Duration
 
@@ -105,11 +102,6 @@ type HostOpts struct {
 
 	// ConnManager is a libp2p connection manager
 	ConnManager connmgr.ConnManager
-
-	// EnableRelayService enables the circuit v2 relay (if we're publicly reachable).
-	EnableRelayService bool
-	// RelayServiceOpts are options for the circuit v2 relay.
-	RelayServiceOpts []relayv2.Option
 
 	// UserAgent sets the user-agent for the host.
 	UserAgent string
@@ -256,17 +248,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	} else {
 		h.cmgr = opts.ConnManager
 		n.Notify(h.cmgr.Notifee())
-	}
-
-	if opts.EnableRelayService {
-		if opts.EnableMetrics {
-			// Prefer explicitly provided metrics tracer
-			metricsOpt := []relayv2.Option{
-				relayv2.WithMetricsTracer(
-					relayv2.NewMetricsTracer(relayv2.WithRegisterer(opts.PrometheusRegisterer)))}
-			opts.RelayServiceOpts = append(metricsOpt, opts.RelayServiceOpts...)
-		}
-		h.relayManager = relaysvc.NewRelayManager(h, opts.RelayServiceOpts...)
 	}
 
 	n.SetStreamHandler(h.newStreamHandler)
@@ -619,9 +600,6 @@ func (h *BasicHost) Close() error {
 		}
 		if h.autoNat != nil {
 			h.autoNat.Close()
-		}
-		if h.relayManager != nil {
-			h.relayManager.Close()
 		}
 		if h.hps != nil {
 			h.hps.Close()

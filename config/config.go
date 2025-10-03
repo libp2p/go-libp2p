@@ -452,8 +452,6 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *auton
 		ProtocolVersion:      cfg.ProtocolVersion,
 		EnableHolePunching:   cfg.EnableHolePunching,
 		HolePunchingOptions:  cfg.HolePunchingOptions,
-		EnableRelayService:   cfg.EnableRelayService,
-		RelayServiceOpts:     cfg.RelayServiceOpts,
 		EnableMetrics:        !cfg.DisableMetrics,
 		PrometheusRegisterer: cfg.PrometheusRegisterer,
 		AutoNATv2:            an,
@@ -635,6 +633,24 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if !cfg.DisablePing {
 		fxopts = append(fxopts, fx.Invoke(func(h *bhost.BasicHost) {
 			ping.NewPingService(h)
+		}))
+	}
+
+	if cfg.EnableRelayService {
+		fxopts = append(fxopts, fx.Invoke(func(h host.Host, lifecycle fx.Lifecycle) error {
+			if !cfg.DisableMetrics {
+				// Prefer explicitly provided metrics tracer
+				metricsOpt := []relayv2.Option{
+					relayv2.WithMetricsTracer(
+						relayv2.NewMetricsTracer(relayv2.WithRegisterer(cfg.PrometheusRegisterer)))}
+				cfg.RelayServiceOpts = append(metricsOpt, cfg.RelayServiceOpts...)
+			}
+			rs, err := relayv2.New(h, cfg.RelayServiceOpts...)
+			if err != nil {
+				return err
+			}
+			lifecycle.Append(fx.StartStopHook(rs.Start, rs.Close))
+			return nil
 		}))
 	}
 
