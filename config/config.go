@@ -39,6 +39,7 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/insecure"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
@@ -446,7 +447,6 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *auton
 		ConnManager:          cfg.ConnManager,
 		AddrsFactory:         cfg.AddrsFactory,
 		NATManager:           cfg.NATManager,
-		EnablePing:           !cfg.DisablePing,
 		UserAgent:            cfg.UserAgent,
 		ProtocolVersion:      cfg.ProtocolVersion,
 		EnableHolePunching:   cfg.EnableHolePunching,
@@ -618,6 +618,12 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			return nil
 		}),
 	)
+
+	if !cfg.DisablePing {
+		fxopts = append(fxopts, fx.Invoke(func(h *bhost.BasicHost) {
+			ping.NewPingService(h)
+		}))
+	}
 
 	var bh *bhost.BasicHost
 	fxopts = append(fxopts, fx.Invoke(func(bho *bhost.BasicHost) { bh = bho }))

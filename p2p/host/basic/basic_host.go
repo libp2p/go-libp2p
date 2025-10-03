@@ -24,7 +24,6 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/prometheus/client_golang/prometheus"
 
 	logging "github.com/libp2p/go-libp2p/gologshim"
@@ -64,7 +63,6 @@ type BasicHost struct {
 	mux          *msmux.MultistreamMuxer[protocol.ID]
 	ids          identify.IDService
 	hps          *holepunch.Service
-	pings        *ping.PingService
 	cmgr         connmgr.ConnManager
 	eventbus     event.Bus
 	relayManager *relaysvc.RelayManager
@@ -109,9 +107,6 @@ type HostOpts struct {
 
 	// ConnManager is a libp2p connection manager
 	ConnManager connmgr.ConnManager
-
-	// EnablePing indicates whether to instantiate the ping service
-	EnablePing bool
 
 	// EnableRelayService enables the circuit v2 relay (if we're publicly reachable).
 	EnableRelayService bool
@@ -279,10 +274,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			opts.RelayServiceOpts = append(metricsOpt, opts.RelayServiceOpts...)
 		}
 		h.relayManager = relaysvc.NewRelayManager(h, opts.RelayServiceOpts...)
-	}
-
-	if opts.EnablePing {
-		h.pings = ping.NewPingService(h)
 	}
 
 	n.SetStreamHandler(h.newStreamHandler)
