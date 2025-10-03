@@ -121,8 +121,6 @@ type HostOpts struct {
 	EnableMetrics bool
 	// PrometheusRegisterer is the PrometheusRegisterer used for metrics
 	PrometheusRegisterer prometheus.Registerer
-	// AutoNATv2MetricsTracker tracks AutoNATv2 address reachability metrics
-	AutoNATv2MetricsTracker MetricsTracker
 
 	// ObservedAddrsManager maps our local listen addresses to external publicly observed addresses.
 	ObservedAddrsManager ObservedAddrsManager
