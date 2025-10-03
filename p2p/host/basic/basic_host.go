@@ -18,7 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
@@ -59,7 +58,6 @@ type BasicHost struct {
 	refCount sync.WaitGroup
 
 	network      network.Network
-	psManager    *pstoremanager.PeerstoreManager
 	mux          *msmux.MultistreamMuxer[protocol.ID]
 	ids          identify.IDService
 	hps          *holepunch.Service
@@ -149,15 +147,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		opts.EventBus = eventbus.NewBus()
 	}
 
-	psManager, err := pstoremanager.NewPeerstoreManager(n.Peerstore(), opts.EventBus, n)
-	if err != nil {
-		return nil, err
-	}
-
 	hostCtx, cancel := context.WithCancel(context.Background())
 	h := &BasicHost{
 		network:    n,
-		psManager:  psManager,
 		mux:        msmux.NewMultistreamMuxer[protocol.ID](),
 		negtimeout: DefaultNegotiationTimeout,
 		eventbus:   opts.EventBus,
@@ -165,6 +157,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctxCancel:  cancel,
 	}
 
+	var err error
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}, eventbus.Stateful); err != nil {
 		return nil, err
 	}
@@ -284,7 +277,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 // Start starts background tasks in the host
 // TODO: Return error and handle it in the caller?
 func (h *BasicHost) Start() {
-	h.psManager.Start()
 	if h.autonatv2 != nil {
 		err := h.autonatv2.Start(h)
 		if err != nil {
@@ -645,7 +637,6 @@ func (h *BasicHost) Close() error {
 		}
 
 		h.addressManager.Close()
-		h.psManager.Close()
 		if h.Peerstore() != nil {
 			h.Peerstore().Close()
 		}

@@ -30,6 +30,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
+	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
@@ -580,6 +581,13 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			return bh
 		}),
 		fx.Provide(func(h *swarm.Swarm) peer.ID { return h.LocalPeer() }),
+		fx.Provide(func(h host.Host) (*pstoremanager.PeerstoreManager, error) {
+			psm, err := pstoremanager.NewPeerstoreManager(h.Peerstore(), h.EventBus(), h.Network())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create PeerstoreManager: %w", err)
+			}
+			return psm, nil
+		}),
 	}
 	transportOpts, err := cfg.addTransports()
 	if err != nil {
@@ -596,6 +604,11 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			}),
 		)
 	}
+
+	fxopts = append(fxopts, fx.Invoke(func(psm *pstoremanager.PeerstoreManager, lifecycle fx.Lifecycle) error {
+		lifecycle.Append(fx.StartStopHook(psm.Start, psm.Close))
+		return nil
+	}))
 
 	// enable autorelay
 	fxopts = append(fxopts,
