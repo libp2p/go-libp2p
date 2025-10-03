@@ -325,18 +325,49 @@ func (ac *client) handleDialBack(s network.Stream) {
 	}
 }
 
+var tlsWSAddr = ma.StringCast("/tls/ws")
+
 // normalizeMultiaddr returns a multiaddr suitable for equality checks.
-// it removes trailing certhashes.
+// it removes trailing certhashes and p2p components, removes sni components,
+// and translates /wss to /tls/ws.
+// Remove sni components because there's no way for us to verify whether the
+// correct sni was dialled by the remote host as the LocalAddr on the websocket conn
+// doesn't have sni information.
+// Note: This is used for comparing two addresses where both the addresses are
+// controlled by the host not by a remote node.
 func normalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	addr = removeTrailing(addr, ma.P_P2P)
 	addr = removeTrailing(addr, ma.P_CERTHASH)
+
+	// /wss => /tls/ws
+	for i, c := range addr {
+		if c.Code() == ma.P_WSS {
+			na := make(ma.Multiaddr, 0, len(addr)+1)
+			na = append(na, addr[:i]...)
+			na = append(na, tlsWSAddr...)
+			na = append(na, addr[i+1:]...)
+			addr = na
+			break // only do this once; there shouldn't be two /wss components anyway
+		}
+	}
+
+	// remove the sni component
+	for i, c := range addr {
+		if c.Code() == ma.P_SNI {
+			na := make(ma.Multiaddr, 0, len(addr)-1)
+			na = append(na, addr[:i]...)
+			na = append(na, addr[i+1:]...)
+			addr = na
+			break // only do this once; there shouldn't be two /sni components anyway
+		}
+	}
 	return addr
 }
 
 func removeTrailing(addr ma.Multiaddr, protocolCode int) ma.Multiaddr {
 	for i := len(addr) - 1; i >= 0; i-- {
 		if addr[i].Code() != protocolCode {
-			return addr[0 : i+1]
+			return addr[:i+1]
 		}
 	}
 	return nil
