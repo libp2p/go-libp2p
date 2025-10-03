@@ -636,6 +636,24 @@ func TestAreAddrsConsistency(t *testing.T) {
 			dialAddr:  ma.StringCast("/ip4/1.2.3.4/udp/123/quic-v1/"),
 			success:   false,
 		},
+		{
+			name:      "wss",
+			dialAddr:  ma.StringCast("/dns/lib.p2p/tcp/1/wss"),
+			localAddr: ma.StringCast("/ip4/1.2.3.4/tcp/1/tls/ws"),
+			success:   true,
+		},
+		{
+			name:      "tls-sni",
+			localAddr: ma.StringCast("/ip4/1.2.3.4/tcp/1/wss"),
+			dialAddr:  ma.StringCast("/ip4/1.2.3.4/tcp/1/tls/sni/abc.xyz/ws"),
+			success:   true,
+		},
+		{
+			name:      "only p2p",
+			localAddr: ma.StringCast("/p2p/QmYo41GybvrXk8y8Xnm1P7pfA4YEXCpfnLyzgRPnNbG35e"),
+			dialAddr:  ma.StringCast("/p2p/QmYo41GybvrXk8y8Xnm1P7pfA4YEXCpfnLyzgRPnNbG35e"),
+			success:   true,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
