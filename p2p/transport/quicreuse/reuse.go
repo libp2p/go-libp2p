@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/gopacket/routing"
+	"github.com/libp2p/go-netroute"
 	"github.com/quic-go/quic-go"
 )
 
@@ -474,7 +474,7 @@ type SourceIPSelector interface {
 }
 
 type netrouteSourceIPSelector struct {
-	routes routing.Router
+	routes netroute.Router
 }
 
 func (s *netrouteSourceIPSelector) PreferredSourceIPForDestination(dst *net.UDPAddr) (net.IP, error) {

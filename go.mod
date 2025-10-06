@@ -11,7 +11,6 @@ require (
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/flynn/noise v1.1.0
-	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/golang-lru/arc/v2 v2.0.7
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -27,7 +26,7 @@ require (
 	github.com/libp2p/go-libp2p-asn-util v0.4.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0
-	github.com/libp2p/go-netroute v0.2.2
+	github.com/libp2p/go-netroute v0.3.0
 	github.com/libp2p/go-reuseport v0.4.0
 	github.com/libp2p/go-yamux/v5 v5.0.1
 	github.com/libp2p/zeroconf/v2 v2.2.0
