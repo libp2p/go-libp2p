@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/record"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/util"
@@ -59,6 +61,7 @@ type Relay struct {
 	rsvp   map[peer.ID]time.Time
 	conns  map[peer.ID]int
 	closed bool
+	wg     sync.WaitGroup
 
 	selfAddr ma.Multiaddr
 
@@ -102,32 +105,40 @@ func New(h host.Host, opts ...Option) (*Relay, error) {
 	r.constraints = newConstraints(&r.rc)
 	r.selfAddr = ma.StringCast(fmt.Sprintf("/p2p/%s", h.ID()))
 
-	h.SetStreamHandler(proto.ProtoIDv2Hop, r.handleStream)
-	r.notifiee = &network.NotifyBundle{DisconnectedF: r.disconnected}
-	h.Network().Notify(r.notifiee)
-
 	if r.metricsTracer != nil {
 		r.metricsTracer.RelayStatus(true)
 	}
-	go r.background()
 
 	return r, nil
+}
+
+func (r *Relay) Start() {
+	sub, err := r.host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged), eventbus.Name("relay-svc"))
+	if err != nil {
+		log.Error("failed to subscribe to reachability event; disabling relay service", "err", err)
+		return
+	}
+	r.notifiee = &network.NotifyBundle{DisconnectedF: r.disconnected}
+	r.host.Network().Notify(r.notifiee)
+	r.wg.Add(1)
+	go r.background(sub)
 }
 
 func (r *Relay) Close() error {
 	r.mx.Lock()
 	if !r.closed {
+		defer r.scope.Done()
 		r.closed = true
 		r.mx.Unlock()
 
-		r.host.RemoveStreamHandler(proto.ProtoIDv2Hop)
 		r.host.Network().StopNotify(r.notifiee)
-		defer r.scope.Done()
 		r.cancel()
+		r.wg.Wait()
 		r.gc()
 		if r.metricsTracer != nil {
 			r.metricsTracer.RelayStatus(false)
 		}
+		r.host.RemoveStreamHandler(proto.ProtoIDv2Hop)
 		return nil
 	}
 	r.mx.Unlock()
@@ -695,7 +706,9 @@ func (r *Relay) makeLimitMsg(_ peer.ID) *pbv2.Limit {
 	}
 }
 
-func (r *Relay) background() {
+func (r *Relay) background(reachabilitySub event.Subscription) {
+	defer r.wg.Done()
+	defer reachabilitySub.Close()
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
@@ -703,6 +716,17 @@ func (r *Relay) background() {
 		select {
 		case <-ticker.C:
 			r.gc()
+		case ev, ok := <-reachabilitySub.Out():
+			if !ok {
+				return // subscription close, node's closing?
+			}
+			evt := ev.(event.EvtLocalReachabilityChanged)
+			switch evt.Reachability {
+			case network.ReachabilityPublic:
+				r.host.SetStreamHandler(proto.ProtoIDv2Hop, r.handleStream)
+			default:
+				r.host.RemoveStreamHandler(proto.ProtoIDv2Hop)
+			}
 		case <-r.ctx.Done():
 			return
 		}
