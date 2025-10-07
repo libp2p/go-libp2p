@@ -14,8 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
-	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
-	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -327,21 +325,52 @@ func (ac *client) handleDialBack(s network.Stream) {
 	}
 }
 
+var tlsWSAddr = ma.StringCast("/tls/ws")
+
 // normalizeMultiaddr returns a multiaddr suitable for equality checks.
-// If the multiaddr is a webtransport component, it removes the certhashes.
+// it removes trailing certhashes and p2p components, removes sni components,
+// and translates /wss to /tls/ws.
+// Remove sni components because there's no way for us to verify whether the
+// correct sni was dialled by the remote host as the LocalAddr on the websocket conn
+// doesn't have sni information.
+// Note: This is used for comparing two addresses where both the addresses are
+// controlled by the host not by a remote node.
 func normalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
-	ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr)
-	if !ok {
-		ok, n = libp2pwebrtc.IsWebRTCDirectMultiaddr(addr)
-	}
-	if ok && n > 0 {
-		out := addr
-		for i := 0; i < n; i++ {
-			out, _ = ma.SplitLast(out)
+	addr = removeTrailing(addr, ma.P_P2P)
+	addr = removeTrailing(addr, ma.P_CERTHASH)
+
+	// /wss => /tls/ws
+	for i, c := range addr {
+		if c.Code() == ma.P_WSS {
+			na := make(ma.Multiaddr, 0, len(addr)+1)
+			na = append(na, addr[:i]...)
+			na = append(na, tlsWSAddr...)
+			na = append(na, addr[i+1:]...)
+			addr = na
+			break // only do this once; there shouldn't be two /wss components anyway
 		}
-		return out
+	}
+
+	// remove the sni component
+	for i, c := range addr {
+		if c.Code() == ma.P_SNI {
+			na := make(ma.Multiaddr, 0, len(addr)-1)
+			na = append(na, addr[:i]...)
+			na = append(na, addr[i+1:]...)
+			addr = na
+			break // only do this once; there shouldn't be two /sni components anyway
+		}
 	}
 	return addr
+}
+
+func removeTrailing(addr ma.Multiaddr, protocolCode int) ma.Multiaddr {
+	for i := len(addr) - 1; i >= 0; i-- {
+		if addr[i].Code() != protocolCode {
+			return addr[:i+1]
+		}
+	}
+	return nil
 }
 
 func (ac *client) areAddrsConsistent(connLocalAddr, dialedAddr ma.Multiaddr) bool {
