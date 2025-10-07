@@ -27,7 +27,7 @@ const handshakeTimeout = 10 * time.Second
 type connKey struct{}
 
 type listener struct {
-	transport       *transport
+	transport       *Transport
 	isStaticTLSConf bool
 	reuseListener   quicreuse.Listener
 
@@ -49,7 +49,7 @@ type listener struct {
 
 var _ tpt.Listener = &listener{}
 
-func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf bool) (tpt.Listener, error) {
+func newListener(reuseListener quicreuse.Listener, t *Transport, isStaticTLSConf bool) (tpt.Listener, error) {
 	localMultiaddr, err := toWebtransportMultiaddr(reuseListener.Addr())
 	if err != nil {
 		return nil, err
