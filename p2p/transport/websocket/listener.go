@@ -126,8 +126,10 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		},
 	}
 	ln.server = http.Server{
-		Handler:     ln,
-		ErrorLog:    slog.NewLogLogger(log.Handler(), slog.LevelError),
+		Handler: ln,
+		// Use LevelDebug for http.Server errors (TLS handshake failures, connection issues).
+		// These are operational noise from misbehaving/buggy remote clients, not server errors.
+		ErrorLog:    slog.NewLogLogger(log.Handler(), slog.LevelDebug),
 		ConnContext: ln.ConnContext,
 		TLSConfig:   tlsConf,
 	}
