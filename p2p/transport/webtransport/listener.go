@@ -193,8 +193,7 @@ func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Reque
 	sess, err := l.server.Upgrade(w, r)
 	if err != nil {
 		log.Debug("upgrade failed", "error", err)
-		// TODO: think about the status code to use here
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
 	ctx, cancel := context.WithTimeout(l.ctx, handshakeTimeout)
