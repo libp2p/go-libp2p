@@ -23,7 +23,7 @@ func (m *mockBridge) Handle(_ context.Context, r slog.Record) error {
 	return nil
 }
 
-func (m *mockBridge) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (m *mockBridge) WithAttrs(_ []slog.Attr) slog.Handler {
 	// Simple mock - just return self
 	return m
 }
@@ -56,7 +56,7 @@ func TestGoLogBridgeDetection(t *testing.T) {
 		}
 	})
 
-	t.Run("fallback when bridge not present", func(t *testing.T) {
+	t.Run("fallback when bridge not present", func(_ *testing.T) {
 		// When go-log is not available, Logger() should create a fallback
 		// handler that writes to stderr. This ensures gologshim works standalone.
 		var buf bytes.Buffer
