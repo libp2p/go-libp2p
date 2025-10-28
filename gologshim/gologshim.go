@@ -1,11 +1,36 @@
+// Package gologshim provides slog-based logging that integrates with go-log
+// when available, without requiring go-log as a dependency.
+//
+// Usage:
+//
+//	var log = logging.Logger("subsystem")
+//	log.Debug("message", "key", "value")
+//
+// When go-log's slog bridge is detected (via duck typing), gologshim
+// automatically integrates for unified formatting and dynamic level control.
+// Otherwise, it creates standalone slog handlers writing to stderr.
+//
+// Environment variables (see go-log README for full details):
+//   - GOLOG_LOG_LEVEL: Set log levels per subsystem (e.g., "error,ping=debug")
+//   - GOLOG_LOG_FORMAT/GOLOG_LOG_FMT: Output format ("json" or text)
+//   - GOLOG_LOG_ADD_SOURCE: Include source location (default: true)
+//   - GOLOG_LOG_LABELS: Add key=value labels to all logs
+//
+// For integration details, see: https://github.com/ipfs/go-log/blob/master/README.md#slog-integration
+//
+// Note: This package exists as an intermediate solution while go-log uses zap
+// internally. If go-log migrates from zap to native slog, this bridge layer
+// could be simplified or removed entirely.
 package gologshim
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var lvlToLower = map[slog.Level]slog.Value{
@@ -15,25 +40,48 @@ var lvlToLower = map[slog.Level]slog.Value{
 	slog.LevelError: slog.StringValue("error"),
 }
 
-// Logger returns a *slog.Logger with a logging level defined by the
-// GOLOG_LOG_LEVEL env var. Supports different levels for different systems. e.g.
-// GOLOG_LOG_LEVEL=foo=info,bar=debug,warn
-// sets the foo system at level info, the bar system at level debug and the
-// fallback level to warn.
-//
-// Prefer a parameterized logger over a global logger.
-func Logger(system string) *slog.Logger {
-	var h slog.Handler
-	c := ConfigFromEnv()
-	handlerOpts := &slog.HandlerOptions{
-		Level:     c.LevelForSystem(system),
-		AddSource: c.addSource,
+// goLogBridge detects go-log's slog bridge via duck typing, without import dependency
+type goLogBridge interface {
+	GoLogBridge()
+}
+
+// lazyBridgeHandler delays bridge detection until first log call to handle init order issues
+type lazyBridgeHandler struct {
+	system  string
+	config  *Config
+	once    sync.Once
+	handler atomic.Pointer[slog.Handler]
+}
+
+func (h *lazyBridgeHandler) ensureHandler() slog.Handler {
+	if handler := h.handler.Load(); handler != nil {
+		return *handler
+	}
+
+	h.once.Do(func() {
+		var handler slog.Handler
+		if bridge, ok := slog.Default().Handler().(goLogBridge); ok {
+			attrs := make([]slog.Attr, 0, 1+len(h.config.labels))
+			attrs = append(attrs, slog.String("logger", h.system))
+			attrs = append(attrs, h.config.labels...)
+			handler = bridge.(slog.Handler).WithAttrs(attrs)
+		} else {
+			handler = h.createFallbackHandler()
+		}
+		h.handler.Store(&handler)
+	})
+
+	return *h.handler.Load()
+}
+
+func (h *lazyBridgeHandler) createFallbackHandler() slog.Handler {
+	opts := &slog.HandlerOptions{
+		Level:     h.config.LevelForSystem(h.system),
+		AddSource: h.config.addSource,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey {
-				// ipfs go-log uses "ts" for time
 				a.Key = "ts"
 			} else if a.Key == slog.LevelKey {
-				// ipfs go-log uses lowercase level names
 				if lvl, ok := a.Value.Any().(slog.Level); ok {
 					if s, ok := lvlToLower[lvl]; ok {
 						a.Value = s
@@ -43,16 +91,56 @@ func Logger(system string) *slog.Logger {
 			return a
 		},
 	}
-	if c.format == logFormatText {
-		h = slog.NewTextHandler(os.Stderr, handlerOpts)
+	var handler slog.Handler
+	if h.config.format == logFormatText {
+		handler = slog.NewTextHandler(os.Stderr, opts)
 	} else {
-		h = slog.NewJSONHandler(os.Stderr, handlerOpts)
+		handler = slog.NewJSONHandler(os.Stderr, opts)
 	}
-	attrs := make([]slog.Attr, 1+len(c.labels))
-	attrs = append(attrs, slog.String("logger", system))
-	attrs = append(attrs, c.labels...)
-	h = h.WithAttrs(attrs)
-	return slog.New(h)
+	attrs := make([]slog.Attr, 1+len(h.config.labels))
+	attrs[0] = slog.String("logger", h.system)
+	copy(attrs[1:], h.config.labels)
+	return handler.WithAttrs(attrs)
+}
+
+func (h *lazyBridgeHandler) Enabled(ctx context.Context, lvl slog.Level) bool {
+	return h.ensureHandler().Enabled(ctx, lvl)
+}
+
+func (h *lazyBridgeHandler) Handle(ctx context.Context, r slog.Record) error {
+	return h.ensureHandler().Handle(ctx, r)
+}
+
+func (h *lazyBridgeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h.ensureHandler().WithAttrs(attrs)
+}
+
+func (h *lazyBridgeHandler) WithGroup(name string) slog.Handler {
+	return h.ensureHandler().WithGroup(name)
+}
+
+// Logger returns a *slog.Logger with a logging level defined by the
+// GOLOG_LOG_LEVEL env var. Supports different levels for different systems. e.g.
+// GOLOG_LOG_LEVEL=foo=info,bar=debug,warn
+// sets the foo system at level info, the bar system at level debug and the
+// fallback level to warn.
+func Logger(system string) *slog.Logger {
+	c := ConfigFromEnv()
+
+	// If go-log bridge available, use it immediately
+	if _, ok := slog.Default().Handler().(goLogBridge); ok {
+		attrs := make([]slog.Attr, 0, 1+len(c.labels))
+		attrs = append(attrs, slog.String("logger", system))
+		attrs = append(attrs, c.labels...)
+		h := slog.Default().Handler().WithAttrs(attrs)
+		return slog.New(h)
+	}
+
+	// Use lazy handler for init order issues
+	return slog.New(&lazyBridgeHandler{
+		system: system,
+		config: c,
+	})
 }
 
 type logFormat = int
