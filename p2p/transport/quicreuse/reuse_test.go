@@ -163,7 +163,7 @@ func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
 }
 
 func TestReuseListenOnSpecificInterface(t *testing.T) {
-	if platformHasRoutingTables() {
+	if !platformHasRoutingTables() {
 		t.Skip("this test only works on platforms that support routing tables")
 	}
 	reuse := newReuse(nil, nil, defaultListenUDP, defaultSourceIPSelectorFn, nil, nil)
@@ -185,7 +185,7 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 	// dial
 	conn, err := reuse.TransportWithAssociationForDial(nil, "udp4", raddr)
 	require.NoError(t, err)
-	require.Equal(t, 1, conn.GetCount())
+	require.Equal(t, 2, conn.GetCount())
 }
 
 func TestReuseGarbageCollect(t *testing.T) {
