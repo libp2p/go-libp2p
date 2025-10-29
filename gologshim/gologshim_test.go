@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
 // mockBridge simulates go-log's slog bridge for testing duck typing detection
 type mockBridge struct {
+	sync.Mutex
 	slog.Handler
 	logs *bytes.Buffer
 }
@@ -18,6 +20,8 @@ type mockBridge struct {
 func (m *mockBridge) GoLogBridge() {}
 
 func (m *mockBridge) Handle(_ context.Context, r slog.Record) error {
+	m.Lock()
+	defer m.Unlock()
 	m.logs.WriteString(r.Message)
 	m.logs.WriteString("\n")
 	return nil
@@ -94,10 +98,14 @@ func TestLazyBridgeInitialization(t *testing.T) {
 	}
 	slog.SetDefault(slog.New(bridge))
 
+	// Log in goroutine to detect races
+	go log.Info("lazy init message")
 	// First log call should detect the bridge via lazy initialization
 	log.Info("lazy init message")
 
+	bridge.Lock()
 	output := bridgeBuf.String()
+	bridge.Unlock()
 	if !strings.Contains(output, "lazy init message") {
 		t.Errorf("Lazy handler should have detected bridge, got: %s", output)
 	}

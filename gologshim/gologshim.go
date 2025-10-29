@@ -30,7 +30,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 var lvlToLower = map[slog.Level]slog.Value{
@@ -50,14 +49,10 @@ type lazyBridgeHandler struct {
 	system  string
 	config  *Config
 	once    sync.Once
-	handler atomic.Pointer[slog.Handler]
+	handler slog.Handler
 }
 
 func (h *lazyBridgeHandler) ensureHandler() slog.Handler {
-	if handler := h.handler.Load(); handler != nil {
-		return *handler
-	}
-
 	h.once.Do(func() {
 		var handler slog.Handler
 		if bridge, ok := slog.Default().Handler().(goLogBridge); ok {
@@ -68,10 +63,10 @@ func (h *lazyBridgeHandler) ensureHandler() slog.Handler {
 		} else {
 			handler = h.createFallbackHandler()
 		}
-		h.handler.Store(&handler)
+		h.handler = handler
 	})
 
-	return *h.handler.Load()
+	return h.handler
 }
 
 func (h *lazyBridgeHandler) createFallbackHandler() slog.Handler {
@@ -79,10 +74,13 @@ func (h *lazyBridgeHandler) createFallbackHandler() slog.Handler {
 		Level:     h.config.LevelForSystem(h.system),
 		AddSource: h.config.addSource,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
+			switch a.Key {
+			case slog.TimeKey:
+				// ipfs go-log uses "ts" for time
 				a.Key = "ts"
-			} else if a.Key == slog.LevelKey {
+			case slog.LevelKey:
 				if lvl, ok := a.Value.Any().(slog.Level); ok {
+					// ipfs go-log uses lowercase level names
 					if s, ok := lvlToLower[lvl]; ok {
 						a.Value = s
 					}
@@ -97,9 +95,9 @@ func (h *lazyBridgeHandler) createFallbackHandler() slog.Handler {
 	} else {
 		handler = slog.NewJSONHandler(os.Stderr, opts)
 	}
-	attrs := make([]slog.Attr, 1+len(h.config.labels))
-	attrs[0] = slog.String("logger", h.system)
-	copy(attrs[1:], h.config.labels)
+	attrs := make([]slog.Attr, 0, 1+len(h.config.labels))
+	attrs = append(attrs, slog.String("logger", h.system))
+	attrs = append(attrs, h.config.labels...)
 	return handler.WithAttrs(attrs)
 }
 
@@ -126,17 +124,6 @@ func (h *lazyBridgeHandler) WithGroup(name string) slog.Handler {
 // fallback level to warn.
 func Logger(system string) *slog.Logger {
 	c := ConfigFromEnv()
-
-	// If go-log bridge available, use it immediately
-	if _, ok := slog.Default().Handler().(goLogBridge); ok {
-		attrs := make([]slog.Attr, 0, 1+len(c.labels))
-		attrs = append(attrs, slog.String("logger", system))
-		attrs = append(attrs, c.labels...)
-		h := slog.Default().Handler().WithAttrs(attrs)
-		return slog.New(h)
-	}
-
-	// Use lazy handler for init order issues
 	return slog.New(&lazyBridgeHandler{
 		system: system,
 		config: c,
