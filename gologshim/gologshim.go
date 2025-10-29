@@ -30,6 +30,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var lvlToLower = map[slog.Level]slog.Value{
@@ -39,37 +40,39 @@ var lvlToLower = map[slog.Level]slog.Value{
 	slog.LevelError: slog.StringValue("error"),
 }
 
-// goLogBridge detects go-log's slog bridge via duck typing, without import dependency
-type goLogBridge interface {
-	GoLogBridge()
+var defaultHandler atomic.Pointer[slog.Handler]
+
+// SetDefaultHandler allows an application to change the underlying handler used
+// by gologshim as long as it's changed *before* the first log by the logger.
+func SetDefaultHandler(handler slog.Handler) {
+	defaultHandler.Store(&handler)
 }
 
-// lazyBridgeHandler delays bridge detection until first log call to handle init order issues
-type lazyBridgeHandler struct {
+// dynamicHandler delays bridge detection until first log call to handle init order issues
+type dynamicHandler struct {
 	system  string
 	config  *Config
 	once    sync.Once
 	handler slog.Handler
 }
 
-func (h *lazyBridgeHandler) ensureHandler() slog.Handler {
+func (h *dynamicHandler) ensureHandler() slog.Handler {
 	h.once.Do(func() {
-		var handler slog.Handler
-		if bridge, ok := slog.Default().Handler().(goLogBridge); ok {
-			attrs := make([]slog.Attr, 0, 1+len(h.config.labels))
-			attrs = append(attrs, slog.String("logger", h.system))
-			attrs = append(attrs, h.config.labels...)
-			handler = bridge.(slog.Handler).WithAttrs(attrs)
+		if hPtr := defaultHandler.Load(); hPtr != nil {
+			h.handler = *hPtr
 		} else {
-			handler = h.createFallbackHandler()
+			h.handler = h.createFallbackHandler()
 		}
-		h.handler = handler
+		attrs := make([]slog.Attr, 0, 1+len(h.config.labels))
+		attrs = append(attrs, slog.String("logger", h.system))
+		attrs = append(attrs, h.config.labels...)
+		h.handler = h.handler.WithAttrs(attrs)
 	})
 
 	return h.handler
 }
 
-func (h *lazyBridgeHandler) createFallbackHandler() slog.Handler {
+func (h *dynamicHandler) createFallbackHandler() slog.Handler {
 	opts := &slog.HandlerOptions{
 		Level:     h.config.LevelForSystem(h.system),
 		AddSource: h.config.addSource,
@@ -89,31 +92,26 @@ func (h *lazyBridgeHandler) createFallbackHandler() slog.Handler {
 			return a
 		},
 	}
-	var handler slog.Handler
 	if h.config.format == logFormatText {
-		handler = slog.NewTextHandler(os.Stderr, opts)
-	} else {
-		handler = slog.NewJSONHandler(os.Stderr, opts)
+		return slog.NewTextHandler(os.Stderr, opts)
 	}
-	attrs := make([]slog.Attr, 0, 1+len(h.config.labels))
-	attrs = append(attrs, slog.String("logger", h.system))
-	attrs = append(attrs, h.config.labels...)
-	return handler.WithAttrs(attrs)
+
+	return slog.NewJSONHandler(os.Stderr, opts)
 }
 
-func (h *lazyBridgeHandler) Enabled(ctx context.Context, lvl slog.Level) bool {
+func (h *dynamicHandler) Enabled(ctx context.Context, lvl slog.Level) bool {
 	return h.ensureHandler().Enabled(ctx, lvl)
 }
 
-func (h *lazyBridgeHandler) Handle(ctx context.Context, r slog.Record) error {
+func (h *dynamicHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.ensureHandler().Handle(ctx, r)
 }
 
-func (h *lazyBridgeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *dynamicHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return h.ensureHandler().WithAttrs(attrs)
 }
 
-func (h *lazyBridgeHandler) WithGroup(name string) slog.Handler {
+func (h *dynamicHandler) WithGroup(name string) slog.Handler {
 	return h.ensureHandler().WithGroup(name)
 }
 
@@ -124,7 +122,7 @@ func (h *lazyBridgeHandler) WithGroup(name string) slog.Handler {
 // fallback level to warn.
 func Logger(system string) *slog.Logger {
 	c := ConfigFromEnv()
-	return slog.New(&lazyBridgeHandler{
+	return slog.New(&dynamicHandler{
 		system: system,
 		config: c,
 	})

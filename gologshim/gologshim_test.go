@@ -17,8 +17,6 @@ type mockBridge struct {
 	logs *bytes.Buffer
 }
 
-func (m *mockBridge) GoLogBridge() {}
-
 func (m *mockBridge) Handle(_ context.Context, r slog.Record) error {
 	m.Lock()
 	defer m.Unlock()
@@ -48,7 +46,7 @@ func TestGoLogBridgeDetection(t *testing.T) {
 			Handler: slog.NewTextHandler(&buf, nil),
 			logs:    &buf,
 		}
-		slog.SetDefault(slog.New(bridge))
+		SetDefaultHandler(bridge)
 
 		// Create logger - should detect bridge
 		log := Logger("test-subsystem")
@@ -96,7 +94,7 @@ func TestLazyBridgeInitialization(t *testing.T) {
 		Handler: slog.NewTextHandler(&bridgeBuf, nil),
 		logs:    &bridgeBuf,
 	}
-	slog.SetDefault(slog.New(bridge))
+	SetDefaultHandler(bridge)
 
 	// Log in goroutine to detect races
 	go log.Info("lazy init message")
