@@ -25,7 +25,7 @@ require (
 	github.com/libp2p/go-libp2p-asn-util v0.4.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0
-	github.com/libp2p/go-netroute v0.3.0
+	github.com/libp2p/go-netroute v0.4.0
 	github.com/libp2p/go-reuseport v0.4.0
 	github.com/libp2p/go-yamux/v5 v5.0.1
 	github.com/libp2p/zeroconf/v2 v2.2.0
