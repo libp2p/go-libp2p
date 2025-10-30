@@ -136,7 +136,7 @@ func (ac *client) getReachability(ctx context.Context, p peer.ID, reqs []Request
 
 	resp := msg.GetDialResponse()
 	if resp.GetStatus() != pb.DialResponse_OK {
-		// E_DIAL_REFUSED has implication for deciding future address verificiation priorities
+		// E_DIAL_REFUSED has implication for deciding future address verification priorities
 		// wrap a distinct error for convenient errors.Is usage
 		if resp.GetStatus() == pb.DialResponse_E_DIAL_REFUSED {
 			return Result{AllAddrsRefused: true}, nil

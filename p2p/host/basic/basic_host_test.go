@@ -381,7 +381,7 @@ func TestHostProtoMismatch(t *testing.T) {
 	defer h2.Close()
 
 	h1.SetStreamHandler("/super", func(s network.Stream) {
-		t.Error("shouldnt get here")
+		t.Error("shouldn't get here")
 		s.Reset()
 	})
 
@@ -881,7 +881,7 @@ func TestTrimHostAddrList(t *testing.T) {
 			out:       []ma.Multiaddr{tcpPublic},
 		},
 		{
-			name:      "Public and private preffered over local",
+			name:      "Public and private preferred over local",
 			in:        []ma.Multiaddr{tcpPublic, tcpPrivate, quicLocal},
 			threshold: len(tcpPublic.Bytes()) + len(tcpPrivate.Bytes()),
 			out:       []ma.Multiaddr{tcpPublic, tcpPrivate},

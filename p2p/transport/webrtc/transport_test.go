@@ -974,7 +974,7 @@ func TestManyConnections(t *testing.T) {
 		for i := 0; i < dialersPerListener*connsPerDialer; i++ {
 			conn, err := ln.Accept()
 			if err != nil {
-				t.Errorf("listener failed to accept conneciton: %s", err)
+				t.Errorf("listener failed to accept connection: %s", err)
 				return
 			}
 			go runListenConn(conn)
