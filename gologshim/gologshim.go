@@ -1,16 +1,32 @@
-// Package gologshim provides slog-based logging that integrates with go-log
-// when available, without requiring go-log as a dependency.
+// Package gologshim provides slog-based logging for go-libp2p that works
+// standalone or integrates with go-log for unified log management across
+// IPFS/libp2p applications, without adding go-log as a dependency.
 //
-// Usage:
+// # Usage
 //
-//	var log = logging.Logger("subsystem")
+// Create loggers using the Logger function:
+//
+//	var log = gologshim.Logger("subsystem")
 //	log.Debug("message", "key", "value")
 //
-// When go-log's slog bridge is detected (via duck typing), gologshim
-// automatically integrates for unified formatting and dynamic level control.
-// Otherwise, it creates standalone slog handlers writing to stderr.
+// # Integration with go-log
 //
-// Environment variables (see go-log README for full details):
+// Applications can optionally connect go-libp2p to go-log by calling SetDefaultHandler:
+//
+//	func init() {
+//		gologshim.SetDefaultHandler(slog.Default().Handler())
+//	}
+//
+// When integrated, go-libp2p logs use go-log's formatting and can be controlled
+// programmatically via go-log's SetLogLevel("subsystem", "level") API to adjust
+// log verbosity per subsystem at runtime without restarting.
+//
+// # Standalone Usage
+//
+// Without calling SetDefaultHandler, gologshim creates standalone slog handlers
+// writing to stderr. This mode is useful when go-log is not present or when you
+// want independent log configuration via backward-compatible (go-log) environment variables:
+//
 //   - GOLOG_LOG_LEVEL: Set log levels per subsystem (e.g., "error,ping=debug")
 //   - GOLOG_LOG_FORMAT/GOLOG_LOG_FMT: Output format ("json" or text)
 //   - GOLOG_LOG_ADD_SOURCE: Include source location (default: true)
@@ -64,6 +80,8 @@ func (h *dynamicHandler) ensureHandler() slog.Handler {
 			h.handler = h.createFallbackHandler()
 		}
 		attrs := make([]slog.Attr, 0, 1+len(h.config.labels))
+		// Use "logger" attribute for compatibility with go-log's Zap-based format
+		// and existing IPFS/libp2p tooling and dashboards.
 		attrs = append(attrs, slog.String("logger", h.system))
 		attrs = append(attrs, h.config.labels...)
 		h.handler = h.handler.WithAttrs(attrs)
