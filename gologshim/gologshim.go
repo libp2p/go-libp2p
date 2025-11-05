@@ -13,13 +13,18 @@
 //
 // Applications can optionally connect go-libp2p to go-log by calling SetDefaultHandler:
 //
+//	import golog "github.com/ipfs/go-log/v2"
+//
 //	func init() {
-//		gologshim.SetDefaultHandler(slog.Default().Handler())
+//		gologshim.SetDefaultHandler(golog.SlogHandler())
 //	}
 //
 // When integrated, go-libp2p logs use go-log's formatting and can be controlled
 // programmatically via go-log's SetLogLevel("subsystem", "level") API to adjust
 // log verbosity per subsystem at runtime without restarting.
+//
+// Note: SlogHandler() works even when GOLOG_CAPTURE_DEFAULT_SLOG=false, making
+// it more reliable than using slog.Default().Handler().
 //
 // # Standalone Usage
 //
