@@ -88,12 +88,12 @@ func testHandshake(t *testing.T, tc *connTestCase) {
 
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 
 	handshake := func(t *testing.T, ln tpt.Listener) {
 		clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 		require.NoError(t, err)
-		defer clientTransport.(io.Closer).Close()
+		defer clientTransport.Close()
 		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
 		require.NoError(t, err)
 		defer conn.Close()
@@ -141,7 +141,7 @@ func testResourceManagerSuccess(t *testing.T, tc *connTestCase) {
 	serverRcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, serverRcmgr)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -149,7 +149,7 @@ func testResourceManagerSuccess(t *testing.T, tc *connTestCase) {
 	clientRcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, clientRcmgr)
 	require.NoError(t, err)
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 
 	connChan := make(chan tpt.CapableConn)
 	serverConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
@@ -190,7 +190,7 @@ func testResourceManagerDialDenied(t *testing.T, tc *connTestCase) {
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, rcmgr)
 	require.NoError(t, err)
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 
 	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	target := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
@@ -223,7 +223,7 @@ func testResourceManagerAcceptDenied(t *testing.T, tc *connTestCase) {
 	clientRcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, clientRcmgr)
 	require.NoError(t, err)
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 
 	serverRcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	serverConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
@@ -235,7 +235,7 @@ func testResourceManagerAcceptDenied(t *testing.T, tc *connTestCase) {
 	)
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, serverRcmgr)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"))
 	require.NoError(t, err)
 	defer ln.Close()
@@ -281,13 +281,13 @@ func testStreams(t *testing.T, tc *connTestCase) {
 
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 	defer ln.Close()
 
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
 	require.NoError(t, err)
 	defer conn.Close()
@@ -313,13 +313,13 @@ func testStreamsErrorCode(t *testing.T, tc *connTestCase) {
 
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 	defer ln.Close()
 
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
 	require.NoError(t, err)
 	defer conn.Close()
@@ -361,7 +361,7 @@ func testHandshakeFailPeerIDMismatch(t *testing.T, tc *connTestCase) {
 
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
@@ -370,7 +370,7 @@ func testHandshakeFailPeerIDMismatch(t *testing.T, tc *connTestCase) {
 	_, err = clientTransport.Dial(context.Background(), ln.Multiaddr(), thirdPartyID)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "CRYPTO_ERROR")
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 
 	acceptErr := make(chan error)
 	go func() {
@@ -406,7 +406,9 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 
 	t.Run("accepted connections", func(t *testing.T) {
 		serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, cg, nil)
-		defer serverTransport.(io.Closer).Close()
+		defer func() {
+			_ = serverTransport.Close()
+		}()
 		require.NoError(t, err)
 		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 		defer ln.Close()
@@ -422,7 +424,7 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 
 		clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 		require.NoError(t, err)
-		defer clientTransport.(io.Closer).Close()
+		defer clientTransport.Close()
 		// make sure that connection attempts fails
 		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
 		// In rare instances, the connection gating error will already occur on Dial.
@@ -451,7 +453,7 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 	t.Run("secured connections", func(t *testing.T) {
 		serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil)
 		require.NoError(t, err)
-		defer serverTransport.(io.Closer).Close()
+		defer serverTransport.Close()
 		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 		defer ln.Close()
 
@@ -460,7 +462,7 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 
 		clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, cg, nil)
 		require.NoError(t, err)
-		defer clientTransport.(io.Closer).Close()
+		defer clientTransport.Close()
 
 		// make sure that connection attempts fails
 		_, err = clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
@@ -490,12 +492,12 @@ func testDialTwo(t *testing.T, tc *connTestCase) {
 
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 	ln1 := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 	defer ln1.Close()
 	serverTransport2, err := NewTransport(serverKey2, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer serverTransport2.(io.Closer).Close()
+	defer serverTransport2.Close()
 	ln2 := runServer(t, serverTransport2, "/ip4/127.0.0.1/udp/0/quic-v1")
 	defer ln2.Close()
 
@@ -521,7 +523,7 @@ func testDialTwo(t *testing.T, tc *connTestCase) {
 
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 	c1, err := clientTransport.Dial(context.Background(), ln1.Multiaddr(), serverID)
 	require.NoError(t, err)
 	defer c1.Close()
@@ -576,7 +578,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 
 	serverTransport, err := NewTransport(serverKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer serverTransport.(io.Closer).Close()
+	defer serverTransport.Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 
 	var drop uint32
@@ -593,7 +595,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	// establish a connection
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
-	defer clientTransport.(io.Closer).Close()
+	defer clientTransport.Close()
 	proxyAddr, err := quicreuse.ToQuicMultiaddr(proxy.LocalAddr(), quic.Version1)
 	require.NoError(t, err)
 	conn, err := clientTransport.Dial(context.Background(), proxyAddr, serverID)
@@ -663,7 +665,7 @@ func TestHolePunching(t *testing.T) {
 
 	t1, err := NewTransport(serverKey, newConnManager(t), nil, nil, nil)
 	require.NoError(t, err)
-	defer t1.(io.Closer).Close()
+	defer t1.Close()
 	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1")
 	require.NoError(t, err)
 	ln1, err := t1.Listen(laddr)
@@ -677,7 +679,7 @@ func TestHolePunching(t *testing.T) {
 
 	t2, err := NewTransport(clientKey, newConnManager(t), nil, nil, nil)
 	require.NoError(t, err)
-	defer t2.(io.Closer).Close()
+	defer t2.Close()
 	ln2, err := t2.Listen(laddr)
 	require.NoError(t, err)
 	done2 := make(chan struct{})
@@ -700,7 +702,7 @@ func TestHolePunching(t *testing.T) {
 	// If it hasn't created the hole punch map entry, the connection will be accepted as a regular connection,
 	// which would make this test fail.
 	require.Eventually(t, func() bool {
-		tr := t2.(*transport)
+		tr := t2
 		tr.holePunchingMx.Lock()
 		defer tr.holePunchingMx.Unlock()
 		return len(tr.holePunching) > 0

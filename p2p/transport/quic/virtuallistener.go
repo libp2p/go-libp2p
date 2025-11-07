@@ -18,7 +18,7 @@ type virtualListener struct {
 	*listener
 	udpAddr       string
 	version       quic.Version
-	t             *transport
+	t             *Transport
 	acceptRunnner *acceptLoopRunner
 	acceptChan    chan acceptVal
 }

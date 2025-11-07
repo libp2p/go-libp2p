@@ -83,7 +83,7 @@ func TestWebtransportResolve(t *testing.T) {
 		"/ip4/127.0.0.1/udp/1337/quic-v1/sni/example.com/webtransport",
 	}
 
-	tpt := &transport{}
+	tpt := &Transport{}
 	ctx := context.Background()
 
 	for _, tc := range testCases {
