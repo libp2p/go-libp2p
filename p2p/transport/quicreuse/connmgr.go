@@ -13,15 +13,17 @@ import (
 	"net"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/gologshim"
 	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
-	quiclogging "github.com/quic-go/quic-go/logging"
-	quicmetrics "github.com/quic-go/quic-go/metrics"
+	"github.com/quic-go/quic-go/qlog"
 	"golang.org/x/time/rate"
 )
+
+var log = gologshim.Logger("quicreuse")
 
 type QUICListener interface {
 	Accept(ctx context.Context) (*quic.Conn, error)
@@ -109,7 +111,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	}
 
 	quicConf := quicConfig.Clone()
-	quicConf.Tracer = cm.getTracer()
+	// quic-go takes care of disabling this if QLOGDIR Environment variable isn't present
+	quicConf.Tracer = qlog.DefaultConnectionTracer
 	serverConfig := quicConf.Clone()
 
 	cm.clientConfig = quicConf
@@ -134,37 +137,6 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, cm.verifySourceAddress)
 	}
 	return cm, nil
-}
-
-func (c *ConnManager) getTracer() func(context.Context, quiclogging.Perspective, quic.ConnectionID) *quiclogging.ConnectionTracer {
-	return func(_ context.Context, p quiclogging.Perspective, ci quic.ConnectionID) *quiclogging.ConnectionTracer {
-		var promTracer *quiclogging.ConnectionTracer
-		if c.enableMetrics {
-			switch p {
-			case quiclogging.PerspectiveClient:
-				promTracer = quicmetrics.NewClientConnectionTracerWithRegisterer(c.registerer)
-			case quiclogging.PerspectiveServer:
-				promTracer = quicmetrics.NewServerConnectionTracerWithRegisterer(c.registerer)
-			default:
-				log.Error("invalid logging perspective", "peer", p)
-			}
-		}
-		var tracer *quiclogging.ConnectionTracer
-		var tracerDir = c.qlogTracerDir
-		if tracerDir == "" {
-			// Fallback to the global qlogTracerDir
-			tracerDir = qlogTracerDir
-		}
-
-		if tracerDir != "" {
-			tracer = qloggerForDir(tracerDir, p, ci)
-			if promTracer != nil {
-				tracer = quiclogging.NewMultiplexedConnectionTracer(promTracer,
-					tracer)
-			}
-		}
-		return tracer
-	}
 }
 
 func (c *ConnManager) getReuse(network string) (*reuse, error) {
