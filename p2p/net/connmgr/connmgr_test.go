@@ -168,7 +168,7 @@ func TestConnTrimming(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		c := conns[i]
 		if c.(*tconn).isClosed() {
-			t.Fatal("these shouldnt be closed")
+			t.Fatal("these shouldn't be closed")
 		}
 	}
 
@@ -912,7 +912,7 @@ func TestPeerInfoSorting(t *testing.T) {
 		pis := peerInfos{p1, p2, p3, p4}
 		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), true)
 		// p3 is first because it is inactive (no streams).
-		// p4 is second because it has the most streams and we priortize killing
+		// p4 is second because it has the most streams and we prioritize killing
 		// connections with the higher number of streams.
 		require.Equal(t, peerInfos{p3, p4, p2, p1}, pis)
 	})

@@ -58,7 +58,7 @@ func TestBasicDialPeerWithResolver(t *testing.T) {
 	s2 := swarms[1]
 
 	// Change the multiaddr from /ip4/127.0.0.1/... to /dns4/example.com/... so
-	// that the resovler has to resolve this
+	// that the resolver has to resolve this
 	var s2Addrs []ma.Multiaddr
 	for _, a := range s2.ListenAddresses() {
 		_, rest := ma.SplitFunc(a, func(c ma.Component) bool {

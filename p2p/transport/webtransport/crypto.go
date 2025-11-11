@@ -23,7 +23,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-const deterministicCertInfo = "determinisitic cert"
+const deterministicCertInfo = "deterministic cert"
 
 func getTLSConf(key ic.PrivKey, start, end time.Time) (*tls.Config, error) {
 	cert, priv, err := generateCert(key, start, end)

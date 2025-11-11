@@ -10,7 +10,7 @@ import (
 )
 
 // connectednessEventEmitter emits PeerConnectednessChanged events.
-// We ensure that for any peer we connected to we always sent atleast 1 NotConnected Event after
+// We ensure that for any peer we connected to we always sent at least 1 NotConnected Event after
 // the peer disconnects. This is because peers can observe a connection before they are notified
 // of the connection by a peer connectedness changed event.
 type connectednessEventEmitter struct {

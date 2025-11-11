@@ -42,7 +42,7 @@ func TestQlogBuffering(t *testing.T) {
 	logger := newQlogger(qlogDir, logging.PerspectiveServer, quic.ConnectionIDFromBytes([]byte("connid")))
 	initialSize := getFile(t, qlogDir).Size()
 	// Do a small write.
-	// Since the writter is buffered, this should not be written to disk yet.
+	// Since the writer is buffered, this should not be written to disk yet.
 	logger.Write([]byte("foobar"))
 	require.Equal(t, getFile(t, qlogDir).Size(), initialSize)
 	// Close the logger. This should flush the buffer to disk.
