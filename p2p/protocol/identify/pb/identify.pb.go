@@ -46,8 +46,11 @@ type Identify struct {
 	// see github.com/libp2p/go-libp2p/core/record/pb/envelope.proto and
 	// github.com/libp2p/go-libp2p/core/peer/pb/peer_record.proto for message definitions.
 	SignedPeerRecord []byte `protobuf:"bytes,8,opt,name=signedPeerRecord" json:"signedPeerRecord,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// maxMultiselectVersion contains the maximum multistream-select version the node supports.
+	// If it's absent, we assume that it's 1.
+	MaxMultiselectVersion *uint32 `protobuf:"varint,9,opt,name=maxMultiselectVersion" json:"maxMultiselectVersion,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *Identify) Reset() {
@@ -129,11 +132,18 @@ func (x *Identify) GetSignedPeerRecord() []byte {
 	return nil
 }
 
+func (x *Identify) GetMaxMultiselectVersion() uint32 {
+	if x != nil && x.MaxMultiselectVersion != nil {
+		return *x.MaxMultiselectVersion
+	}
+	return 0
+}
+
 var File_p2p_protocol_identify_pb_identify_proto protoreflect.FileDescriptor
 
 const file_p2p_protocol_identify_pb_identify_proto_rawDesc = "" +
 	"\n" +
-	"'p2p/protocol/identify/pb/identify.proto\x12\videntify.pb\"\x86\x02\n" +
+	"'p2p/protocol/identify/pb/identify.proto\x12\videntify.pb\"\xbc\x02\n" +
 	"\bIdentify\x12(\n" +
 	"\x0fprotocolVersion\x18\x05 \x01(\tR\x0fprotocolVersion\x12\"\n" +
 	"\fagentVersion\x18\x06 \x01(\tR\fagentVersion\x12\x1c\n" +
@@ -141,7 +151,8 @@ const file_p2p_protocol_identify_pb_identify_proto_rawDesc = "" +
 	"\vlistenAddrs\x18\x02 \x03(\fR\vlistenAddrs\x12\"\n" +
 	"\fobservedAddr\x18\x04 \x01(\fR\fobservedAddr\x12\x1c\n" +
 	"\tprotocols\x18\x03 \x03(\tR\tprotocols\x12*\n" +
-	"\x10signedPeerRecord\x18\b \x01(\fR\x10signedPeerRecordB6Z4github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
+	"\x10signedPeerRecord\x18\b \x01(\fR\x10signedPeerRecord\x124\n" +
+	"\x15maxMultiselectVersion\x18\t \x01(\rR\x15maxMultiselectVersionB6Z4github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 var (
 	file_p2p_protocol_identify_pb_identify_proto_rawDescOnce sync.Once
