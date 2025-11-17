@@ -477,15 +477,16 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		return nil, err
 	}
 
-	if h.supportProtocolAbbreviation(p) {
-		// TODO: if the protocol ID abbreviation is supported, do something here.
-	}
-
 	if pref != "" {
 		if err := s.SetProtocol(pref); err != nil {
 			return nil, err
 		}
-		lzcon := msmux.NewMSSelect(s, pref)
+		var lzcon msmux.LazyConn
+		if h.supportProtocolAbbreviation(p) {
+			lzcon = msmux.NewMSSelect2(s, pref, pids)
+		} else {
+			lzcon = msmux.NewMSSelect(s, pref)
+		}
 		return &streamWrapper{
 			Stream: s,
 			rw:     lzcon,
@@ -538,9 +539,11 @@ func (h *BasicHost) supportProtocolAbbreviation(p peer.ID) bool {
 		// if there is no value, assume it's not supported.
 		return false
 	}
-	// TODO: Check the version with go-multistream
-	_ = mv
-	return false
+	maxVersion, ok := mv.(uint32)
+	if !ok {
+		return false
+	}
+	return maxVersion >= msmux.AbbrevSupportedMSSVersion
 }
 
 // Connect ensures there is a connection between this host and the peer with
