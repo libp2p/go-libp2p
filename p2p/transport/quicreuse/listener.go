@@ -14,6 +14,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/qlog"
+	"github.com/quic-go/quic-go/qlogwriter"
 )
 
 type Listener interface {
@@ -70,6 +72,9 @@ func newQuicListener(tr RefCountedQUICTransport, quicConfig *quic.Config) (*quic
 		},
 	}
 	quicConf := quicConfig.Clone()
+	quicConf.Tracer = func(ctx context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
+		return defaultConnectionTracerWithSchemas(tr.LocalAddr().String(), isClient, connID, []string{qlog.EventSchema})
+	}
 	quicConf.AllowConnectionWindowIncrease = cl.allowWindowIncrease
 	ln, err := tr.Listen(tlsConf, quicConf)
 	if err != nil {

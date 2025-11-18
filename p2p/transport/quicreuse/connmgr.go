@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/qlog"
+	"github.com/quic-go/quic-go/qlogwriter"
 	"golang.org/x/time/rate"
 )
 
@@ -331,6 +332,9 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 	tr, err = c.TransportWithAssociationForDial(association, netw, naddr)
 	if err != nil {
 		return nil, err
+	}
+	quicConf.Tracer = func(ctx context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
+		return defaultConnectionTracerWithSchemas(tr.LocalAddr().String(), isClient, connID, []string{qlog.EventSchema})
 	}
 	conn, err := tr.Dial(ctx, naddr, tlsConf, quicConf)
 	if err != nil {
