@@ -44,6 +44,8 @@ const (
 	DefaultTimeout = 5 * time.Second
 	// ServiceName is the default identify service name
 	ServiceName = "libp2p.identify"
+	// Maximum multistream-select version this implementation supports
+	MaxMultiselectVersion = 2
 
 	legacyIDSize          = 2 * 1024
 	signedIDSize          = 8 * 1024
@@ -151,6 +153,8 @@ type idService struct {
 	UserAgent       string
 	ProtocolVersion string
 
+	MaxMultiselectVersion uint32
+
 	metricsTracer MetricsTracer
 
 	setupCompleted chan struct{} // is closed when Start has finished setting up
@@ -204,6 +208,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		Host:                    h,
 		UserAgent:               userAgent,
 		ProtocolVersion:         cfg.protocolVersion,
+		MaxMultiselectVersion:   MaxMultiselectVersion,
 		ctx:                     ctx,
 		ctxCancel:               cancel,
 		conns:                   make(map[network.Conn]entry),
@@ -679,6 +684,7 @@ func (ids *idService) createBaseIdentifyResponse(conn network.Conn, snapshot *id
 	// set protocol versions
 	mes.ProtocolVersion = &ids.ProtocolVersion
 	mes.AgentVersion = &ids.UserAgent
+	mes.MaxMultiselectVersion = &ids.MaxMultiselectVersion
 
 	return mes
 }
@@ -823,9 +829,11 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	// get protocol versions
 	pv := mes.GetProtocolVersion()
 	av := mes.GetAgentVersion()
+	mv := mes.GetMaxMultiselectVersion()
 
 	ids.Host.Peerstore().Put(p, "ProtocolVersion", pv)
 	ids.Host.Peerstore().Put(p, "AgentVersion", av)
+	ids.Host.Peerstore().Put(p, "MaxMultiselectVersion", mv)
 
 	// get the key from the other side. we may not have it (no-auth transport)
 	ids.consumeReceivedPubKey(c, mes.PublicKey)
