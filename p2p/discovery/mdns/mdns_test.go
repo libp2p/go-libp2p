@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,4 +102,55 @@ func TestOtherDiscovery(t *testing.T) {
 		100*time.Millisecond,
 		"expected peers to find each other",
 	)
+}
+
+func TestIsSuitableForMDNS(t *testing.T) {
+	tests := []struct {
+		name     string
+		addr     string
+		expected bool
+	}{
+		// IP addresses with native transports - suitable for mDNS
+		{"tcp", "/ip4/192.168.1.1/tcp/4001", true},
+		{"quic-v1", "/ip4/192.168.1.2/udp/4001/quic-v1", true},
+		{"tcp-ipv6", "/ip6/fe80::1/tcp/4001", true},
+		{"quic-v1-ipv6", "/ip6/fe80::2/udp/4001/quic-v1", true},
+
+		// Browser transports - NOT suitable for mDNS
+		// (browsers don't use mDNS for peer discovery)
+		{"webtransport", "/ip4/192.168.1.1/udp/4001/quic-v1/webtransport", false},
+		{"webrtc", "/ip4/192.168.1.1/udp/4001/webrtc/certhash/uEiAkH5a4DPGKUuOBjYw0CgwjLa2R_RF71v86aVxlqdKNOQ", false},
+		{"webrtc-direct", "/ip4/192.168.1.1/udp/4001/webrtc-direct", false},
+		{"ws", "/ip4/192.168.1.1/tcp/4001/ws", false},
+		{"wss", "/ip4/192.168.1.1/tcp/443/wss", false},
+
+		// .local DNS names - suitable for mDNS
+		// (.local TLD is resolved via mDNS per RFC 6762)
+		{"dns-local", "/dns/myhost.local/tcp/4001", true},
+		{"dns4-local", "/dns4/myhost.local/tcp/4001", true},
+		{"dns6-local", "/dns6/myhost.local/tcp/4001", true},
+		{"dnsaddr-local", "/dnsaddr/myhost.local/tcp/4001", true},
+		{"dns-local-mixed-case", "/dns4/MyHost.LOCAL/tcp/4001", true},
+
+		// Non-.local DNS names - NOT suitable for mDNS
+		// (require unicast DNS resolution, not mDNS)
+		{"dns4-public", "/dns4/example.com/tcp/4001", false},
+		{"dns6-public", "/dns6/example.com/tcp/4001", false},
+		{"dnsaddr-public", "/dnsaddr/example.com/tcp/4001", false},
+		{"dns-local-suffix-not-tld", "/dns4/notlocal.com/tcp/4001", false},
+		{"dns-fake-local", "/dns4/local.example.com/tcp/4001", false},
+		{"libp2p-direct", "/dns4/192-0-2-1.k51qzi5uqu5dgutdk6i1ynyzgkqngpha5xpgia3a5qqp4jsh0u4csozksxel3r.libp2p.direct/tcp/30895/tls/ws", false},
+
+		// Circuit relay addresses - NOT suitable for mDNS
+		// (require relay node, not direct LAN connectivity)
+		{"circuit-relay", "/ip4/198.51.100.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN/p2p-circuit/p2p/12D3KooWGzBXWNvHpLALvz3jhwdCF6kfv9MfhMn9CuS2MBD2GpSy", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addr, err := ma.NewMultiaddr(tc.addr)
+			require.NoError(t, err)
+			got := isSuitableForMDNS(addr)
+			assert.Equal(t, tc.expected, got, "isSuitableForMDNS(%s)", tc.addr)
+		})
+	}
 }
