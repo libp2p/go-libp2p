@@ -3,6 +3,7 @@ package rcmgr
 import (
 	"strings"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/metricshelper"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -123,6 +124,13 @@ var (
 		Name:      "blocked_resources",
 		Help:      "Number of blocked resources",
 	}, []string{"dir", "scope", "resource"})
+
+	// System limits
+	limits = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricNamespace,
+		Name:      "limit",
+		Help:      "Resource manager limits",
+	}, []string{"scope", "resource"})
 )
 
 var (
@@ -157,6 +165,7 @@ func MustRegisterWith(reg prometheus.Registerer) {
 		previousConnMemory,
 		fds,
 		blockedResources,
+		limits,
 	)
 }
 
@@ -171,8 +180,45 @@ func WithMetricsDisabled() Option {
 type StatsTraceReporter struct{}
 
 func NewStatsTraceReporter() (StatsTraceReporter, error) {
-	// TODO tell prometheus the system limits
 	return StatsTraceReporter{}, nil
+}
+
+// reportLimit reports a limit value to Prometheus
+func reportLimit(scope, resource string, value int64) {
+	limits.With(prometheus.Labels{
+		"scope":    scope,
+		"resource": resource,
+	}).Set(float64(value))
+}
+
+// ReportSystemLimits reports the system limits to Prometheus.
+// This should be called after creating the StatsTraceReporter with the resource manager's limits.
+func (r StatsTraceReporter) ReportSystemLimits(limiter Limiter) {
+	if limiter == nil {
+		return
+	}
+
+	// System limits
+	systemLimits := limiter.GetSystemLimits()
+	reportLimit("system", "memory", systemLimits.GetMemoryLimit())
+	reportLimit("system", "fd", int64(systemLimits.GetFDLimit()))
+	reportLimit("system", "conns", int64(systemLimits.GetConnTotalLimit()))
+	reportLimit("system", "conns_inbound", int64(systemLimits.GetConnLimit(network.DirInbound)))
+	reportLimit("system", "conns_outbound", int64(systemLimits.GetConnLimit(network.DirOutbound)))
+	reportLimit("system", "streams", int64(systemLimits.GetStreamTotalLimit()))
+	reportLimit("system", "streams_inbound", int64(systemLimits.GetStreamLimit(network.DirInbound)))
+	reportLimit("system", "streams_outbound", int64(systemLimits.GetStreamLimit(network.DirOutbound)))
+
+	// Transient limits
+	transientLimits := limiter.GetTransientLimits()
+	reportLimit("transient", "memory", transientLimits.GetMemoryLimit())
+	reportLimit("transient", "fd", int64(transientLimits.GetFDLimit()))
+	reportLimit("transient", "conns", int64(transientLimits.GetConnTotalLimit()))
+	reportLimit("transient", "conns_inbound", int64(transientLimits.GetConnLimit(network.DirInbound)))
+	reportLimit("transient", "conns_outbound", int64(transientLimits.GetConnLimit(network.DirOutbound)))
+	reportLimit("transient", "streams", int64(transientLimits.GetStreamTotalLimit()))
+	reportLimit("transient", "streams_inbound", int64(transientLimits.GetStreamLimit(network.DirInbound)))
+	reportLimit("transient", "streams_outbound", int64(transientLimits.GetStreamLimit(network.DirOutbound)))
 }
 
 func (r StatsTraceReporter) ConsumeEvent(evt TraceEvt) {
