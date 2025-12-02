@@ -177,15 +177,19 @@ func NewResourceManager(limits Limiter, opts ...Option) (network.ResourceManager
 	}
 	r.verifySourceAddressRateLimiter = newVerifySourceAddressRateLimiter(r.connLimiter)
 
+	// Add LogReporter to ensure blocked resource logs come from trace events
+	logReporter := NewLogReporter()
+	if r.trace == nil {
+		r.trace = &trace{}
+	}
+	r.trace.reporters = append(r.trace.reporters, logReporter)
+
 	if !r.disableMetrics {
 		var sr TraceReporter
 		sr, err := NewStatsTraceReporter()
 		if err != nil {
 			log.Error("failed to initialise StatsTraceReporter", "err", err)
 		} else {
-			if r.trace == nil {
-				r.trace = &trace{}
-			}
 			found := false
 			for _, rep := range r.trace.reporters {
 				if rep == sr {
