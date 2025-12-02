@@ -141,8 +141,8 @@ func containsUnsuitableProtocol(addr ma.Multiaddr) bool {
 //  2. It must not use circuit relay or browser-only transports (WebTransport,
 //     WebRTC, WebSocket) because these are not useful for direct LAN discovery.
 //
-// Filtering reduces mDNS packet size, helping stay within the 1500-byte MTU
-// limit per RFC 6762. See: https://github.com/libp2p/go-libp2p/issues/3415
+// Filtering reduces mDNS packet size, helping stay within the recommended
+// 1500-byte limit per RFC 6762. See: https://github.com/libp2p/go-libp2p/issues/3415
 func isSuitableForMDNS(addr ma.Multiaddr) bool {
 	if addr == nil {
 		return false
