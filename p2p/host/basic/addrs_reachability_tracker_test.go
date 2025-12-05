@@ -209,71 +209,88 @@ func TestProbeManager(t *testing.T) {
 			}
 			return res
 		}
-		// tcp private
+
+		// Conservative inheritance: secondaries only inherit Public from primary.
+		// If primary is Private, secondaries still get probed (Private could be
+		// protocol-specific, not port-level).
+		//
+		// TCP gets Public results - websocket inherits Public (skips probing)
+		// This is the AutoTLS use case: TCP works, WSS inherits reachability.
+		for i := range targetConfidence {
+			reqs := nextProbe(pm)
+			if i < minConfidence {
+				// TCP not yet confirmed Public, all 4 addresses need probing
+				matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, websocket, webrtc}, extractAddrs(reqs))
+			} else {
+				// TCP confirmed Public, websocket inherits - only 3 addresses
+				matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, webrtc}, extractAddrs(reqs))
+			}
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+		}
+
+		// QUIC gets Private results - webrtc still needs probing (no inheritance)
+		// This tests the conservative behavior: Private doesn't propagate.
 		for range targetConfidence {
 			reqs := nextProbe(pm)
-			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, websocket, webrtc}, extractAddrs(reqs))
-			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+			// websocket already inherited from tcp, but webrtc doesn't inherit Private
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, webrtc}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
 		}
-		// quic public
-		for range targetConfidence {
-			reqs := nextProbe(pm)
-			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, websocket, webrtc}, extractAddrs(reqs))
-			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
-		}
-		// only 1 check now required for websocket
-		for range 1 {
-			reqs := nextProbe(pm)
-			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{websocket, webrtc}, extractAddrs(reqs))
-			pm.CompleteProbe(reqs, autonatv2.Result{Addr: websocket, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
-		}
-		// 3 checks required for webrtc to make its reachability different from quic.
+
+		// webrtc still needs probing (doesn't inherit Private from quic)
+		// Give webrtc its own Private status through probing
 		for range targetConfidence {
 			reqs := nextProbe(pm)
 			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
 			pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
 		}
 
-		reachable, unreachable, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
-		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{quic}, reachable)
-		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{tcp, websocket, webrtc}, unreachable)
+		reqs := nextProbe(pm)
+		require.Empty(t, reqs)
 
-		// Every `highConfidenceAddrsProbeInterval` we refresh the primary addr binding
+		reachable, unreachable, _ := pm.AppendConfirmedAddrs(nil, nil, nil)
+		// websocket inherits Public from tcp (confirmed reachable port) - AutoTLS case
+		// webrtc has its own Private status (probed independently)
+		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{tcp, websocket}, reachable)
+		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{quic, webrtc}, unreachable)
+
+		// After highConfidenceAddrProbeInterval (1h), only primaries need refresh.
+		// websocket inherits from tcp (Public), webrtc has longer refresh interval (3h).
 		for range 2 {
 			cl.Add(highConfidenceAddrProbeInterval + 1*time.Millisecond)
 			reqs := nextProbe(pm)
+			// Only tcp and quic need refresh; websocket inherits, webrtc has 3h interval
 			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic}, extractAddrs(reqs))
-			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 			reqs = nextProbe(pm)
 			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic}, extractAddrs(reqs))
-			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
 
 			reqs = nextProbe(pm)
 			require.Empty(t, reqs)
 		}
 
-		cl.Add(highConfidenceAddrProbeInterval + 1*time.Millisecond)
-		reqs := nextProbe(pm)
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, websocket, webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
-		reqs = nextProbe(pm)
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, websocket, webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+		reachable, unreachable, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
+		matest.AssertMultiaddrsMatch(t, reachable, []ma.Multiaddr{tcp, websocket})
+		matest.AssertMultiaddrsMatch(t, unreachable, []ma.Multiaddr{quic, webrtc})
 
-		// secondary addrs refreshed at 3*highConfidenceProbeInterval
+		// After highConfidenceSecondaryAddrProbeInterval (3h), webrtc needs refresh too.
+		// We've advanced 2h+2ms, need to reach 3h+ for webrtc's refresh.
+		// Also need to exceed 1h since last tcp/quic refresh for them to need refresh.
+		cl.Add(highConfidenceSecondaryAddrProbeInterval - 2*highConfidenceAddrProbeInterval + 1*time.Millisecond)
 		reqs = nextProbe(pm)
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{websocket, webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: websocket, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+		// tcp, quic, and webrtc need refresh; websocket still inherits from tcp
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, webrtc}, extractAddrs(reqs))
+		pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
+		reqs = nextProbe(pm)
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, webrtc}, extractAddrs(reqs))
+		pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
 		reqs = nextProbe(pm)
 		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
 		pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
 
 		reqs = nextProbe(pm)
 		require.Empty(t, reqs)
-
-		reachable, unreachable, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
-		matest.AssertMultiaddrsMatch(t, reachable, []ma.Multiaddr{quic})
-		matest.AssertMultiaddrsMatch(t, unreachable, []ma.Multiaddr{tcp, websocket, webrtc})
 	})
 }
 
