@@ -539,14 +539,15 @@ func TestFailuresOnResponder(t *testing.T) {
 			defer relay.Close()
 
 			time.Sleep(100 * time.Millisecond)
-
+			// Apparently changing the order of the following two flakiness.
+			// https://github.com/libp2p/go-libp2p/issues/3440
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Contains(c, h1.Mux().Protocols(), holepunch.Protocol)
+			}, time.Second, 100*time.Millisecond)
 			require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{
 				ID:    h2.ID(),
 				Addrs: h2.Addrs(),
 			}))
-			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Contains(c, h1.Mux().Protocols(), holepunch.Protocol)
-			}, time.Second, 100*time.Millisecond)
 
 			s, err := h2.NewStream(network.WithAllowLimitedConn(context.Background(), "holepunch"), h1.ID(), holepunch.Protocol)
 			require.NoError(t, err)

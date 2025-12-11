@@ -320,11 +320,11 @@ func TestConnectOnDisconnect(t *testing.T) {
 			r.Close()
 		}
 	}
-
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
-	relaysInUse = usedRelays(h)
-	require.Len(t, relaysInUse, 1)
-	require.NotEqualf(t, oldRelay, relaysInUse[0], "old relay should not be used again")
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		relaysInUse = usedRelays(h)
+		assert.Len(collect, relaysInUse, 1)
+		assert.NotEqualf(collect, oldRelay, relaysInUse[0], "old relay should not be used again")
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestMaxAge(t *testing.T) {

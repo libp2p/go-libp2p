@@ -51,7 +51,7 @@ import (
 )
 
 func TestNewHost(t *testing.T) {
-	h, err := makeRandomHost(t, 9000)
+	h, err := makeRandomHost(t, 9191)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,18 +759,18 @@ func TestSharedTCPAddr(t *testing.T) {
 		ShareTCPListener(),
 		Transport(tcp.NewTCPTransport),
 		Transport(websocket.New),
-		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888"),
-		ListenAddrStrings("/ip4/0.0.0.0/tcp/8888/ws"),
+		ListenAddrStrings("/ip4/0.0.0.0/tcp/8188"),
+		ListenAddrStrings("/ip4/0.0.0.0/tcp/8188/ws"),
 	)
 	require.NoError(t, err)
 	defer h.Close()
 	sawTCP := false
 	sawWS := false
 	for _, addr := range h.Addrs() {
-		if strings.HasSuffix(addr.String(), "/tcp/8888") {
+		if strings.HasSuffix(addr.String(), "/tcp/8188") {
 			sawTCP = true
 		}
-		if strings.HasSuffix(addr.String(), "/tcp/8888/ws") {
+		if strings.HasSuffix(addr.String(), "/tcp/8188/ws") {
 			sawWS = true
 		}
 	}
