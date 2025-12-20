@@ -17,9 +17,13 @@ type addrInfoJson struct {
 func (pi AddrInfo) MarshalJSON() (res []byte, err error) {
 	defer func() { catch.HandlePanic(recover(), &err, "libp2p addr info marshal") }()
 
-	addrs := make([]string, len(pi.Addrs))
-	for i, addr := range pi.Addrs {
-		addrs[i] = addr.String()
+	// Skip nil addresses to avoid panic if slice contains corrupted entries.
+	// See: https://github.com/ipfs/kubo/issues/11116
+	addrs := make([]string, 0, len(pi.Addrs))
+	for _, addr := range pi.Addrs {
+		if addr != nil {
+			addrs = append(addrs, addr.String())
+		}
 	}
 	return json.Marshal(&addrInfoJson{
 		ID:    pi.ID,
