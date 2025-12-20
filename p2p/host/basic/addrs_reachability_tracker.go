@@ -361,10 +361,6 @@ const (
 	// and then a success(...S S S S F S). The confidence in the targetConfidence window  will be equal to
 	// targetConfidence, the last F and S cancel each other, and we won't probe again for maxProbeInterval.
 	maxRecentDialsWindow = targetConfidence + 2
-	// secondaryAddrsScalingFactor is the multiplier applied to secondary address dial outcomes. For secondary
-	// addr, if the primary addr is reachable, a single successful dial is enough to consider the secondary addr
-	// reachable.
-	secondaryAddrsScalingFactor = targetConfidence
 	// highConfidenceAddrProbeInterval is the maximum interval between probes for an address
 	highConfidenceAddrProbeInterval = 1 * time.Hour
 	// highConfidenceSecondaryAddrProbeInterval is the maximum interval between probes for an address
