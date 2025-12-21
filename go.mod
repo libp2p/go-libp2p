@@ -51,7 +51,7 @@ require (
 	github.com/pion/webrtc/v4 v4.1.2
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
-	github.com/quic-go/quic-go v0.57.1
+	github.com/quic-go/quic-go v0.58.0
 	github.com/quic-go/webtransport-go v0.9.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/fx v1.24.0
