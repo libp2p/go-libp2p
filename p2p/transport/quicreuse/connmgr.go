@@ -392,6 +392,37 @@ func (c *ConnManager) Protocols() []int {
 	return []int{ma.P_QUIC_V1}
 }
 
+// TransportForMigration returns a RefCountedQUICTransport for the given local
+// multiaddr, suitable for use in connection migration. This allows adding new
+// paths to existing QUIC connections.
+//
+// This is an EXPERIMENTAL API for connection migration support.
+func (c *ConnManager) TransportForMigration(localAddr ma.Multiaddr) (RefCountedQUICTransport, error) {
+	netw, host, err := manet.DialArgs(localAddr)
+	if err != nil {
+		return nil, err
+	}
+	laddr, err := net.ResolveUDPAddr(netw, host)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.enableReuseport {
+		reuse, err := c.getReuse(netw)
+		if err != nil {
+			return nil, err
+		}
+		return reuse.TransportForMigration(netw, laddr)
+	}
+
+	// Without reuseport, create a new single-owner transport.
+	conn, err := c.listenUDP(netw, laddr)
+	if err != nil {
+		return nil, err
+	}
+	return c.newSingleOwnerTransport(conn), nil
+}
+
 func (c *ConnManager) Close() error {
 	if !c.enableReuseport {
 		return nil

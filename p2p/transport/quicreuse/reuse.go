@@ -27,6 +27,9 @@ type RefCountedQUICTransport interface {
 
 	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
 	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
+
+	// UnderlyingTransport returns the underlying *quic.Transport.
+	UnderlyingTransport() *quic.Transport
 }
 
 type singleOwnerTransport struct {
@@ -63,6 +66,13 @@ func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 func (c *singleOwnerTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
 	return c.Transport.Listen(tlsConf, conf)
+}
+
+func (c *singleOwnerTransport) UnderlyingTransport() *quic.Transport {
+	if wt, ok := c.Transport.(*wrappedQUICTransport); ok {
+		return wt.Transport
+	}
+	return nil
 }
 
 // Constant. Defined as variables to simplify testing.
@@ -164,6 +174,13 @@ func (c *refcountedTransport) LocalAddr() net.Addr {
 
 func (c *refcountedTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
 	return c.QUICTransport.Listen(tlsConf, conf)
+}
+
+func (c *refcountedTransport) UnderlyingTransport() *quic.Transport {
+	if wt, ok := c.QUICTransport.(*wrappedQUICTransport); ok {
+		return wt.Transport
+	}
+	return nil
 }
 
 func (c *refcountedTransport) DecreaseCount() {
@@ -461,6 +478,74 @@ func (r *reuse) newTransport(conn net.PacketConn) *refcountedTransport {
 		},
 		packetConn: conn,
 	}
+}
+
+// TransportForMigration returns a transport for the given local address for use
+// in connection migration. It tries to find an existing transport bound to the
+// specified address. If no suitable transport exists, it creates a new one.
+//
+// This is an EXPERIMENTAL API for connection migration support.
+func (r *reuse) TransportForMigration(network string, laddr *net.UDPAddr) (*refcountedTransport, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// First check unicast transports for the specific IP.
+	if !laddr.IP.IsUnspecified() {
+		if trs, ok := r.unicast[laddr.IP.String()]; ok {
+			// If a specific port is requested, look for that exact port.
+			if laddr.Port != 0 {
+				if tr, ok := trs[laddr.Port]; ok {
+					tr.IncreaseCount()
+					return tr, nil
+				}
+				// Specific port requested but not found - don't return a different port.
+			} else {
+				// Port 0 means any port on this IP is acceptable.
+				for _, tr := range trs {
+					tr.IncreaseCount()
+					return tr, nil
+				}
+			}
+		}
+	}
+
+	// Check global listeners for the specific port (only if IP is unspecified).
+	if laddr.IP.IsUnspecified() && laddr.Port != 0 {
+		if tr, ok := r.globalListeners[laddr.Port]; ok {
+			tr.IncreaseCount()
+			return tr, nil
+		}
+	}
+
+	// Check global dialers (only if IP is unspecified).
+	// If a specific IP was requested, don't fall back to 0.0.0.0 transports.
+	if laddr.IP.IsUnspecified() {
+		for _, tr := range r.globalDialers {
+			tr.IncreaseCount()
+			return tr, nil
+		}
+	}
+
+	// No existing transport found, create a new one.
+	conn, err := r.listenUDP(network, laddr)
+	if err != nil {
+		return nil, err
+	}
+	tr := r.newTransport(conn)
+	tr.IncreaseCount()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	if localAddr.IP.IsUnspecified() {
+		r.globalDialers[localAddr.Port] = tr
+	} else {
+		if _, ok := r.unicast[localAddr.IP.String()]; !ok {
+			r.unicast[localAddr.IP.String()] = make(map[int]*refcountedTransport)
+			r.routes, _ = r.sourceIPSelectorFn()
+		}
+		r.unicast[localAddr.IP.String()][localAddr.Port] = tr
+	}
+
+	return tr, nil
 }
 
 func (r *reuse) Close() error {

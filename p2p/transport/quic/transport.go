@@ -34,6 +34,25 @@ var ErrHolePunching = errors.New("hole punching attempted; no active dial")
 
 var HolePunchTimeout = 5 * time.Second
 
+// Option is a function that configures the QUIC transport.
+type Option func(*transport) error
+
+// EnableExperimentalConnectionMigration enables the experimental connection
+// migration feature. When enabled, outbound QUIC connections will support
+// path migration via the MigratableConn interface.
+//
+// This is an EXPERIMENTAL feature and may change in future versions.
+// Connection migration allows switching network paths (e.g., from a primary
+// interface to a failover interface) without disrupting active streams.
+//
+// Only client-initiated (outbound) connections support migration per the QUIC spec.
+func EnableExperimentalConnectionMigration() Option {
+	return func(t *transport) error {
+		t.migrationEnabled = true
+		return nil
+	}
+}
+
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
 	privKey     ic.PrivKey
@@ -55,6 +74,9 @@ type transport struct {
 	listenersMu sync.Mutex
 	// map of UDPAddr as string to a virtualListeners
 	listeners map[string][]*virtualListener
+
+	// migrationEnabled indicates if the experimental connection migration feature is enabled.
+	migrationEnabled bool
 }
 
 var _ tpt.Transport = &transport{}
@@ -70,7 +92,7 @@ type activeHolePunch struct {
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
+func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
@@ -88,7 +110,7 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		rcmgr = &network.NullResourceManager{}
 	}
 
-	return &transport{
+	t := &transport{
 		privKey:      key,
 		localPeer:    localPeer,
 		identity:     identity,
@@ -100,7 +122,15 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		rnd:          *rand.New(rand.NewSource(time.Now().UnixNano())),
 
 		listeners: make(map[string][]*virtualListener),
-	}, nil
+	}
+
+	for _, o := range opts {
+		if err := o(t); err != nil {
+			return nil, err
+		}
+	}
+
+	return t, nil
 }
 
 func (t *transport) ListenOrder() int {
@@ -157,14 +187,16 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 		return nil, err
 	}
 	c := &conn{
-		quicConn:        pconn,
-		transport:       t,
-		scope:           scope,
-		localPeer:       t.localPeer,
-		localMultiaddr:  localMultiaddr,
-		remotePubKey:    remotePubKey,
-		remotePeerID:    p,
-		remoteMultiaddr: raddr,
+		quicConn:         pconn,
+		transport:        t,
+		scope:            scope,
+		localPeer:        t.localPeer,
+		localMultiaddr:   localMultiaddr,
+		remotePubKey:     remotePubKey,
+		remotePeerID:     p,
+		remoteMultiaddr:  raddr,
+		isOutbound:       true,
+		migrationEnabled: t.migrationEnabled,
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, c) {
 		pconn.CloseWithError(quic.ApplicationErrorCode(network.ConnGated), "connection gated")
@@ -401,4 +433,26 @@ func (t *transport) CloseVirtualListener(l *virtualListener) error {
 
 	return nil
 
+}
+
+// getTransportForMigration returns a RefCountedQUICTransport and its underlying *quic.Transport
+// bound to the specified local address for use in connection migration.
+//
+// The caller is responsible for calling DecreaseCount() on the RefCountedQUICTransport
+// when the path is no longer needed (either on AddPath failure or when the path is closed).
+//
+// This is an EXPERIMENTAL API for connection migration support.
+func (t *transport) getTransportForMigration(localAddr ma.Multiaddr) (quicreuse.RefCountedQUICTransport, *quic.Transport, error) {
+	refCountedTr, err := t.connManager.TransportForMigration(localAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	quicTr := refCountedTr.UnderlyingTransport()
+	if quicTr == nil {
+		refCountedTr.DecreaseCount()
+		return nil, nil, errors.New("failed to get underlying QUIC transport for migration")
+	}
+
+	return refCountedTr, quicTr, nil
 }
