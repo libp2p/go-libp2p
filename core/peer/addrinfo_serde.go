@@ -2,6 +2,8 @@ package peer
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 
 	"github.com/libp2p/go-libp2p/core/internal/catch"
 
@@ -17,13 +19,16 @@ type addrInfoJson struct {
 func (pi AddrInfo) MarshalJSON() (res []byte, err error) {
 	defer func() { catch.HandlePanic(recover(), &err, "libp2p addr info marshal") }()
 
-	// Skip nil addresses to avoid panic if slice contains corrupted entries.
+	// Skip nil addresses to avoid panic if slice contains corrupted entries
+	// (likely due to data race). Log warning for visibility.
 	// See: https://github.com/ipfs/kubo/issues/11116
 	addrs := make([]string, 0, len(pi.Addrs))
 	for _, addr := range pi.Addrs {
-		if addr != nil {
-			addrs = append(addrs, addr.String())
+		if addr == nil {
+			fmt.Fprintf(os.Stderr, "go-libp2p: nil multiaddr in AddrInfo.MarshalJSON for peer %s (possible data race)\n", pi.ID)
+			continue
 		}
+		addrs = append(addrs, addr.String())
 	}
 	return json.Marshal(&addrInfoJson{
 		ID:    pi.ID,
