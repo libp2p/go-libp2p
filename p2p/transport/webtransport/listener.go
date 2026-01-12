@@ -64,7 +64,7 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 		addr:            reuseListener.Addr(),
 		multiaddr:       localMultiaddr,
 		server: webtransport.Server{
-			H3: http3.Server{
+			H3: &http3.Server{
 				ConnContext: func(ctx context.Context, c *quic.Conn) context.Context {
 					return context.WithValue(ctx, connKey{}, c)
 				},
