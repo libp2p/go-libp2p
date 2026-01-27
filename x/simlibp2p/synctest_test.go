@@ -1,6 +1,6 @@
-//go:build goexperiment.synctest
+//go:build go1.25
 
-package simconnlibp2p_test
+package simlibp2p_test
 
 import (
 	"context"
@@ -13,20 +13,20 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	simlibp2p "github.com/libp2p/go-libp2p/x/simlibp2p"
+	"github.com/libp2p/go-libp2p/x/simlibp2p"
 	"github.com/marcopolo/simnet"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSimpleLibp2pNetwork_synctest(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		latency := 10 * time.Millisecond
 		network, meta, err := simlibp2p.SimpleLibp2pNetwork([]simlibp2p.NodeLinkSettingsAndCount{
 			{LinkSettings: simnet.NodeBiDiLinkSettings{
-				Downlink: simnet.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps, Latency: latency / 2}, // Divide by two since this is latency for each direction
-				Uplink:   simnet.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps, Latency: latency / 2},
+				Downlink: simnet.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps}, // Divide by two since this is latency for each direction
+				Uplink:   simnet.LinkSettings{BitsPerSecond: 20 * simlibp2p.OneMbps},
 			}, Count: 100},
-		}, simlibp2p.NetworkSettings{})
+		}, simnet.StaticLatency(latency/2), simlibp2p.NetworkSettings{})
 		require.NoError(t, err)
 		network.Start()
 		defer network.Close()
@@ -74,19 +74,17 @@ func TestSimpleLibp2pNetwork_synctest(t *testing.T) {
 }
 
 func TestSimpleSimNetPing_synctest(t *testing.T) {
-	synctest.Run(func() {
-		router := &simnet.Simnet{}
+	synctest.Test(t, func(t *testing.T) {
+		const latency = 10 * time.Millisecond
+		router := &simnet.Simnet{LatencyFunc: simnet.StaticLatency(latency / 2)}
 
 		const bandwidth = 10 * simlibp2p.OneMbps
-		const latency = 10 * time.Millisecond
 		linkSettings := simnet.NodeBiDiLinkSettings{
 			Downlink: simnet.LinkSettings{
 				BitsPerSecond: bandwidth,
-				Latency:       latency / 2,
 			},
 			Uplink: simnet.LinkSettings{
 				BitsPerSecond: bandwidth,
-				Latency:       latency / 2,
 			},
 		}
 
@@ -101,14 +99,13 @@ func TestSimpleSimNetPing_synctest(t *testing.T) {
 			simlibp2p.QUICSimnet(router, linkSettings),
 		)
 
-		err := router.Start()
-		require.NoError(t, err)
+		router.Start()
 		defer router.Close()
 
 		defer hostA.Close()
 		defer hostB.Close()
 
-		err = hostA.Connect(context.Background(), peer.AddrInfo{
+		err := hostA.Connect(context.Background(), peer.AddrInfo{
 			ID:    hostB.ID(),
 			Addrs: hostB.Addrs(),
 		})

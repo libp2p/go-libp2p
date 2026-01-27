@@ -14,10 +14,11 @@ var log = logging.Logger("webrtc-transport")
 // pionLog is the logger provided to pion for internal logging
 var pionLog = logging.Logger("webrtc-transport-pion")
 
-// pionLogger wraps the StandardLogger interface to provide a LeveledLogger interface
-// as expected by pion
-// Pion logs are too noisy and have invalid log levels. pionLogger downgrades all the
-// logs to debug
+// pionLogger adapts pion's logger to go-libp2p's semantics.
+// Pion logs routine connection events (client disconnects, protocol mismatches,
+// state races) as ERROR/WARN, but these are normal operational noise from a
+// service perspective. We downgrade all pion logs to DEBUG to prevent log spam
+// while preserving debuggability when needed.
 type pionLogger struct {
 	*slog.Logger
 }
@@ -37,32 +38,32 @@ func (l pionLogger) Debugf(s string, args ...interface{}) {
 }
 
 func (l pionLogger) Error(s string) {
-	l.Logger.Error(s)
+	l.Logger.Debug(s)
 }
 
 func (l pionLogger) Errorf(s string, args ...interface{}) {
-	if l.Logger.Enabled(context.Background(), slog.LevelError) {
-		l.Logger.Error(fmt.Sprintf(s, args...))
+	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}
 }
 
 func (l pionLogger) Info(s string) {
-	l.Logger.Info(s)
+	l.Logger.Debug(s)
 }
 
 func (l pionLogger) Infof(s string, args ...interface{}) {
-	if l.Logger.Enabled(context.Background(), slog.LevelInfo) {
-		l.Logger.Info(fmt.Sprintf(s, args...))
+	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}
 }
 
 func (l pionLogger) Warn(s string) {
-	l.Logger.Warn(s)
+	l.Logger.Debug(s)
 }
 
 func (l pionLogger) Warnf(s string, args ...interface{}) {
-	if l.Logger.Enabled(context.Background(), slog.LevelWarn) {
-		l.Logger.Warn(fmt.Sprintf(s, args...))
+	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}
 }
 

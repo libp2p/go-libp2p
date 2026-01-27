@@ -683,6 +683,11 @@ func (s *streamWrapper) Write(b []byte) (int, error) {
 }
 
 func (s *streamWrapper) Close() error {
+	// Set a read deadline to prevent Close() from blocking indefinitely
+	// waiting for the multistream-select handshake to complete.
+	// This can happen when the remote peer is slow or unresponsive.
+	// See: https://github.com/multiformats/go-multistream/issues/47
+	_ = s.Stream.SetReadDeadline(time.Now().Add(DefaultNegotiationTimeout))
 	return s.rw.Close()
 }
 

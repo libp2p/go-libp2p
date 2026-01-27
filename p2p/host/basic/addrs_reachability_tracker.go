@@ -361,10 +361,6 @@ const (
 	// and then a success(...S S S S F S). The confidence in the targetConfidence window  will be equal to
 	// targetConfidence, the last F and S cancel each other, and we won't probe again for maxProbeInterval.
 	maxRecentDialsWindow = targetConfidence + 2
-	// secondaryAddrsScalingFactor is the multiplier applied to secondary address dial outcomes. For secondary
-	// addr, if the primary addr is reachable, a single successful dial is enough to consider the secondary addr
-	// reachable.
-	secondaryAddrsScalingFactor = targetConfidence
 	// highConfidenceAddrProbeInterval is the maximum interval between probes for an address
 	highConfidenceAddrProbeInterval = 1 * time.Hour
 	// highConfidenceSecondaryAddrProbeInterval is the maximum interval between probes for an address
@@ -620,6 +616,19 @@ func (s *addrStatus) Reachability() network.Reachability {
 }
 
 func (s *addrStatus) RequiredProbeCount(now time.Time) int {
+	// Secondary addresses inherit reachability from their confirmed-public primary.
+	// If the primary is ReachabilityPublic, the port is confirmed open at the
+	// network level, so the secondary is also reachable (they share the socket).
+	//
+	// If the primary is ReachabilityPrivate, we still probe the secondary because
+	// Private is a weaker signal - it could indicate:
+	//   - Port genuinely blocked (secondary will also fail)
+	//   - Protocol-specific issues with the primary (secondary might work)
+	// The cost of extra probes when truly firewalled is low (quick failures).
+	if s.primary != nil && s.primary.Reachability() == network.ReachabilityPublic {
+		return 0
+	}
+
 	if s.consecutiveRefusals >= maxConsecutiveRefusals {
 		if now.Sub(s.lastRefusalTime) < recentProbeInterval {
 			return 0
@@ -742,12 +751,49 @@ func (s *addrStatus) reachabilityAndCounts() (rch network.Reachability, successe
 	}
 	if s.primary != nil {
 		prch, _, _ := s.primary.reachabilityAndCounts()
-		switch prch {
-		case network.ReachabilityPublic:
-			successes *= secondaryAddrsScalingFactor
-		case network.ReachabilityPrivate:
-			failures *= secondaryAddrsScalingFactor
+		if prch == network.ReachabilityPublic {
+			// Secondary transports inherit Public reachability from their primary.
+			//
+			// This is important because not all AutoNAT v2 server implementations
+			// support all secondary transports. As the Amino DHT gained a more
+			// diverse set of node implementations (2025 Q4), we observed false
+			// negatives: secondary addresses being marked unreachable when probing
+			// peers simply didn't support the protocol, not because the port was
+			// actually blocked.
+			//
+			// This handles shared-listener configurations where multiple
+			// protocols share the same network socket:
+			//
+			//   TCP-based (libp2p.ShareTCPListener):
+			//     Primary:   /ip4/.../tcp/port
+			//     Secondary: /ip4/.../tcp/port/tls/sni/*.libp2p.direct/ws
+			//     TCP and Secure WebSocket share the same TCP listener.
+			//
+			//   UDP/QUIC-based (quicreuse.ConnManager):
+			//     Primary:   /ip4/.../udp/port/quic-v1
+			//     Secondary: /ip4/.../udp/port/quic-v1/webtransport
+			//     Secondary: /ip4/.../udp/port/webrtc-direct
+			//     QUIC, WebTransport, and WebRTC share the same UDP socket.
+			//
+			// AutoNAT v2 probe failures for secondary protocols typically
+			// indicate protocol incompatibility at the probing peer, not
+			// port unreachability:
+			//
+			//   - Secure WebSocket: Probing peer may not support WebSockets,
+			//     or TLS handshake fails because the certificate isn't
+			//     provisioned yet (AutoTLS still obtaining cert).
+			//   - WebTransport: Probing peer supports QUIC but not HTTP/3.
+			//   - WebRTC: Probing peer supports QUIC but not DTLS-SRTP.
+			//
+			// Since the primary confirms the port is network-reachable, we
+			// inherit that status. Protocol-level failures don't indicate
+			// the address is unreachable to peers that DO support the protocol.
+			return network.ReachabilityPublic, successes, failures
 		}
+		// If primary is Private or Unknown, we don't inherit - the secondary
+		// builds its own status through probing. This is more conservative:
+		// Private could indicate protocol-specific issues rather than port
+		// unreachability, so we give the secondary a chance to prove itself.
 	}
 	if successes-failures >= minConfidence {
 		return network.ReachabilityPublic, successes, failures

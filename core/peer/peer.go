@@ -169,7 +169,10 @@ func IDFromPublicKey(pk ic.PubKey) (ID, error) {
 	if AdvancedEnableInlining && len(b) <= maxInlineKeyLength {
 		alg = mh.IDENTITY
 	}
-	hash, _ := mh.Sum(b, alg, -1)
+	hash, err := mh.Sum(b, alg, -1)
+	if err != nil {
+		return "", err
+	}
 	return ID(hash), nil
 }
 

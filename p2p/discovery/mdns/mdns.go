@@ -15,7 +15,6 @@ import (
 
 	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (
@@ -109,6 +108,68 @@ func (s *mdnsService) getIPs(addrs []ma.Multiaddr) ([]string, error) {
 	return ips, nil
 }
 
+// containsUnsuitableProtocol returns true if the multiaddr includes protocols
+// that are not suitable for mDNS advertisement:
+//   - Circuit relay (requires intermediary, not direct LAN connectivity)
+//   - Browser transports: WebTransport, WebRTC, WebSocket (browsers don't use mDNS)
+func containsUnsuitableProtocol(addr ma.Multiaddr) bool {
+	found := false
+	ma.ForEach(addr, func(c ma.Component) bool {
+		switch c.Protocol().Code {
+		case ma.P_CIRCUIT,
+			ma.P_WEBTRANSPORT,
+			ma.P_WEBRTC,
+			ma.P_WEBRTC_DIRECT,
+			ma.P_P2P_WEBRTC_DIRECT,
+			ma.P_WS,
+			ma.P_WSS:
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// isSuitableForMDNS returns true for multiaddrs that should be advertised
+// via mDNS.
+//
+// For an address to be suitable:
+//  1. It must start with /ip4, /ip6, or a .local DNS name. The .local TLD is
+//     reserved for mDNS (RFC 6762) and resolved via multicast, not unicast DNS.
+//     Non-.local DNS names are filtered out as they require external DNS.
+//  2. It must not use circuit relay or browser-only transports (WebTransport,
+//     WebRTC, WebSocket) because these are not useful for direct LAN discovery.
+//
+// Filtering reduces mDNS packet size, helping stay within the recommended
+// 1500-byte limit per RFC 6762. See: https://github.com/libp2p/go-libp2p/issues/3415
+func isSuitableForMDNS(addr ma.Multiaddr) bool {
+	if addr == nil {
+		return false
+	}
+
+	first, _ := ma.SplitFirst(addr)
+	if first == nil {
+		return false
+	}
+
+	// Check the addressing scheme
+	switch first.Protocol().Code {
+	case ma.P_IP4, ma.P_IP6:
+		// Direct IP addresses are always suitable for LAN discovery
+	case ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
+		// DNS names are only suitable if they're in the .local TLD,
+		// which is resolved via mDNS (RFC 6762), not unicast DNS.
+		if !strings.HasSuffix(strings.ToLower(first.Value()), ".local") {
+			return false
+		}
+	default:
+		return false
+	}
+
+	return !containsUnsuitableProtocol(addr)
+}
+
 func (s *mdnsService) startServer() error {
 	interfaceAddrs, err := s.host.Network().InterfaceListenAddresses()
 	if err != nil {
@@ -121,9 +182,10 @@ func (s *mdnsService) startServer() error {
 	if err != nil {
 		return err
 	}
+	// Build TXT records for addresses suitable for mDNS advertisement.
 	var txts []string
 	for _, addr := range addrs {
-		if manet.IsThinWaist(addr) { // don't announce circuit addresses
+		if isSuitableForMDNS(addr) {
 			txts = append(txts, dnsaddrPrefix+addr.String())
 		}
 	}

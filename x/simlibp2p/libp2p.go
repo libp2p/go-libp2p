@@ -1,6 +1,7 @@
-package simconnlibp2p
+package simlibp2p
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"net"
@@ -206,8 +207,12 @@ type NetworkSettings struct {
 	BlankHostOptsForHostIdx func(idx int) BlankHostOpts
 }
 
-func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSettings NetworkSettings) (*simnet.Simnet, *SimpleLibp2pNetworkMeta, error) {
-	nw := &simnet.Simnet{}
+type LatencyFunc func(*simnet.Packet) time.Duration
+
+func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, latencyFunc LatencyFunc, networkSettings NetworkSettings) (*simnet.Simnet, *SimpleLibp2pNetworkMeta, error) {
+	nw := &simnet.Simnet{
+		LatencyFunc: latencyFunc,
+	}
 	meta := &SimpleLibp2pNetworkMeta{
 		AddrToNode: make(map[string]HostAndIdx),
 	}
@@ -255,4 +260,29 @@ func SimpleLibp2pNetwork(linkSettings []NodeLinkSettingsAndCount, networkSetting
 	}
 
 	return nw, meta, nil
+}
+
+// GetBasicHostPair gets a new pair of hosts.
+// The first host initiates the connection to the second host.
+func GetBasicHostPair(t *testing.T) (host.Host, host.Host) {
+	network, meta, err := SimpleLibp2pNetwork([]NodeLinkSettingsAndCount{{
+		LinkSettings: simnet.NodeBiDiLinkSettings{
+			Downlink: simnet.LinkSettings{BitsPerSecond: 20 * OneMbps},
+			Uplink:   simnet.LinkSettings{BitsPerSecond: 20 * OneMbps},
+		}, Count: 2},
+	}, simnet.StaticLatency(100/2*time.Millisecond), NetworkSettings{})
+	require.NoError(t, err)
+	network.Start()
+	t.Cleanup(func() {
+		network.Close()
+	})
+
+	h1 := meta.Nodes[0]
+	h2 := meta.Nodes[1]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	h2pi := h2.Peerstore().PeerInfo(h2.ID())
+	require.NoError(t, h1.Connect(ctx, h2pi))
+	return h1, h2
 }
