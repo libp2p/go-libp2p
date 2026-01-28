@@ -110,7 +110,7 @@ jobs:
             FAILED_COUNT=$(yq eval '.summary.failed // 0' "${TEST_PASS_DIR}/results.yaml" || echo "0")
             if [ "$FAILED_COUNT" -gt 0 ]; then
               echo "=== Failed Tests ==="
-              yq eval '.tests[]? | select(.status == "fail") | "- \(.test)"' "${TEST_PASS_DIR}/results.yaml" || true
+              yq eval '.tests[]? | select(.status == "fail") | "- \(.name // .test)"' "${TEST_PASS_DIR}/results.yaml" || true
             fi
           fi
 
