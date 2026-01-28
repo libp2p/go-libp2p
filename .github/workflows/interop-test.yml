@@ -37,6 +37,7 @@ jobs:
         with:
           test-filter: go-libp2p-head
           extra-versions: ${{ github.workspace }}/test-plans/ping-version.json
+          cache-dir: ${{ github.workspace }}/.cache
           s3-cache-bucket: ${{ vars.S3_LIBP2P_BUILD_CACHE_BUCKET_NAME }}
           s3-access-key-id: ${{ vars.S3_LIBP2P_BUILD_CACHE_AWS_ACCESS_KEY_ID }}
           s3-secret-access-key: ${{ secrets.S3_LIBP2P_BUILD_CACHE_AWS_SECRET_ACCESS_KEY }}
