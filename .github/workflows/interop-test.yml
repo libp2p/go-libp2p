@@ -76,6 +76,8 @@ jobs:
 
       - name: Run transport interop (bash harness)
         working-directory: test-plans-harness/transport
+        id: run-tests
+        continue-on-error: true
         env:
           # Keep cache writable on github-hosted runners
           CACHE_DIR: ${{ github.workspace }}/.cache
@@ -88,6 +90,35 @@ jobs:
             --snapshot \
             --cache-dir "${CACHE_DIR}" \
             -y
+
+      - name: Display test results summary
+        if: always()
+        shell: bash
+        env:
+          CACHE_DIR: ${{ github.workspace }}/.cache
+        run: |
+          TEST_PASS_DIR=$(ls -td "${CACHE_DIR}/test-run/transport-"* 2>/dev/null | grep -v '\.zip$' | head -1 || echo "")
+          if [ -z "$TEST_PASS_DIR" ]; then
+            echo "Error: Could not find test pass directory"
+            exit 0
+          fi
+          if [ -f "${TEST_PASS_DIR}/results.yaml" ]; then
+            echo "=== Test Results Summary ==="
+            echo ""
+            yq eval '.summary' "${TEST_PASS_DIR}/results.yaml" || true
+            echo ""
+            FAILED_COUNT=$(yq eval '.summary.failed // 0' "${TEST_PASS_DIR}/results.yaml" || echo "0")
+            if [ "$FAILED_COUNT" -gt 0 ]; then
+              echo "=== Failed Tests ==="
+              yq eval '.tests[]? | select(.status == "fail") | "- \(.test)"' "${TEST_PASS_DIR}/results.yaml" || true
+            fi
+          fi
+
+      - name: Fail workflow if tests failed
+        if: always() && steps.run-tests.outcome == 'failure'
+        run: |
+          echo "Tests failed. Check the test results summary above and artifacts for details."
+          exit 1
 
       - name: Find test pass directory
         if: always()
