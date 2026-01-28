@@ -38,16 +38,21 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
+      - name: Install docker-compose
+        shell: bash
+        run: |
+          mkdir -p $HOME/.docker/cli-plugins
+          wget -q -O- https://github.com/docker/compose/releases/download/v2.21.0/docker-compose-linux-x86_64 > $HOME/.docker/cli-plugins/docker-compose
+          chmod +x $HOME/.docker/cli-plugins/docker-compose
+          docker compose version
+
       - name: Checkout libp2p/test-plans
         uses: actions/checkout@v4
         with:
           repository: libp2p/test-plans
           path: test-plans-harness
 
-      - name: Build go-libp2p-head image (transport-go-libp2p-head)
-        run: docker build -t transport-go-libp2p-head -f test-plans/PingDockerfile .
-
-      - name: Inject go-libp2p-head into test-plans transport/images.yaml
+      - name: Inject go-v0.47-pre into test-plans transport/images.yaml
         working-directory: test-plans-harness/transport
         env:
           GO_LIBP2P_DIR: ${{ github.workspace }}
@@ -56,8 +61,8 @@ jobs:
 
           # Remove any existing entry (for re-runs), then append our local build.
           yq eval -i \
-            '.implementations = ((.implementations // []) | map(select(.id != "go-libp2p-head"))) + [{
-              "id": "go-libp2p-head",
+            '.implementations = ((.implementations // []) | map(select(.id != "go-v0.47-pre"))) + [{
+              "id": "go-v0.47-pre",
               "source": {
                 "type": "local",
                 "path": strenv(GO_LIBP2P_DIR),
@@ -76,7 +81,47 @@ jobs:
           CACHE_DIR: ${{ github.workspace }}/.cache
         run: |
           ./run.sh \
-            --test-select "go-libp2p-head" \
+            --test-select "go-v0.47-pre" \
+            --test-ignore "~failing" \
+            --force-image-rebuild \
+            --debug \
+            --snapshot \
             --cache-dir "${CACHE_DIR}" \
-            --workers 2 \
             -y
+
+      - name: Find test pass directory
+        if: always()
+        id: find-test-pass
+        shell: bash
+        env:
+          CACHE_DIR: ${{ github.workspace }}/.cache
+        run: |
+          TEST_PASS_DIR=$(ls -td "${CACHE_DIR}/test-run/transport-"* 2>/dev/null | grep -v '\.zip$' | head -1 || echo "")
+          if [ -z "$TEST_PASS_DIR" ]; then
+            echo "Error: Could not find test pass directory"
+            exit 1
+          fi
+          TEST_PASS_NAME=$(basename "$TEST_PASS_DIR")
+          echo "test-pass-dir=$TEST_PASS_DIR" >> $GITHUB_OUTPUT
+          echo "test-pass-name=$TEST_PASS_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transport-test-results-${{ steps.find-test-pass.outputs.test-pass-name }}
+          path: |
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/results.yaml
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/results.md
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/results.html
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/LATEST_TEST_RESULTS.md
+          if-no-files-found: warn
+
+      - name: Upload snapshot (full test pass dir)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transport-snapshot-${{ steps.find-test-pass.outputs.test-pass-name }}
+          path: |
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}
+          if-no-files-found: warn
