@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -30,17 +29,19 @@ import (
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
 	var (
-		transport      = os.Getenv("transport")
-		muxer          = os.Getenv("muxer")
-		secureChannel  = os.Getenv("security")
-		isDialerStr    = os.Getenv("is_dialer")
-		ip             = os.Getenv("ip")
-		redisAddr      = os.Getenv("redis_addr")
-		testTimeoutStr = os.Getenv("test_timeout_seconds")
+		transport      = os.Getenv("TRANSPORT")
+		muxer          = os.Getenv("MUXER")
+		secureChannel  = os.Getenv("SECURE_CHANNEL")
+		isDialerStr    = os.Getenv("IS_DIALER")
+		ip             = os.Getenv("LISTENER_IP")
+		redisAddr      = os.Getenv("REDIS_ADDR")
+		testTimeoutStr = os.Getenv("TEST_TIMEOUT_SECS")
+		testKey        = os.Getenv("TEST_KEY")
 	)
 
 	testTimeout := 3 * time.Minute
@@ -56,8 +57,14 @@ func main() {
 	}
 
 	if redisAddr == "" {
-		redisAddr = "redis:6379"
+		log.Fatal("Missing REDIS_ADDR environment variable")
 	}
+
+	if testKey == "" {
+		log.Fatal("Missing TEST_KEY environment variable")
+	}
+
+	redisKey := fmt.Sprintf("%s_listener_multiaddr", testKey)
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
@@ -156,7 +163,7 @@ func main() {
 	log.Println("My multiaddr is: ", host.Addrs())
 
 	if isDialer {
-		val, err := rClient.BLPop(ctx, testTimeout, "listenerAddr").Result()
+		val, err := rClient.BLPop(ctx, testTimeout, redisKey).Result()
 		if err != nil {
 			log.Fatal("Failed to wait for listener to be ready")
 		}
@@ -185,19 +192,30 @@ func main() {
 		}
 		handshakePlusOneRTT := time.Since(handshakeStartInstant)
 
-		testResult := struct {
-			HandshakePlusOneRTTMillis float32 `json:"handshakePlusOneRTTMillis"`
-			PingRTTMilllis            float32 `json:"pingRTTMilllis"`
-		}{
-			HandshakePlusOneRTTMillis: float32(handshakePlusOneRTT.Microseconds()) / 1000,
-			PingRTTMilllis:            float32(res.RTT.Microseconds()) / 1000,
+		type Latency struct {
+			HandshakePlusOneRTT float32 `yaml:"handshake_plus_one_rtt"`
+			PingRTT             float32 `yaml:"ping_rtt"`
+			Unit                string  `yaml:"unit"`
 		}
 
-		testResultJSON, err := json.Marshal(testResult)
+		type TestResult struct {
+			Latency Latency `yaml:"latency"`
+		}
+
+		testResult := TestResult{
+			Latency: Latency{
+				HandshakePlusOneRTT: float32(handshakePlusOneRTT.Microseconds()) / 1000,
+				PingRTT:             float32(res.RTT.Microseconds()) / 1000,
+				Unit:                "ms",
+			},
+		}
+
+		testResultYAML, err := yaml.Marshal(testResult)
 		if err != nil {
 			log.Fatalf("Failed to marshal test result: %v", err)
 		}
-		fmt.Println(string(testResultJSON))
+		fmt.Println("# Measurements from dialer")
+		fmt.Print(string(testResultYAML))
 	} else {
 		var listenAddr ma.Multiaddr
 		for _, addr := range host.Addrs() {
@@ -206,7 +224,7 @@ func main() {
 				break
 			}
 		}
-		_, err := rClient.RPush(ctx, "listenerAddr", listenAddr.Encapsulate(ma.StringCast("/p2p/"+host.ID().String())).String()).Result()
+		_, err := rClient.RPush(ctx, redisKey, listenAddr.Encapsulate(ma.StringCast("/p2p/"+host.ID().String())).String()).Result()
 		if err != nil {
 			log.Fatal("Failed to send listener address")
 		}
