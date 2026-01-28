@@ -31,14 +31,52 @@ jobs:
         with:
           tool-cache: true
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t go-libp2p-head -f test-plans/PingDockerfile .
-      # TODO: switch back to libp2p/test-plans@master after https://github.com/libp2p/test-plans fix is merged
-      - uses: acul71/test-plans-fork/.github/actions/run-transport-interop-test@fix-transport-workdir
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Checkout libp2p/test-plans
+        uses: actions/checkout@v4
         with:
-          test-filter: go-libp2p-head
-          extra-versions: ${{ github.workspace }}/test-plans/ping-version.json
-          cache-dir: ${{ github.workspace }}/.cache
-          s3-cache-bucket: ${{ vars.S3_LIBP2P_BUILD_CACHE_BUCKET_NAME }}
-          s3-access-key-id: ${{ vars.S3_LIBP2P_BUILD_CACHE_AWS_ACCESS_KEY_ID }}
-          s3-secret-access-key: ${{ secrets.S3_LIBP2P_BUILD_CACHE_AWS_SECRET_ACCESS_KEY }}
+          repository: libp2p/test-plans
+          path: test-plans-harness
+
+      - name: Build go-libp2p-head image (transport-go-libp2p-head)
+        run: docker build -t transport-go-libp2p-head -f test-plans/PingDockerfile .
+
+      - name: Inject go-libp2p-head into test-plans transport/images.yaml
+        working-directory: test-plans-harness/transport
+        env:
+          GO_LIBP2P_DIR: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          # Remove any existing entry (for re-runs), then append our local build.
+          yq eval -i \
+            '.implementations = ((.implementations // []) | map(select(.id != "go-libp2p-head"))) + [{
+              "id": "go-libp2p-head",
+              "source": {
+                "type": "local",
+                "path": strenv(GO_LIBP2P_DIR),
+                "dockerfile": "test-plans/PingDockerfile"
+              },
+              "transports": ["tcp", "ws", "wss", "quic-v1", "webtransport", "webrtc-direct"],
+              "secureChannels": ["tls", "noise"],
+              "muxers": ["yamux"]
+            }]' \
+            images.yaml
+
+      - name: Run transport interop (bash harness)
+        working-directory: test-plans-harness/transport
+        env:
+          # Keep cache writable on github-hosted runners
+          CACHE_DIR: ${{ github.workspace }}/.cache
+        run: |
+          ./run.sh \
+            --test-select "go-libp2p-head" \
+            --cache-dir "${CACHE_DIR}" \
+            --workers 2 \
+            -y
