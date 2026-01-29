@@ -136,7 +136,8 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	for i := 1; i <= maxRetries; i++ {
 		isClient := false
 		// On the last attempt we switch roles in case the connection is
-		// being made with a client with switched roles (https://github.com/libp2p/go-libp2p/issues/3171)
+		// being made with a client with switched roles. Common for peers
+		// running go-libp2p prior to v0.41.
 		if i == maxRetries {
 			isClient = true
 		}
