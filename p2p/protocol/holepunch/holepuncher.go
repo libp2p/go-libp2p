@@ -7,14 +7,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-msgio/pbio"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
+
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-msgio/pbio"
-	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // ErrHolePunchActive is returned from DirectConnect when another hole punching attempt is currently running
@@ -48,11 +49,6 @@ type holePuncher struct {
 
 	tracer *tracer
 	filter AddrFilter
-
-	// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
-	// pick the opposite roles for client/server a hole punch. Setting this to
-	// true preserves that behavior
-	legacyBehavior bool
 }
 
 func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma.Multiaddr, tracer *tracer, filter AddrFilter) *holePuncher {
@@ -63,8 +59,6 @@ func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma
 		tracer:      tracer,
 		filter:      filter,
 		listenAddrs: listenAddrs,
-
-		legacyBehavior: true,
 	}
 	hp.ctx, hp.ctxCancel = context.WithCancel(context.Background())
 	h.Network().Notify((*netNotifiee)(hp))
@@ -141,6 +135,12 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 
 	// hole punch
 	for i := 1; i <= maxRetries; i++ {
+		isClient := false
+		// On the last attempt we switch roles in case the connection is
+		// being made with a client with switched roles (https://github.com/libp2p/go-libp2p/issues/3171)
+		if i == maxRetries {
+			isClient = true
+		}
 		addrs, obsAddrs, rtt, err := hp.initiateHolePunch(rp)
 		if err != nil {
 			hp.tracer.ProtocolError(rp, err)
@@ -161,10 +161,6 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			hp.tracer.StartHolePunch(rp, addrs, rtt)
 			hp.tracer.HolePunchAttempt(pi.ID)
 			ctx, cancel := context.WithTimeout(hp.ctx, hp.directDialTimeout)
-			isClient := true
-			if hp.legacyBehavior {
-				isClient = false
-			}
 			err := holePunchConnect(ctx, hp.host, pi, isClient)
 			cancel()
 			dt := time.Since(start)
