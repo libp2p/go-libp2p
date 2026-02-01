@@ -60,7 +60,7 @@ var DefaultPrivateTransports = ChainOptions(
 )
 
 // DefaultPeerstore configures libp2p to use the default peerstore.
-var DefaultPeerstore Option = func(cfg *Config) error {
+var DefaultPeerstore = func(cfg *Config) error {
 	ps, err := pstoremem.NewPeerstore()
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ var DefaultPeerstore Option = func(cfg *Config) error {
 	return cfg.Apply(Peerstore(ps))
 }
 
-// RandomIdentity generates a random identity. (default behaviour)
+// RandomIdentity generates a random identity. (default behavior)
 var RandomIdentity = func(cfg *Config) error {
 	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
@@ -77,7 +77,7 @@ var RandomIdentity = func(cfg *Config) error {
 	return cfg.Apply(Identity(priv))
 }
 
-// DefaultListenAddrs configures libp2p to use default listen address.
+// DefaultListenAddrs configures libp2p to use default listen addresses.
 var DefaultListenAddrs = func(cfg *Config) error {
 	addrs := []string{
 		"/ip4/0.0.0.0/tcp/0",
