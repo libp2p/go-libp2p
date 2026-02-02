@@ -1,4 +1,4 @@
-package basichost
+package natmanager
 
 import (
 	"context"
@@ -9,25 +9,15 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	inat "github.com/libp2p/go-libp2p/p2p/net/nat"
 
+	logging "github.com/libp2p/go-libp2p/gologshim"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-// NATManager is a simple interface to manage NAT devices.
-// It listens Listen and ListenClose notifications from the network.Network,
-// and tries to obtain port mappings for those.
-type NATManager interface {
-	GetMapping(ma.Multiaddr) ma.Multiaddr
-	HasDiscoveredNAT() bool
-	io.Closer
-}
-
-// NewNATManager creates a NAT manager.
-func NewNATManager(net network.Network) NATManager {
-	return newNATManager(net)
-}
+var log = logging.Logger("natmanager")
 
 type entry struct {
 	protocol string
@@ -50,7 +40,7 @@ var discoverNAT = func(ctx context.Context) (nat, error) { return inat.DiscoverN
 //   - natManager listens to the network and adds or closes port mappings
 //     as the network signals Listen() or ListenClose().
 //   - closing the natManager closes the nat and its mappings.
-type natManager struct {
+type NATManager struct {
 	net   network.Network
 	natMx sync.RWMutex
 	nat   nat
@@ -64,41 +54,45 @@ type natManager struct {
 	ctxCancel context.CancelFunc
 }
 
-func newNATManager(net network.Network) *natManager {
+var _ basichost.NATManager = (*NATManager)(nil)
+
+func New(net network.Network) *NATManager {
 	ctx, cancel := context.WithCancel(context.Background())
-	nmgr := &natManager{
+	nmgr := &NATManager{
 		net:       net,
 		syncFlag:  make(chan struct{}, 1),
 		ctx:       ctx,
 		ctxCancel: cancel,
 		tracked:   make(map[entry]bool),
 	}
-	nmgr.refCount.Add(1)
-	go nmgr.background(ctx)
 	return nmgr
+}
+
+func (nmgr *NATManager) Start() {
+	nmgr.refCount.Add(1)
+	go nmgr.background(nmgr.ctx)
 }
 
 // Close closes the natManager, closing the underlying nat
 // and unregistering from network events.
-func (nmgr *natManager) Close() error {
+func (nmgr *NATManager) Close() error {
 	nmgr.ctxCancel()
 	nmgr.refCount.Wait()
 	return nil
 }
 
-func (nmgr *natManager) HasDiscoveredNAT() bool {
+func (nmgr *NATManager) HasDiscoveredNAT() bool {
 	nmgr.natMx.RLock()
 	defer nmgr.natMx.RUnlock()
 	return nmgr.nat != nil
 }
 
-func (nmgr *natManager) background(ctx context.Context) {
+func (nmgr *NATManager) background(ctx context.Context) {
 	defer nmgr.refCount.Done()
 
 	defer func() {
 		nmgr.natMx.Lock()
 		defer nmgr.natMx.Unlock()
-
 		if nmgr.nat != nil {
 			nmgr.nat.Close()
 		}
@@ -133,7 +127,7 @@ func (nmgr *natManager) background(ctx context.Context) {
 	}
 }
 
-func (nmgr *natManager) sync() {
+func (nmgr *NATManager) sync() {
 	select {
 	case nmgr.syncFlag <- struct{}{}:
 	default:
@@ -142,7 +136,7 @@ func (nmgr *natManager) sync() {
 
 // doSync syncs the current NAT mappings, removing any outdated mappings and adding any
 // new mappings.
-func (nmgr *natManager) doSync() {
+func (nmgr *NATManager) doSync() {
 	for e := range nmgr.tracked {
 		nmgr.tracked[e] = false
 	}
@@ -214,7 +208,7 @@ func (nmgr *natManager) doSync() {
 	}
 }
 
-func (nmgr *natManager) GetMapping(addr ma.Multiaddr) ma.Multiaddr {
+func (nmgr *NATManager) GetMapping(addr ma.Multiaddr) ma.Multiaddr {
 	nmgr.natMx.Lock()
 	defer nmgr.natMx.Unlock()
 
@@ -289,9 +283,9 @@ func (nmgr *natManager) GetMapping(addr ma.Multiaddr) ma.Multiaddr {
 	return extMaddr
 }
 
-type nmgrNetNotifiee natManager
+type nmgrNetNotifiee NATManager
 
-func (nn *nmgrNetNotifiee) natManager() *natManager                       { return (*natManager)(nn) }
+func (nn *nmgrNetNotifiee) natManager() *NATManager                       { return (*NATManager)(nn) }
 func (nn *nmgrNetNotifiee) Listen(network.Network, ma.Multiaddr)          { nn.natManager().sync() }
 func (nn *nmgrNetNotifiee) ListenClose(_ network.Network, _ ma.Multiaddr) { nn.natManager().sync() }
 func (nn *nmgrNetNotifiee) Connected(network.Network, network.Conn)       {}

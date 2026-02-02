@@ -18,13 +18,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
-	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
-	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/prometheus/client_golang/prometheus"
 
 	logging "github.com/libp2p/go-libp2p/gologshim"
@@ -59,15 +55,12 @@ type BasicHost struct {
 	// keep track of resources we need to wait on before shutting down
 	refCount sync.WaitGroup
 
-	network      network.Network
-	psManager    *pstoremanager.PeerstoreManager
-	mux          *msmux.MultistreamMuxer[protocol.ID]
-	ids          identify.IDService
-	hps          *holepunch.Service
-	pings        *ping.PingService
-	cmgr         connmgr.ConnManager
-	eventbus     event.Bus
-	relayManager *relaysvc.RelayManager
+	network  network.Network
+	mux      *msmux.MultistreamMuxer[protocol.ID]
+	ids      identify.IDService
+	hps      *holepunch.Service
+	cmgr     connmgr.ConnManager
+	eventbus event.Bus
 
 	negtimeout time.Duration
 
@@ -105,18 +98,10 @@ type HostOpts struct {
 
 	// NATManager takes care of setting NAT port mappings, and discovering external addresses.
 	// If omitted, this will simply be disabled.
-	NATManager func(network.Network) NATManager
+	NATManager NATManager
 
 	// ConnManager is a libp2p connection manager
 	ConnManager connmgr.ConnManager
-
-	// EnablePing indicates whether to instantiate the ping service
-	EnablePing bool
-
-	// EnableRelayService enables the circuit v2 relay (if we're publicly reachable).
-	EnableRelayService bool
-	// RelayServiceOpts are options for the circuit v2 relay.
-	RelayServiceOpts []relayv2.Option
 
 	// UserAgent sets the user-agent for the host.
 	UserAgent string
@@ -136,8 +121,6 @@ type HostOpts struct {
 	EnableMetrics bool
 	// PrometheusRegisterer is the PrometheusRegisterer used for metrics
 	PrometheusRegisterer prometheus.Registerer
-	// AutoNATv2MetricsTracker tracks AutoNATv2 address reachability metrics
-	AutoNATv2MetricsTracker MetricsTracker
 
 	// ObservedAddrsManager maps our local listen addresses to external publicly observed addresses.
 	ObservedAddrsManager ObservedAddrsManager
@@ -154,15 +137,9 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		opts.EventBus = eventbus.NewBus()
 	}
 
-	psManager, err := pstoremanager.NewPeerstoreManager(n.Peerstore(), opts.EventBus, n)
-	if err != nil {
-		return nil, err
-	}
-
 	hostCtx, cancel := context.WithCancel(context.Background())
 	h := &BasicHost{
 		network:    n,
-		psManager:  psManager,
 		mux:        msmux.NewMultistreamMuxer[protocol.ID](),
 		negtimeout: DefaultNegotiationTimeout,
 		eventbus:   opts.EventBus,
@@ -170,6 +147,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctxCancel:  cancel,
 	}
 
+	var err error
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}, eventbus.Stateful); err != nil {
 		return nil, err
 	}
@@ -203,11 +181,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		addrFactory = opts.AddrsFactory
 	}
 
-	var natmgr NATManager
-	if opts.NATManager != nil {
-		natmgr = opts.NATManager(h.Network())
-	}
-
 	if opts.AutoNATv2 != nil {
 		h.autonatv2 = opts.AutoNATv2
 	}
@@ -229,7 +202,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	h.addressManager, err = newAddrsManager(
 		h.eventbus,
-		natmgr,
+		opts.NATManager,
 		addrFactory,
 		h.Network().ListenAddresses,
 		addCertHashesFunc,
@@ -270,21 +243,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		n.Notify(h.cmgr.Notifee())
 	}
 
-	if opts.EnableRelayService {
-		if opts.EnableMetrics {
-			// Prefer explicitly provided metrics tracer
-			metricsOpt := []relayv2.Option{
-				relayv2.WithMetricsTracer(
-					relayv2.NewMetricsTracer(relayv2.WithRegisterer(opts.PrometheusRegisterer)))}
-			opts.RelayServiceOpts = append(metricsOpt, opts.RelayServiceOpts...)
-		}
-		h.relayManager = relaysvc.NewRelayManager(h, opts.RelayServiceOpts...)
-	}
-
-	if opts.EnablePing {
-		h.pings = ping.NewPingService(h)
-	}
-
 	n.SetStreamHandler(h.newStreamHandler)
 
 	return h, nil
@@ -293,7 +251,6 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 // Start starts background tasks in the host
 // TODO: Return error and handle it in the caller?
 func (h *BasicHost) Start() {
-	h.psManager.Start()
 	if h.autonatv2 != nil {
 		err := h.autonatv2.Start(h)
 		if err != nil {
@@ -637,9 +594,6 @@ func (h *BasicHost) Close() error {
 		if h.autoNat != nil {
 			h.autoNat.Close()
 		}
-		if h.relayManager != nil {
-			h.relayManager.Close()
-		}
 		if h.hps != nil {
 			h.hps.Close()
 		}
@@ -654,7 +608,6 @@ func (h *BasicHost) Close() error {
 		}
 
 		h.addressManager.Close()
-		h.psManager.Close()
 		if h.Peerstore() != nil {
 			h.Peerstore().Close()
 		}
