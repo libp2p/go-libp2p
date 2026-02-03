@@ -31,12 +31,128 @@ jobs:
         with:
           tool-cache: true
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t go-libp2p-head -f test-plans/PingDockerfile .
-      - uses: libp2p/test-plans/.github/actions/run-transport-interop-test@master
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Install docker-compose
+        shell: bash
+        run: |
+          mkdir -p $HOME/.docker/cli-plugins
+          wget -q -O- https://github.com/docker/compose/releases/download/v2.21.0/docker-compose-linux-x86_64 > $HOME/.docker/cli-plugins/docker-compose
+          chmod +x $HOME/.docker/cli-plugins/docker-compose
+          docker compose version
+
+      - name: Checkout libp2p/test-plans
+        uses: actions/checkout@v4
         with:
-          test-filter: go-libp2p-head
-          extra-versions: ${{ github.workspace }}/test-plans/ping-version.json
-          s3-cache-bucket: ${{ vars.S3_LIBP2P_BUILD_CACHE_BUCKET_NAME }}
-          s3-access-key-id: ${{ vars.S3_LIBP2P_BUILD_CACHE_AWS_ACCESS_KEY_ID }}
-          s3-secret-access-key: ${{ secrets.S3_LIBP2P_BUILD_CACHE_AWS_SECRET_ACCESS_KEY }}
+          repository: libp2p/test-plans
+          path: test-plans-harness
+
+      - name: Inject go-v0.47-pre into test-plans transport/images.yaml
+        working-directory: test-plans-harness/transport
+        env:
+          GO_LIBP2P_DIR: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          # Remove any existing entry (for re-runs), then append our local build.
+          yq eval -i \
+            '.implementations = ((.implementations // []) | map(select(.id != "go-v0.47-pre"))) + [{
+              "id": "go-v0.47-pre",
+              "source": {
+                "type": "local",
+                "path": strenv(GO_LIBP2P_DIR),
+                "dockerfile": "test-plans/PingDockerfile"
+              },
+              "transports": ["tcp", "ws", "wss", "quic-v1", "webtransport", "webrtc-direct"],
+              "secureChannels": ["tls", "noise"],
+              "muxers": ["yamux"]
+            }]' \
+            images.yaml
+
+      - name: Run transport interop (bash harness)
+        working-directory: test-plans-harness/transport
+        id: run-tests
+        continue-on-error: true
+        env:
+          # Keep cache writable on github-hosted runners
+          CACHE_DIR: ${{ github.workspace }}/.cache
+        run: |
+          ./run.sh \
+            --test-select "go-v0.47-pre" \
+            --test-ignore "~failing" \
+            --force-image-rebuild \
+            --debug \
+            --snapshot \
+            --cache-dir "${CACHE_DIR}" \
+            -y
+
+      - name: Display test results summary
+        if: always()
+        shell: bash
+        env:
+          CACHE_DIR: ${{ github.workspace }}/.cache
+        run: |
+          TEST_PASS_DIR=$(ls -td "${CACHE_DIR}/test-run/transport-"* 2>/dev/null | grep -v '\.zip$' | head -1 || echo "")
+          if [ -z "$TEST_PASS_DIR" ]; then
+            echo "Error: Could not find test pass directory"
+            exit 0
+          fi
+          if [ -f "${TEST_PASS_DIR}/results.yaml" ]; then
+            echo "=== Test Results Summary ==="
+            echo ""
+            yq eval '.summary' "${TEST_PASS_DIR}/results.yaml" || true
+            echo ""
+            FAILED_COUNT=$(yq eval '.summary.failed // 0' "${TEST_PASS_DIR}/results.yaml" || echo "0")
+            if [ "$FAILED_COUNT" -gt 0 ]; then
+              echo "=== Failed Tests ==="
+              yq eval '.tests[]? | select(.status == "fail") | "- \(.name // .test)"' "${TEST_PASS_DIR}/results.yaml" || true
+            fi
+          fi
+
+      - name: Fail workflow if tests failed
+        if: always() && steps.run-tests.outcome == 'failure'
+        run: |
+          echo "Tests failed. Check the test results summary above and artifacts for details."
+          exit 1
+
+      - name: Find test pass directory
+        if: always()
+        id: find-test-pass
+        shell: bash
+        env:
+          CACHE_DIR: ${{ github.workspace }}/.cache
+        run: |
+          TEST_PASS_DIR=$(ls -td "${CACHE_DIR}/test-run/transport-"* 2>/dev/null | grep -v '\.zip$' | head -1 || echo "")
+          if [ -z "$TEST_PASS_DIR" ]; then
+            echo "Error: Could not find test pass directory"
+            exit 1
+          fi
+          TEST_PASS_NAME=$(basename "$TEST_PASS_DIR")
+          echo "test-pass-dir=$TEST_PASS_DIR" >> $GITHUB_OUTPUT
+          echo "test-pass-name=$TEST_PASS_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transport-test-results-${{ steps.find-test-pass.outputs.test-pass-name }}
+          path: |
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/results.yaml
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/results.md
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/results.html
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}/LATEST_TEST_RESULTS.md
+          if-no-files-found: warn
+
+      - name: Upload snapshot (full test pass dir)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transport-snapshot-${{ steps.find-test-pass.outputs.test-pass-name }}
+          path: |
+            ${{ steps.find-test-pass.outputs.test-pass-dir }}
+          if-no-files-found: warn
