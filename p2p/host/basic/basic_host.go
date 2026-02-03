@@ -481,7 +481,12 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		if err := s.SetProtocol(pref); err != nil {
 			return nil, err
 		}
-		lzcon := msmux.NewMSSelect(s, pref)
+		var lzcon msmux.LazyConn
+		if h.supportProtocolAbbreviation(p) {
+			lzcon = msmux.NewMSSelect2(s, pref, pids)
+		} else {
+			lzcon = msmux.NewMSSelect(s, pref)
+		}
 		return &streamWrapper{
 			Stream: s,
 			rw:     lzcon,
@@ -526,6 +531,19 @@ func (h *BasicHost) preferredProtocol(p peer.ID, pids []protocol.ID) (protocol.I
 		out = supported[0]
 	}
 	return out, nil
+}
+
+func (h *BasicHost) supportProtocolAbbreviation(p peer.ID) bool {
+	mv, err := h.Peerstore().Get(p, "MaxMultiselectVersion")
+	if err != nil {
+		// if there is no value, assume it's not supported.
+		return false
+	}
+	maxVersion, ok := mv.(uint32)
+	if !ok {
+		return false
+	}
+	return maxVersion >= msmux.AbbrevSupportedMSSVersion
 }
 
 // Connect ensures there is a connection between this host and the peer with
