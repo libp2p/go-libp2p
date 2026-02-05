@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 
 	"github.com/libp2p/go-libp2p"
@@ -70,8 +71,8 @@ func run() {
 		// Let's prevent our peer from having too many
 		// connections by attaching a connection manager.
 		libp2p.ConnectionManager(connmgr),
-		// Attempt to open ports using uPNP for NATed hosts.
-		libp2p.NATPortMap(),
+		// Attempt to open IPv4 port mappings and IPv6 pinholes via UPnP.
+		libp2p.NATManager(basichost.NewUPnPCombinedNATManager),
 		// Let this host use the DHT to find other hosts
 		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
 			idht, err = dht.New(context.Background(), h)
