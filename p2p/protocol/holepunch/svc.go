@@ -71,17 +71,6 @@ type Service struct {
 	filter AddrFilter
 
 	refCount sync.WaitGroup
-
-	// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
-	// pick the opposite roles for client/server a hole punch. Setting this to
-	// true preserves that behavior
-	legacyBehavior bool
-}
-
-// SetLegacyBehavior is only exposed for testing purposes.
-// Do not set this unless you know what you are doing.
-func (s *Service) SetLegacyBehavior(legacyBehavior bool) {
-	s.legacyBehavior = legacyBehavior
 }
 
 // NewService creates a new service that can be used for hole punching
@@ -105,7 +94,6 @@ func NewService(h host.Host, ids identify.IDService, listenAddrs func() []ma.Mul
 		listenAddrs:        listenAddrs,
 		hasPublicAddrsChan: make(chan struct{}),
 		directDialTimeout:  defaultDirectDialTimeout,
-		legacyBehavior:     true,
 	}
 
 	for _, opt := range opts {
@@ -161,7 +149,6 @@ func (s *Service) waitForPublicAddr() {
 	}
 	s.holePuncher = newHolePuncher(s.host, s.ids, s.listenAddrs, s.tracer, s.filter)
 	s.holePuncher.directDialTimeout = s.directDialTimeout
-	s.holePuncher.legacyBehavior = s.legacyBehavior
 	s.holePuncherMx.Unlock()
 	close(s.hasPublicAddrsChan)
 }
@@ -284,11 +271,7 @@ func (s *Service) handleNewStream(str network.Stream) {
 	start := time.Now()
 	s.tracer.HolePunchAttempt(pi.ID)
 	ctx, cancel := context.WithTimeout(s.ctx, s.directDialTimeout)
-	isClient := false
-	if s.legacyBehavior {
-		isClient = true
-	}
-	err = holePunchConnect(ctx, s.host, pi, isClient)
+	err = holePunchConnect(ctx, s.host, pi, true) // true (Client)
 	cancel()
 	dt := time.Since(start)
 	s.tracer.EndHolePunch(rp, dt, err)

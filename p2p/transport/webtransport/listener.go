@@ -64,10 +64,11 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 		addr:            reuseListener.Addr(),
 		multiaddr:       localMultiaddr,
 		server: webtransport.Server{
-			H3: http3.Server{
+			H3: &http3.Server{
 				ConnContext: func(ctx context.Context, c *quic.Conn) context.Context {
 					return context.WithValue(ctx, connKey{}, c)
 				},
+				EnableDatagrams: true,
 			},
 			CheckOrigin: func(_ *http.Request) bool { return true },
 		},
@@ -77,6 +78,7 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 	mux := http.NewServeMux()
 	mux.HandleFunc(webtransportHTTPEndpoint, ln.httpHandler)
 	ln.server.H3.Handler = mux
+	webtransport.ConfigureHTTP3Server(ln.server.H3)
 	go func() {
 		defer close(ln.serverClosed)
 		for {

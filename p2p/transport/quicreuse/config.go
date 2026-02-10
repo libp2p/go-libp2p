@@ -15,4 +15,6 @@ var quicConfig = &quic.Config{
 	Versions:                   []quic.Version{quic.Version1},
 	// We don't use datagrams (yet), but this is necessary for WebTransport
 	EnableDatagrams: true,
+	// Required for WebTransport
+	EnableStreamResetPartialDelivery: true,
 }
