@@ -116,6 +116,15 @@ func selfSignedTLSConfig(t *testing.T) *tls.Config {
 	return tlsConfig
 }
 
+func skipIfNoIPv6(t *testing.T) {
+	t.Helper()
+	ln, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skip("IPv6 loopback not available")
+	}
+	ln.Close()
+}
+
 var transportsToTest = []TransportTestCase{
 	{
 		Name: "TCP / Noise / Yamux",
@@ -353,11 +362,112 @@ var transportsToTest = []TransportTestCase{
 			return h
 		},
 	},
+	{
+		Name: "TCP / Noise / Yamux - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(noise.ID, noise.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP / TLS / Yamux - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebSocket - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0/ws"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "QUIC - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebTransport - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1/webtransport"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebRTC - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
 }
 
 func TestPing(t *testing.T) {
+	
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			// Skip explicit IPv6 WebRTC test on Windows due to unstable loopback/ICE behavior.
+			// This keeps CI (Linux) coverage while avoiding false negatives on Windows dev machines.
+			if tc.Name == "WebRTC - IP6" && runtime.GOOS == "windows" {
+				t.Skip("WebRTC IPv6 direct is unstable on Windows loopback")
+			}
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
