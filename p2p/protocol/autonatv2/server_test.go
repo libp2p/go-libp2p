@@ -27,7 +27,7 @@ import (
 
 func newTestRequests(addrs []ma.Multiaddr, sendDialData bool) (reqs []Request) {
 	reqs = make([]Request, len(addrs))
-	for i := 0; i < len(addrs); i++ {
+	for i := range addrs {
 		reqs[i] = Request{Addr: addrs[i], SendDialData: sendDialData}
 	}
 	return
@@ -106,7 +106,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		defer an.host.Close()
 
 		var addrs []ma.Multiaddr
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 2000+i)))
 		}
 		addrs = append(addrs, c.host.Addrs()...)
@@ -125,7 +125,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		defer an.host.Close()
 
 		var addrs []ma.Multiaddr
-		for i := 0; i < 10000; i++ {
+		for i := range 10000 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 2000+i)))
 		}
 		addrs = append(addrs, c.host.Addrs()...)
@@ -215,7 +215,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 	errChan := make(chan error)
 	const n = 10
 	// num concurrentRequests will stall and n will fail
-	for i := 0; i < concurrentRequests+n; i++ {
+	for range concurrentRequests + n {
 		go func() {
 			_, err := c.GetReachability(context.Background(), []Request{{Addr: c.host.Addrs()[0], SendDialData: false}})
 			errChan <- err
@@ -223,7 +223,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 	}
 
 	// check N failures
-	for i := 0; i < n; i++ {
+	for i := range n {
 		select {
 		case err := <-errChan:
 			require.Error(t, err)
@@ -237,7 +237,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 
 	close(stallChan) // complete stalled requests
 	// check concurrentRequests failures, as we won't send dial data
-	for i := 0; i < concurrentRequests; i++ {
+	for i := range concurrentRequests {
 		select {
 		case err := <-errChan:
 			require.Error(t, err)
@@ -284,7 +284,7 @@ func TestServerDataRequestJitter(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		st := time.Now()
 		res, err := c.GetReachability(context.Background(), []Request{{Addr: quicAddr, SendDialData: true}, {Addr: tcpAddr}})
 		took := time.Since(st)
@@ -402,7 +402,7 @@ func TestRateLimiterConcurrentRequests(t *testing.T) {
 	for concurrentRequests := 1; concurrentRequests <= N; concurrentRequests++ {
 		cl := test.NewMockClock()
 		r := rateLimiter{RPM: 10 * Peers * N, PerPeerRPM: 10 * Peers * N, DialDataRPM: 10 * Peers * N, now: cl.Now, MaxConcurrentRequestsPerPeer: concurrentRequests}
-		for p := 0; p < Peers; p++ {
+		for p := range Peers {
 			for i := 0; i < concurrentRequests; i++ {
 				require.True(t, r.Accept(peer.ID(fmt.Sprintf("peer-%d", p))))
 			}
@@ -422,21 +422,21 @@ func TestRateLimiterConcurrentRequests(t *testing.T) {
 
 func TestRateLimiterStress(t *testing.T) {
 	cl := test.NewMockClock()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		r := rateLimiter{RPM: 20 + i, PerPeerRPM: 10 + i, DialDataRPM: i, MaxConcurrentRequestsPerPeer: 1, now: cl.Now}
 
 		peers := make([]peer.ID, 10+i)
-		for i := 0; i < len(peers); i++ {
+		for i := range peers {
 			peers[i] = peer.ID(fmt.Sprintf("peer-%d", i))
 		}
 		peerSuccesses := make([]atomic.Int64, len(peers))
 		var success, dialDataSuccesses atomic.Int64
 		var wg sync.WaitGroup
-		for k := 0; k < 5; k++ {
+		for range 5 {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				for i := 0; i < 2*60; i++ {
+				for range 2 * 60 {
 					for j, p := range peers {
 						if r.Accept(p) {
 							success.Add(1)

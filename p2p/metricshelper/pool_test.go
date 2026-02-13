@@ -8,7 +8,7 @@ import (
 )
 
 func TestStringSlicePool(t *testing.T) {
-	for i := 0; i < 1e5; i++ {
+	for range int(1e5) {
 		s := GetStringSlice()
 		require.Empty(t, *s)
 		require.Equal(t, 8, cap(*s))

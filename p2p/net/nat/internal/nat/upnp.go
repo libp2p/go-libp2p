@@ -193,7 +193,7 @@ func (u *upnp_NAT) AddPortMapping(ctx context.Context, protocol string, internal
 		}
 	}
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		externalPort := randomPort()
 		err = u.c.AddPortMappingCtx(ctx, "", uint16(externalPort), mapProtocol(protocol), uint16(internalPort), ip.String(), true, description, timeoutInSeconds)
 		if err == nil {

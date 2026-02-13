@@ -31,7 +31,7 @@ import (
 )
 
 func getNetHosts(t *testing.T, _ context.Context, n int) (hosts []host.Host, upgraders []transport.Upgrader) {
-	for i := 0; i < n; i++ {
+	for range n {
 		privk, pubk, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -156,7 +156,7 @@ func TestBasicRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	for {
-		var e interface{}
+		var e any
 		select {
 		case e = <-sub.Out():
 		case <-time.After(2 * time.Second):
@@ -289,7 +289,7 @@ func TestRelayLimitData(t *testing.T) {
 		defer close(rch)
 
 		buf := make([]byte, 1024)
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			n, err := s.Read(buf)
 			if err != nil {
 				t.Fatal(err)
@@ -347,7 +347,7 @@ func TestRelayLimitData(t *testing.T) {
 	}
 
 	buf := make([]byte, 1024)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if _, err := rand.Read(buf); err != nil {
 			t.Fatal(err)
 		}

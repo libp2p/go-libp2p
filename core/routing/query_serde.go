@@ -7,7 +7,7 @@ import (
 )
 
 func (qe *QueryEvent) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]interface{}{
+	return json.Marshal(map[string]any{
 		"ID":        qe.ID.String(),
 		"Type":      int(qe.Type),
 		"Responses": qe.Responses,

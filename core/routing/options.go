@@ -1,5 +1,7 @@
 package routing
 
+import "maps"
+
 // Option is a single routing option.
 type Option func(opts *Options) error
 
@@ -9,7 +11,7 @@ type Options struct {
 	Expired bool
 	Offline bool
 	// Other (ValueStore implementation specific) options.
-	Other map[interface{}]interface{}
+	Other map[any]any
 }
 
 // Apply applies the given options to this Options
@@ -27,10 +29,8 @@ func (opts *Options) ToOption() Option {
 	return func(nopts *Options) error {
 		*nopts = *opts
 		if opts.Other != nil {
-			nopts.Other = make(map[interface{}]interface{}, len(opts.Other))
-			for k, v := range opts.Other {
-				nopts.Other[k] = v
-			}
+			nopts.Other = make(map[any]any, len(opts.Other))
+			maps.Copy(nopts.Other, opts.Other)
 		}
 		return nil
 	}

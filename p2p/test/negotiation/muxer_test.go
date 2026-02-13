@@ -84,10 +84,8 @@ func TestMuxerNegotiation(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 
 		for _, sec := range securities {
-			sec := sec
 
 			t.Run(fmt.Sprintf("%s: %s", sec.Name, tc.Name), func(t *testing.T) {
 				server, err := libp2p.New(

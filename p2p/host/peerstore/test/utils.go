@@ -2,6 +2,7 @@ package test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -36,7 +37,7 @@ func RandomPeer(b *testing.B, addrCount int) *peerpair {
 		b.Fatal(err)
 	}
 
-	for i := 0; i < addrCount; i++ {
+	for i := range addrCount {
 		if addrs[i], err = ma.NewMultiaddr(fmt.Sprintf(aFmt, i, pid)); err != nil {
 			b.Fatal(err)
 		}
@@ -46,7 +47,7 @@ func RandomPeer(b *testing.B, addrCount int) *peerpair {
 
 func getPeerPairs(b *testing.B, n int, addrsPerPeer int) []*peerpair {
 	pps := make([]*peerpair, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		pps[i] = RandomPeer(b, addrsPerPeer)
 	}
 	return pps
@@ -54,7 +55,7 @@ func getPeerPairs(b *testing.B, n int, addrsPerPeer int) []*peerpair {
 
 func GenerateAddrs(count int) []ma.Multiaddr {
 	var addrs = make([]ma.Multiaddr, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		addrs[i] = Multiaddr(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1111", i))
 	}
 	return addrs
@@ -62,7 +63,7 @@ func GenerateAddrs(count int) []ma.Multiaddr {
 
 func GeneratePeerIDs(count int) []peer.ID {
 	var ids = make([]peer.ID, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		ids[i], _ = pt.RandPeerID()
 	}
 	return ids
@@ -75,14 +76,7 @@ func AssertAddressesEqual(t *testing.T, exp, act []ma.Multiaddr) {
 	}
 
 	for _, a := range exp {
-		found := false
-
-		for _, b := range act {
-			if a.Equal(b) {
-				found = true
-				break
-			}
-		}
+		found := slices.ContainsFunc(act, a.Equal)
 
 		if !found {
 			t.Fatalf("expected address %s not found", a)

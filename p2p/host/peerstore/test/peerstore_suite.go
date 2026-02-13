@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -46,7 +46,7 @@ func TestPeerstore(t *testing.T, factory PeerstoreFactory) {
 }
 
 func sortProtos(protos []protocol.ID) {
-	sort.Slice(protos, func(i, j int) bool { return protos[i] < protos[j] })
+	slices.Sort(protos)
 }
 
 func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
@@ -65,7 +65,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 
 		// now receive them (without hanging)
 		timeout := time.After(time.Second * 10)
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			select {
 			case <-addrch:
 			case <-timeout:
@@ -88,7 +88,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 
 		// receive some concurrently with the goroutine
 		timeout = time.After(time.Second * 10)
-		for i := 0; i < 40; i++ {
+		for range 40 {
 			select {
 			case <-addrch:
 			case <-timeout:
@@ -99,7 +99,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 
 		// receive some more after waiting for that goroutine to complete
 		timeout = time.After(time.Second * 10)
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			select {
 			case <-addrch:
 			case <-timeout:
@@ -110,7 +110,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 		cancel()
 
 		// now check the *second* subscription. We should see 80 addresses.
-		for i := 0; i < 80; i++ {
+		for range 80 {
 			<-addrch2
 		}
 
@@ -131,14 +131,14 @@ func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 		defer cancel()
 
 		ach := ps.AddrStream(ctx, pid)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			ps.AddAddr(pid, addrs[i], time.Hour)
 		}
 
 		received := make(map[string]bool)
 		var count int
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			a, ok := <-ach
 			if !ok {
 				t.Fatal("channel shouldnt be closed yet")
@@ -181,7 +181,7 @@ func testAddrStreamDuplicates(ps pstore.Peerstore) func(t *testing.T) {
 
 		ach := ps.AddrStream(ctx, pid)
 		go func() {
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				ps.AddAddr(pid, addrs[i], time.Hour)
 				ps.AddAddr(pid, addrs[rand.Intn(10)], time.Hour)
 			}
@@ -375,7 +375,7 @@ func testCertifiedAddrBook(ps pstore.Peerstore) func(*testing.T) {
 
 func getAddrs(t *testing.T, n int) []ma.Multiaddr {
 	var addrs []ma.Multiaddr
-	for i := 0; i < n; i++ {
+	for i := range n {
 		a, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", i))
 		if err != nil {
 			t.Fatal(err)
@@ -389,7 +389,7 @@ func getAddrs(t *testing.T, n int) []ma.Multiaddr {
 func TestPeerstoreProtoStoreLimits(t *testing.T, ps pstore.Peerstore, limit int) {
 	p := peer.ID("foobar")
 	protocols := make([]protocol.ID, limit)
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		protocols[i] = protocol.ID(fmt.Sprintf("protocol %d", i))
 	}
 

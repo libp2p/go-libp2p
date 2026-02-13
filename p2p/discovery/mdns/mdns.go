@@ -257,7 +257,7 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 func randomString(l int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 	s := make([]byte, 0, l)
-	for i := 0; i < l; i++ {
+	for range l {
 		s = append(s, alphabet[rand.Intn(len(alphabet))])
 	}
 	return string(s)

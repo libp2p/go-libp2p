@@ -153,7 +153,7 @@ func (an *AutoNAT) Start(h host.Host) error {
 	an.host = h
 	// Listen on event.EvtPeerProtocolsUpdated, event.EvtPeerConnectednessChanged
 	// event.EvtPeerIdentificationCompleted to maintain our set of autonat supporting peers.
-	sub, err := an.host.EventBus().Subscribe([]interface{}{
+	sub, err := an.host.EventBus().Subscribe([]any{
 		new(event.EvtPeerProtocolsUpdated),
 		new(event.EvtPeerConnectednessChanged),
 		new(event.EvtPeerIdentificationCompleted),

@@ -83,8 +83,8 @@ type PeerMetadata interface {
 	// Get / Put is a simple registry for other peer-related key/value pairs.
 	// If we find something we use often, it should become its own set of
 	// methods. This is a last resort.
-	Get(p peer.ID, key string) (interface{}, error)
-	Put(p peer.ID, key string, val interface{}) error
+	Get(p peer.ID, key string) (any, error)
+	Put(p peer.ID, key string, val any) error
 
 	// RemovePeer removes all values stored for a peer.
 	RemovePeer(peer.ID)

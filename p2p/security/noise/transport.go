@@ -3,6 +3,7 @@ package noise
 import (
 	"context"
 	"net"
+	"slices"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -89,10 +90,8 @@ func (t *Transport) ID() protocol.ID {
 
 func matchMuxers(initiatorMuxers, responderMuxers []protocol.ID) protocol.ID {
 	for _, initMuxer := range initiatorMuxers {
-		for _, respMuxer := range responderMuxers {
-			if initMuxer == respMuxer {
-				return initMuxer
-			}
+		if slices.Contains(responderMuxers, initMuxer) {
+			return initMuxer
 		}
 	}
 	return ""

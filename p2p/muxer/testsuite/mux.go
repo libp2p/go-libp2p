@@ -40,7 +40,7 @@ func init() {
 	}
 }
 
-func getFunctionName(i interface{}) string {
+func getFunctionName(i any) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
@@ -196,7 +196,7 @@ func SubtestStress(t *testing.T, opt Options) {
 
 	rateLimitN := 5000 // max of 5k funcs, because -race has 8k max.
 	rateLimitChan := make(chan struct{}, rateLimitN)
-	for i := 0; i < rateLimitN; i++ {
+	for range rateLimitN {
 		rateLimitChan <- struct{}{}
 	}
 
@@ -356,7 +356,7 @@ func SubtestStreamOpenStress(t *testing.T, tr network.Multiplexer) {
 		}
 		stress := func() {
 			defer wg.Done()
-			for i := 0; i < count; i++ {
+			for range count {
 				s, err := muxa.OpenStream(context.Background())
 				if err != nil {
 					t.Error(err)
@@ -376,7 +376,7 @@ func SubtestStreamOpenStress(t *testing.T, tr network.Multiplexer) {
 			}
 		}
 
-		for i := 0; i < workers; i++ {
+		for range workers {
 			wg.Add(1)
 			go stress()
 		}
@@ -530,7 +530,7 @@ func SubtestStreamLeftOpen(t *testing.T, tr network.Multiplexer) {
 	wg.Add(1 + numStreams)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < numStreams; i++ {
+		for range numStreams {
 			stra, err := muxa.OpenStream(context.Background())
 			checkErr(t, err)
 			go func() {
@@ -545,7 +545,7 @@ func SubtestStreamLeftOpen(t *testing.T, tr network.Multiplexer) {
 	wg.Add(1 + numStreams)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < numStreams; i++ {
+		for range numStreams {
 			str, err := muxb.AcceptStream()
 			checkErr(t, err)
 			go func() {

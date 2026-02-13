@@ -140,7 +140,7 @@ func TestAutoNATServiceGlobalLimiter(t *testing.T) {
 
 	hs := c.host
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		hc, ac := makeAutoNATClient(t)
 		connect(t, hs, hc)
 

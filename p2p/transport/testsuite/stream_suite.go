@@ -125,7 +125,7 @@ func SubtestStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr,
 
 	rateLimitN := 5000 // max of 5k funcs, because -race has 8k max.
 	rateLimitChan := make(chan struct{}, rateLimitN)
-	for i := 0; i < rateLimitN; i++ {
+	for range rateLimitN {
 		rateLimitChan <- struct{}{}
 	}
 
@@ -281,7 +281,7 @@ func SubtestStreamOpenStress(t *testing.T, ta, tb transport.Transport, maddr ma.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for j := 0; j < workers; j++ {
+		for range workers {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

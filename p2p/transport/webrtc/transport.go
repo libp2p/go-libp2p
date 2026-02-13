@@ -432,7 +432,7 @@ func genUfrag() string {
 	rand.Read(seed[:])
 	r := mrand.New(mrand.New(mrand.NewChaCha8(seed)))
 	b := make([]byte, uFragLength)
-	for i := 0; i < len(uFragPrefix); i++ {
+	for i := range len(uFragPrefix) {
 		b[i] = uFragPrefix[i]
 	}
 	for i := len(uFragPrefix); i < uFragLength; i++ {

@@ -236,7 +236,7 @@ func TestResourceManagerServicePeerInbound(t *testing.T) {
 	echos[0].BeforeDone(waitForChannel(ready, time.Minute))
 
 	var once sync.Once
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		eg.Add(1)
 		wg.Add(1)
 		go func() {

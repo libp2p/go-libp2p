@@ -490,7 +490,7 @@ func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 
 func TestRemoveIfNotInSource(t *testing.T) {
 	var addrs []ma.Multiaddr
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i)))
 	}
 	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
@@ -517,7 +517,7 @@ func TestRemoveIfNotInSource(t *testing.T) {
 
 func BenchmarkAreAddrsDifferent(b *testing.B) {
 	var addrs [10]ma.Multiaddr
-	for i := 0; i < len(addrs); i++ {
+	for i := range len(addrs) {
 		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
 	}
 	b.Run("areAddrsDifferent", func(b *testing.B) {
@@ -531,7 +531,7 @@ func BenchmarkAreAddrsDifferent(b *testing.B) {
 
 func BenchmarkRemoveIfNotInSource(b *testing.B) {
 	var addrs [10]ma.Multiaddr
-	for i := 0; i < len(addrs); i++ {
+	for i := range len(addrs) {
 		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
 	}
 	b.ReportAllocs()

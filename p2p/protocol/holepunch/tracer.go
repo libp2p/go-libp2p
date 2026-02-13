@@ -78,11 +78,11 @@ type EventTracer interface {
 }
 
 type Event struct {
-	Timestamp int64       // UNIX nanos
-	Peer      peer.ID     // local peer ID
-	Remote    peer.ID     // remote peer ID
-	Type      string      // event type
-	Evt       interface{} // the actual event
+	Timestamp int64   // UNIX nanos
+	Peer      peer.ID // local peer ID
+	Remote    peer.ID // remote peer ID
+	Type      string  // event type
+	Evt       any     // the actual event
 }
 
 // Event Types

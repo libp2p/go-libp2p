@@ -191,10 +191,5 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 }
 
 func containsMultiaddr(addrs []ma.Multiaddr, addr ma.Multiaddr) bool {
-	for _, a := range addrs {
-		if addr.Equal(a) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(addrs, addr.Equal)
 }

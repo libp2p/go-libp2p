@@ -20,7 +20,7 @@ type pstoremem struct {
 
 var _ peerstore.Peerstore = &pstoremem{}
 
-type Option interface{}
+type Option any
 
 // NewPeerstore creates an in-memory thread-safe collection of peers.
 // It's the caller's responsibility to call RemovePeer to ensure
@@ -57,7 +57,7 @@ func NewPeerstore(opts ...Option) (ps *pstoremem, err error) {
 
 func (ps *pstoremem) Close() (err error) {
 	var errs []error
-	weakClose := func(name string, c interface{}) {
+	weakClose := func(name string, c any) {
 		if cl, ok := c.(io.Closer); ok {
 			if err = cl.Close(); err != nil {
 				errs = append(errs, fmt.Errorf("%s error: %s", name, err))

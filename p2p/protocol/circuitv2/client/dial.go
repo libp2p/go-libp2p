@@ -29,7 +29,7 @@ func (e relayError) Error() string {
 	return e.err
 }
 
-func newRelayError(t string, args ...interface{}) error {
+func newRelayError(t string, args ...any) error {
 	return relayError{err: fmt.Sprintf(t, args...)}
 }
 
@@ -182,7 +182,7 @@ func (c *Client) connect(s network.Stream, dest peer.AddrInfo) (*Conn, error) {
 	var stat network.ConnStats
 	if limit := msg.GetLimit(); limit != nil {
 		stat.Limited = true
-		stat.Extra = make(map[interface{}]interface{})
+		stat.Extra = make(map[any]any)
 		stat.Extra[StatLimitDuration] = time.Duration(limit.GetDuration()) * time.Second
 		stat.Extra[StatLimitData] = limit.GetData()
 	}

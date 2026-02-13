@@ -96,9 +96,9 @@ func blankRecordForPayloadType(payloadType []byte) (Record, error) {
 	return asRecord, nil
 }
 
-func getValueType(i interface{}) reflect.Type {
+func getValueType(i any) reflect.Type {
 	valueType := reflect.TypeOf(i)
-	if valueType.Kind() == reflect.Ptr {
+	if valueType.Kind() == reflect.Pointer {
 		valueType = valueType.Elem()
 	}
 	return valueType

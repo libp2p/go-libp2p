@@ -49,7 +49,7 @@ func decodeInterspersedHexFromASCIIString(s string) ([]byte, error) {
 	n := len(s)
 	buffer := make([]byte, n/3*2+n%3)
 	j := 0
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i%3 == 2 {
 			if s[i] != ':' {
 				return nil, errUnexpectedIntersperseHexChar
