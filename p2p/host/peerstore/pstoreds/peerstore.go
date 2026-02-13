@@ -136,7 +136,7 @@ func uniquePeerIds(ds ds.Datastore, prefix ds.Key, extractor func(result query.R
 
 func (ps *pstoreds) Close() (err error) {
 	var errs []error
-	weakClose := func(name string, c interface{}) {
+	weakClose := func(name string, c any) {
 		if cl, ok := c.(io.Closer); ok {
 			if err = cl.Close(); err != nil {
 				errs = append(errs, fmt.Errorf("%s error: %s", name, err))

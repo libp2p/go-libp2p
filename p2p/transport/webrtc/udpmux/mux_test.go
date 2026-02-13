@@ -17,7 +17,7 @@ func getSTUNBindingRequest(ufrag string) *stun.Message {
 	msg.SetType(stun.BindingRequest)
 	uattr := stun.RawAttribute{
 		Type:  stun.AttrUsername,
-		Value: []byte(fmt.Sprintf("%s:%s", ufrag, ufrag)), // This is the format we expect in our connections
+		Value: fmt.Appendf(nil, "%s:%s", ufrag, ufrag), // This is the format we expect in our connections
 	}
 	uattr.AddTo(msg)
 	msg.Encode()
@@ -143,13 +143,13 @@ func TestRemoveConnByUfrag(t *testing.T) {
 	ufrag := "a"
 	count := 10
 	conns := make([]net.PacketConn, count)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		conns[i] = newPacketConn(t)
 		setupMapping(t, ufrag, conns[i], m)
 	}
 	mc, err := m.GetConn(ufrag, conns[0].LocalAddr())
 	require.NoError(t, err)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		mc1, err := m.GetConn(ufrag, conns[i].LocalAddr())
 		require.NoError(t, err)
 		if mc1 != mc {
@@ -162,12 +162,12 @@ func TestRemoveConnByUfrag(t *testing.T) {
 
 	// All connections should now be associated with b
 	ufrag = "b"
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		setupMapping(t, ufrag, conns[i], m)
 	}
 	mc, err = m.GetConn(ufrag, conns[0].LocalAddr())
 	require.NoError(t, err)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		mc1, err := m.GetConn(ufrag, conns[i].LocalAddr())
 		require.NoError(t, err)
 		if mc1 != mc {
@@ -196,7 +196,7 @@ func TestMuxedConnection(t *testing.T) {
 	addrUfragMap := make(map[string]string)
 	ufragConnsMap := make(map[string][]net.PacketConn)
 	for _, ufrag := range ufrags {
-		for i := 0; i < connCount; i++ {
+		for range connCount {
 			cc := newPacketConn(t)
 			addrUfragMap[cc.LocalAddr().String()] = ufrag
 			ufragConnsMap[ufrag] = append(ufragConnsMap[ufrag], cc)
@@ -208,14 +208,14 @@ func TestMuxedConnection(t *testing.T) {
 		go func(ufrag string) {
 			for _, cc := range ufragConnsMap[ufrag] {
 				setupMapping(t, ufrag, cc, m)
-				for j := 0; j < msgCount; j++ {
+				for range msgCount {
 					cc.WriteTo([]byte(ufrag), c.LocalAddr())
 				}
 			}
 			done <- true
 		}(ufrag)
 	}
-	for i := 0; i < len(ufrags); i++ {
+	for range ufrags {
 		<-done
 	}
 
@@ -226,7 +226,7 @@ func TestMuxedConnection(t *testing.T) {
 		stunRequests := 0
 		msg := make([]byte, 1500)
 		addrPacketCount := make(map[string]int)
-		for i := 0; i < connCount; i++ {
+		for range connCount {
 			for j := 0; j < msgCount+1; j++ {
 				n, addr1, err := mc.ReadFrom(msg)
 				require.NoError(t, err)

@@ -92,7 +92,7 @@ func TestListenerSingle(t *testing.T) {
 			require.NoError(t, err)
 			go func() {
 				d := net.Dialer{}
-				for i := 0; i < N; i++ {
+				for i := range N {
 					go func() {
 						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 						defer cancel()
@@ -116,7 +116,7 @@ func TestListenerSingle(t *testing.T) {
 			}()
 
 			var wg sync.WaitGroup
-			for i := 0; i < N; i++ {
+			for range N {
 				c, _, err := l.Accept()
 				require.NoError(t, err)
 				wg.Add(1)
@@ -147,7 +147,7 @@ func TestListenerSingle(t *testing.T) {
 			}()
 			go func() {
 				d := websocket.Dialer{}
-				for i := 0; i < N; i++ {
+				for i := range N {
 					go func() {
 						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 						defer cancel()
@@ -168,7 +168,7 @@ func TestListenerSingle(t *testing.T) {
 				}
 			}()
 			var wg sync.WaitGroup
-			for i := 0; i < N; i++ {
+			for range N {
 				c := <-wh.conns
 				wg.Add(1)
 				go func() {
@@ -201,7 +201,7 @@ func TestListenerSingle(t *testing.T) {
 			}()
 			go func() {
 				d := websocket.Dialer{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-				for i := 0; i < N; i++ {
+				for i := range N {
 					go func() {
 						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 						defer cancel()
@@ -222,7 +222,7 @@ func TestListenerSingle(t *testing.T) {
 				}
 			}()
 			var wg sync.WaitGroup
-			for i := 0; i < N; i++ {
+			for range N {
 				c := <-wh.conns
 				wg.Add(1)
 				go func() {
@@ -276,7 +276,7 @@ func TestListenerMultiplexed(t *testing.T) {
 		// multistream connections
 		go func() {
 			d := net.Dialer{}
-			for i := 0; i < N; i++ {
+			for i := range N {
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					defer cancel()
@@ -302,7 +302,7 @@ func TestListenerMultiplexed(t *testing.T) {
 		// ws connections
 		go func() {
 			d := websocket.Dialer{}
-			for i := 0; i < N; i++ {
+			for i := range N {
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					defer cancel()
@@ -326,7 +326,7 @@ func TestListenerMultiplexed(t *testing.T) {
 		// wss connections
 		go func() {
 			d := websocket.Dialer{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-			for i := 0; i < N; i++ {
+			for i := range N {
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					defer cancel()
@@ -351,7 +351,7 @@ func TestListenerMultiplexed(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := 0; i < N; i++ {
+			for range N {
 				c, _, err := msl.Accept()
 				if !assert.NoError(t, err) {
 					return
@@ -376,7 +376,7 @@ func TestListenerMultiplexed(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := 0; i < N; i++ {
+			for range N {
 				c := <-wh.conns
 				wg.Add(1)
 				go func() {
@@ -399,7 +399,7 @@ func TestListenerMultiplexed(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := 0; i < N; i++ {
+			for range N {
 				c := <-whs.conns
 				wg.Add(1)
 				go func() {

@@ -242,7 +242,7 @@ func TestWebRTCWithQUICManyConnections(t *testing.T) {
 	const N = 200
 	// These N dialers have both /quic-v1 and /webrtc-direct transports
 	var dialers [N]host.Host
-	for i := 0; i < N; i++ {
+	for i := range N {
 		dialers[i], err = libp2p.New(libp2p.NoListenAddrs)
 		require.NoError(t, err)
 		defer dialers[i].Close()
@@ -252,7 +252,7 @@ func TestWebRTCWithQUICManyConnections(t *testing.T) {
 	require.NoError(t, err)
 	defer d.Close()
 
-	for i := 0; i < N; i++ {
+	for i := range N {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		// With happy eyeballs these dialers will connect over only /quic-v1

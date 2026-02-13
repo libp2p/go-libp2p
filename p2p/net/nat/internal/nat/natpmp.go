@@ -116,7 +116,7 @@ func (n *natpmpNAT) AddPortMapping(_ context.Context, protocol string, internalP
 		}
 	}
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		externalPort := randomPort()
 		_, err = n.c.AddPortMapping(protocol, internalPort, externalPort, timeoutInSeconds)
 		if err == nil {

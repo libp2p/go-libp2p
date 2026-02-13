@@ -3,6 +3,7 @@ package connmgr
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -554,9 +555,7 @@ func (cm *BasicConnMgr) GetTagInfo(p peer.ID) *connmgr.TagInfo {
 		Conns:     make(map[string]time.Time),
 	}
 
-	for t, v := range pi.tags {
-		out.Tags[t] = v
-	}
+	maps.Copy(out.Tags, pi.tags)
 	for t, v := range pi.decaying {
 		out.Tags[t.name] = v.Value
 	}

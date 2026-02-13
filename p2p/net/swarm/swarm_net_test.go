@@ -17,7 +17,7 @@ import (
 // and tests Connectedness value is correct.
 func TestConnectednessCorrect(t *testing.T) {
 	nets := make([]network.Network, 4)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		nets[i] = GenSwarm(t)
 	}
 
@@ -93,7 +93,7 @@ func TestNetworkOpenStream(t *testing.T) {
 	testString := "hello ipfs"
 
 	nets := make([]network.Network, 4)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		nets[i] = GenSwarm(t)
 	}
 

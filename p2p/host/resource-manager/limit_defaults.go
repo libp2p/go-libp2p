@@ -3,6 +3,7 @@ package rcmgr
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"strconv"
 
@@ -347,32 +348,32 @@ func (l *ResourceLimits) Build(defaults Limit) BaseLimit {
 }
 
 type PartialLimitConfig struct {
-	System    ResourceLimits `json:",omitempty"`
-	Transient ResourceLimits `json:",omitempty"`
+	System    ResourceLimits
+	Transient ResourceLimits
 
 	// Limits that are applied to resources with an allowlisted multiaddr.
 	// These will only be used if the normal System & Transient limits are
 	// reached.
-	AllowlistedSystem    ResourceLimits `json:",omitempty"`
-	AllowlistedTransient ResourceLimits `json:",omitempty"`
+	AllowlistedSystem    ResourceLimits
+	AllowlistedTransient ResourceLimits
 
-	ServiceDefault ResourceLimits            `json:",omitempty"`
+	ServiceDefault ResourceLimits
 	Service        map[string]ResourceLimits `json:",omitempty"`
 
-	ServicePeerDefault ResourceLimits            `json:",omitempty"`
+	ServicePeerDefault ResourceLimits
 	ServicePeer        map[string]ResourceLimits `json:",omitempty"`
 
-	ProtocolDefault ResourceLimits                 `json:",omitempty"`
+	ProtocolDefault ResourceLimits
 	Protocol        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
-	ProtocolPeerDefault ResourceLimits                 `json:",omitempty"`
+	ProtocolPeerDefault ResourceLimits
 	ProtocolPeer        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
-	PeerDefault ResourceLimits             `json:",omitempty"`
+	PeerDefault ResourceLimits
 	Peer        map[peer.ID]ResourceLimits `json:",omitempty"`
 
-	Conn   ResourceLimits `json:",omitempty"`
-	Stream ResourceLimits `json:",omitempty"`
+	Conn   ResourceLimits
+	Stream ResourceLimits
 }
 
 func (cfg *PartialLimitConfig) MarshalJSON() ([]byte, error) {
@@ -493,9 +494,7 @@ func buildMapWithDefault[K comparable](definedLimits map[K]ResourceLimits, defau
 	}
 
 	out := make(map[K]BaseLimit)
-	for k, l := range defaults {
-		out[k] = l
-	}
+	maps.Copy(out, defaults)
 
 	for k, l := range definedLimits {
 		if defaultForKey, ok := out[k]; ok {
@@ -653,11 +652,9 @@ func scale(base BaseLimit, inc BaseLimitIncrease, memory int64, numFD int) BaseL
 		FD:              base.FD,
 	}
 	if inc.FDFraction > 0 && numFD > 0 {
-		l.FD = int(inc.FDFraction * float64(numFD))
-		if l.FD < base.FD {
+		l.FD = max(int(inc.FDFraction*float64(numFD)),
 			// Use at least the base amount
-			l.FD = base.FD
-		}
+			base.FD)
 	}
 	return l
 }

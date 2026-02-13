@@ -70,7 +70,7 @@ func makeDialOnlySwarm(t *testing.T) *swarm.Swarm {
 
 func makeSwarms(t *testing.T, num int, opts ...Option) []*swarm.Swarm {
 	swarms := make([]*swarm.Swarm, 0, num)
-	for i := 0; i < num; i++ {
+	for range num {
 		swarm := GenSwarm(t, opts...)
 		swarm.SetStreamHandler(EchoStreamHandler)
 		swarms = append(swarms, swarm)
@@ -135,7 +135,7 @@ func subtestSwarm(t *testing.T, SwarmNum int, MsgNum int) {
 				}
 
 				// send out ping!
-				for k := 0; k < MsgNum; k++ { // with k messages
+				for k := range MsgNum { // with k messages
 					msg := "ping"
 					log.Debug("sending message", "local", s1.LocalPeer(), "msg", msg, "peer", p, "count", k)
 					if _, err := stream.Write([]byte(msg)); err != nil {
@@ -171,7 +171,7 @@ func subtestSwarm(t *testing.T, SwarmNum int, MsgNum int) {
 				// receive pings
 				msgCount := 0
 				msg := make([]byte, 4)
-				for k := 0; k < MsgNum; k++ { // with k messages
+				for k := range MsgNum { // with k messages
 
 					// read from the stream
 					if _, err := stream.Read(msg); err != nil {
@@ -438,7 +438,7 @@ func TestStreamCount(t *testing.T) {
 		streamAccepted <- struct{}{}
 	})
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		str, err := s2.NewStream(context.Background(), s1.LocalPeer())
 		require.NoError(t, err)
 		str.Write([]byte("foobar"))

@@ -304,10 +304,7 @@ func (o *Manager) getTopExternalAddrs(localTWStr string, minObservers int) []*ob
 	})
 	// TODO(sukunrt): Improve this logic. Return only if the addresses have a
 	// threshold fraction of the maximum observations
-	n := len(observerSets)
-	if n > maxExternalThinWaistAddrsPerLocalAddr {
-		n = maxExternalThinWaistAddrsPerLocalAddr
-	}
+	n := min(len(observerSets), maxExternalThinWaistAddrsPerLocalAddr)
 	return observerSets[:n]
 }
 

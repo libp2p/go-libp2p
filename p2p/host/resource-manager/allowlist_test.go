@@ -234,7 +234,7 @@ func BenchmarkAllowlistCheck(b *testing.B) {
 	countOfTotalPeersForTest := 100_000
 
 	mas := make([]multiaddr.Multiaddr, countOfTotalPeersForTest)
-	for i := 0; i < countOfTotalPeersForTest; i++ {
+	for i := range countOfTotalPeersForTest {
 
 		ip := make([]byte, 16)
 		n, err := rand.Reader.Read(ip)

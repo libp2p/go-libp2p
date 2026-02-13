@@ -248,7 +248,7 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 
 	var wg sync.WaitGroup
 	go func() {
-		for i := 0; i < count; i++ {
+		for range count {
 			conn, err := listener.Accept()
 			assert.NoError(t, err)
 			assert.NotNil(t, conn)
@@ -258,7 +258,7 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 		cancel()
 	}()
 
-	for i := 0; i < count; i++ {
+	for range count {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -293,7 +293,7 @@ func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(count)
 	go func() {
-		for i := 0; i < count; i++ {
+		for range count {
 			ctr, _ := getTransport(t)
 			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 			require.NoError(t, err)
@@ -303,7 +303,7 @@ func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < count; i++ {
+	for range count {
 		conn, err := listener.Accept()
 		require.NoError(t, err)
 		defer conn.Close()
@@ -427,7 +427,7 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 		defer lconn.Close()
 		var wg sync.WaitGroup
 		var doneStreams atomic.Int32
-		for i := 0; i < numListeners; i++ {
+		for range numListeners {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -456,7 +456,7 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 	var writerWG sync.WaitGroup
 	var cnt atomic.Int32
 	var streamsStarted atomic.Int32
-	for i := 0; i < numWriters; i++ {
+	for range numWriters {
 		writerWG.Add(1)
 		go func() {
 			defer writerWG.Done()
@@ -574,7 +574,7 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { lconn.Close() })
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			go func() {
 				defer wg.Done()
 				_, err := lconn.AcceptStream()
@@ -589,7 +589,7 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 
 	errC := make(chan error)
 	// writers
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		go func() {
 			stream, err := conn.OpenStream(context.Background())
 			require.NoError(t, err)
@@ -876,7 +876,7 @@ func TestMaxInFlightRequests(t *testing.T) {
 
 	var wg sync.WaitGroup
 	var success, fails atomic.Int32
-	for i := 0; i < count+1; i++ {
+	for range count + 1 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -898,7 +898,7 @@ func TestMaxInFlightRequests(t *testing.T) {
 }
 
 func TestGenUfrag(t *testing.T) {
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s := genUfrag()
 		require.True(t, strings.HasPrefix(s, "libp2p+webrtc+v1/"))
 	}
@@ -914,7 +914,7 @@ func TestManyConnections(t *testing.T) {
 	errCh := make(chan error, 10*numListeners*dialersPerListener*connsPerDialer)
 	successCh := make(chan struct{}, 10*numListeners*dialersPerListener*connsPerDialer)
 
-	for i := 0; i < numListeners; i++ {
+	for range numListeners {
 		tr, lp := getTransport(t)
 		listenerPeerIDs = append(listenerPeerIDs, lp)
 		ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct"))
@@ -971,7 +971,7 @@ func TestManyConnections(t *testing.T) {
 	}
 
 	runListener := func(ln tpt.Listener) {
-		for i := 0; i < dialersPerListener*connsPerDialer; i++ {
+		for range dialersPerListener * connsPerDialer {
 			conn, err := ln.Accept()
 			if err != nil {
 				t.Errorf("listener failed to accept conneciton: %s", err)
@@ -983,7 +983,7 @@ func TestManyConnections(t *testing.T) {
 
 	runDialer := func(ln tpt.Listener, lp peer.ID) {
 		tp, _ := getTransport(t)
-		for i := 0; i < connsPerDialer; i++ {
+		for range connsPerDialer {
 			// We want to test for deadlocks, set a high timeout
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			conn, err := tp.Dial(ctx, ln.Multiaddr(), lp)
@@ -998,16 +998,16 @@ func TestManyConnections(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < numListeners; i++ {
+	for i := range numListeners {
 		go runListener(listeners[i])
 	}
-	for i := 0; i < numListeners; i++ {
-		for j := 0; j < dialersPerListener; j++ {
+	for i := range numListeners {
+		for range dialersPerListener {
 			go runDialer(listeners[i], listenerPeerIDs[i])
 		}
 	}
 
-	for i := 0; i < numListeners*dialersPerListener*connsPerDialer; i++ {
+	for i := range numListeners * dialersPerListener * connsPerDialer {
 		select {
 		case <-successCh:
 			t.Log("completed conn: ", i)

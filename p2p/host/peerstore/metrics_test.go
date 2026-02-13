@@ -48,7 +48,7 @@ func TestLatencyEWMA(t *testing.T) {
 	const sig = 10
 	next := func() time.Duration { return time.Duration(rand.Intn(20) - 10 + mu) }
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		m.RecordLatency(id, next())
 	}
 

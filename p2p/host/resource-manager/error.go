@@ -15,8 +15,8 @@ func (e *ErrStreamOrConnLimitExceeded) Error() string { return e.err.Error() }
 func (e *ErrStreamOrConnLimitExceeded) Unwrap() error { return e.err }
 
 // edge may be "" if this is not an edge error
-func logValuesStreamLimit(scope, edge string, dir network.Direction, stat network.ScopeStat, err error) []interface{} {
-	logValues := make([]interface{}, 0, 2*8)
+func logValuesStreamLimit(scope, edge string, dir network.Direction, stat network.ScopeStat, err error) []any {
+	logValues := make([]any, 0, 2*8)
 	logValues = append(logValues, "scope", scope)
 	if edge != "" {
 		logValues = append(logValues, "edge", edge)
@@ -34,8 +34,8 @@ func logValuesStreamLimit(scope, edge string, dir network.Direction, stat networ
 }
 
 // edge may be "" if this is not an edge error
-func logValuesConnLimit(scope, edge string, dir network.Direction, usefd bool, stat network.ScopeStat, err error) []interface{} {
-	logValues := make([]interface{}, 0, 2*9)
+func logValuesConnLimit(scope, edge string, dir network.Direction, usefd bool, stat network.ScopeStat, err error) []any {
+	logValues := make([]any, 0, 2*9)
 	logValues = append(logValues, "scope", scope)
 	if edge != "" {
 		logValues = append(logValues, "edge", edge)
@@ -62,8 +62,8 @@ func (e *ErrMemoryLimitExceeded) Error() string { return e.err.Error() }
 func (e *ErrMemoryLimitExceeded) Unwrap() error { return e.err }
 
 // edge may be "" if this is not an edge error
-func logValuesMemoryLimit(scope, edge string, stat network.ScopeStat, err error) []interface{} {
-	logValues := make([]interface{}, 0, 2*8)
+func logValuesMemoryLimit(scope, edge string, stat network.ScopeStat, err error) []any {
+	logValues := make([]any, 0, 2*8)
 	logValues = append(logValues, "scope", scope)
 	if edge != "" {
 		logValues = append(logValues, "edge", edge)
