@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"testing/quick"
@@ -478,7 +479,7 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 	const num = 16 + 1 // one more than the accept queue capacity
 	// Dial one more connection than the accept queue can hold.
 	errChan := make(chan error, num)
-	for i := 0; i < num; i++ {
+	for range num {
 		go func() {
 			conn, err := newConn()
 			if err != nil {
@@ -508,7 +509,7 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 	var count int
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		select {
 		case <-errChan:
 			count++
@@ -779,11 +780,9 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 		var found bool
 		ma.ForEach(l.Multiaddr(), func(c ma.Component) bool {
 			if c.Protocol().Code == ma.P_CERTHASH {
-				for _, prevCerthash := range certhashes {
-					if c.Value() == prevCerthash {
-						found = true
-						return false
-					}
+				if slices.Contains(certhashes, c.Value()) {
+					found = true
+					return false
 				}
 			}
 			return true
@@ -812,7 +811,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 
 	// Traverse various time boundaries and make sure we always keep a common certhash.
 	// e.g. certhash/A/certhash/B ... -> ... certhash/B/certhash/C ... -> ... certhash/C/certhash/D
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		cl.Add(24 * time.Hour)
 		tr, err := libp2pwebtransport.New(priv, nil, newConnManager(t), nil, &network.NullResourceManager{}, libp2pwebtransport.WithClock(cl))
 		require.NoError(t, err)
@@ -822,11 +821,9 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 		var found bool
 		ma.ForEach(l.Multiaddr(), func(c ma.Component) bool {
 			if c.Protocol().Code == ma.P_CERTHASH {
-				for _, prevCerthash := range certhashes {
-					if prevCerthash == c.Value() {
-						found = true
-						return false
-					}
+				if slices.Contains(certhashes, c.Value()) {
+					found = true
+					return false
 				}
 			}
 			return true

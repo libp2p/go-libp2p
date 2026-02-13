@@ -43,7 +43,7 @@ func testPing(t *testing.T, ps *ping.PingService, p peer.ID) {
 	defer cancel()
 	ts := ps.Ping(pctx, p)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		select {
 		case res := <-ts:
 			require.NoError(t, res.Error)

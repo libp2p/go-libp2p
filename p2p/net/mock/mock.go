@@ -9,7 +9,7 @@ var log = logging.Logger("mocknet")
 // WithNPeers constructs a Mocknet with N peers.
 func WithNPeers(n int) (Mocknet, error) {
 	m := New()
-	for i := 0; i < n; i++ {
+	for range n {
 		if _, err := m.GenPeer(); err != nil {
 			return nil, err
 		}

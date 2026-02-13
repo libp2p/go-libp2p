@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -1192,9 +1193,7 @@ func (h *Host) AddPeerMetadata(server peer.ID, meta PeerMeta) {
 		h.peerMetadata.Add(server, meta)
 		return
 	}
-	for proto, m := range meta {
-		origMeta[proto] = m
-	}
+	maps.Copy(origMeta, meta)
 	h.peerMetadata.Add(server, origMeta)
 }
 

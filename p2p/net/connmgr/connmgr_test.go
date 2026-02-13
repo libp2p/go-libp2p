@@ -145,7 +145,7 @@ func TestConnTrimming(t *testing.T) {
 	not := cm.Notifee()
 
 	var conns []network.Conn
-	for i := 0; i < 300; i++ {
+	for range 300 {
 		rc := randConn(t, nil)
 		conns = append(conns, rc)
 		not.Connected(nil, rc)
@@ -157,7 +157,7 @@ func TestConnTrimming(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		cm.TagPeer(conns[i].RemotePeer(), "foo", 10)
 	}
 
@@ -165,7 +165,7 @@ func TestConnTrimming(t *testing.T) {
 
 	cm.TrimOpenConns(context.Background())
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		c := conns[i]
 		if c.(*tconn).isClosed() {
 			t.Fatal("these shouldnt be closed")
@@ -180,7 +180,7 @@ func TestConnTrimming(t *testing.T) {
 func TestConnsToClose(t *testing.T) {
 	addConns := func(cm *BasicConnMgr, n int) {
 		not := cm.Notifee()
-		for i := 0; i < n; i++ {
+		for range n {
 			conn := randConn(t, nil)
 			not.Connected(nil, conn)
 		}
@@ -446,7 +446,7 @@ func TestGracePeriod(t *testing.T) {
 	}
 
 	// quickly add 30 connections (sending us above the high watermark)
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		rc := randConn(t, not.Disconnected)
 		conns = append(conns, rc)
 		not.Connected(nil, rc)
@@ -487,7 +487,7 @@ func TestQuickBurstRespectsSilencePeriod(t *testing.T) {
 	var conns []network.Conn
 
 	// quickly produce 30 connections (sending us above the high watermark)
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		rc := randConn(t, not.Disconnected)
 		conns = append(conns, rc)
 		not.Connected(nil, rc)
@@ -526,7 +526,7 @@ func TestPeerProtectionSingleTag(t *testing.T) {
 	}
 
 	// produce 20 connections with unique peers.
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		addConn(20)
 	}
 
@@ -552,7 +552,7 @@ func TestPeerProtectionSingleTag(t *testing.T) {
 	}
 
 	// add 5 more connection, sending the connection manager overboard.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		addConn(20)
 	}
 
@@ -578,7 +578,7 @@ func TestPeerProtectionSingleTag(t *testing.T) {
 	cm.Unprotect(protected[0].RemotePeer(), "global")
 
 	// add 2 more connections, sending the connection manager overboard again.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		addConn(20)
 	}
 
@@ -602,7 +602,7 @@ func TestPeerProtectionMultipleTags(t *testing.T) {
 
 	// produce 20 connections with unique peers.
 	var conns []network.Conn
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		rc := randConn(t, not.Disconnected)
 		conns = append(conns, rc)
 		not.Connected(nil, rc)
@@ -638,7 +638,7 @@ func TestPeerProtectionMultipleTags(t *testing.T) {
 	}
 
 	// add 2 more connections, sending the connection manager overboard again.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		rc := randConn(t, not.Disconnected)
 		not.Connected(nil, rc)
 		cm.TagPeer(rc.RemotePeer(), "test", 20)
@@ -657,7 +657,7 @@ func TestPeerProtectionMultipleTags(t *testing.T) {
 	cm.Unprotect(protected[0].RemotePeer(), "tag2")
 
 	// add 2 more connections, sending the connection manager overboard again.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		rc := randConn(t, not.Disconnected)
 		not.Connected(nil, rc)
 		cm.TagPeer(rc.RemotePeer(), "test", 20)
@@ -794,7 +794,7 @@ func TestConcurrentCleanupAndTagging(t *testing.T) {
 	require.NoError(t, err)
 	defer cm.Close()
 
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		conn := randConn(t, nil)
 		cm.TagPeer(conn.RemotePeer(), "test", 20)
 	}
@@ -950,12 +950,12 @@ func TestSafeConcurrency(t *testing.T) {
 		const runs = 10
 		const concurrency = 10
 		var wg sync.WaitGroup
-		for i := 0; i < concurrency; i++ {
+		for range concurrency {
 			wg.Add(1)
 			go func() {
 				// add conns. This mimics new connection events
 				pis := peerInfos{p1, p2}
-				for i := 0; i < runs; i++ {
+				for i := range runs {
 					pi := pis[i%len(pis)]
 					s := ss.get(pi.id)
 					s.Lock()
@@ -968,7 +968,7 @@ func TestSafeConcurrency(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				pis := peerInfos{p1, p2}
-				for i := 0; i < runs; i++ {
+				for range runs {
 					pis.SortByValueAndStreams(ss, false)
 				}
 				wg.Done()

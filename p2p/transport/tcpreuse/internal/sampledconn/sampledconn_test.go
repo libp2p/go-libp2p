@@ -28,7 +28,7 @@ func TestSampledConn(t *testing.T) {
 
 	// Server goroutine
 	go func() {
-		for i := 0; i < len(testCases); i++ {
+		for range testCases {
 			conn, err := listener.Accept()
 			assert.NoError(t, err)
 			defer conn.Close()

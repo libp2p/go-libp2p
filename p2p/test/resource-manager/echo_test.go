@@ -15,7 +15,7 @@ import (
 func createEchos(t *testing.T, count int, makeOpts ...func(int) libp2p.Option) []*Echo {
 	result := make([]*Echo, 0, count)
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		opts := make([]libp2p.Option, 0, len(makeOpts)+2)
 		// only use a single transport, otherwise we might end up with a TCP and a QUIC connection to the same host
 		opts = append(opts, libp2p.Transport(tcp.NewTCPTransport), libp2p.DefaultListenAddrs)
@@ -32,8 +32,8 @@ func createEchos(t *testing.T, count int, makeOpts ...func(int) libp2p.Option) [
 		result = append(result, e)
 	}
 
-	for i := 0; i < count; i++ {
-		for j := 0; j < count; j++ {
+	for i := range count {
+		for j := range count {
 			if i == j {
 				continue
 			}

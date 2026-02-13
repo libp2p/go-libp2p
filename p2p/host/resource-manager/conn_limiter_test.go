@@ -64,7 +64,7 @@ func TestItLimits(t *testing.T) {
 
 	t.Run("IPv6 with multiple limits", func(t *testing.T) {
 		cl := newConnLimiter()
-		for i := 0; i < defaultMaxConcurrentConns; i++ {
+		for i := range defaultMaxConcurrentConns {
 			ip := net.ParseIP("ff:2:3:4::1")
 			binary.BigEndian.PutUint16(ip[14:], uint16(i))
 			ipAddr := netip.MustParseAddr(ip.String())

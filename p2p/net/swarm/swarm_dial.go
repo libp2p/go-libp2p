@@ -179,10 +179,7 @@ func (db *DialBackoff) AddBackoff(p peer.ID, addr ma.Multiaddr) {
 		return
 	}
 
-	backoffTime := BackoffBase + BackoffCoef*time.Duration(ba.tries*ba.tries)
-	if backoffTime > BackoffMax {
-		backoffTime = BackoffMax
-	}
+	backoffTime := min(BackoffBase+BackoffCoef*time.Duration(ba.tries*ba.tries), BackoffMax)
 	ba.until = time.Now().Add(backoffTime)
 	ba.tries++
 }
@@ -202,10 +199,7 @@ func (db *DialBackoff) cleanup() {
 	for p, e := range db.entries {
 		good := false
 		for _, backoff := range e {
-			backoffTime := BackoffBase + BackoffCoef*time.Duration(backoff.tries*backoff.tries)
-			if backoffTime > BackoffMax {
-				backoffTime = BackoffMax
-			}
+			backoffTime := min(BackoffBase+BackoffCoef*time.Duration(backoff.tries*backoff.tries), BackoffMax)
 			if now.Before(backoff.until.Add(backoffTime)) {
 				good = true
 				break

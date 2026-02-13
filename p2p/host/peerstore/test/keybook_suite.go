@@ -114,7 +114,7 @@ func testKeyBookPeers(kb pstore.KeyBook) func(t *testing.T) {
 		}
 
 		var peers peer.IDSlice
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			// Add a public key.
 			_, pub, err := pt.RandTestKeyPair(ic.RSA, 2048)
 			if err != nil {
@@ -309,7 +309,7 @@ func benchmarkAddPrivKey(kb pstore.KeyBook) func(*testing.B) {
 
 func benchmarkPeersWithKeys(kb pstore.KeyBook) func(*testing.B) {
 	return func(b *testing.B) {
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			priv, pub, err := pt.RandTestKeyPair(ic.RSA, 2048)
 			if err != nil {
 				b.Fatal(err)

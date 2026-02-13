@@ -39,15 +39,15 @@ func newSubSettings() subSettings {
 	return settings
 }
 
-func BufSize(n int) func(interface{}) error {
-	return func(s interface{}) error {
+func BufSize(n int) func(any) error {
+	return func(s any) error {
 		s.(*subSettings).buffer = n
 		return nil
 	}
 }
 
-func Name(name string) func(interface{}) error {
-	return func(s interface{}) error {
+func Name(name string) func(any) error {
+	return func(s any) error {
 		s.(*subSettings).name = name
 		return nil
 	}
@@ -64,7 +64,7 @@ type emitterSettings struct {
 //
 // This allows to provide state tracking for dynamic systems, and/or
 // allows new subscribers to verify that there are Emitters on the channel
-func Stateful(s interface{}) error {
+func Stateful(s any) error {
 	s.(*emitterSettings).makeStateful = true
 	return nil
 }

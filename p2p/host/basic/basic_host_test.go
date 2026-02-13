@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -442,12 +443,7 @@ func TestHostProtoPreknowledge(t *testing.T) {
 	require.Never(t, func() bool {
 		protos, err := h1.Peerstore().GetProtocols(h2.ID())
 		require.NoError(t, err)
-		for _, p := range protos {
-			if p == "/foo" {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(protos, "/foo")
 	}, time.Second, 100*time.Millisecond)
 
 	s, err := h1.NewStream(context.Background(), h2.ID(), "/foo", "/bar", "/super")

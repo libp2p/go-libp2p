@@ -63,7 +63,7 @@ func TestAcceptMultipleConns(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		cconn, err := dial(t, u, ln.Multiaddr(), id, &network.NullScope{})
 		require.NoError(err)
 		toClose = append(toClose, cconn)
@@ -172,7 +172,7 @@ func TestListenerCloseClosesQueued(t *testing.T) {
 	ln := createListener(t, upgrader)
 
 	var conns []transport.CapableConn
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		conn, err := dial(t, upgrader, ln.Multiaddr(), id, &network.NullScope{})
 		require.NoError(err)
 		conns = append(conns, conn)
@@ -228,7 +228,7 @@ func TestConcurrentAccept(t *testing.T) {
 	// start num dials, which all block while setting up the muxer
 	errCh := make(chan error, num)
 	var wg sync.WaitGroup
-	for i := 0; i < num; i++ {
+	for range num {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

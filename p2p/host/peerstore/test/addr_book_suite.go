@@ -217,7 +217,7 @@ func testSetNegativeTTLClears(m pstore.AddrBook, _ *mockClock.Mock) func(t *test
 		// try to remove the same addr multiple times
 		m.SetAddrs(id, addrs[:5], time.Hour)
 		repeated := make([]multiaddr.Multiaddr, 10)
-		for i := 0; i < len(repeated); i++ {
+		for i := range repeated {
 			repeated[i] = addrs[0]
 		}
 		m.SetAddrs(id, repeated, -1)

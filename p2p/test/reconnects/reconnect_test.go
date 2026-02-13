@@ -33,7 +33,7 @@ func TestReconnect5(t *testing.T) {
 		const num = 5
 		hosts := make([]host.Host, 0, num)
 
-		for i := 0; i < num; i++ {
+		for range num {
 			h, err := bhost.NewHost(swarmt.GenSwarm(t, swarmOpt), nil)
 			require.NoError(t, err)
 			defer h.Close()
@@ -42,7 +42,7 @@ func TestReconnect5(t *testing.T) {
 			h.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 		}
 
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			runRound(t, hosts)
 		}
 	}
@@ -81,7 +81,7 @@ func runRound(t *testing.T, hosts []host.Host) {
 			}
 			var wg sync.WaitGroup
 			wg.Add(numStreams)
-			for i := 0; i < numStreams; i++ {
+			for range numStreams {
 				data := make([]byte, rand.Intn(maxDataLen)+1)
 				rnd.Read(data)
 				go func() {

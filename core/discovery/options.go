@@ -11,7 +11,7 @@ type Options struct {
 	Limit int
 
 	// Other (implementation-specific) options
-	Other map[interface{}]interface{}
+	Other map[any]any
 }
 
 // Apply applies the given options to this DiscoveryOpts

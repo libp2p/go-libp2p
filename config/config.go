@@ -74,7 +74,7 @@ type AutoNATConfig struct {
 
 type Security struct {
 	ID          protocol.ID
-	Constructor interface{}
+	Constructor any
 }
 
 // Config describes a set of settings for a libp2p node

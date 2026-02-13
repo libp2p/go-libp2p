@@ -35,15 +35,15 @@ func round(bwc *BandwidthCounter, b *testing.B) {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(10000)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		p := peer.ID(fmt.Sprintf("peer-%d", i))
-		for j := 0; j < 10; j++ {
+		for j := range 10 {
 			proto := protocol.ID(fmt.Sprintf("bitswap-%d", j))
 			go func() {
 				defer wg.Done()
 				<-start
 
-				for i := 0; i < 1000; i++ {
+				for range 1000 {
 					bwc.LogSentMessage(100)
 					bwc.LogSentMessageStream(100, proto, p)
 					time.Sleep(1 * time.Millisecond)
@@ -60,10 +60,10 @@ func round(bwc *BandwidthCounter, b *testing.B) {
 
 func TestBandwidthCounter(t *testing.T) {
 	bwc := NewBandwidthCounter()
-	for i := 0; i < 40; i++ {
-		for i := 0; i < 100; i++ {
+	for range 40 {
+		for i := range 100 {
 			p := peer.ID(fmt.Sprintf("peer-%d", i))
-			for j := 0; j < 2; j++ {
+			for j := range 2 {
 				proto := protocol.ID(fmt.Sprintf("proto-%d", j))
 
 				// make sure the bandwidth counters are active
@@ -81,7 +81,7 @@ func TestBandwidthCounter(t *testing.T) {
 	assertProtocols := func(check func(Stats)) {
 		byProtocol := bwc.GetBandwidthByProtocol()
 		require.Len(t, byProtocol, 2, "expected 2 protocols")
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			p := protocol.ID(fmt.Sprintf("proto-%d", i))
 			for _, stats := range [...]Stats{bwc.GetBandwidthForProtocol(p), byProtocol[p]} {
 				check(stats)
@@ -92,7 +92,7 @@ func TestBandwidthCounter(t *testing.T) {
 	assertPeers := func(check func(Stats)) {
 		byPeer := bwc.GetBandwidthByPeer()
 		require.Len(t, byPeer, 100, "expected 100 peers")
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			p := peer.ID(fmt.Sprintf("peer-%d", i))
 			for _, stats := range [...]Stats{bwc.GetBandwidthForPeer(p), byPeer[p]} {
 				check(stats)

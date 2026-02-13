@@ -202,7 +202,7 @@ func TestBackoffDiscoverySimultaneousQuery(t *testing.T) {
 	n := 40
 	advertisers := make([]discovery.Discovery, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		h := bhost.NewBlankHost(swarmt.GenSwarm(t))
 		defer h.Close()
 		advertisers[i] = mocks.NewDiscoveryClient(h, discServer)
@@ -263,7 +263,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 	n := 40
 	advertisers := make([]discovery.Discovery, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		h := bhost.NewBlankHost(swarmt.GenSwarm(t))
 		defer h.Close()
 		advertisers[i] = mocks.NewDiscoveryClient(h, discServer)
@@ -283,7 +283,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 	const ns = "test"
 
 	// add speers
-	for i := 0; i < n; i++ {
+	for i := range n {
 		advertisers[i].Advertise(ctx, ns, discovery.TTL(time.Hour))
 	}
 	// Advance clock by one step

@@ -629,11 +629,11 @@ func PeerStrInScopeName(name string) string {
 		return ""
 	}
 	// Index to avoid allocating a new string
-	peerSplitIdx := strings.Index(name, "peer:")
-	if peerSplitIdx == -1 {
+	_, after, ok := strings.Cut(name, "peer:")
+	if !ok {
 		return ""
 	}
-	p := (name[peerSplitIdx+len("peer:"):])
+	p := (after)
 	return p
 }
 
@@ -647,11 +647,11 @@ func ParseProtocolScopeName(name string) string {
 		}
 
 		// Index to avoid allocating a new string
-		separatorIdx := strings.Index(name, ":")
-		if separatorIdx == -1 {
+		_, after, ok := strings.Cut(name, ":")
+		if !ok {
 			return ""
 		}
-		return name[separatorIdx+1:]
+		return after
 	}
 	return ""
 }

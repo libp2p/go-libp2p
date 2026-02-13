@@ -270,7 +270,7 @@ func TestConcurrentAuth(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -278,7 +278,7 @@ func TestConcurrentAuth(t *testing.T) {
 			require.NoError(t, err)
 
 			clientAuth := ClientPeerIDAuth{PrivKey: clientKey}
-			reqBody := []byte(fmt.Sprintf("echo %d", i))
+			reqBody := fmt.Appendf(nil, "echo %d", i)
 			req, err := http.NewRequest("POST", ts.URL, bytes.NewReader(reqBody))
 			require.NoError(t, err)
 			req.Host = "example.com"
