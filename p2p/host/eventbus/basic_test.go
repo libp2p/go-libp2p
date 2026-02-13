@@ -113,15 +113,15 @@ func TestGetAllEventTypes(t *testing.T) {
 
 	evts := bus.GetAllEventTypes()
 	require.Len(t, evts, 1)
-	require.Equal(t, reflect.TypeFor[EventB](), evts[0])
+	require.Equal(t, reflect.TypeOf((*EventB)(nil)).Elem(), evts[0])
 
 	_, err = bus.Emitter(new(EventA))
 	require.NoError(t, err)
 
 	evts = bus.GetAllEventTypes()
 	require.Len(t, evts, 2)
-	require.Contains(t, evts, reflect.TypeFor[EventB]())
-	require.Contains(t, evts, reflect.TypeFor[EventA]())
+	require.Contains(t, evts, reflect.TypeOf((*EventB)(nil)).Elem())
+	require.Contains(t, evts, reflect.TypeOf((*EventA)(nil)).Elem())
 }
 
 func TestEmitNoSubNoBlock(t *testing.T) {
