@@ -441,11 +441,33 @@ var transportsToTest = []TransportTestCase{
 			return h
 		},
 	},
+	{
+		Name: "WebRTC - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
 }
 
 func TestPing(t *testing.T) {
+	
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			// Skip explicit IPv6 WebRTC test on Windows due to unstable loopback/ICE behavior.
+			// This keeps CI (Linux) coverage while avoiding false negatives on Windows dev machines.
+			if tc.Name == "WebRTC - IP6" && runtime.GOOS == "windows" {
+				t.Skip("WebRTC IPv6 direct is unstable on Windows loopback")
+			}
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
