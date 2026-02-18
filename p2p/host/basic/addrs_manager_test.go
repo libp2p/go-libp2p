@@ -43,6 +43,8 @@ func (*mockNatManager) HasDiscoveredNAT() bool {
 	return true
 }
 
+func (*mockNatManager) Start() {}
+
 var _ NATManager = &mockNatManager{}
 
 type mockObservedAddrs struct {

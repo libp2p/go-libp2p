@@ -29,6 +29,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -44,6 +45,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	quicgo "github.com/quic-go/quic-go"
 	wtgo "github.com/quic-go/webtransport-go"
+	"go.uber.org/fx"
 	"go.uber.org/goleak"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -916,4 +918,48 @@ func TestConnAs(t *testing.T) {
 			tc.testAs(t, c)
 		})
 	}
+}
+
+func TestPeerstoreManager(t *testing.T) {
+	ctx := t.Context()
+
+	var psm1, psm2 *pstoremanager.PeerstoreManager
+	// Create two hosts
+	h1, err := New(WithFxOption(fx.Populate(&psm1)))
+	require.NoError(t, err)
+	defer h1.Close()
+	require.NotNil(t, psm1)
+
+	h2, err := New(WithFxOption(fx.Populate(&psm2)))
+	require.NoError(t, err)
+	require.NotNil(t, psm2)
+	defer h2.Close()
+
+	// Set stream handlers to establish protocols on each host
+	h1.SetStreamHandler("/test/protocol/1.0.0", func(s network.Stream) {
+		s.Close()
+	})
+	h2.SetStreamHandler("/test/protocol/2.0.0", func(s network.Stream) {
+		s.Close()
+	})
+
+	// Connect the two hosts
+	err = h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
+	require.NoError(t, err)
+
+	// Disconnect the hosts
+	err = h1.Network().ClosePeer(h2.ID())
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Check that h1 has h2's protocol info in its peerstore
+	h2Protocols, err := h1.Peerstore().GetProtocols(h2.ID())
+	require.NoError(t, err)
+	require.NotEmpty(t, h2Protocols, "h1 should have h2's protocol info after disconnect")
+
+	// Check that h2 has h1's protocol info in its peerstore
+	h1Protocols, err := h2.Peerstore().GetProtocols(h1.ID())
+	require.NoError(t, err)
+	require.NotEmpty(t, h1Protocols, "h2 should have h1's protocol info after disconnect")
 }

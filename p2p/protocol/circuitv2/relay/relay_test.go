@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/metrics"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/transport"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
@@ -23,6 +24,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/stretchr/testify/require"
@@ -77,6 +79,12 @@ func getNetHosts(t *testing.T, _ context.Context, n int) (hosts []host.Host, upg
 		h := bhost.NewBlankHost(netw, bhost.WithEventBus(bus))
 
 		hosts = append(hosts, h)
+		emitter, err := bus.Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// configure the host to be publicly reachable so relay service is started
+		emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
 	}
 
 	return hosts, upgraders
@@ -128,6 +136,7 @@ func TestBasicRelay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	r.Start()
 	defer r.Close()
 
 	connect(t, hosts[0], hosts[1])
@@ -227,6 +236,7 @@ func TestRelayLimitTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	r.Start()
 	defer r.Close()
 
 	connect(t, hosts[0], hosts[1])
@@ -312,6 +322,7 @@ func TestRelayLimitData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	r.Start()
 	defer r.Close()
 
 	connect(t, hosts[0], hosts[1])
@@ -378,4 +389,50 @@ func TestRelayLimitData(t *testing.T) {
 		t.Fatalf("expected to read 0 bytes but read %d", n)
 	}
 
+}
+
+func TestRelayReachabilityEvent(t *testing.T) {
+	ctx := t.Context()
+
+	hosts, _ := getNetHosts(t, ctx, 1)
+	h := hosts[0]
+	defer h.Close()
+
+	// Create a relay service
+	r, err := relay.New(h)
+	require.NoError(t, err)
+	defer r.Close()
+	r.Start()
+
+	emitter, err := h.EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	require.NoError(t, err)
+	defer emitter.Close()
+
+	protocolID := protocol.ID(proto.ProtoIDv2Hop)
+	time.Sleep(100 * time.Millisecond)
+	require.Contains(t, h.Mux().Protocols(), protocolID, "stream handler should be set initially")
+
+	// Send reachability event: Private
+	err = emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.NotContains(t, h.Mux().Protocols(), protocolID, "stream handler should be removed when reachability is Private")
+
+	// Send reachability event: Public
+	err = emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.Contains(t, h.Mux().Protocols(), protocolID, "stream handler should be set when reachability is Public")
+
+	// Send reachability event: Unknown
+	err = emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityUnknown})
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.NotContains(t, h.Mux().Protocols(), protocolID, "stream handler should be removed when reachability is Unknown")
+
+	// Send reachability event: Public again
+	err = emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.Contains(t, h.Mux().Protocols(), protocolID, "stream handler should be set when reachability is Public again")
 }

@@ -418,13 +418,22 @@ func ResourceManager(rcmgr network.ResourceManager) Option {
 // NATPortMap configures libp2p to use the default NATManager. The default
 // NATManager will attempt to open a port in your network's firewall using UPnP.
 func NATPortMap() Option {
-	return NATManager(bhost.NewNATManager)
+	return func(cfg *Config) error {
+		if cfg.NATManager != nil {
+			return fmt.Errorf("cannot enable both NATManager and NATPortMap")
+		}
+		cfg.EnableNATPortMap = true
+		return nil
+	}
 }
 
 // NATManager will configure libp2p to use the requested NATManager. This
 // function should be passed a NATManager *constructor* that takes a libp2p Network.
-func NATManager(nm config.NATManagerC) Option {
+func NATManager(nm bhost.NATManager) Option {
 	return func(cfg *Config) error {
+		if cfg.EnableNATPortMap {
+			return fmt.Errorf("cannot enable both NATManager and NATPortMap")
+		}
 		if cfg.NATManager != nil {
 			return fmt.Errorf("cannot specify multiple NATManagers")
 		}
