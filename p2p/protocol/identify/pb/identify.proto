@@ -35,4 +35,8 @@ message Identify {
   // see github.com/libp2p/go-libp2p/core/record/pb/envelope.proto and
   // github.com/libp2p/go-libp2p/core/peer/pb/peer_record.proto for message definitions.
   optional bytes signedPeerRecord = 8;
+
+  // maxMultiselectVersion contains the maximum multistream-select version the node supports.
+  // If it's absent, we assume that it's 1.
+  optional uint32 maxMultiselectVersion = 9;
 }
