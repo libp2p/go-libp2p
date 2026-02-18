@@ -11,6 +11,7 @@ import (
 	"github.com/huin/goupnp"
 	"github.com/huin/goupnp/dcps/internetgateway1"
 	"github.com/huin/goupnp/dcps/internetgateway2"
+	"github.com/libp2p/go-libp2p/core/network"
 
 	"github.com/koron/go-ssdp"
 )
@@ -229,7 +230,7 @@ func (u *upnp_NAT) GetInternalAddress() (net.IP, error) {
 		return nil, err
 	}
 
-	ifaces, err := net.Interfaces()
+	ifaces, err := network.Interfaces()
 	if err != nil {
 		return nil, err
 	}

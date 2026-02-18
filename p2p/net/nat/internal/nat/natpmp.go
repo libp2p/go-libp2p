@@ -6,6 +6,7 @@ import (
 	"time"
 
 	natpmp "github.com/jackpal/go-nat-pmp"
+	"github.com/libp2p/go-libp2p/core/network"
 )
 
 var (
@@ -67,7 +68,7 @@ func (n *natpmpNAT) GetDeviceAddress() (addr net.IP, err error) {
 }
 
 func (n *natpmpNAT) GetInternalAddress() (addr net.IP, err error) {
-	ifaces, err := net.Interfaces()
+	ifaces, err := network.Interfaces()
 	if err != nil {
 		return nil, err
 	}
