@@ -141,7 +141,7 @@ func TestSimultDials(t *testing.T) {
 		}
 
 		log.Info("Connecting swarms simultaneously.")
-		for i := 0; i < 10; i++ { // connect 10x for each.
+		for range 10 { // connect 10x for each.
 			wg.Add(2)
 			go connect(swarms[0], swarms[1].LocalPeer(), ifaceAddrs1[0])
 			go connect(swarms[1], swarms[0].LocalPeer(), ifaceAddrs0[0])
@@ -254,7 +254,7 @@ func TestDialBackoff(t *testing.T) {
 
 	dialOnlineNode := func(dst peer.ID, times int) <-chan bool {
 		ch := make(chan bool)
-		for i := 0; i < times; i++ {
+		for range times {
 			go func() {
 				if _, err := s1.DialPeer(ctx, dst); err != nil {
 					t.Error("error dialing", dst, err)
@@ -269,7 +269,7 @@ func TestDialBackoff(t *testing.T) {
 
 	dialOfflineNode := func(dst peer.ID, times int) <-chan bool {
 		ch := make(chan bool)
-		for i := 0; i < times; i++ {
+		for range times {
 			go func() {
 				if c, err := s1.DialPeer(ctx, dst); err != nil {
 					ch <- false
@@ -304,7 +304,7 @@ func TestDialBackoff(t *testing.T) {
 		}
 
 		// 3) s1->s2 should succeed.
-		for i := 0; i < N; i++ {
+		for range N {
 			select {
 			case r := <-s2done:
 				if !r {
@@ -327,7 +327,7 @@ func TestDialBackoff(t *testing.T) {
 
 		// 4) s1->s3 should not (and should place s3 on backoff)
 		// N-1 should finish before dialTimeout1x * 2
-		for i := 0; i < N; i++ {
+		for i := range N {
 			select {
 			case <-s2done:
 				t.Error("s2 should have no more")
@@ -391,7 +391,7 @@ func TestDialBackoff(t *testing.T) {
 		}
 
 		// 8) s2 dials should all hang, and succeed
-		for i := 0; i < N; i++ {
+		for range N {
 			select {
 			case r := <-s2done:
 				if !r {
@@ -471,7 +471,7 @@ func TestDialPeerFailed(t *testing.T) {
 	testedSwarm, targetSwarm := swarms[0], swarms[1]
 
 	const expectedErrorsCount = 5
-	for i := 0; i < expectedErrorsCount; i++ {
+	for range expectedErrorsCount {
 		_, silentPeerAddress, silentPeerListener := newSilentPeer(t)
 		go acceptAndHang(silentPeerListener)
 		defer silentPeerListener.Close()
@@ -614,7 +614,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 	c3 := <-connch
 
 	// raise any errors from the previous goroutines
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		require.NoError(t, <-errs)
 	}
 

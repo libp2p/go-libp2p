@@ -43,7 +43,7 @@ func testDecodeBad(t *testing.T, windows bool) {
 
 func testDecodeHex(t *testing.T, windows bool) {
 	b := bufWithBase("/base16/", windows)
-	for i := 0; i < 32; i++ {
+	for range 32 {
 		b.WriteString("FF")
 	}
 
@@ -67,7 +67,7 @@ func TestDecodeB64(t *testing.T) {
 func testDecodeB64(t *testing.T, windows bool) {
 	b := bufWithBase("/base64/", windows)
 	key := make([]byte, 32)
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		key[i] = byte(i)
 	}
 
@@ -102,7 +102,7 @@ func TestDecodeBin(t *testing.T) {
 func testDecodeBin(t *testing.T, windows bool) {
 	b := bufWithBase("/bin/", windows)
 	key := make([]byte, 32)
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		key[i] = byte(i)
 	}
 

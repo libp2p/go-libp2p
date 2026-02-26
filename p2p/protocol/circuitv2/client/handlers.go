@@ -70,7 +70,7 @@ func (c *Client) handleStreamV2(s network.Stream) {
 	var stat network.ConnStats
 	if limit := msg.GetLimit(); limit != nil {
 		stat.Limited = true
-		stat.Extra = make(map[interface{}]interface{})
+		stat.Extra = make(map[any]any)
 		stat.Extra[StatLimitDuration] = time.Duration(limit.GetDuration()) * time.Second
 		stat.Extra[StatLimitData] = limit.GetData()
 	}

@@ -118,8 +118,8 @@ func AddrInfoToP2pAddrs(pi *AddrInfo) ([]ma.Multiaddr, error) {
 	return addrs, nil
 }
 
-func (pi *AddrInfo) Loggable() map[string]interface{} {
-	return map[string]interface{}{
+func (pi *AddrInfo) Loggable() map[string]any {
+	return map[string]any{
 		"peerID": pi.ID.String(),
 		"addrs":  pi.Addrs,
 	}

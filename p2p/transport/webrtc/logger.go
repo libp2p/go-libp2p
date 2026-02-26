@@ -31,7 +31,7 @@ func (l pionLogger) Debug(s string) {
 	l.Logger.Debug(s)
 }
 
-func (l pionLogger) Debugf(s string, args ...interface{}) {
+func (l pionLogger) Debugf(s string, args ...any) {
 	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
 		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}
@@ -41,7 +41,7 @@ func (l pionLogger) Error(s string) {
 	l.Logger.Debug(s)
 }
 
-func (l pionLogger) Errorf(s string, args ...interface{}) {
+func (l pionLogger) Errorf(s string, args ...any) {
 	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
 		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}
@@ -51,7 +51,7 @@ func (l pionLogger) Info(s string) {
 	l.Logger.Debug(s)
 }
 
-func (l pionLogger) Infof(s string, args ...interface{}) {
+func (l pionLogger) Infof(s string, args ...any) {
 	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
 		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}
@@ -61,7 +61,7 @@ func (l pionLogger) Warn(s string) {
 	l.Logger.Debug(s)
 }
 
-func (l pionLogger) Warnf(s string, args ...interface{}) {
+func (l pionLogger) Warnf(s string, args ...any) {
 	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
 		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}
@@ -70,7 +70,7 @@ func (l pionLogger) Warnf(s string, args ...interface{}) {
 func (l pionLogger) Trace(s string) {
 	l.Logger.Debug(s)
 }
-func (l pionLogger) Tracef(s string, args ...interface{}) {
+func (l pionLogger) Tracef(s string, args ...any) {
 	if l.Logger.Enabled(context.Background(), slog.LevelDebug) {
 		l.Logger.Debug(fmt.Sprintf(s, args...))
 	}

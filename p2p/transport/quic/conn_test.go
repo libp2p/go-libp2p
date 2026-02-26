@@ -543,7 +543,7 @@ func testDialTwo(t *testing.T, tc *connTestCase) {
 		}(c)
 	}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		require.Eventually(t, func() bool {
 			select {
 			case <-done:

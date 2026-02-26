@@ -98,7 +98,7 @@ func DefaultDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 		maxDelay = res[len(res)-1].Delay
 	}
 
-	for i := 0; i < len(addrs); i++ {
+	for i := range addrs {
 		res = append(res, network.AddrDelay{Addr: addrs[i], Delay: maxDelay + PublicOtherDelay})
 	}
 
@@ -273,7 +273,7 @@ func isQUICAddr(a ma.Multiaddr) bool {
 // filterAddrs filters an address slice in place
 func filterAddrs(addrs []ma.Multiaddr, f func(a ma.Multiaddr) bool) (filtered, rest []ma.Multiaddr) {
 	j := 0
-	for i := 0; i < len(addrs); i++ {
+	for i := range addrs {
 		if f(addrs[i]) {
 			addrs[i], addrs[j] = addrs[j], addrs[i]
 			j++

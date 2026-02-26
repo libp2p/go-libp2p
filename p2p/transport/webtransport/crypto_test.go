@@ -93,7 +93,6 @@ func TestCertificateVerification(t *testing.T) {
 			errStr: "cert not valid",
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("rejecting invalid certificates: %s", tc.name), func(t *testing.T) {
 			err := verifyRawCerts([][]byte{tc.cert.Raw}, []multihash.DecodedMultihash{sha256Multihash(t, tc.cert.Raw)})
 			require.Error(t, err)
@@ -125,7 +124,6 @@ func TestCertificateVerification(t *testing.T) {
 			errStr: "cert hash not found",
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("rejecting invalid certificates: %s", tc.name), func(t *testing.T) {
 			err := verifyRawCerts(tc.certs, tc.hashes)
 			require.Error(t, err)
@@ -137,7 +135,7 @@ func TestCertificateVerification(t *testing.T) {
 func TestDeterministicCertHashes(t *testing.T) {
 	// Run this test 1000 times since we want to make sure the signatures are deterministic
 	runs := 1000
-	for i := 0; i < runs; i++ {
+	for range runs {
 		zeroSeed := [32]byte{}
 		priv, _, err := ic.GenerateEd25519Key(bytes.NewReader(zeroSeed[:]))
 		require.NoError(t, err)
@@ -165,7 +163,7 @@ func TestDeterministicCertHashes(t *testing.T) {
 func TestDeterministicSig(t *testing.T) {
 	// Run this test 1000 times since we want to make sure the signatures are deterministic
 	runs := 1000
-	for i := 0; i < runs; i++ {
+	for range runs {
 		zeroSeed := [32]byte{}
 		deterministicHKDFReader := newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
 		b := [1024]byte{}

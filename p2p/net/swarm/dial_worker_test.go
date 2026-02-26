@@ -202,7 +202,7 @@ func TestDialWorkerLoopConcurrent(t *testing.T) {
 	const dials = 100
 	var wg sync.WaitGroup
 	resch := make(chan dialResponse, dials)
-	for i := 0; i < dials; i++ {
+	for range dials {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -218,7 +218,7 @@ func TestDialWorkerLoopConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 
-	for i := 0; i < dials; i++ {
+	for range dials {
 		res := <-resch
 		require.NoError(t, res.err)
 	}
@@ -270,7 +270,7 @@ func TestDialWorkerLoopConcurrentFailure(t *testing.T) {
 	var errTimeout = errors.New("timed out!")
 	var wg sync.WaitGroup
 	resch := make(chan dialResponse, dials)
-	for i := 0; i < dials; i++ {
+	for range dials {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -287,7 +287,7 @@ func TestDialWorkerLoopConcurrentFailure(t *testing.T) {
 	}
 	wg.Wait()
 
-	for i := 0; i < dials; i++ {
+	for range dials {
 		res := <-resch
 		require.Error(t, res.err)
 		if res.err == errTimeout {
@@ -317,7 +317,7 @@ func TestDialWorkerLoopConcurrentMix(t *testing.T) {
 	const dials = 100
 	var wg sync.WaitGroup
 	resch := make(chan dialResponse, dials)
-	for i := 0; i < dials; i++ {
+	for range dials {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -333,7 +333,7 @@ func TestDialWorkerLoopConcurrentMix(t *testing.T) {
 	}
 	wg.Wait()
 
-	for i := 0; i < dials; i++ {
+	for range dials {
 		res := <-resch
 		require.NoError(t, res.err)
 	}
@@ -350,8 +350,8 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 
 	_, p2 := newPeer(t)
 
-	var addrs []ma.Multiaddr
-	for i := 0; i < 16; i++ {
+	addrs := make([]ma.Multiaddr, 0, 16)
+	for i := range 16 {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/11.0.0.%d/tcp/%d", i%256, 1234+i)))
 	}
 	s1.Peerstore().AddAddrs(p2, addrs, peerstore.PermanentAddrTTL)
@@ -364,7 +364,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 	var errTimeout = errors.New("timed out!")
 	var wg sync.WaitGroup
 	resch := make(chan dialResponse, dials)
-	for i := 0; i < dials; i++ {
+	for range dials {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -381,7 +381,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 	}
 	wg.Wait()
 
-	for i := 0; i < dials; i++ {
+	for range dials {
 		res := <-resch
 		require.Error(t, res.err)
 		if res.err == errTimeout {
@@ -397,7 +397,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 
 func TestDialQueueNextBatch(t *testing.T) {
 	addrs := make([]ma.Multiaddr, 0)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i)))
 	}
 	testcase := []struct {
@@ -485,7 +485,7 @@ func TestDialQueueNextBatch(t *testing.T) {
 				}
 				sort.Slice(b, func(i, j int) bool { return b[i].Addr.String() < b[j].Addr.String() })
 				sort.Slice(batch, func(i, j int) bool { return batch[i].String() < batch[j].String() })
-				for i := 0; i < len(b); i++ {
+				for i := range b {
 					if !b[i].Addr.Equal(batch[i]) {
 						log.Error("expected address mismatch", "expected", batch[i], "got", b[i].Addr)
 					}
@@ -745,7 +745,7 @@ loop:
 func makeRanker(tc []timedDial) network.DialRanker {
 	return func(_ []ma.Multiaddr) []network.AddrDelay {
 		res := make([]network.AddrDelay, len(tc))
-		for i := 0; i < len(tc); i++ {
+		for i := range tc {
 			res[i] = network.AddrDelay{Addr: tc[i].addr, Delay: tc[i].delay}
 		}
 		return res
@@ -755,7 +755,7 @@ func makeRanker(tc []timedDial) network.DialRanker {
 // TestCheckDialWorkerLoopScheduling will check the checker
 func TestCheckDialWorkerLoopScheduling(t *testing.T) {
 	addrs := make([]ma.Multiaddr, 0)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		for {
 			p := 20000 + i
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", p)))
@@ -801,7 +801,7 @@ func TestCheckDialWorkerLoopScheduling(t *testing.T) {
 
 func TestDialWorkerLoopRanking(t *testing.T) {
 	addrs := make([]ma.Multiaddr, 0)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		for {
 			p := 20000 + i
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", p)))
@@ -972,7 +972,7 @@ func TestDialWorkerLoopHolePunching(t *testing.T) {
 
 	s1.dialRanker = func(addrs []ma.Multiaddr) (res []network.AddrDelay) {
 		res = make([]network.AddrDelay, len(addrs))
-		for i := 0; i < len(addrs); i++ {
+		for i := range addrs {
 			delay := 10 * time.Second
 			if addrs[i].Equal(t1) {
 				// fire t1 immediately
@@ -1163,14 +1163,14 @@ func BenchmarkDialRanker(b *testing.B) {
 		}
 	}
 	addrs := make([]ma.Multiaddr, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", i))
 	}
 
 	b.Run("equal delay", func(b *testing.B) {
 		b.ReportAllocs()
 		addrDelays := make([]network.AddrDelay, N)
-		for i := 0; i < N; i++ {
+		for i := range N {
 			addrDelays[i] = network.AddrDelay{
 				Addr:  addrs[i],
 				Delay: 0,
@@ -1183,7 +1183,7 @@ func BenchmarkDialRanker(b *testing.B) {
 	b.Run("sorted delay", func(b *testing.B) {
 		b.ReportAllocs()
 		addrDelays := make([]network.AddrDelay, N)
-		for i := 0; i < N; i++ {
+		for i := range N {
 			addrDelays[i] = network.AddrDelay{
 				Addr:  addrs[i],
 				Delay: time.Millisecond * time.Duration(i),

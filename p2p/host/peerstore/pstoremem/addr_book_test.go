@@ -32,7 +32,7 @@ func TestPeerAddrsNextExpiry(t *testing.T) {
 
 func peerAddrsInput(n int) []*expiringAddr {
 	expiringAddrs := make([]*expiringAddr, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		port := i % 65535
 		a := ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/udp/%d/quic-v1", port))
 		e := time.Time{}.Add(time.Duration(i) * time.Second)
@@ -48,11 +48,11 @@ func TestPeerAddrsHeapProperty(t *testing.T) {
 
 	const N = 10000
 	expiringAddrs := peerAddrsInput(N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		paa.Insert(expiringAddrs[i])
 	}
 
-	for i := 0; i < N; i++ {
+	for i := range N {
 		ea, ok := pa.PopIfExpired(expiringAddrs[i].Expiry)
 		require.True(t, ok, "pos: %d", i)
 		require.Equal(t, ea.Addr, expiringAddrs[i].Addr)
@@ -69,7 +69,7 @@ func TestPeerAddrsHeapPropertyDeletions(t *testing.T) {
 
 	const N = 10000
 	expiringAddrs := peerAddrsInput(N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		paa.Insert(expiringAddrs[i])
 	}
 
@@ -78,7 +78,7 @@ func TestPeerAddrsHeapPropertyDeletions(t *testing.T) {
 		paa.Delete(expiringAddrs[i])
 	}
 
-	for i := 0; i < N; i++ {
+	for i := range N {
 		ea, ok := pa.PopIfExpired(expiringAddrs[i].Expiry)
 		if i%3 == 0 {
 			require.False(t, ok)
@@ -100,7 +100,7 @@ func TestPeerAddrsHeapPropertyUpdates(t *testing.T) {
 
 	const N = 10000
 	expiringAddrs := peerAddrsInput(N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		heap.Push(pa, expiringAddrs[i])
 	}
 
@@ -112,7 +112,7 @@ func TestPeerAddrsHeapPropertyUpdates(t *testing.T) {
 		endElements = append(endElements, expiringAddrs[i].Addr)
 	}
 
-	for i := 0; i < N; i++ {
+	for i := range N {
 		if i%3 == 0 {
 			continue // skip the elements at the end
 		}
@@ -136,7 +136,7 @@ func TestPeerAddrsHeapPropertyUpdates(t *testing.T) {
 // TestPeerAddrsExpiry tests for multiple element expiry with PopIfExpired.
 func TestPeerAddrsExpiry(t *testing.T) {
 	const T = 100_000
-	for x := 0; x < T; x++ {
+	for range T {
 		paa := newPeerAddrs()
 		pa := &paa
 		// Try a lot of random inputs.
@@ -144,16 +144,16 @@ func TestPeerAddrsExpiry(t *testing.T) {
 		// So this should test for all possible 5 element inputs.
 		const N = 5
 		expiringAddrs := peerAddrsInput(N)
-		for i := 0; i < N; i++ {
+		for i := range N {
 			expiringAddrs[i].Expiry = time.Time{}.Add(time.Duration(1+rand.Intn(N)) * time.Second)
 		}
-		for i := 0; i < N; i++ {
+		for i := range N {
 			pa.Insert(expiringAddrs[i])
 		}
 
 		expiry := time.Time{}.Add(time.Duration(1+rand.Intn(N)) * time.Second)
 		expected := []ma.Multiaddr{}
-		for i := 0; i < N; i++ {
+		for i := range N {
 			if !expiry.Before(expiringAddrs[i].Expiry) {
 				expected = append(expected, expiringAddrs[i].Addr)
 			}
@@ -167,7 +167,7 @@ func TestPeerAddrsExpiry(t *testing.T) {
 			got = append(got, ea.Addr)
 		}
 		expiries := []int{}
-		for i := 0; i < N; i++ {
+		for i := range N {
 			expiries = append(expiries, expiringAddrs[i].Expiry.Second())
 		}
 		require.ElementsMatch(t, expected, got, "failed for input: element expiries: %v, expiry: %v", expiries, expiry.Second())
@@ -195,7 +195,7 @@ func BenchmarkPeerAddrs(b *testing.B) {
 				paa := newPeerAddrs()
 				pa := &paa
 				expiringAddrs := peerAddrsInput(sz)
-				for i := 0; i < sz; i++ {
+				for i := range sz {
 					pa.Insert(expiringAddrs[i])
 				}
 				b.StartTimer()

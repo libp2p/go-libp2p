@@ -214,7 +214,7 @@ func TestIDService(t *testing.T) {
 	}
 }
 
-func assertCorrectEvtPeerIdentificationCompleted(t *testing.T, evtAny interface{}, other host.Host) {
+func assertCorrectEvtPeerIdentificationCompleted(t *testing.T, evtAny any, other host.Host) {
 	t.Helper()
 	evt := evtAny.(event.EvtPeerIdentificationCompleted)
 	require.NotNil(t, evt.Conn)
@@ -620,7 +620,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 
 	// add protocol strings to make the message larger
 	// about 2K of protocol strings
-	for i := 0; i < 500; i++ {
+	for i := range 500 {
 		r := protocol.ID(fmt.Sprintf("rand%d", i))
 		h1.SetStreamHandler(r, func(network.Stream) {})
 		h2.SetStreamHandler(r, func(network.Stream) {})
@@ -717,7 +717,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 func randString(n int) string {
 	chars := "abcdefghijklmnopqrstuvwxyz"
 	buf := make([]byte, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		buf[i] = chars[rand.Intn(len(chars))]
 	}
 	return string(buf)
@@ -731,7 +731,7 @@ func TestLargePushMessage(t *testing.T) {
 
 	// add protocol strings to make the message larger
 	// about 3K of protocol strings
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		r := protocol.ID(fmt.Sprintf("%s-%d", randString(30), i))
 		h1.SetStreamHandler(r, func(network.Stream) {})
 		h2.SetStreamHandler(r, func(network.Stream) {})

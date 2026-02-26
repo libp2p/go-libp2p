@@ -291,15 +291,15 @@ func TestStressLimiter(t *testing.T) {
 
 	l := newDialLimiterWithParams(df, 20, 5)
 
-	var bads []ma.Multiaddr
-	for i := 0; i < 100; i++ {
+	bads := make([]ma.Multiaddr, 0, 101)
+	for i := range 100 {
 		bads = append(bads, addrWithPort(i))
 	}
 
 	addresses := append(bads, addrWithPort(2000))
 	success := make(chan struct{})
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		go func(id peer.ID) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -324,7 +324,7 @@ func TestStressLimiter(t *testing.T) {
 		}(peer.ID(fmt.Sprintf("testpeer%d", i)))
 	}
 
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		select {
 		case <-success:
 		case <-time.After(time.Minute):
@@ -354,7 +354,7 @@ func TestFDLimitUnderflow(t *testing.T) {
 	const num = 3 * fdLimit
 	wg.Add(num)
 	errs := make(chan error, num)
-	for i := 0; i < num; i++ {
+	for i := range num {
 		go func(id peer.ID, i int) {
 			defer wg.Done()
 			ctx, cancel := context.WithCancel(context.Background())

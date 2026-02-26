@@ -109,7 +109,7 @@ func TestClientRequest(t *testing.T) {
 
 	addrs := an.host.Addrs()
 	addrbs := make([][]byte, len(addrs))
-	for i := 0; i < len(addrs); i++ {
+	for i := range addrs {
 		addrbs[i] = addrs[i].Bytes()
 	}
 
@@ -739,10 +739,7 @@ func FuzzClient(f *testing.F) {
 		}
 		ips = ips[1:]
 		var x, y int64
-		split := 128 / 8
-		if len(ips) < split {
-			split = len(ips)
-		}
+		split := min(len(ips), 128/8)
 		var b [8]byte
 		copy(b[:], ips[:split])
 		x = int64(binary.LittleEndian.Uint64(b[:]))

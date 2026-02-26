@@ -23,7 +23,7 @@ type trace struct {
 
 	mx            sync.Mutex
 	done          bool
-	pendingWrites []interface{}
+	pendingWrites []any
 	reporters     []TraceReporter
 }
 
@@ -191,7 +191,7 @@ type TraceEvt struct {
 	Scope *scopeClass `json:",omitempty"`
 	Name  string      `json:",omitempty"`
 
-	Limit interface{} `json:",omitempty"`
+	Limit any `json:",omitempty"`
 
 	Priority uint8 `json:",omitempty"`
 
@@ -243,7 +243,7 @@ func (t *trace) backgroundWriter(out io.WriteCloser) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	var pend []interface{}
+	var pend []any
 
 	getEvents := func() {
 		t.mx.Lock()
@@ -299,7 +299,7 @@ func (t *trace) backgroundWriter(out io.WriteCloser) {
 	}
 }
 
-func (t *trace) writeEvents(pend []interface{}, jout *json.Encoder) error {
+func (t *trace) writeEvents(pend []any, jout *json.Encoder) error {
 	for _, e := range pend {
 		if err := jout.Encode(e); err != nil {
 			return err

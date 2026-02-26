@@ -139,7 +139,7 @@ func TestDialSyncAllCancel(t *testing.T) {
 	}()
 
 	cancel()
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case <-finished:
 		case <-time.After(time.Second):
@@ -213,13 +213,13 @@ func TestStressActiveDial(_ *testing.T) {
 	pid := peer.ID("foo")
 
 	makeDials := func() {
-		for i := 0; i < 10000; i++ {
+		for range 10000 {
 			ds.Dial(context.Background(), pid)
 		}
 		wg.Done()
 	}
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		wg.Add(1)
 		go makeDials()
 	}

@@ -9,7 +9,7 @@ import (
 
 type memoryPeerMetadata struct {
 	// store other data, like versions
-	ds     map[peer.ID]map[string]interface{}
+	ds     map[peer.ID]map[string]any
 	dslock sync.RWMutex
 }
 
@@ -17,23 +17,23 @@ var _ pstore.PeerMetadata = (*memoryPeerMetadata)(nil)
 
 func NewPeerMetadata() *memoryPeerMetadata {
 	return &memoryPeerMetadata{
-		ds: make(map[peer.ID]map[string]interface{}),
+		ds: make(map[peer.ID]map[string]any),
 	}
 }
 
-func (ps *memoryPeerMetadata) Put(p peer.ID, key string, val interface{}) error {
+func (ps *memoryPeerMetadata) Put(p peer.ID, key string, val any) error {
 	ps.dslock.Lock()
 	defer ps.dslock.Unlock()
 	m, ok := ps.ds[p]
 	if !ok {
-		m = make(map[string]interface{})
+		m = make(map[string]any)
 		ps.ds[p] = m
 	}
 	m[key] = val
 	return nil
 }
 
-func (ps *memoryPeerMetadata) Get(p peer.ID, key string) (interface{}, error) {
+func (ps *memoryPeerMetadata) Get(p peer.ID, key string) (any, error) {
 	ps.dslock.RLock()
 	defer ps.dslock.RUnlock()
 	m, ok := ps.ds[p]

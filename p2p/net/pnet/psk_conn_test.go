@@ -72,7 +72,7 @@ func TestPSKFragmentation(t *testing.T) {
 		wch <- err
 	}()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if _, err := psk2.Read(out); err != nil {
 			t.Fatal(err)
 		}

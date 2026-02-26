@@ -220,7 +220,7 @@ func parseIPFSGoLogEnv(loggingLevelEnvStr string) (slog.Level, map[string]slog.L
 	fallbackLvl := slog.LevelError
 	var systemToLevel map[string]slog.Level
 	if loggingLevelEnvStr != "" {
-		for _, kvs := range strings.Split(loggingLevelEnvStr, ",") {
+		for kvs := range strings.SplitSeq(loggingLevelEnvStr, ",") {
 			kv := strings.SplitN(kvs, "=", 2)
 			var lvl slog.Level
 			err := lvl.UnmarshalText([]byte(kv[len(kv)-1]))

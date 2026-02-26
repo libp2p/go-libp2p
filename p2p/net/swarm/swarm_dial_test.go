@@ -347,7 +347,7 @@ func TestAddrsForDialFiltering(t *testing.T) {
 			if len(result) != len(tc.output) {
 				t.Fatalf("output mismatch got: %s want: %s", result, tc.output)
 			}
-			for i := 0; i < len(result); i++ {
+			for i := range result {
 				if !result[i].Equal(tc.output[i]) {
 					t.Fatalf("output mismatch got: %s want: %s", result, tc.output)
 				}

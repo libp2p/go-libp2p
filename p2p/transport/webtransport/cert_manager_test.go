@@ -115,7 +115,7 @@ func TestCertRenewal(t *testing.T) {
 func TestDeterministicCertsAcrossReboots(t *testing.T) {
 	// Run this test 100 times to make sure it's deterministic
 	runs := 100
-	for i := 0; i < runs; i++ {
+	for i := range runs {
 		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
 			cl := clock.NewMock()
 			priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)

@@ -57,7 +57,7 @@ func TestSignedPeerRecordFromEnvelope(t *testing.T) {
 // low clock precision. This makes sure we never get a duplicate.
 func TestTimestampSeq(t *testing.T) {
 	var last uint64
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		next := TimestampSeq()
 		if next <= last {
 			t.Errorf("non-increasing timestamp found: %d <= %d", next, last)

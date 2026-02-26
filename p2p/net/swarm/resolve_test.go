@@ -37,7 +37,7 @@ func TestSwarmResolver(t *testing.T) {
 	t.Run("Test Limits", func(t *testing.T) {
 		var ipaddrs []net.IPAddr
 		var manyDNSAddrs []string
-		for i := 0; i < 255; i++ {
+		for i := range 255 {
 			ip := "1.2.3." + strconv.Itoa(i)
 			ipaddrs = append(ipaddrs, net.IPAddr{IP: net.ParseIP(ip)})
 			manyDNSAddrs = append(manyDNSAddrs, "dnsaddr=/ip4/"+ip)
@@ -53,21 +53,21 @@ func TestSwarmResolver(t *testing.T) {
 		res, err := swarmResolver.ResolveDNSComponent(ctx, multiaddr.StringCast("/dns/example.com"), 10)
 		require.NoError(t, err)
 		require.Equal(t, 10, len(res))
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			require.Equal(t, "/ip4/1.2.3."+strconv.Itoa(i), res[i].String())
 		}
 
 		res, err = swarmResolver.ResolveDNSAddr(ctx, "", multiaddr.StringCast("/dnsaddr/example.com"), 1, 10)
 		require.NoError(t, err)
 		require.Equal(t, 10, len(res))
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			require.Equal(t, "/ip4/1.2.3."+strconv.Itoa(i), res[i].String())
 		}
 	})
 
 	t.Run("Test Recursive Limits", func(t *testing.T) {
 		recursiveDNSAddr := make(map[string][]string)
-		for i := 0; i < 255; i++ {
+		for i := range 255 {
 			recursiveDNSAddr["_dnsaddr."+strconv.Itoa(i)+".example.com"] = []string{"dnsaddr=/dnsaddr/" + strconv.Itoa(i+1) + ".example.com"}
 		}
 		recursiveDNSAddr["_dnsaddr.255.example.com"] = []string{"dnsaddr=/ip4/127.0.0.1"}

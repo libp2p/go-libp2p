@@ -38,7 +38,7 @@ type emitter struct {
 	metricsTracer MetricsTracer
 }
 
-func (e *emitter) Emit(evt interface{}) error {
+func (e *emitter) Emit(evt any) error {
 	if e.closed.Load() {
 		return fmt.Errorf("emitter is closed")
 	}
@@ -118,14 +118,14 @@ func (b *basicBus) tryDropNode(typ reflect.Type) {
 }
 
 type wildcardSub struct {
-	ch            chan interface{}
+	ch            chan any
 	w             *wildcardNode
 	metricsTracer MetricsTracer
 	name          string
 	closeOnce     sync.Once
 }
 
-func (w *wildcardSub) Out() <-chan interface{} {
+func (w *wildcardSub) Out() <-chan any {
 	return w.ch
 }
 
@@ -146,11 +146,11 @@ func (w *wildcardSub) Name() string {
 
 type namedSink struct {
 	name string
-	ch   chan interface{}
+	ch   chan any
 }
 
 type sub struct {
-	ch            chan interface{}
+	ch            chan any
 	nodes         []*node
 	dropper       func(reflect.Type)
 	metricsTracer MetricsTracer
@@ -162,7 +162,7 @@ func (s *sub) Name() string {
 	return s.name
 }
 
-func (s *sub) Out() <-chan interface{} {
+func (s *sub) Out() <-chan any {
 	return s.ch
 }
 
@@ -207,7 +207,7 @@ var _ event.Subscription = (*sub)(nil)
 // Subscribe creates new subscription. Failing to drain the channel will cause
 // publishers to get blocked. CancelFunc is guaranteed to return after last send
 // to the channel
-func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt) (_ event.Subscription, err error) {
+func (b *basicBus) Subscribe(evtTypes any, opts ...event.SubscriptionOpt) (_ event.Subscription, err error) {
 	settings := newSubSettings()
 	for _, opt := range opts {
 		if err := opt(&settings); err != nil {
@@ -217,7 +217,7 @@ func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt
 
 	if evtTypes == event.WildcardSubscription {
 		out := &wildcardSub{
-			ch:            make(chan interface{}, settings.buffer),
+			ch:            make(chan any, settings.buffer),
 			w:             b.wildcard,
 			metricsTracer: b.metricsTracer,
 			name:          settings.name,
@@ -226,9 +226,9 @@ func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt
 		return out, nil
 	}
 
-	types, ok := evtTypes.([]interface{})
+	types, ok := evtTypes.([]any)
 	if !ok {
-		types = []interface{}{evtTypes}
+		types = []any{evtTypes}
 	}
 
 	if len(types) > 1 {
@@ -240,7 +240,7 @@ func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt
 	}
 
 	out := &sub{
-		ch:    make(chan interface{}, settings.buffer),
+		ch:    make(chan any, settings.buffer),
 		nodes: make([]*node, len(types)),
 
 		dropper:       b.tryDropNode,
@@ -249,7 +249,7 @@ func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt
 	}
 
 	for _, etyp := range types {
-		if reflect.TypeOf(etyp).Kind() != reflect.Ptr {
+		if reflect.TypeOf(etyp).Kind() != reflect.Pointer {
 			return nil, errors.New("subscribe called with non-pointer type")
 		}
 	}
@@ -287,7 +287,7 @@ func (b *basicBus) Subscribe(evtTypes interface{}, opts ...event.SubscriptionOpt
 // defer emit.Close() // MUST call this after being done with the emitter
 //
 // emit(EventT{})
-func (b *basicBus) Emitter(evtType interface{}, opts ...event.EmitterOpt) (e event.Emitter, err error) {
+func (b *basicBus) Emitter(evtType any, opts ...event.EmitterOpt) (e event.Emitter, err error) {
 	if evtType == event.WildcardSubscription {
 		return nil, fmt.Errorf("illegal emitter for wildcard subscription")
 	}
@@ -300,7 +300,7 @@ func (b *basicBus) Emitter(evtType interface{}, opts ...event.EmitterOpt) (e eve
 	}
 
 	typ := reflect.TypeOf(evtType)
-	if typ.Kind() != reflect.Ptr {
+	if typ.Kind() != reflect.Pointer {
 		return nil, errors.New("emitter called with non-pointer type")
 	}
 	typ = typ.Elem()
@@ -349,7 +349,7 @@ func (n *wildcardNode) addSink(sink *namedSink) {
 	}
 }
 
-func (n *wildcardNode) removeSink(ch chan interface{}) {
+func (n *wildcardNode) removeSink(ch chan any) {
 	go func() {
 		// drain the event channel, will return when closed and drained.
 		// this is necessary to unblock publishes to this channel.
@@ -370,7 +370,7 @@ func (n *wildcardNode) removeSink(ch chan interface{}) {
 
 var wildcardType = reflect.TypeOf(event.WildcardSubscription)
 
-func (n *wildcardNode) emit(evt interface{}) {
+func (n *wildcardNode) emit(evt any) {
 	if n.nSinks.Load() == 0 {
 		return
 	}
@@ -406,7 +406,7 @@ type node struct {
 	nEmitters atomic.Int32
 
 	keepLast bool
-	last     interface{}
+	last     any
 
 	sinks         []*namedSink
 	metricsTracer MetricsTracer
@@ -421,7 +421,7 @@ func newNode(typ reflect.Type, metricsTracer MetricsTracer) *node {
 	}
 }
 
-func (n *node) emit(evt interface{}) {
+func (n *node) emit(evt any) {
 	typ := reflect.TypeOf(evt)
 	if typ != n.typ {
 		panic(fmt.Sprintf("Emit called with wrong type. expected: %s, got: %s", n.typ, typ))
@@ -446,7 +446,7 @@ func (n *node) emit(evt interface{}) {
 	n.lk.Unlock()
 }
 
-func emitAndLogError(timer *time.Timer, typ reflect.Type, evt interface{}, sink *namedSink) *time.Timer {
+func emitAndLogError(timer *time.Timer, typ reflect.Type, evt any, sink *namedSink) *time.Timer {
 	// Slow consumer. Log a warning if stalled for the timeout
 	if timer == nil {
 		timer = time.NewTimer(slowConsumerWarningTimeout)

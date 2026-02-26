@@ -3,6 +3,7 @@ package mdns
 import (
 	"os"
 	"runtime"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -58,7 +59,7 @@ func TestOtherDiscovery(t *testing.T) {
 
 	notifs := make([]*notif, n)
 	hostIDs := make([]peer.ID, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		notif := &notif{}
 		notifs[i] = notif
 		hostIDs[i] = setupMDNS(t, notif)
@@ -70,11 +71,8 @@ func TestOtherDiscovery(t *testing.T) {
 			if currentHostID == id {
 				continue
 			}
-			for _, i := range ids {
-				if id == i {
-					found = true
-					break
-				}
+			if slices.Contains(ids, id) {
+				found = true
 			}
 			if !found {
 				return false

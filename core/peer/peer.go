@@ -42,8 +42,8 @@ const maxInlineKeyLength = 42
 type ID string
 
 // Loggable returns a pretty peer ID string in loggable JSON format.
-func (id ID) Loggable() map[string]interface{} {
-	return map[string]interface{}{
+func (id ID) Loggable() map[string]any {
+	return map[string]any{
 		"peerID": id.String(),
 	}
 }

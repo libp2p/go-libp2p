@@ -15,7 +15,7 @@ func TestEventsCancel(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			PublishQueryEvent(ctx, &QueryEvent{Extra: fmt.Sprint(i)})
 		}
 		close(goch)

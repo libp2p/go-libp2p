@@ -123,7 +123,7 @@ type Stats struct {
 	// relay.
 	Limited bool
 	// Extra stores additional metadata about this connection.
-	Extra map[interface{}]interface{}
+	Extra map[any]any
 }
 
 // StreamHandler is the type of function used to listen for
