@@ -905,14 +905,13 @@ func TestGenUfrag(t *testing.T) {
 }
 
 func TestManyConnections(t *testing.T) {
-	var listeners []tpt.Listener
-	var listenerPeerIDs []peer.ID
-
 	const numListeners = 5
 	const dialersPerListener = 5
 	const connsPerDialer = 10
 	errCh := make(chan error, 10*numListeners*dialersPerListener*connsPerDialer)
 	successCh := make(chan struct{}, 10*numListeners*dialersPerListener*connsPerDialer)
+	listeners := make([]tpt.Listener, 0, numListeners)
+	listenerPeerIDs := make([]peer.ID, 0, numListeners)
 
 	for range numListeners {
 		tr, lp := getTransport(t)

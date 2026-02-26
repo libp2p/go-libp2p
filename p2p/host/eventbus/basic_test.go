@@ -366,7 +366,7 @@ LOOP:
 
 func TestManyWildcardSubscriptions(t *testing.T) {
 	bus := NewBus()
-	var subs []event.Subscription
+	subs := make([]event.Subscription, 0, 10)
 	for range 10 {
 		sub, err := bus.Subscribe(event.WildcardSubscription)
 		require.NoError(t, err)

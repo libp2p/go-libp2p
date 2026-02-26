@@ -374,7 +374,7 @@ func testCertifiedAddrBook(ps pstore.Peerstore) func(*testing.T) {
 }
 
 func getAddrs(t *testing.T, n int) []ma.Multiaddr {
-	var addrs []ma.Multiaddr
+	addrs := make([]ma.Multiaddr, 0, n)
 	for i := range n {
 		a, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", i))
 		if err != nil {

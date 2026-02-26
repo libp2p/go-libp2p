@@ -291,7 +291,7 @@ func TestStressLimiter(t *testing.T) {
 
 	l := newDialLimiterWithParams(df, 20, 5)
 
-	var bads []ma.Multiaddr
+	bads := make([]ma.Multiaddr, 0, 101)
 	for i := range 100 {
 		bads = append(bads, addrWithPort(i))
 	}

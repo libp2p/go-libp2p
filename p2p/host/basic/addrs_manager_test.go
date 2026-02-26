@@ -489,7 +489,7 @@ func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 }
 
 func TestRemoveIfNotInSource(t *testing.T) {
-	var addrs []ma.Multiaddr
+	addrs := make([]ma.Multiaddr, 0, 10)
 	for i := range 10 {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i)))
 	}

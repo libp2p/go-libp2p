@@ -56,7 +56,7 @@ func TestAcceptMultipleConns(t *testing.T) {
 	ln := createListener(t, u)
 	defer ln.Close()
 
-	var toClose []io.Closer
+	toClose := make([]io.Closer, 0, 20)
 	defer func() {
 		for _, c := range toClose {
 			_ = c.Close()
@@ -171,7 +171,7 @@ func TestListenerCloseClosesQueued(t *testing.T) {
 	id, upgrader := createUpgrader(t)
 	ln := createListener(t, upgrader)
 
-	var conns []transport.CapableConn
+	conns := make([]transport.CapableConn, 0, 10)
 	for range 10 {
 		conn, err := dial(t, upgrader, ln.Multiaddr(), id, &network.NullScope{})
 		require.NoError(err)

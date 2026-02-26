@@ -269,7 +269,7 @@ func TestBackoff(t *testing.T) {
 
 func TestStaticRelays(t *testing.T) {
 	const numStaticRelays = 3
-	var staticRelays []peer.AddrInfo
+	staticRelays := make([]peer.AddrInfo, 0, numStaticRelays)
 	for range numStaticRelays {
 		r := newRelay(t)
 		t.Cleanup(func() { r.Close() })
@@ -421,8 +421,8 @@ func TestMaxAge(t *testing.T) {
 
 func TestReconnectToStaticRelays(t *testing.T) {
 	cl := newMockClock()
-	var staticRelays []peer.AddrInfo
 	const numStaticRelays = 1
+	staticRelays := make([]peer.AddrInfo, 0, numStaticRelays)
 	relays := make([]host.Host, 0, numStaticRelays)
 	for range numStaticRelays {
 		r := newRelay(t)

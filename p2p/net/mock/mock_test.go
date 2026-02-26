@@ -354,7 +354,7 @@ func TestAdding(t *testing.T) {
 	mn := New()
 	defer mn.Close()
 
-	var peers []peer.ID
+	peers := make([]peer.ID, 0, 3)
 	for range 3 {
 		priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 		if err != nil {

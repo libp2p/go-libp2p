@@ -350,7 +350,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 
 	_, p2 := newPeer(t)
 
-	var addrs []ma.Multiaddr
+	addrs := make([]ma.Multiaddr, 0, 16)
 	for i := range 16 {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/11.0.0.%d/tcp/%d", i%256, 1234+i)))
 	}

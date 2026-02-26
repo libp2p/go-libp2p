@@ -144,7 +144,7 @@ func TestConnTrimming(t *testing.T) {
 	defer cm.Close()
 	not := cm.Notifee()
 
-	var conns []network.Conn
+	conns := make([]network.Conn, 0, 300)
 	for range 300 {
 		rc := randConn(t, nil)
 		conns = append(conns, rc)
@@ -430,7 +430,7 @@ func TestGracePeriod(t *testing.T) {
 
 	not := cm.Notifee()
 
-	var conns []network.Conn
+	conns := make([]network.Conn, 0, 31)
 
 	// Add a connection and wait the grace period.
 	{
@@ -484,7 +484,7 @@ func TestQuickBurstRespectsSilencePeriod(t *testing.T) {
 	defer cm.Close()
 	not := cm.Notifee()
 
-	var conns []network.Conn
+	conns := make([]network.Conn, 0, 30)
 
 	// quickly produce 30 connections (sending us above the high watermark)
 	for range 30 {
@@ -601,7 +601,7 @@ func TestPeerProtectionMultipleTags(t *testing.T) {
 	not := cm.Notifee()
 
 	// produce 20 connections with unique peers.
-	var conns []network.Conn
+	conns := make([]network.Conn, 0, 20)
 	for range 20 {
 		rc := randConn(t, not.Disconnected)
 		conns = append(conns, rc)
