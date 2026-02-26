@@ -317,7 +317,7 @@ func TestConnectOnDisconnect(t *testing.T) {
 	}
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		relaysInUse = usedRelays(h)
-		assert.Len(collect, relaysInUse, 1)
+		require.Len(collect, relaysInUse, 1)
 		assert.NotEqualf(collect, oldRelay, relaysInUse[0], "old relay should not be used again")
 	}, 10*time.Second, 100*time.Millisecond)
 }
