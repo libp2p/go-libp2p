@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -17,9 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/record"
-	"github.com/libp2p/go-libp2p/p2p/host/basic/internal/backoff"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	"github.com/libp2p/go-netroute"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
@@ -490,7 +487,7 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	}
 
 	finalAddrs := make([]ma.Multiaddr, 0, 8)
-	finalAddrs = a.appendPrimaryInterfaceAddrs(finalAddrs, listenAddrs)
+	finalAddrs = a.appendInterfaceAddrs(finalAddrs, listenAddrs)
 	if a.natManager != nil {
 		finalAddrs = a.appendNATAddrs(finalAddrs, listenAddrs)
 	}
@@ -519,11 +516,10 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	return finalAddrs
 }
 
-// appendPrimaryInterfaceAddrs appends the primary interface addresses to `dst`.
-func (a *addrsManager) appendPrimaryInterfaceAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr) []ma.Multiaddr {
-	// resolving any unspecified listen addressees to use only the primary
-	// interface to avoid advertising too many addresses.
-	if resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, a.interfaceAddrs.Filtered()); err != nil {
+// appendInterfaceAddrs resolves any unspecified listen addresses to all interface addresses
+// and appends them to `dst`.
+func (a *addrsManager) appendInterfaceAddrs(dst []ma.Multiaddr, listenAddrs []ma.Multiaddr) []ma.Multiaddr {
+	if resolved, err := manet.ResolveUnspecifiedAddresses(listenAddrs, a.interfaceAddrs.All()); err != nil {
 		log.Warn("failed to resolve listen addrs", "err", err)
 	} else {
 		dst = append(dst, resolved...)
@@ -744,124 +740,46 @@ func trimHostAddrList(addrs []ma.Multiaddr, maxSize int) []ma.Multiaddr {
 const interfaceAddrsCacheTTL = time.Minute
 
 type interfaceAddrsCache struct {
-	mx                     sync.RWMutex
-	filtered               []ma.Multiaddr
-	all                    []ma.Multiaddr
-	updateLocalIPv4Backoff backoff.ExpBackoff
-	updateLocalIPv6Backoff backoff.ExpBackoff
-	lastUpdated            time.Time
-}
-
-func (i *interfaceAddrsCache) Filtered() []ma.Multiaddr {
-	i.mx.RLock()
-	if time.Now().After(i.lastUpdated.Add(interfaceAddrsCacheTTL)) {
-		i.mx.RUnlock()
-		return i.update(true)
-	}
-	defer i.mx.RUnlock()
-	return i.filtered
+	mx          sync.RWMutex
+	all         []ma.Multiaddr
+	lastUpdated time.Time
 }
 
 func (i *interfaceAddrsCache) All() []ma.Multiaddr {
 	i.mx.RLock()
 	if time.Now().After(i.lastUpdated.Add(interfaceAddrsCacheTTL)) {
 		i.mx.RUnlock()
-		return i.update(false)
+		return i.update()
 	}
 	defer i.mx.RUnlock()
 	return i.all
 }
 
-func (i *interfaceAddrsCache) update(filtered bool) []ma.Multiaddr {
+func (i *interfaceAddrsCache) update() []ma.Multiaddr {
 	i.mx.Lock()
 	defer i.mx.Unlock()
 	if !time.Now().After(i.lastUpdated.Add(interfaceAddrsCacheTTL)) {
-		if filtered {
-			return i.filtered
-		}
 		return i.all
 	}
 	i.updateUnlocked()
 	i.lastUpdated = time.Now()
-	if filtered {
-		return i.filtered
-	}
 	return i.all
 }
 
 func (i *interfaceAddrsCache) updateUnlocked() {
-	i.filtered = nil
 	i.all = nil
 
-	// Try to use the default ipv4/6 addresses.
-	// TODO: Remove this. We should advertise all interface addresses.
-	if r, err := netroute.New(); err != nil {
-		log.Debug("failed to build Router for kernel's routing table", "err", err)
-	} else {
-
-		var localIPv4 net.IP
-		var ran bool
-		err, ran = i.updateLocalIPv4Backoff.Run(func() error {
-			_, _, localIPv4, err = r.Route(net.IPv4zero)
-			return err
-		})
-
-		if ran && err != nil {
-			log.Debug("failed to fetch local IPv4 address", "err", err)
-		} else if ran && localIPv4.IsGlobalUnicast() {
-			maddr, err := manet.FromIP(localIPv4)
-			if err == nil {
-				i.filtered = append(i.filtered, maddr)
-			}
-		}
-
-		var localIPv6 net.IP
-		err, ran = i.updateLocalIPv6Backoff.Run(func() error {
-			_, _, localIPv6, err = r.Route(net.IPv6unspecified)
-			return err
-		})
-
-		if ran && err != nil {
-			log.Debug("failed to fetch local IPv6 address", "err", err)
-		} else if ran && localIPv6.IsGlobalUnicast() {
-			maddr, err := manet.FromIP(localIPv6)
-			if err == nil {
-				i.filtered = append(i.filtered, maddr)
-			}
-		}
-	}
-
-	// Resolve the interface addresses
 	ifaceAddrs, err := manet.InterfaceMultiaddrs()
 	if err != nil {
 		// This usually shouldn't happen, but we could be in some kind
 		// of funky restricted environment.
 		log.Error("failed to resolve local interface addresses", "err", err)
-
-		// Add the loopback addresses to the filtered addrs and use them as the non-filtered addrs.
-		// Then bail. There's nothing else we can do here.
-		i.filtered = append(i.filtered, manet.IP4Loopback, manet.IP6Loopback)
-		i.all = i.filtered
+		i.all = []ma.Multiaddr{manet.IP4Loopback, manet.IP6Loopback}
 		return
 	}
 
 	// remove link local ipv6 addresses
 	i.all = slices.DeleteFunc(ifaceAddrs, manet.IsIP6LinkLocal)
-
-	// If netroute failed to get us any interface addresses, use all of
-	// them.
-	if len(i.filtered) == 0 {
-		// Add all addresses.
-		i.filtered = i.all
-	} else {
-		// Only add loopback addresses. Filter these because we might
-		// not _have_ an IPv6 loopback address.
-		for _, addr := range i.all {
-			if manet.IsIPLoopback(addr) {
-				i.filtered = append(i.filtered, addr)
-			}
-		}
-	}
 }
 
 // removeNotInSource removes items from addrs that are not present in source.
