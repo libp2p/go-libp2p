@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"net"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -174,17 +173,12 @@ func (s *stream) Conn() network.Conn {
 	return s.conn
 }
 
-func (s *stream) SetDeadline(_ time.Time) error {
-	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
-}
-
-func (s *stream) SetReadDeadline(_ time.Time) error {
-	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
-}
-
-func (s *stream) SetWriteDeadline(_ time.Time) error {
-	return &net.OpError{Op: "set", Net: "pipe", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
-}
+// SetDeadline is a noop for mocknet streams since the underlying pipe
+// transport does not support deadlines. Callers should not treat the
+// absence of deadline support as an error.
+func (s *stream) SetDeadline(_ time.Time) error      { return nil }
+func (s *stream) SetReadDeadline(_ time.Time) error   { return nil }
+func (s *stream) SetWriteDeadline(_ time.Time) error  { return nil }
 
 func (s *stream) Read(b []byte) (int, error) {
 	return s.read.Read(b)
