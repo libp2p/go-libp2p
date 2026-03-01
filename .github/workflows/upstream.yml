@@ -16,7 +16,7 @@ jobs:
           - 'ubuntu'
         go:
           # - '1.15.x'
-          - '1.26.x'
+          - '1.16.x'
         upstream:
           # - 'libp2p/go-libp2p-pubsub' flaky
           # - 'ipfs/go-bitswap' flaky

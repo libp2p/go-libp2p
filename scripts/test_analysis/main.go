@@ -99,23 +99,22 @@ func (t *tester) runTests(passThruFlags []string) error {
 }
 
 func (t *tester) goTestAll(extraFlags []string) error {
-	flags := []string{"./..."}
+	flags := make([]string, 0, 1+len(extraFlags))
+	flags = append(flags, "./...")
 	flags = append(flags, extraFlags...)
 	return t.goTest(flags)
 }
 
 func (t *tester) goTestPkgTest(pkg, testname string, extraFlags []string) error {
-	flags := []string{
-		pkg, "-run", "^" + testname + "$", "-count", "1",
-	}
+	flags := make([]string, 0, 5+len(extraFlags))
+	flags = append(flags, pkg, "-run", "^"+testname+"$", "-count", "1")
 	flags = append(flags, extraFlags...)
 	return t.goTest(flags)
 }
 
 func (t *tester) goTest(extraFlags []string) error {
-	flags := []string{
-		"test", "-json",
-	}
+	flags := make([]string, 0, 2+len(extraFlags))
+	flags = append(flags, "test", "-json")
 	flags = append(flags, extraFlags...)
 	cmd := exec.Command("go", flags...)
 	cmd.Dir = t.Dir
