@@ -600,7 +600,7 @@ func TestAddCertHashes(t *testing.T) {
 		if !ok {
 			continue
 		}
-		var publicAddrs []ma.Multiaddr
+		publicAddrs := make([]ma.Multiaddr, 0, len(publicIPPort))
 		for _, tc := range publicIPPort {
 			publicAddrs = append(publicAddrs, addrWithNewIPPort(prefix, tc))
 		}
@@ -612,7 +612,7 @@ func TestAddCertHashes(t *testing.T) {
 		}
 
 		// if the addr has a certhash already, check it isn't modified
-		publicAddrs = nil
+		publicAddrs = make([]ma.Multiaddr, 0, len(publicIPPort))
 		for _, tc := range publicIPPort {
 			a := addrWithNewIPPort(prefix, tc)
 			a = append(a, certHashComponent...)

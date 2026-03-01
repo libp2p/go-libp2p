@@ -54,7 +54,7 @@ func newAutoNAT(t testing.TB, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 func parseAddrs(t *testing.T, msg *pb.Message) []ma.Multiaddr {
 	t.Helper()
 	req := msg.GetDialRequest()
-	addrs := make([]ma.Multiaddr, 0)
+	addrs := make([]ma.Multiaddr, 0, len(req.Addrs))
 	for _, ab := range req.Addrs {
 		a, err := ma.NewMultiaddrBytes(ab)
 		if err != nil {
@@ -687,7 +687,7 @@ func TestPeerMap(t *testing.T) {
 	pm.Delete(peer.ID("2"))
 
 	contains := []peer.ID{"1", "4"}
-	elems := make([]peer.ID, 0)
+	elems := make([]peer.ID, 0, len(contains))
 	for p := range pm.Shuffled() {
 		elems = append(elems, p)
 	}

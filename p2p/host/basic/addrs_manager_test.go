@@ -275,6 +275,7 @@ func TestAddrsManager(t *testing.T) {
 		})
 		am.updateAddrsSync()
 		expected := make([]ma.Multiaddr, 0, 1+maxObservedAddrsPerListenAddr)
+		expected = append(expected, lhquic)
 		expected = append(expected, quicAddrs[:maxObservedAddrsPerListenAddr]...)
 		require.EventuallyWithT(t, func(collect *assert.CollectT) {
 			matest.AssertMultiaddrsMatch(collect, expected, am.Addrs())
