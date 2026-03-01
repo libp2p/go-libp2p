@@ -21,7 +21,7 @@ jobs:
           # - 'libp2p/go-libp2p-pubsub' flaky
           # - 'ipfs/go-bitswap' flaky
           # - 'libp2p/go-libp2p-kad-dht'
-          # - 'libp2p/go-libp2p-daemon' # incompatible: imports removed core/sec/insecure package
+          - 'libp2p/go-libp2p-daemon'
     runs-on: ${{ matrix.os }}-latest
     name: ${{ matrix.upstream }} unit tests (${{ matrix.os }}, Go ${{ matrix.go }})
     steps:
