@@ -133,7 +133,7 @@ func TestCertificateVerification(t *testing.T) {
 }
 
 func TestDeterministicCertHashes(t *testing.T) {
-	// Run this test 1000 times since we want to make sure the signatures are deterministic
+	// Run this test 1000 times to make sure the signatures are deterministic
 	runs := 1000
 	for range runs {
 		zeroSeed := [32]byte{}
@@ -156,31 +156,41 @@ func TestDeterministicCertHashes(t *testing.T) {
 	}
 }
 
-// TestDeterministicSig tests that our hack around making ECDSA signatures
-// deterministic works. If this fails, this means we need to try another
-// strategy to make deterministic signatures or try something else entirely.
-// See deterministicReader for more context.
+// TestDeterministicSig tests that deterministic ECDSA key derivation works.
+// In Go 1.26+, ecdsa.GenerateKey ignores the io.Reader, so we derive keys
+// using ecdsa.ParseRawPrivateKey from HKDF-derived bytes instead.
+// Go 1.26's ECDSA signing uses RFC 6979 deterministic nonces, so the same
+// key signing the same data always produces the same signature.
 func TestDeterministicSig(t *testing.T) {
-	// Run this test 1000 times since we want to make sure the signatures are deterministic
+	// Run this test 1000 times to make sure the signatures are deterministic
 	runs := 1000
 	for range runs {
 		zeroSeed := [32]byte{}
-		deterministicHKDFReader := newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
+		hkdfReader1 := newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
 		b := [1024]byte{}
-		io.ReadFull(deterministicHKDFReader, b[:])
-		caPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
+		io.ReadFull(hkdfReader1, b[:])
+
+		// Derive key deterministically using ParseRawPrivateKey
+		scalarBytes1 := make([]byte, 32)
+		io.ReadFull(hkdfReader1, scalarBytes1)
+		caPrivateKey, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), scalarBytes1)
 		require.NoError(t, err)
 
-		sig, err := caPrivateKey.Sign(deterministicHKDFReader, b[:], crypto.SHA256)
+		hash := sha256.Sum256(b[:])
+		sig, err := caPrivateKey.Sign(nil, hash[:], crypto.SHA256)
 		require.NoError(t, err)
 
-		deterministicHKDFReader = newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
+		hkdfReader2 := newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
 		b2 := [1024]byte{}
-		io.ReadFull(deterministicHKDFReader, b2[:])
-		caPrivateKey2, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
+		io.ReadFull(hkdfReader2, b2[:])
+
+		scalarBytes2 := make([]byte, 32)
+		io.ReadFull(hkdfReader2, scalarBytes2)
+		caPrivateKey2, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), scalarBytes2)
 		require.NoError(t, err)
 
-		sig2, err := caPrivateKey2.Sign(deterministicHKDFReader, b2[:], crypto.SHA256)
+		hash2 := sha256.Sum256(b2[:])
+		sig2, err := caPrivateKey2.Sign(nil, hash2[:], crypto.SHA256)
 		require.NoError(t, err)
 
 		keyBytes, err := x509.MarshalECPrivateKey(caPrivateKey)

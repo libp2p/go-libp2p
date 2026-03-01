@@ -42,6 +42,12 @@ func getTLSConf(key ic.PrivKey, start, end time.Time) (*tls.Config, error) {
 
 // generateCert generates certs deterministically based on the `key` and start
 // time passed in. Uses `golang.org/x/crypto/hkdf`.
+//
+// Starting with Go 1.26, crypto/ecdsa functions ignore the io.Reader parameter
+// and always use the system CSPRNG. To maintain deterministic cert generation,
+// we derive the ECDSA private key bytes directly from HKDF and construct the
+// key using ecdsa.ParseRawPrivateKey. Go 1.26's ECDSA signing uses RFC 6979
+// deterministic nonces, so the resulting certificates are fully deterministic.
 func generateCert(key ic.PrivKey, start, end time.Time) (*x509.Certificate, *ecdsa.PrivateKey, error) {
 	keyBytes, err := key.Raw()
 	if err != nil {
@@ -50,10 +56,10 @@ func generateCert(key ic.PrivKey, start, end time.Time) (*x509.Certificate, *ecd
 
 	startTimeSalt := make([]byte, 8)
 	binary.LittleEndian.PutUint64(startTimeSalt, uint64(start.UnixNano()))
-	deterministicHKDFReader := newDeterministicReader(keyBytes, startTimeSalt, deterministicCertInfo)
+	hkdfReader := hkdf.New(sha256.New, keyBytes, startTimeSalt, []byte(deterministicCertInfo))
 
 	b := make([]byte, 8)
-	if _, err := deterministicHKDFReader.Read(b); err != nil {
+	if _, err := hkdfReader.Read(b); err != nil {
 		return nil, nil, err
 	}
 	serial := int64(binary.BigEndian.Uint64(b))
@@ -71,11 +77,24 @@ func generateCert(key ic.PrivKey, start, end time.Time) (*x509.Certificate, *ecd
 		BasicConstraintsValid: true,
 	}
 
-	caPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
-	if err != nil {
-		return nil, nil, err
+	// Derive ECDSA private key deterministically from HKDF output.
+	// P256 private keys are 32 bytes. We use rejection sampling to ensure
+	// the derived bytes form a valid scalar (non-zero, less than curve order).
+	var caPrivateKey *ecdsa.PrivateKey
+	for {
+		scalarBytes := make([]byte, 32)
+		if _, err := io.ReadFull(hkdfReader, scalarBytes); err != nil {
+			return nil, nil, err
+		}
+		caPrivateKey, err = ecdsa.ParseRawPrivateKey(elliptic.P256(), scalarBytes)
+		if err == nil {
+			break
+		}
+		// Invalid scalar (zero or >= curve order), try next 32 bytes from HKDF.
+		// The probability of this happening is negligible (~2^-128 for P256).
 	}
-	caBytes, err := x509.CreateCertificate(deterministicHKDFReader, certTempl, certTempl, caPrivateKey.Public(), caPrivateKey)
+
+	caBytes, err := x509.CreateCertificate(nil, certTempl, certTempl, caPrivateKey.Public(), caPrivateKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -136,29 +155,8 @@ func verifyRawCerts(rawCerts [][]byte, certHashes []multihash.DecodedMultihash) 
 	return nil
 }
 
-// deterministicReader is a hack. It counter-acts the Go library's attempt at
-// making ECDSA signatures non-deterministic. Go adds non-determinism by
-// randomly dropping a singly byte from the reader stream. This counteracts this
-// by detecting when a read is a single byte and using a different reader
-// instead.
-type deterministicReader struct {
-	reader           io.Reader
-	singleByteReader io.Reader
-}
-
+// newDeterministicReader returns an HKDF reader for deterministic byte derivation.
+// This is used in tests that need deterministic randomness from HKDF.
 func newDeterministicReader(seed []byte, salt []byte, info string) io.Reader {
-	reader := hkdf.New(sha256.New, seed, salt, []byte(info))
-	singleByteReader := hkdf.New(sha256.New, seed, salt, []byte(info+" single byte"))
-
-	return &deterministicReader{
-		reader:           reader,
-		singleByteReader: singleByteReader,
-	}
-}
-
-func (r *deterministicReader) Read(p []byte) (n int, err error) {
-	if len(p) == 1 {
-		return r.singleByteReader.Read(p)
-	}
-	return r.reader.Read(p)
+	return hkdf.New(sha256.New, seed, salt, []byte(info))
 }
