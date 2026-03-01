@@ -1,6 +1,6 @@
 module github.com/libp2p/go-libp2p/scripts/test_analysis
 
-go 1.24
+go 1.26.0
 
 require modernc.org/sqlite v1.36.0
 
