@@ -83,7 +83,7 @@ func TestProbeManager(t *testing.T) {
 
 	t.Run("refusals", func(t *testing.T) {
 		pm := makeNewProbeManager([]ma.Multiaddr{pub1, pub2})
-		var probes [][]autonatv2.Request
+		probes := make([][]autonatv2.Request, 0, targetConfidence)
 		for range targetConfidence {
 			reqs := nextProbe(pm)
 			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}, {Addr: pub2, SendDialData: true}})
@@ -94,7 +94,7 @@ func TestProbeManager(t *testing.T) {
 			pm.CompleteProbe(p, autonatv2.Result{Addr: pub2, Idx: 1, Reachability: network.ReachabilityPublic}, nil)
 		}
 		// the second address is validated!
-		probes = nil
+		probes = make([][]autonatv2.Request, 0, targetConfidence)
 		for range targetConfidence {
 			reqs := nextProbe(pm)
 			require.Equal(t, reqs, []autonatv2.Request{{Addr: pub1, SendDialData: true}})
@@ -203,7 +203,7 @@ func TestProbeManager(t *testing.T) {
 		pm := makeNewProbeManager([]ma.Multiaddr{tcp, websocket, webrtc, quic})
 
 		extractAddrs := func(reqs probe) []ma.Multiaddr {
-			var res []ma.Multiaddr
+			res := make([]ma.Multiaddr, 0, len(reqs))
 			for _, r := range reqs {
 				res = append(res, r.Addr)
 			}
@@ -395,7 +395,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 			},
 		}
 		tr := newTracker(mockClient, nil)
-		var addrs []ma.Multiaddr
+		addrs := make([]ma.Multiaddr, 0, 10)
 		for i := range 10 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.1.1.1/tcp/%d", i)))
 		}

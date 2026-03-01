@@ -166,7 +166,7 @@ func TestPeerAddrsExpiry(t *testing.T) {
 			}
 			got = append(got, ea.Addr)
 		}
-		expiries := []int{}
+		expiries := make([]int, 0, N)
 		for i := range N {
 			expiries = append(expiries, expiringAddrs[i].Expiry.Second())
 		}

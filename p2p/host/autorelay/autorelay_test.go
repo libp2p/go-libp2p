@@ -580,7 +580,7 @@ func TestAutoRelayAddrsEvent(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		e := <-sub.Out()
 		evt := e.(event.EvtAutoRelayAddrsUpdated)
-		relayIds := []peer.ID{}
+		relayIds := make([]peer.ID, 0, len(relays)-1)
 		for _, r := range relays[1:] {
 			relayIds = append(relayIds, r.ID())
 		}

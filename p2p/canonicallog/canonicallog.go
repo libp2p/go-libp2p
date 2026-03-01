@@ -78,11 +78,8 @@ func LogMisbehavingPeerNetAddr(p peer.ID, peerAddr net.Addr, component string, o
 // like fail2ban to action on the log.
 func LogPeerStatus(sampleRate int, p peer.ID, peerAddr multiaddr.Multiaddr, keyVals ...string) {
 	if rand.Intn(sampleRate) == 0 {
-		args := []any{
-			"peer", p,
-			"addr", peerAddr.String(),
-			"sample_rate", sampleRate,
-		}
+		args := make([]any, 0, 6+len(keyVals))
+		args = append(args, "peer", p, "addr", peerAddr.String(), "sample_rate", sampleRate)
 		// Add the additional key-value pairs
 		for _, kv := range keyVals {
 			args = append(args, kv)
