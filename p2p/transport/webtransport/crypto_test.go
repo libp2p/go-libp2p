@@ -202,3 +202,20 @@ func TestDeterministicSig(t *testing.T) {
 		require.Equal(t, keyBytes, keyBytes2)
 	}
 }
+
+func BenchmarkGenerateCert(b *testing.B) {
+	zeroSeed := [32]byte{}
+	priv, _, err := ic.GenerateEd25519Key(bytes.NewReader(zeroSeed[:]))
+	if err != nil {
+		b.Fatal(err)
+	}
+	start := time.Time{}
+	end := start.Add(14 * 24 * time.Hour)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := generateCert(priv, start, end)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
