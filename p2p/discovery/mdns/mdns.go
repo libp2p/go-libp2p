@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/libp2p/zeroconf/v2"
@@ -195,6 +196,11 @@ func (s *mdnsService) startServer() error {
 		return err
 	}
 
+	interfaces, err := network.Interfaces()
+	if err != nil {
+		return err
+	}
+
 	server, err := zeroconf.RegisterProxy(
 		s.peerName,
 		s.serviceName,
@@ -203,7 +209,7 @@ func (s *mdnsService) startServer() error {
 		s.peerName,
 		ips,
 		txts,
-		nil,
+		interfaces,
 	)
 	if err != nil {
 		return err
