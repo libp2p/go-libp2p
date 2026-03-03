@@ -4,7 +4,14 @@ import (
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 )
+
+// testAddr returns a dummy multiaddr for use in tests.
+func testAddr() multiaddr.Multiaddr {
+	a, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+	return a
+}
 
 func TestRelayDiscovery_NewRelayDiscovery(t *testing.T) {
 	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "rtt")
@@ -18,10 +25,10 @@ func TestRelayDiscovery_FilterPeers(t *testing.T) {
 	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "rtt")
 
 	peers := []peer.AddrInfo{
-		{ID: "peer1"}, // No addrs - should be filtered
-		{ID: "peer2", Addrs: nil}, // Should be filtered
-		{ID: "peer3", Addrs: []any{}}, // Empty - should be filtered
-		{ID: "peer4", Addrs: []any{struct{}{}}}, // Has addr - should pass
+		{ID: "peer1"},                              // No addrs - should be filtered
+		{ID: "peer2", Addrs: nil},                  // Should be filtered
+		{ID: "peer3", Addrs: []multiaddr.Multiaddr{}}, // Empty - should be filtered
+		{ID: "peer4", Addrs: []multiaddr.Multiaddr{testAddr()}}, // Has addr - should pass
 	}
 
 	filtered := rd.filterPeers(peers)
@@ -39,11 +46,11 @@ func TestRelayDiscovery_SelectRandom(t *testing.T) {
 	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "random")
 
 	peers := []peer.AddrInfo{
-		{ID: "r1", Addrs: []any{struct{}{}}},
-		{ID: "r2", Addrs: []any{struct{}{}}},
-		{ID: "r3", Addrs: []any{struct{}{}}},
-		{ID: "r4", Addrs: []any{struct{}{}}},
-		{ID: "r5", Addrs: []any{struct{}{}}},
+		{ID: "r1", Addrs: []multiaddr.Multiaddr{testAddr()}},
+		{ID: "r2", Addrs: []multiaddr.Multiaddr{testAddr()}},
+		{ID: "r3", Addrs: []multiaddr.Multiaddr{testAddr()}},
+		{ID: "r4", Addrs: []multiaddr.Multiaddr{testAddr()}},
+		{ID: "r5", Addrs: []multiaddr.Multiaddr{testAddr()}},
 	}
 
 	result, err := rd.selectRandom(peers, 3)
@@ -69,8 +76,8 @@ func TestRelayDiscovery_SelectRandom_Insufficient(t *testing.T) {
 	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "random")
 
 	peers := []peer.AddrInfo{
-		{ID: "r1", Addrs: []any{struct{}{}}},
-		{ID: "r2", Addrs: []any{struct{}{}}},
+		{ID: "r1", Addrs: []multiaddr.Multiaddr{testAddr()}},
+		{ID: "r2", Addrs: []multiaddr.Multiaddr{testAddr()}},
 	}
 
 	_, err := rd.selectRandom(peers, 5)

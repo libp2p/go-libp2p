@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"net"
 	"sort"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	ping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
 // RelayDiscovery handles finding relays via DHT
@@ -16,6 +17,8 @@ type RelayDiscovery struct {
 	protocolID    string
 	samplingSize  int
 	selectionMode string // "rtt", "random", "hybrid"
+	host          host.Host
+	pingService   *ping.PingService
 }
 
 // RelayInfo holds information about a potential relay
@@ -32,6 +35,19 @@ func NewRelayDiscovery(protocolID string, samplingSize int, selectionMode string
 		protocolID:    protocolID,
 		samplingSize:  samplingSize,
 		selectionMode: selectionMode,
+	}
+}
+
+// NewRelayDiscoveryWithHost creates a relay discovery instance backed by a libp2p host for
+// accurate RTT measurements via the libp2p ping protocol (Req 5.1, 11.2).
+func NewRelayDiscoveryWithHost(h host.Host, protocolID string, samplingSize int, selectionMode string) *RelayDiscovery {
+	ps := ping.NewPingService(h)
+	return &RelayDiscovery{
+		protocolID:    protocolID,
+		samplingSize:  samplingSize,
+		selectionMode: selectionMode,
+		host:          h,
+		pingService:   ps,
 	}
 }
 
@@ -167,9 +183,22 @@ func (r *RelayDiscovery) randomSample(peers []peer.AddrInfo, k int) []peer.AddrI
 	return shuffled[:k]
 }
 
-// measureLatencies measures RTT to all provided peers using real TCP connections
+// measureLatencies measures RTT to all provided peers.
+// When a libp2p host is configured it uses the libp2p ping protocol (Req 5.1,
+// 11.2) which works with any transport (TCP, QUIC, WebRTC).  Without a host it
+// falls back to a 100 ms default latency so that selection still works in unit
+// tests without a real network.
 func (r *RelayDiscovery) measureLatencies(ctx context.Context, peers []peer.AddrInfo) (map[peer.ID]time.Duration, error) {
 	result := make(map[peer.ID]time.Duration)
+
+	if r.pingService == nil {
+		// No host available: assign a uniform default so callers get a valid map.
+		for _, p := range peers {
+			result[p.ID] = 100 * time.Millisecond
+		}
+		return result, nil
+	}
+
 	type resultChan struct {
 		peerID  peer.ID
 		latency time.Duration
@@ -180,124 +209,60 @@ func (r *RelayDiscovery) measureLatencies(ctx context.Context, peers []peer.Addr
 
 	for _, p := range peers {
 		go func(addrInfo peer.AddrInfo) {
-			latency, err := measureRTTToPeer(ctx, addrInfo)
+			latency, err := r.measureRTTToPeer(ctx, addrInfo)
 			rc <- resultChan{addrInfo.ID, latency, err}
 		}(p)
 	}
 
-	timeout := time.NewTimer(5 * time.Second)
-	defer timeout.Stop()
-
-	successCount := 0
 	for i := 0; i < len(peers); i++ {
 		select {
 		case <-ctx.Done():
-			return result, fmt.Errorf("context cancelled")
-		case <-timeout.C:
-			return result, fmt.Errorf("latency measurement timeout after 5s")
+			return result, fmt.Errorf("context cancelled during latency measurement")
 		case res := <-rc:
 			if res.err == nil {
 				result[res.peerID] = res.latency
-				successCount++
 			}
 		}
 	}
 
-	if successCount == 0 {
-		return nil, fmt.Errorf("no successful latency measurements")
-	}
 	return result, nil
 }
 
-// measureRTTToPeer measures round-trip time to a peer using real TCP connection
-func measureRTTToPeer(ctx context.Context, addrInfo peer.AddrInfo) (time.Duration, error) {
-	if len(addrInfo.Addrs) == 0 {
-		return 0, fmt.Errorf("no addresses")
+// measureRTTToPeer measures round-trip time to a peer using the libp2p ping
+// protocol (Req 5.1).  This is transport-agnostic: it works over TCP, QUIC,
+// WebRTC, and any other transport supported by the host (Req 11.2).
+func (r *RelayDiscovery) measureRTTToPeer(ctx context.Context, addrInfo peer.AddrInfo) (time.Duration, error) {
+	if r.pingService == nil {
+		return 0, fmt.Errorf("ping service not configured")
 	}
 
-	// Find TCP address from multiaddr
-	var tcpAddr string
-	for _, addr := range addrInfo.Addrs {
-		addrStr := addr.String()
-		if contains(addrStr, "/tcp/") {
-			tcpAddr = extractHostPort(addrStr)
-			break
+	// Ensure we are connected before pinging.
+	if r.host.Network().Connectedness(addrInfo.ID) != 3 { // 3 = Connected
+		connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := r.host.Connect(connectCtx, addrInfo); err != nil {
+			return 0, fmt.Errorf("failed to connect to peer %s: %w", addrInfo.ID, err)
 		}
 	}
 
-	if tcpAddr == "" {
-		// Fallback to first address
-		tcpAddr = extractHostPort(addrInfo.Addrs[0].String())
-	}
+	// Send a single ping and return its RTT.  Each ping call has its own
+	// per-peer timeout (Req 4.8 / 5.2).
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-	if tcpAddr == "" {
-		return 0, fmt.Errorf("could not extract TCP address")
-	}
-
-	// Real TCP connection with timeout
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
-
-	start := time.Now()
-	conn, err := dialer.DialContext(ctx, "tcp", tcpAddr)
-	if err != nil {
-		return 0, fmt.Errorf("connection failed: %w", err)
-	}
-	defer conn.Close()
-
-	// Measure actual RTT
-	return time.Since(start), nil
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || (len(s) > 0 && containsHelper(s, substr)))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+	resCh := r.pingService.Ping(pingCtx, addrInfo.ID)
+	select {
+	case <-pingCtx.Done():
+		return 0, fmt.Errorf("ping timeout for peer %s", addrInfo.ID)
+	case res, ok := <-resCh:
+		if !ok {
+			return 0, fmt.Errorf("ping channel closed for peer %s", addrInfo.ID)
 		}
-	}
-	return false
-}
-
-func extractHostPort(addr string) string {
-	// Extract host:port from multiaddr like /ip4/127.0.0.1/tcp/4001
-	// Find the /tcp/ part and extract what comes after
-	for i := 0; i < len(addr)-5; i++ {
-		if i+4 < len(addr) && addr[i:i+4] == "/tcp" {
-			// Find the port number after /tcp/
-			j := i + 5
-			for j < len(addr) && (addr[j] < '0' || addr[j] > '9') {
-				j++
-			}
-			if j < len(addr) {
-				// Extract host (everything between /ip4/ or /ip6/ and /tcp/)
-				var host string
-				for k := 0; k < i; k++ {
-					if k+4 < len(addr) && addr[k:k+4] == "/ip4" {
-						// Find the IP
-						l := k + 4
-						if l < len(addr) && addr[l] == '/' {
-							l++
-						}
-						host = addr[l:i]
-						break
-					}
-				}
-				if host != "" {
-					return host + addr[i+4:j]
-				}
-			}
+		if res.Error != nil {
+			return 0, fmt.Errorf("ping error for peer %s: %w", addrInfo.ID, res.Error)
 		}
+		return res.RTT, nil
 	}
-	// Simple fallback
-	for i := len(addr) - 1; i >= 0; i-- {
-		if addr[i] == '/' {
-			return addr[:i]
-		}
-	}
-	return addr
 }
 
 type weightedPeer struct {
@@ -373,9 +338,9 @@ func (r *RelayDiscovery) weightedSelect(peers []weightedPeer, randomnessFactor f
 	return &peers[len(peers)-1]
 }
 
-func (r *RelayDiscovery) SelectRelaysForCircuit(peers []peer.AddrInfo, hopCount int, randomnessFactor float64) ([]RelayInfo, error) {
+func (r *RelayDiscovery) SelectRelaysForCircuit(ctx context.Context, peers []peer.AddrInfo, hopCount int, randomnessFactor float64) ([]RelayInfo, error) {
 	sampled := r.randomSample(peers, r.samplingSize)
-	latencies, err := r.measureLatencies(context.Background(), sampled)
+	latencies, err := r.measureLatencies(ctx, sampled)
 	if err != nil {
 		return nil, err
 	}

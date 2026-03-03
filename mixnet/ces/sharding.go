@@ -1,6 +1,7 @@
 package ces
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/klauspost/reedsolomon"
@@ -12,16 +13,26 @@ type Shard struct {
 	Data  []byte
 }
 
+// Sharder encodes data into N shards using Reed-Solomon coding.
+// totalShards is the total number of shards produced (data + parity).
+// threshold is the minimum number of shards required for reconstruction
+// (equals the number of data shards).
 type Sharder struct {
 	totalShards int
-	threshold   int
+	threshold   int // = dataShards
 	encoder     reedsolomon.Encoder
 }
 
+// NewSharder creates a new Sharder.
+// totalShards  = dataShards + parityShards
+// threshold    = dataShards (minimum shards needed to reconstruct)
 func NewSharder(totalShards, threshold int) *Sharder {
-	enc, err := reedsolomon.New(totalShards, threshold)
+	if threshold < 1 || threshold >= totalShards {
+		panic(fmt.Sprintf("invalid sharder params: totalShards=%d threshold=%d", totalShards, threshold))
+	}
+	parityShards := totalShards - threshold
+	enc, err := reedsolomon.New(threshold, parityShards)
 	if err != nil {
-		// This should not happen with valid parameters
 		panic(fmt.Sprintf("failed to create reed-solomon encoder: %v", err))
 	}
 	return &Sharder{
@@ -31,124 +42,93 @@ func NewSharder(totalShards, threshold int) *Sharder {
 	}
 }
 
-// Shard encodes data into N shards using Reed-Solomon coding
+// Shard encodes data into totalShards shards using Reed-Solomon coding.
+// A 8-byte little-endian original length prefix is prepended so Reconstruct
+// can accurately trim padding from the recovered data.
 func (s *Sharder) Shard(data []byte) ([]*Shard, error) {
-	// Calculate optimal shard size
-	// We need to ensure we have enough data to fill all shards
-	minSize := 1
-	if len(data) > 0 {
-		minSize = (len(data) + s.totalShards - 1) / s.totalShards
-	}
+	dataShards := s.threshold
 
-	// Pad data to fill all shards
-	paddedLen := minSize * s.totalShards
+	// Prepend 8-byte original data length so we can trim padding on reconstruction.
+	origLen := uint64(len(data))
+	payload := make([]byte, 8+len(data))
+	binary.LittleEndian.PutUint64(payload[:8], origLen)
+	copy(payload[8:], data)
+
+	// Calculate per-shard size; pad payload to fill all data shards evenly.
+	shardSize := (len(payload) + dataShards - 1) / dataShards
+	if shardSize == 0 {
+		shardSize = 1
+	}
+	paddedLen := shardSize * dataShards
 	padded := make([]byte, paddedLen)
-	copy(padded, data)
+	copy(padded, payload)
 
-	// Split into data shards
+	// Allocate data + parity shard slices.
 	shards := make([][]byte, s.totalShards)
-	for i := 0; i < s.totalShards; i++ {
-		start := i * minSize
-		end := start + minSize
-		if end > len(padded) {
-			end = len(padded)
-		}
-		shards[i] = make([]byte, end-start)
-		copy(shards[i], padded[start:end])
+	for i := 0; i < dataShards; i++ {
+		shards[i] = padded[i*shardSize : (i+1)*shardSize]
+	}
+	for i := dataShards; i < s.totalShards; i++ {
+		shards[i] = make([]byte, shardSize)
 	}
 
-	// Encode parity shards
-	err := s.encoder.Encode(shards)
-	if err != nil {
+	if err := s.encoder.Encode(shards); err != nil {
 		return nil, fmt.Errorf("failed to encode: %w", err)
 	}
 
-	// Wrap in Shard structs
 	result := make([]*Shard, s.totalShards)
 	for i := 0; i < s.totalShards; i++ {
-		result[i] = &Shard{
-			Index: i,
-			Data:  shards[i],
-		}
+		cp := make([]byte, len(shards[i]))
+		copy(cp, shards[i])
+		result[i] = &Shard{Index: i, Data: cp}
 	}
-
 	return result, nil
 }
 
-// Reconstruct recovers the original data from shards
-// Requires at least threshold number of shards
+// Reconstruct recovers the original data from at least threshold shards.
 func (s *Sharder) Reconstruct(shards []*Shard) ([]byte, error) {
 	if len(shards) < s.threshold {
 		return nil, fmt.Errorf("insufficient shards: have %d, need %d", len(shards), s.threshold)
 	}
 
-	// Convert to slice format for reed-solomon
+	// Place provided shards into a full-length slice (nil = missing).
 	shardData := make([][]byte, s.totalShards)
-	for i := 0; i < s.totalShards; i++ {
-		shardData[i] = nil // Missing by default
-	}
-
-	// Fill in provided shards
-	for _, shard := range shards {
-		if shard.Index >= 0 && shard.Index < s.totalShards {
-			shardData[shard.Index] = shard.Data
+	for _, sh := range shards {
+		if sh.Index >= 0 && sh.Index < s.totalShards {
+			shardData[sh.Index] = sh.Data
 		}
 	}
 
-	// Reconstruct missing shards
-	err := s.encoder.Reconstruct(shardData)
-	if err != nil {
+	if err := s.encoder.Reconstruct(shardData); err != nil {
 		return nil, fmt.Errorf("failed to reconstruct: %w", err)
 	}
 
-	// Combine data shards (first threshold shards contain original data)
-	// Find the actual data size from first available shard
-	var dataSize int
-	for i := 0; i < s.threshold; i++ {
-		if shardData[i] != nil && len(shardData[i]) > 0 {
-			dataSize = len(shardData[i])
-			break
-		}
+	// Join only the data shards (first threshold shards).
+	dataShards := s.threshold
+	shardSize := len(shardData[0])
+	combined := make([]byte, 0, dataShards*shardSize)
+	for i := 0; i < dataShards; i++ {
+		combined = append(combined, shardData[i]...)
 	}
 
-	if dataSize == 0 {
-		return nil, fmt.Errorf("no valid data shards found")
+	// Extract original length from the 8-byte prefix.
+	if len(combined) < 8 {
+		return nil, fmt.Errorf("reconstructed data too short to contain length prefix")
 	}
-
-	// Combine only the data shards (not parity)
-	result := make([]byte, 0, dataSize*s.threshold)
-	for i := 0; i < s.threshold; i++ {
-		if shardData[i] != nil {
-			result = append(result, shardData[i]...)
-		}
+	origLen := binary.LittleEndian.Uint64(combined[:8])
+	payload := combined[8:]
+	if uint64(len(payload)) < origLen {
+		return nil, fmt.Errorf("reconstructed payload shorter than expected: got %d, want %d", len(payload), origLen)
 	}
-
-	// Trim to original size if we have padding
-	if len(result) > len(shards[0].Data) {
-		// The original data was smaller than the shard size
-		// We need to return exactly what was originally encoded
-		// Calculate original data size
-		originalSize := 0
-		for _, shard := range shards {
-			if shard != nil && shard.Data != nil {
-				originalSize = len(shard.Data) * s.threshold
-				break
-			}
-		}
-		if originalSize > 0 && len(result) > originalSize {
-			result = result[:originalSize]
-		}
-	}
-
-	return result, nil
+	return payload[:origLen], nil
 }
 
-// Threshold returns the minimum number of shards needed for reconstruction
+// Threshold returns the minimum number of shards needed for reconstruction.
 func (s *Sharder) Threshold() int {
 	return s.threshold
 }
 
-// TotalShards returns the total number of shards
+// TotalShards returns the total number of shards produced by Shard.
 func (s *Sharder) TotalShards() int {
 	return s.totalShards
 }

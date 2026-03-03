@@ -24,7 +24,11 @@ type CESPipeline struct {
 func NewPipeline(cfg *Config) *CESPipeline {
 	threshold := cfg.ErasureThreshold
 	if threshold == 0 {
-		threshold = cfg.CircuitCount - 1
+		// ceil(N * 0.6) per design document "Data Models"
+		threshold = (cfg.CircuitCount*6 + 9) / 10
+		if threshold < 1 {
+			threshold = 1
+		}
 	}
 
 	return &CESPipeline{
@@ -79,7 +83,11 @@ func (p *CESPipeline) ProcessWithKeys(data []byte, destinations []string) ([]*Sh
 func (p *CESPipeline) Reconstruct(shards []*Shard, keys []*EncryptionKey) ([]byte, error) {
 	threshold := p.cfg.ErasureThreshold
 	if threshold == 0 {
-		threshold = p.cfg.CircuitCount - 1
+		// ceil(N * 0.6) per design document "Data Models"
+		threshold = (p.cfg.CircuitCount*6 + 9) / 10
+		if threshold < 1 {
+			threshold = 1
+		}
 	}
 
 	if len(shards) < threshold {
