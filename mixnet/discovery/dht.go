@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	ping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
@@ -237,7 +238,7 @@ func (r *RelayDiscovery) measureRTTToPeer(ctx context.Context, addrInfo peer.Add
 	}
 
 	// Ensure we are connected before pinging.
-	if r.host.Network().Connectedness(addrInfo.ID) != 3 { // 3 = Connected
+	if r.host.Network().Connectedness(addrInfo.ID) != network.Connected {
 		connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		if err := r.host.Connect(connectCtx, addrInfo); err != nil {

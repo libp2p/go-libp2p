@@ -352,15 +352,12 @@ func (m *CircuitManager) RebuildCircuit(failedID string) (*Circuit, error) {
 
 	var available []peer.ID
 	for _, id := range m.relayPool {
-		// Skip relays in the failed circuit.
+		// Skip relays that belong to the failed circuit.
 		if failedPeers[id] {
 			continue
 		}
 		inUse := false
 		for _, c := range m.circuits {
-			if c.ID == failedID {
-				continue
-			}
 			for _, p := range c.Peers {
 				if p == id {
 					inUse = true

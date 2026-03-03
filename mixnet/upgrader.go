@@ -321,9 +321,9 @@ func (m *Mixnet) Send(ctx context.Context, dest peer.ID, data []byte) error {
 			fullData := append(header, shardData...)
 
 			// Apply per-stream write deadline (Req 8.2).
-			sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			_ = sendCtx
+			if stream, ok := m.circuitMgr.GetStream(circuitID); ok && stream != nil {
+				stream.Stream().SetDeadline(time.Now().Add(30 * time.Second))
+			}
 
 			if err := m.circuitMgr.SendData(circuitID, fullData); err != nil {
 				errCh <- fmt.Errorf("failed to send on circuit %s: %w", circuitID, err)
