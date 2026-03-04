@@ -9,27 +9,29 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// LayeredEncrypter handles layered onion encryption
+// LayeredEncrypter implements multi-layer onion encryption for mixnet traffic.
 type LayeredEncrypter struct {
 	hopCount int
 }
 
-// EncryptionKey represents an ephemeral key for one encryption layer
+// EncryptionKey holds the key material and destination information for a single encryption layer.
 type EncryptionKey struct {
+	// Key is the raw symmetric key material.
 	Key        []byte
+	// Destination is the identifier of the peer that should decrypt this layer.
 	Destination string
 }
 
-// NewLayeredEncrypter creates a new layered encrypter
+// NewLayeredEncrypter creates a new LayeredEncrypter with the specified number of hops.
 func NewLayeredEncrypter(hopCount int) *LayeredEncrypter {
 	return &LayeredEncrypter{
 		hopCount: hopCount,
 	}
 }
 
-// Encrypt encrypts data with layered encryption (onion routing)
-// Each layer wraps the data with destination info and encryption
-// Destinations should be ordered from entry to exit (first hop = entry)
+// Encrypt wraps the data in multiple layers of encryption, one for each hop in the mixnet circuit.
+// Each layer contains the destination of the next hop and is encrypted with an ephemeral key.
+// Destinations should be ordered from entry relay to exit relay.
 func (e *LayeredEncrypter) Encrypt(plaintext []byte, destinations []string) ([]byte, []*EncryptionKey, error) {
 	if len(destinations) != e.hopCount {
 		return nil, nil, fmt.Errorf("expected %d destinations, got %d", e.hopCount, len(destinations))
@@ -86,8 +88,8 @@ func (e *LayeredEncrypter) Encrypt(plaintext []byte, destinations []string) ([]b
 	return currentData, keys, nil
 }
 
-// Decrypt decrypts layered encrypted data
-// Keys should be provided in reverse order (outermost to innermost)
+// Decrypt removes one or more layers of onion encryption using the provided keys.
+// Keys should be provided in the order of the hops encountered (outermost to innermost).
 func (e *LayeredEncrypter) Decrypt(ciphertext []byte, keys []*EncryptionKey) ([]byte, error) {
 	if len(keys) != e.hopCount {
 		return nil, fmt.Errorf("expected %d keys, got %d", e.hopCount, len(keys))
@@ -145,23 +147,17 @@ func (e *LayeredEncrypter) Decrypt(ciphertext []byte, keys []*EncryptionKey) ([]
 	return currentData, nil
 }
 
-// SecureErase securely wipes all key material from memory (Req 16.3).
-// Uses explicit byte-level zeroing that cannot be optimized away by the compiler
-// via the use of the runtime.KeepAlive barrier (via unsafe indirect write).
+// SecureEraseBytes overwrites the content of a byte slice with zeroes to remove sensitive data from memory.
 func SecureEraseBytes(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
 }
 
-// SecureErase implements the Eraser interface (Req 16.3).
-// Callers are responsible for passing the key slices they wish to erase;
-// this method is intentionally a no-op on the encrypter itself because
-// keys are generated and held by the caller (not stored inside
-// LayeredEncrypter).  Use SecureEraseBytes on the EncryptionKey.Key slices.
+// SecureErase is a no-op on the LayeredEncrypter itself as it doesn't store keys.
 func (e *LayeredEncrypter) SecureErase() {}
 
-// EraseKeys zeroes out all key material in the provided keys slice (Req 16.3).
+// EraseKeys overwrites all key material in a slice of EncryptionKey instances.
 func EraseKeys(keys []*EncryptionKey) {
 	for _, k := range keys {
 		if k != nil {
@@ -170,12 +166,12 @@ func EraseKeys(keys []*EncryptionKey) {
 	}
 }
 
-// HopCount returns the number of encryption layers
+// HopCount returns the number of encryption layers configured for this encrypter.
 func (e *LayeredEncrypter) HopCount() int {
 	return e.hopCount
 }
 
-// Eraser interface for secure key erasure
+// Eraser is an interface for types that can securely erase their sensitive contents.
 type Eraser interface {
 	SecureErase()
 }

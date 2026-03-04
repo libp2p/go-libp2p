@@ -7,25 +7,24 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-// Shard represents a single erasure-coded shard
+// Shard represents a single piece of data resulting from the sharding process.
 type Shard struct {
+	// Index is the unique position of this shard in the original set.
 	Index int
+	// Data is the raw encrypted payload of the shard.
 	Data  []byte
 }
 
-// Sharder encodes data into N shards using Reed-Solomon coding.
-// totalShards is the total number of shards produced (data + parity).
-// threshold is the minimum number of shards required for reconstruction
-// (equals the number of data shards).
+// Sharder implements Reed-Solomon erasure coding to provide data redundancy across multiple paths.
 type Sharder struct {
 	totalShards int
 	threshold   int // = dataShards
 	encoder     reedsolomon.Encoder
 }
 
-// NewSharder creates a new Sharder.
-// totalShards  = dataShards + parityShards
-// threshold    = dataShards (minimum shards needed to reconstruct)
+// NewSharder creates a new Sharder instance.
+// totalShards is the total number of shards produced (data + parity).
+// threshold is the minimum number of shards required for reconstruction.
 func NewSharder(totalShards, threshold int) *Sharder {
 	if threshold < 1 || threshold >= totalShards {
 		panic(fmt.Sprintf("invalid sharder params: totalShards=%d threshold=%d", totalShards, threshold))
@@ -42,9 +41,7 @@ func NewSharder(totalShards, threshold int) *Sharder {
 	}
 }
 
-// Shard encodes data into totalShards shards using Reed-Solomon coding.
-// A 8-byte little-endian original length prefix is prepended so Reconstruct
-// can accurately trim padding from the recovered data.
+// Shard splits the data into totalShards pieces, including parity shards for redundancy.
 func (s *Sharder) Shard(data []byte) ([]*Shard, error) {
 	dataShards := s.threshold
 
@@ -85,7 +82,7 @@ func (s *Sharder) Shard(data []byte) ([]*Shard, error) {
 	return result, nil
 }
 
-// Reconstruct recovers the original data from at least threshold shards.
+// Reconstruct uses Reed-Solomon decoding to recover the original data from a partial set of shards.
 func (s *Sharder) Reconstruct(shards []*Shard) ([]byte, error) {
 	if len(shards) < s.threshold {
 		return nil, fmt.Errorf("insufficient shards: have %d, need %d", len(shards), s.threshold)
@@ -123,12 +120,12 @@ func (s *Sharder) Reconstruct(shards []*Shard) ([]byte, error) {
 	return payload[:origLen], nil
 }
 
-// Threshold returns the minimum number of shards needed for reconstruction.
+// Threshold returns the minimum number of shards required to reconstruct the original data.
 func (s *Sharder) Threshold() int {
 	return s.threshold
 }
 
-// TotalShards returns the total number of shards produced by Shard.
+// TotalShards returns the total number of shards (data + parity) produced by the sharder.
 func (s *Sharder) TotalShards() int {
 	return s.totalShards
 }
