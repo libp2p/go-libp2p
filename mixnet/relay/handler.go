@@ -137,10 +137,16 @@ func (h *Handler) HandleStream(ctx context.Context, stream network.MuxedStream) 
 func (h *Handler) forwardToPeer(ctx context.Context, nextPeer peer.ID, data []byte) error {
 	h.mu.RLock()
 	host := h.host
+	maxBandwidth := h.maxBandwidth
 	h.mu.RUnlock()
 
 	if host == nil {
 		return fmt.Errorf("no host configured")
+	}
+
+	// Check bandwidth limit (Req 20.4) - apply backpressure
+	if maxBandwidth > 0 && int64(len(data)) > maxBandwidth {
+		return fmt.Errorf("bandwidth limit exceeded: %d bytes > %d limit", len(data), maxBandwidth)
 	}
 
 	// Check if we're already connected
@@ -165,6 +171,17 @@ func (h *Handler) forwardToPeer(ctx context.Context, nextPeer peer.ID, data []by
 
 	// Forward the data
 	_, err = stream.Write(data)
+
+	// Update bytes forwarded (for metrics)
+	if err == nil {
+		h.mu.Lock()
+		for _, relay := range h.activeRelays {
+			relay.BytesForwarded += int64(len(data))
+			relay.LastActivity = time.Now()
+		}
+		h.mu.Unlock()
+	}
+
 	return err
 }
 
