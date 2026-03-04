@@ -32,12 +32,12 @@ type CircuitConfig struct {
 
 // StreamHandler handles sending and receiving data on a circuit
 type StreamHandler struct {
-	stream network.MuxedStream
+	stream network.Stream
 	peerID peer.ID
 }
 
 // Stream returns the underlying network stream
-func (h *StreamHandler) Stream() network.MuxedStream {
+func (h *StreamHandler) Stream() network.Stream {
 	return h.stream
 }
 
@@ -212,9 +212,16 @@ func (m *CircuitManager) CloseCircuit(circuitID string) error {
 }
 
 func (m *CircuitManager) filterRelays(relays []RelayInfo, exclude peer.ID) []RelayInfo {
+	m.mu.RLock()
+	selfID := peer.ID("")
+	if m.host != nil {
+		selfID = m.host.ID()
+	}
+	m.mu.RUnlock()
+
 	var result []RelayInfo
 	for _, r := range relays {
-		if r.PeerID != exclude {
+		if r.PeerID != exclude && r.PeerID != selfID {
 			result = append(result, r)
 		}
 	}
@@ -320,17 +327,35 @@ func (m *CircuitManager) RecoveryCapacity() int {
 	return -1
 }
 
-// RebuildCircuit rebuilds a failed circuit using available relays
+// RebuildCircuit rebuilds a failed circuit using available relays,
+// excluding the peers that are in the failed circuit to avoid reuse (Req 10.3).
 func (m *CircuitManager) RebuildCircuit(failedID string) (*Circuit, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if !m.DetectFailure(failedID) {
+	failedCircuit, exists := m.circuits[failedID]
+	if !exists {
+		return nil, fmt.Errorf("circuit not found: %s", failedID)
+	}
+
+	state := failedCircuit.GetState()
+	if state != StateFailed && state != StateClosed {
 		return nil, fmt.Errorf("circuit %s is not failed", failedID)
+	}
+
+	// Build a set of peer IDs that belong to the failed circuit so they can be
+	// excluded from the replacement.
+	failedPeers := make(map[peer.ID]bool)
+	for _, p := range failedCircuit.Peers {
+		failedPeers[p] = true
 	}
 
 	var available []peer.ID
 	for _, id := range m.relayPool {
+		// Skip relays that belong to the failed circuit.
+		if failedPeers[id] {
+			continue
+		}
 		inUse := false
 		for _, c := range m.circuits {
 			for _, p := range c.Peers {
@@ -413,6 +438,19 @@ func (m *CircuitManager) MarkCircuitFailed(circuitID string) {
 
 	if circuit, ok := m.circuits[circuitID]; ok {
 		circuit.MarkFailed()
+	}
+}
+
+// UpdateRelayPool replaces the relay pool with a fresh set of relays (Req 10.3).
+// This ensures that circuit recovery uses newly discovered relays rather than
+// a potentially stale pool that may contain failed nodes.
+func (m *CircuitManager) UpdateRelayPool(relays []RelayInfo) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.relayPool = make([]peer.ID, len(relays))
+	for i, r := range relays {
+		m.relayPool[i] = r.PeerID
 	}
 }
 

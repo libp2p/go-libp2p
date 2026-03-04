@@ -11,7 +11,8 @@ func TestCompress_Gzip(t *testing.T) {
 		t.Fatal("expected non-nil compressor")
 	}
 
-	data := []byte("Hello, this is test data for compression! This is a longer string to test compression effectiveness.")
+	// Use repetitive data that gzip will definitely compress (even with the 1-byte algo header).
+	data := bytes.Repeat([]byte("Hello, this is test data for compression! "), 10)
 	compressed, err := compressor.Compress(data)
 
 	if err != nil {
@@ -28,7 +29,8 @@ func TestCompress_Snappy(t *testing.T) {
 		t.Fatal("expected non-nil compressor")
 	}
 
-	data := []byte("Hello, this is test data for compression! This is a longer string to test compression effectiveness.")
+	// Use repetitive data that snappy will definitely compress.
+	data := bytes.Repeat([]byte("Hello, this is test data for compression! "), 5)
 	compressed, err := compressor.Compress(data)
 
 	if err != nil {
@@ -133,7 +135,8 @@ func TestCompress_LargeData(t *testing.T) {
 }
 
 func TestCompress_SnappyVsGzip(t *testing.T) {
-	data := []byte("This is sample data for comparison between snappy and gzip compression algorithms.")
+	// Use repetitive data that both algorithms can compress meaningfully.
+	data := bytes.Repeat([]byte("This is sample data for comparison between snappy and gzip compression algorithms. "), 5)
 
 	gzipComp := NewCompressor("gzip")
 	snappyComp := NewCompressor("snappy")

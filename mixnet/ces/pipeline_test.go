@@ -10,7 +10,7 @@ func TestPipeline_FullRoundtrip(t *testing.T) {
 		HopCount:         3,
 		CircuitCount:     5,
 		Compression:      "gzip",
-		ErasureThreshold: 0, // Will default to CircuitCount - 1
+		ErasureThreshold: 0, // Will default to ceil(5*0.6)=3
 	}
 
 	pipeline := NewPipeline(cfg)
@@ -25,22 +25,16 @@ func TestPipeline_FullRoundtrip(t *testing.T) {
 		"/ip4/192.168.1.3/tcp/4003/p2p/QmRelay3",
 	}
 
-	shards, err := pipeline.Process(originalData, destinations)
+	shards, keys, err := pipeline.ProcessWithKeys(originalData, destinations)
 	if err != nil {
-		t.Fatalf("Process() error = %v", err)
+		t.Fatalf("ProcessWithKeys() error = %v", err)
 	}
 
 	if len(shards) != 5 {
 		t.Errorf("expected 5 shards, got %d", len(shards))
 	}
 
-	// Generate matching keys for decryption
-	keys, err := generateKeysForDestinations(cfg.HopCount, destinations)
-	if err != nil {
-		t.Fatalf("Failed to generate keys: %v", err)
-	}
-
-	// Reconstruct from 3 of 5 shards (threshold)
+	// Reconstruct from 3 of 5 shards (threshold = ceil(5*0.6) = 3)
 	reconstructed, err := pipeline.Reconstruct(shards[:3], keys)
 	if err != nil {
 		t.Fatalf("Reconstruct() error = %v", err)
@@ -68,12 +62,12 @@ func TestPipeline_WithSnappy(t *testing.T) {
 		"/ip4/10.0.0.2/tcp/4002",
 	}
 
-	shards, err := pipeline.Process(originalData, destinations)
+	shards, keys, err := pipeline.ProcessWithKeys(originalData, destinations)
 	if err != nil {
-		t.Fatalf("Process() error = %v", err)
+		t.Fatalf("ProcessWithKeys() error = %v", err)
 	}
 
-	keys, _ := generateKeysForDestinations(2, destinations)
+	// threshold = ceil(3*0.6) = 2
 	reconstructed, err := pipeline.Reconstruct(shards[:2], keys)
 	if err != nil {
 		t.Fatalf("Reconstruct() error = %v", err)
@@ -93,12 +87,14 @@ func TestPipeline_AllShardsRecovery(t *testing.T) {
 	}
 
 	pipeline := NewPipeline(cfg)
-	originalData := []byte("Test with all shards recovery")
+	originalData := []byte("Test with all shards recovery - long enough for gzip to compress well")
 
 	destinations := []string{"/ip4/1.1.1.1/tcp/1", "/ip4/2.2.2.2/tcp/2"}
 
-	shards, _ := pipeline.Process(originalData, destinations)
-	keys, _ := generateKeysForDestinations(2, destinations)
+	shards, keys, err := pipeline.ProcessWithKeys(originalData, destinations)
+	if err != nil {
+		t.Fatalf("ProcessWithKeys() error = %v", err)
+	}
 
 	// Use ALL shards for reconstruction
 	reconstructed, err := pipeline.Reconstruct(shards, keys)
@@ -129,13 +125,13 @@ func TestPipeline_LargeData(t *testing.T) {
 		"/ip4/192.168.1.3/tcp/4003",
 	}
 
-	shards, err := pipeline.Process(originalData, destinations)
+	shards, keys, err := pipeline.ProcessWithKeys(originalData, destinations)
 	if err != nil {
-		t.Fatalf("Process() error = %v", err)
+		t.Fatalf("ProcessWithKeys() error = %v", err)
 	}
 
-	keys, _ := generateKeysForDestinations(3, destinations)
-	reconstructed, err := pipeline.Reconstruct(shards[:3], keys) // threshold = 3
+	// threshold = ceil(5*0.6) = 3
+	reconstructed, err := pipeline.Reconstruct(shards[:3], keys)
 	if err != nil {
 		t.Fatalf("Reconstruct() error = %v", err)
 	}
@@ -208,10 +204,5 @@ func TestPipeline_MismatchedDestinations(t *testing.T) {
 	}
 }
 
-// Helper function to generate encryption keys for destinations
-func generateKeysForDestinations(hopCount int, destinations []string) ([]*EncryptionKey, error) {
-	encrypter := NewLayeredEncrypter(hopCount)
-	dummyData := []byte("key-generation-dummy")
-	_, keys, err := encrypter.Encrypt(dummyData, destinations)
-	return keys, err
-}
+
+
