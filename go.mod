@@ -11,6 +11,7 @@ require (
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/flynn/noise v1.1.0
+	github.com/golang/snappy v1.0.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/golang-lru/arc/v2 v2.0.7
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -19,6 +20,7 @@ require (
 	github.com/ipfs/go-datastore v0.8.2
 	github.com/jackpal/go-nat-pmp v1.0.2
 	github.com/jbenet/go-temp-err-catcher v0.1.0
+	github.com/klauspost/reedsolomon v1.13.2
 	github.com/koron/go-ssdp v0.0.6
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-flow-metrics v0.2.0
@@ -71,7 +73,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/miekg/dns v1.1.66 // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect

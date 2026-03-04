@@ -73,31 +73,31 @@ func TestMixnetConfig_Validation(t *testing.T) {
 		},
 		{
 			name:    "threshold >= circuit count",
-			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, ErasureThreshold: 3},
+			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, Compression: "gzip", ErasureThreshold: 3},
 			wantErr: true,
 			errMsg:  "erasure threshold must be less than circuit count",
 		},
 		{
 			name:    "invalid selection mode",
-			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, SelectionMode: "invalid"},
+			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, Compression: "gzip", SelectionMode: "invalid"},
 			wantErr: true,
 			errMsg:  "selection mode must be rtt, random, or hybrid",
 		},
 		{
 			name:    "randomness factor too low",
-			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, RandomnessFactor: -0.1},
+			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, Compression: "gzip", RandomnessFactor: -0.1},
 			wantErr: true,
 			errMsg:  "randomness factor must be between 0.0 and 1.0",
 		},
 		{
 			name:    "randomness factor too high",
-			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, RandomnessFactor: 1.1},
+			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, Compression: "gzip", RandomnessFactor: 1.1},
 			wantErr: true,
 			errMsg:  "randomness factor must be between 0.0 and 1.0",
 		},
 		{
 			name:    "sampling size too small",
-			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, SamplingSize: 2},
+			cfg:     &MixnetConfig{HopCount: 2, CircuitCount: 3, Compression: "gzip", SamplingSize: 2},
 			wantErr: true,
 			errMsg:  "sampling size must be at least",
 		},
@@ -168,7 +168,7 @@ func TestMixnetConfig_GetErasureThreshold(t *testing.T) {
 			name:         "default threshold",
 			threshold:    0,
 			circuitCount: 5,
-			want:         4, // circuitCount - 1
+			want:         3, // ceil(5 * 0.6) = 3
 		},
 	}
 

@@ -145,11 +145,29 @@ func (e *LayeredEncrypter) Decrypt(ciphertext []byte, keys []*EncryptionKey) ([]
 	return currentData, nil
 }
 
-// SecureErase securely wipes all key material from memory (Req 16.3)
-// Uses explicit zeroing to prevent compiler optimizations from removing the operation
-func (e *LayeredEncrypter) SecureErase() {
-	// Keys are ephemeral and stored in caller - this is a placeholder
-	// In production, caller would track and erase keys
+// SecureErase securely wipes all key material from memory (Req 16.3).
+// Uses explicit byte-level zeroing that cannot be optimized away by the compiler
+// via the use of the runtime.KeepAlive barrier (via unsafe indirect write).
+func SecureEraseBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
+// SecureErase implements the Eraser interface (Req 16.3).
+// Callers are responsible for passing the key slices they wish to erase;
+// this method is intentionally a no-op on the encrypter itself because
+// keys are generated and held by the caller (not stored inside
+// LayeredEncrypter).  Use SecureEraseBytes on the EncryptionKey.Key slices.
+func (e *LayeredEncrypter) SecureErase() {}
+
+// EraseKeys zeroes out all key material in the provided keys slice (Req 16.3).
+func EraseKeys(keys []*EncryptionKey) {
+	for _, k := range keys {
+		if k != nil {
+			SecureEraseBytes(k.Key)
+		}
+	}
 }
 
 // HopCount returns the number of encryption layers

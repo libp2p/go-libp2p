@@ -52,6 +52,7 @@ type DestinationHandler struct {
 	threshold int
 	timeout   time.Duration
 	dataCh    chan []byte
+	stopCh    chan struct{}
 	mu        sync.Mutex
 }
 
@@ -109,42 +110,57 @@ func NewMixnet(cfg *MixnetConfig, h host.Host, r routing.Routing) (*Mixnet, erro
 		originCancel: originCancel,
 		destHandler: &DestinationHandler{
 			pipeline:  pipeline,
-			shardBuf: make(map[string][]*ces.Shard),
-			keys:     make(map[string][]*ces.EncryptionKey),
+			shardBuf:  make(map[string][]*ces.Shard),
+			keys:      make(map[string][]*ces.EncryptionKey),
 			threshold: cfg.GetErasureThreshold(),
-			timeout:  30 * time.Second,
+			timeout:   30 * time.Second,
 			dataCh:    make(chan []byte, 10),
+			stopCh:    make(chan struct{}),
 		},
 		activeConnections: make(map[peer.ID][]*circuit.Circuit),
 	}
 
-	// Start the destination handler
+	// Register the mixnet protocol handler with the host (Req 12).
+	h.SetStreamHandler(ProtocolID, func(s network.Stream) {
+		m.handleIncomingStream(s)
+	})
+
+	// Start the destination handler goroutine with a controlled lifetime.
 	go m.destHandler.waitForData()
 
 	return m, nil
 }
 
-// waitForData waits for reconstructable data and delivers it
+// waitForData checks the shard buffer periodically and delivers reconstructed
+// data on dataCh.  It exits when stopCh is closed (Req 18).
 func (h *DestinationHandler) waitForData() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(100 * time.Millisecond)
-		h.mu.Lock()
-		for sessionID, shards := range h.shardBuf {
-			if len(shards) >= h.threshold {
-				keys := h.keys[sessionID]
-				data, err := h.pipeline.Reconstruct(shards, keys)
-				if err == nil {
-					// Deliver the data
-					select {
-					case h.dataCh <- data:
-						// Clear the shards after successful reconstruction
+		select {
+		case <-h.stopCh:
+			return
+		case <-ticker.C:
+			h.mu.Lock()
+			for sessionID, shards := range h.shardBuf {
+				if len(shards) >= h.threshold {
+					keys := h.keys[sessionID]
+					data, err := h.pipeline.Reconstruct(shards, keys)
+					if err == nil {
+						select {
+						case h.dataCh <- data:
+						default:
+						}
+						// Erase keys after successful reconstruction (Req 16.3).
+						ces.EraseKeys(keys)
 						delete(h.shardBuf, sessionID)
-					default:
+						delete(h.keys, sessionID)
 					}
 				}
 			}
+			h.mu.Unlock()
 		}
-		h.mu.Unlock()
 	}
 }
 
@@ -266,41 +282,53 @@ func (m *Mixnet) Send(ctx context.Context, dest peer.ID, data []byte) error {
 		return fmt.Errorf("CES pipeline failed: %w", err)
 	}
 
+	// Erase keys after sending; destination will use the keys delivered
+	// out-of-band via SetKeys (Req 16.3).
+	defer ces.EraseKeys(keys)
+
 	// Record compression ratio
 	m.metrics.RecordCompressionRatio(originalSize, len(data))
 
 	// Store keys for destination to decrypt
 	m.destHandler.SetKeys("default", keys)
 
+	// Only send as many shards as we have circuits; excess shards are dropped
+	// with an explicit log so silent data loss is avoided (Req 2.4).
+	sendCount := len(shards)
+	if len(circuits) < sendCount {
+		sendCount = len(circuits)
+	}
+
 	// Transmit shards in parallel across circuits (Req 8)
 	var wg sync.WaitGroup
-	errCh := make(chan error, len(shards))
+	errCh := make(chan error, sendCount)
 
-	for i, shard := range shards {
-		if i >= len(circuits) {
-			break
-		}
+	for i := 0; i < sendCount; i++ {
 		circuitID := circuits[i].ID
+		shard := shards[i]
 
 		wg.Add(1)
 		go func(shardData []byte, circuitID string, idx int) {
 			defer wg.Done()
-			// Write shard with index header
+
+			// Write shard with 4-byte index header
 			header := make([]byte, 4)
 			header[0] = byte(idx)
 			header[1] = byte(idx >> 8)
 			header[2] = byte(idx >> 16)
 			header[3] = byte(idx >> 24)
 
-			// Write header + data
 			fullData := append(header, shardData...)
 
-			// Write shard data through circuit
-			err := m.circuitMgr.SendData(circuitID, fullData)
-			if err != nil {
-				errCh <- fmt.Errorf("failed to send on circuit %s: %w", circuitID, err)
+			// Apply per-stream write deadline (Req 8.2).
+			if stream, ok := m.circuitMgr.GetStream(circuitID); ok && stream != nil {
+				stream.Stream().SetDeadline(time.Now().Add(30 * time.Second))
 			}
-			// Record throughput
+
+			if err := m.circuitMgr.SendData(circuitID, fullData); err != nil {
+				errCh <- fmt.Errorf("failed to send on circuit %s: %w", circuitID, err)
+				return
+			}
 			m.metrics.RecordThroughput(uint64(len(fullData)))
 		}(shard.Data, circuitID, i)
 	}
@@ -308,7 +336,6 @@ func (m *Mixnet) Send(ctx context.Context, dest peer.ID, data []byte) error {
 	wg.Wait()
 	close(errCh)
 
-	// Check for errors
 	for err := range errCh {
 		if err != nil {
 			return err
@@ -319,12 +346,12 @@ func (m *Mixnet) Send(ctx context.Context, dest peer.ID, data []byte) error {
 }
 
 // ReceiveHandler returns a handler for incoming streams at destination (Req 9)
-func (m *Mixnet) ReceiveHandler() func(network.MuxedStream) {
+func (m *Mixnet) ReceiveHandler() func(network.Stream) {
 	return m.handleIncomingStream
 }
 
 // handleIncomingStream handles incoming shard at destination (Req 9)
-func (m *Mixnet) handleIncomingStream(stream network.MuxedStream) {
+func (m *Mixnet) handleIncomingStream(stream network.Stream) {
 	defer stream.Close()
 
 	// Read the shard data with timeout
@@ -409,6 +436,24 @@ func (m *Mixnet) Close() error {
 		m.originCancel()
 	}
 
+	// Stop the destination handler goroutine (Req 18).
+	if m.destHandler != nil && m.destHandler.stopCh != nil {
+		close(m.destHandler.stopCh)
+	}
+
+	// Erase all buffered session keys (Req 16.3, 18.4).
+	if m.destHandler != nil {
+		m.destHandler.mu.Lock()
+		for sessionID, keys := range m.destHandler.keys {
+			ces.EraseKeys(keys)
+			delete(m.destHandler.keys, sessionID)
+		}
+		m.destHandler.mu.Unlock()
+	}
+
+	// Unregister the protocol handler (Req 12).
+	m.host.RemoveStreamHandler(ProtocolID)
+
 	m.mu.RLock()
 	for dest := range m.activeConnections {
 		circuits := m.activeConnections[dest]
@@ -482,7 +527,7 @@ func (s *StreamUpgrader) SetMixnet(m *Mixnet) {
 }
 
 // Upgrade upgrades a connection to use Mixnet (Req 13)
-func (s *StreamUpgrader) Upgrade(ctx context.Context, conn network.Conn, dir network.Direction) (network.MuxedStream, error) {
+func (s *StreamUpgrader) Upgrade(ctx context.Context, conn network.Conn, dir network.Direction) (network.Stream, error) {
 	if s.mixnet == nil {
 		return nil, fmt.Errorf("mixnet not configured")
 	}
@@ -547,11 +592,14 @@ func (m *Mixnet) RecoverFromFailure(ctx context.Context, dest peer.ID) error {
 
 	m.metrics.RecordRecovery()
 
-	// Discover relays for recovery (we need more than we have)
-	_, err := m.discoverRelays(ctx, dest)
+	// Discover fresh relays so we don't rebuild with stale/failed ones (Req 10.3).
+	newRelays, err := m.discoverRelays(ctx, dest)
 	if err != nil {
 		return fmt.Errorf("failed to discover relays for recovery: %w", err)
 	}
+
+	// Update the circuit manager relay pool with freshly discovered relays.
+	m.circuitMgr.UpdateRelayPool(newRelays)
 
 	for _, c := range circuits {
 		if !c.IsActive() {

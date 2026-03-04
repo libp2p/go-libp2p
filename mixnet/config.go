@@ -77,7 +77,11 @@ func (c *MixnetConfig) Validate() error {
 	// Erasure threshold validation (Req 15.3)
 	threshold := c.ErasureThreshold
 	if threshold == 0 {
-		threshold = c.CircuitCount - 1
+		// ceil(N * 0.6)
+		threshold = (c.CircuitCount*6 + 9) / 10
+		if threshold < 1 {
+			threshold = 1
+		}
 	}
 	if threshold >= c.CircuitCount {
 		return fmt.Errorf("erasure threshold must be less than circuit count, got %d >= %d", threshold, c.CircuitCount)
@@ -136,12 +140,19 @@ func (c *MixnetConfig) SetRandomnessFactor(f float64) {
 	c.RandomnessFactor = f
 }
 
-// GetErasureThreshold returns the effective threshold
+// GetErasureThreshold returns the effective threshold.
+// When ErasureThreshold is zero the default is ceil(CircuitCount * 0.6) per the
+// design document "Data Models" section (60% reconstruction threshold).
 func (c *MixnetConfig) GetErasureThreshold() int {
-	if c.ErasureThreshold == 0 {
-		return c.CircuitCount - 1
+	if c.ErasureThreshold != 0 {
+		return c.ErasureThreshold
 	}
-	return c.ErasureThreshold
+	// ceil(N * 0.6)
+	threshold := (c.CircuitCount*6 + 9) / 10
+	if threshold < 1 {
+		threshold = 1
+	}
+	return threshold
 }
 
 // GetSamplingSize returns the effective sampling size

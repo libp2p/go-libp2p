@@ -2,6 +2,8 @@ package circuit
 
 import (
 	"testing"
+
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 func TestCircuit_NewCircuit(t *testing.T) {
@@ -140,8 +142,10 @@ func TestCircuitManager_FilterDestination(t *testing.T) {
 	}
 	mgr := NewCircuitManager(cfg)
 
+	// Need HopCount*CircuitCount+1 = 5 relays so that filtering the destination
+	// still leaves enough relays (4) for the 2-hop × 2-circuit build.
 	relays := []RelayInfo{
-		{PeerID: "r1"}, {PeerID: "r2"}, {PeerID: "r3"}, {PeerID: "r4"},
+		{PeerID: "r1"}, {PeerID: "r2"}, {PeerID: "r3"}, {PeerID: "r4"}, {PeerID: "r5"},
 	}
 
 	// Build with r3 as destination (should be filtered out)
@@ -256,15 +260,19 @@ func TestCircuitManager_RecoveryCapacity(t *testing.T) {
 func TestCircuitManager_RebuildCircuit(t *testing.T) {
 	cfg := &CircuitConfig{
 		HopCount:     1,
-		CircuitCount: 3, // need 3 relays
+		CircuitCount: 3, // need 3 relays for circuits + at least 1 spare for rebuild
 	}
 	mgr := NewCircuitManager(cfg)
 
+	// 4 relays: 3 used in circuits, 1 spare for rebuild
 	relays := []RelayInfo{
-		{PeerID: "r1"}, {PeerID: "r2"}, {PeerID: "r3"},
+		{PeerID: "r1"}, {PeerID: "r2"}, {PeerID: "r3"}, {PeerID: "r4"},
 	}
 
-	circuits, _ := mgr.BuildCircuits(nil, "dest", relays)
+	circuits, err := mgr.BuildCircuits(nil, "dest", relays)
+	if err != nil {
+		t.Fatalf("BuildCircuits() error = %v", err)
+	}
 	for _, c := range circuits {
 		mgr.ActivateCircuit(c.ID)
 	}
@@ -272,7 +280,7 @@ func TestCircuitManager_RebuildCircuit(t *testing.T) {
 	// Fail first circuit
 	mgr.MarkCircuitFailed(circuits[0].ID)
 
-	// Rebuild should work (we have 2 more relays)
+	// Rebuild should use the spare relay (r4, not used by any active circuit)
 	rebuilt, err := mgr.RebuildCircuit(circuits[0].ID)
 	if err != nil {
 		t.Fatalf("RebuildCircuit() error = %v", err)
