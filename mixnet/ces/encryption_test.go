@@ -113,7 +113,7 @@ func TestEncryption_MismatchedKeys(t *testing.T) {
 	}
 
 	// Try to decrypt with wrong number of keys
-	_, err = encrypter.Decrypt(encrypted, []*EncryptionKey{{Key: []byte("short")}})
+	_, err = encrypter.Decrypt(encrypted, []*EncryptionKey{{Destination: "wrong"}})
 	if err == nil {
 		t.Error("expected error with mismatched keys")
 	}
