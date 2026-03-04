@@ -1,18 +1,23 @@
+// Package ces implements the Compress-Encrypt-Shard data processing pipeline.
 package ces
 
 import (
 	"fmt"
 )
 
-// Config holds CES pipeline configuration
+// Config holds the configuration for a CES (Compress-Encrypt-Shard) pipeline.
 type Config struct {
-	HopCount        int
-	CircuitCount    int
-	Compression     string
+	// HopCount is the number of onion encryption layers.
+	HopCount int
+	// CircuitCount is the total number of shards to produce.
+	CircuitCount int
+	// Compression is the compression algorithm to use.
+	Compression string
+	// ErasureThreshold is the number of data shards (minimum needed for reconstruction).
 	ErasureThreshold int
 }
 
-// CESPipeline coordinates Compress-Encrypt-Shard operations
+// CESPipeline coordinates the process of compressing, encrypting, and sharding data.
 type CESPipeline struct {
 	cfg        *Config
 	compressor Compressor
@@ -20,7 +25,7 @@ type CESPipeline struct {
 	encrypter  *LayeredEncrypter
 }
 
-// NewPipeline creates a new CES pipeline with the given configuration
+// NewPipeline creates a new CESPipeline with the given configuration.
 func NewPipeline(cfg *Config) *CESPipeline {
 	threshold := cfg.ErasureThreshold
 	if threshold == 0 {
@@ -39,15 +44,15 @@ func NewPipeline(cfg *Config) *CESPipeline {
 	}
 }
 
-// Process applies the full CES pipeline: Compress -> Encrypt -> Shard
-// Destinations should be ordered from entry to exit relay
+// Process applies the full CES pipeline: Compress -> Encrypt -> Shard.
+// Destinations should be ordered from entry to exit relay.
 func (p *CESPipeline) Process(data []byte, destinations []string) ([]*Shard, error) {
 	shards, _, err := p.ProcessWithKeys(data, destinations)
 	return shards, err
 }
 
-// ProcessWithKeys applies the full CES pipeline and returns shards with encryption keys
-// Destinations should be ordered from entry to exit relay
+// ProcessWithKeys applies the full CES pipeline and returns the resulting shards along with the generated encryption keys.
+// Destinations should be ordered from entry to exit relay.
 func (p *CESPipeline) ProcessWithKeys(data []byte, destinations []string) ([]*Shard, []*EncryptionKey, error) {
 	if len(data) == 0 {
 		return nil, nil, fmt.Errorf("empty data")
@@ -78,8 +83,8 @@ func (p *CESPipeline) ProcessWithKeys(data []byte, destinations []string) ([]*Sh
 	return shards, keys, nil
 }
 
-// Reconstruct applies inverse: Reconstruct -> Decrypt -> Decompress
-// Note: Keys must be provided in the same order as they were generated
+// Reconstruct reverses the CES process: Reconstruct shards -> Decrypt layers -> Decompress.
+// Keys must be provided in the same order as they were generated.
 func (p *CESPipeline) Reconstruct(shards []*Shard, keys []*EncryptionKey) ([]byte, error) {
 	threshold := p.cfg.ErasureThreshold
 	if threshold == 0 {
@@ -120,22 +125,22 @@ func (p *CESPipeline) Reconstruct(shards []*Shard, keys []*EncryptionKey) ([]byt
 	return decompressed, nil
 }
 
-// Config returns the pipeline configuration
+// Config returns the pipeline's configuration.
 func (p *CESPipeline) Config() *Config {
 	return p.cfg
 }
 
-// Compressor returns the underlying compressor
+// Compressor returns the underlying compressor instance.
 func (p *CESPipeline) Compressor() Compressor {
 	return p.compressor
 }
 
-// Sharder returns the underlying sharder
+// Sharder returns the underlying sharder instance.
 func (p *CESPipeline) Sharder() *Sharder {
 	return p.sharder
 }
 
-// Encrypter returns the underlying encrypter
+// Encrypter returns the underlying encrypter instance.
 func (p *CESPipeline) Encrypter() *LayeredEncrypter {
 	return p.encrypter
 }

@@ -4,22 +4,22 @@ import (
 	"os"
 )
 
-// PrivacyConfig holds privacy-related configuration (Req 14)
+// PrivacyConfig holds configuration related to metadata privacy and logging.
 type PrivacyConfig struct {
-	// LogTrafficPatterns disables logging of traffic patterns
+	// LogTrafficPatterns enables or disables logging of traffic patterns.
 	LogTrafficPatterns bool
 
-	// LogRelayAddresses disables logging of relay addresses
+	// LogRelayAddresses enables or disables logging of individual relay addresses.
 	LogRelayAddresses bool
 
-	// LogTimingInfo disables logging of timing information
+	// LogTimingInfo enables or disables logging of packet timing information.
 	LogTimingInfo bool
 
-	// LogCircuitIDs disables logging of circuit identifiers
+	// LogCircuitIDs enables or disables logging of unique circuit identifiers.
 	LogCircuitIDs bool
 }
 
-// DefaultPrivacyConfig returns a privacy-preserving configuration
+// DefaultPrivacyConfig returns a privacy-preserving configuration with all logging disabled.
 func DefaultPrivacyConfig() *PrivacyConfig {
 	// Default to maximum privacy - no metadata logging
 	return &PrivacyConfig{
@@ -30,12 +30,12 @@ func DefaultPrivacyConfig() *PrivacyConfig {
 	}
 }
 
-// PrivacyManager manages metadata privacy (Req 14)
+// PrivacyManager manages the privacy policy and provides anonymization utilities for logging.
 type PrivacyManager struct {
 	config *PrivacyConfig
 }
 
-// NewPrivacyManager creates a new privacy manager
+// NewPrivacyManager creates a new PrivacyManager with the provided configuration.
 func NewPrivacyManager(cfg *PrivacyConfig) *PrivacyManager {
 	if cfg == nil {
 		cfg = DefaultPrivacyConfig()
@@ -43,27 +43,27 @@ func NewPrivacyManager(cfg *PrivacyConfig) *PrivacyManager {
 	return &PrivacyManager{config: cfg}
 }
 
-// ShouldLogTrafficPatterns returns whether traffic patterns can be logged
+// ShouldLogTrafficPatterns returns true if traffic pattern logging is enabled.
 func (p *PrivacyManager) ShouldLogTrafficPatterns() bool {
 	return p.config.LogTrafficPatterns
 }
 
-// ShouldLogRelayAddresses returns whether relay addresses can be logged
+// ShouldLogRelayAddresses returns true if relay address logging is enabled.
 func (p *PrivacyManager) ShouldLogRelayAddresses() bool {
 	return p.config.LogRelayAddresses
 }
 
-// ShouldLogTimingInfo returns whether timing info can be logged
+// ShouldLogTimingInfo returns true if timing information logging is enabled.
 func (p *PrivacyManager) ShouldLogTimingInfo() bool {
 	return p.config.LogTimingInfo
 }
 
-// ShouldLogCircuitIDs returns whether circuit IDs can be logged
+// ShouldLogCircuitIDs returns true if circuit ID logging is enabled.
 func (p *PrivacyManager) ShouldLogCircuitIDs() bool {
 	return p.config.LogCircuitIDs
 }
 
-// AnonymizePeerID returns a truncated or hashed peer ID for logging
+// AnonymizePeerID returns an anonymized or truncated version of a peer ID for safe logging.
 func (p *PrivacyManager) AnonymizePeerID(peerID string) string {
 	if !p.ShouldLogRelayAddresses() {
 		// Return truncated hash for privacy
@@ -75,7 +75,7 @@ func (p *PrivacyManager) AnonymizePeerID(peerID string) string {
 	return peerID
 }
 
-// AnonymizeCircuitID returns an anonymized circuit ID for logging
+// AnonymizeCircuitID returns an anonymized version of a circuit ID for safe logging.
 func (p *PrivacyManager) AnonymizeCircuitID(circuitID string) string {
 	if !p.ShouldLogCircuitIDs() {
 		return "circuit-***"
@@ -83,8 +83,7 @@ func (p *PrivacyManager) AnonymizeCircuitID(circuitID string) string {
 	return circuitID
 }
 
-// ZeroKnowledgeLog provides zero-knowledge logging (Req 14.3)
-// Only logs what the relay knows - nothing about final destination
+// ZeroKnowledgeLog provides zero-knowledge logging, ensuring no sensitive destination information is leaked.
 func ZeroKnowledgeLog(format string, args ...interface{}) {
 	// By default, suppress all sensitive logs in production
 	// In debug mode, could enable limited logging
@@ -95,7 +94,7 @@ func ZeroKnowledgeLog(format string, args ...interface{}) {
 	}
 }
 
-// VerifyPrivacyInvariants checks that privacy invariants are maintained
+// VerifyPrivacyInvariants verifies that the core design principles for metadata privacy are respected.
 func VerifyPrivacyInvariants() error {
 	// Req 14.1: Relay should never know the final destination
 	// Req 14.2: Origin should not know which relay delivered data

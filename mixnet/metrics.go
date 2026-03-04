@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// MetricsCollector collects mixnet performance metrics (Req 17)
+// MetricsCollector accumulates performance metrics for a Mixnet instance.
 type MetricsCollector struct {
 	mu               sync.RWMutex
 	avgRTT           time.Duration
@@ -18,12 +18,12 @@ type MetricsCollector struct {
 	activeCircuits   int
 }
 
-// NewMetricsCollector creates a new metrics collector
+// NewMetricsCollector creates a new instance of MetricsCollector.
 func NewMetricsCollector() *MetricsCollector {
 	return &MetricsCollector{}
 }
 
-// RecordRTT records an RTT measurement (Req 5)
+// RecordRTT records a new round-trip time measurement and updates the running average.
 func (m *MetricsCollector) RecordRTT(rtt time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -37,7 +37,7 @@ func (m *MetricsCollector) RecordRTT(rtt time.Duration) {
 	m.rttSamples++
 }
 
-// RecordCircuitSuccess records a successful circuit establishment
+// RecordCircuitSuccess increments the count of successfully established circuits.
 func (m *MetricsCollector) RecordCircuitSuccess() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -45,28 +45,28 @@ func (m *MetricsCollector) RecordCircuitSuccess() {
 	m.activeCircuits++
 }
 
-// RecordCircuitFailure records a circuit failure
+// RecordCircuitFailure increments the count of failed circuit establishments.
 func (m *MetricsCollector) RecordCircuitFailure() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.circuitFail++
 }
 
-// RecordRecovery records a circuit recovery event (Req 10)
+// RecordRecovery increments the count of circuit recovery events.
 func (m *MetricsCollector) RecordRecovery() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.recoveryEvents++
 }
 
-// RecordThroughput records data throughput
+// RecordThroughput adds the specified number of bytes to the total throughput.
 func (m *MetricsCollector) RecordThroughput(bytes uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.throughputBytes += bytes
 }
 
-// RecordCompressionRatio records compression ratio (Req 17)
+// RecordCompressionRatio updates the running average of the compression ratio.
 func (m *MetricsCollector) RecordCompressionRatio(original, compressed int) {
 	if original == 0 {
 		return
@@ -82,7 +82,7 @@ func (m *MetricsCollector) RecordCompressionRatio(original, compressed int) {
 	}
 }
 
-// CircuitClosed decrements active circuit count
+// CircuitClosed decrements the count of active circuits.
 func (m *MetricsCollector) CircuitClosed() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -91,7 +91,7 @@ func (m *MetricsCollector) CircuitClosed() {
 	}
 }
 
-// GetMetrics returns current metrics (Req 17)
+// GetMetrics returns a map containing all collected metrics.
 func (m *MetricsCollector) GetMetrics() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -114,14 +114,14 @@ func (m *MetricsCollector) GetMetrics() map[string]interface{} {
 	}
 }
 
-// AverageRTT returns the average RTT
+// AverageRTT returns the current running average of RTT measurements.
 func (m *MetricsCollector) AverageRTT() time.Duration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.avgRTT
 }
 
-// CircuitSuccessRate returns the circuit success rate
+// CircuitSuccessRate returns the ratio of successful to total circuit establishment attempts.
 func (m *MetricsCollector) CircuitSuccessRate() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -133,28 +133,28 @@ func (m *MetricsCollector) CircuitSuccessRate() float64 {
 	return float64(m.circuitSuccess) / float64(total)
 }
 
-// RecoveryEvents returns the number of recovery events
+// RecoveryEvents returns the total number of circuit recovery events.
 func (m *MetricsCollector) RecoveryEvents() uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.recoveryEvents
 }
 
-// TotalThroughput returns the total throughput in bytes
+// TotalThroughput returns the total number of bytes transmitted through the Mixnet.
 func (m *MetricsCollector) TotalThroughput() uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.throughputBytes
 }
 
-// CompressionRatio returns the average compression ratio
+// CompressionRatio returns the current running average of the compression ratio.
 func (m *MetricsCollector) CompressionRatio() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.compressionRatio
 }
 
-// ActiveCircuits returns the number of active circuits
+// ActiveCircuits returns the current number of active circuits.
 func (m *MetricsCollector) ActiveCircuits() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

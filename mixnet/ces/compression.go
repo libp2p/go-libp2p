@@ -9,23 +9,28 @@ import (
 	"github.com/golang/snappy"
 )
 
-// Algorithm IDs for compression (Design Doc "Data Format")
+// Compression algorithm identifiers used in the Mixnet protocol header.
 const (
+	// AlgoGzip indicates that the payload is compressed using Gzip.
 	AlgoGzip   byte = 0x01
+	// AlgoSnappy indicates that the payload is compressed using Snappy.
 	AlgoSnappy byte = 0x02
 )
 
-// Compressor handles data compression
+// Compressor is an interface for algorithms that can compress and decompress data.
 type Compressor interface {
+	// Compress compresses the provided data and returns the result with an algorithm-specific header.
 	Compress(data []byte) ([]byte, error)
+	// Decompress removes the header and decompresses the provided data.
 	Decompress(data []byte) ([]byte, error)
 }
 
-// gzipCompressor implements gzip compression
+// gzipCompressor implements the Compressor interface using the Gzip algorithm.
 type gzipCompressor struct {
 	level int
 }
 
+// NewCompressor returns a new Compressor for the specified algorithm ("gzip" or "snappy").
 func NewCompressor(algo string) Compressor {
 	switch algo {
 	case "gzip":
@@ -37,7 +42,7 @@ func NewCompressor(algo string) Compressor {
 	}
 }
 
-// NewCompressorWithLevel creates a compressor with a configurable compression level (0-9 for gzip).
+// NewCompressorWithLevel returns a new Compressor for the specified algorithm and compression level.
 func NewCompressorWithLevel(algo string, level int) Compressor {
 	switch algo {
 	case "gzip":
@@ -52,8 +57,7 @@ func NewCompressorWithLevel(algo string, level int) Compressor {
 	}
 }
 
-// Compress compresses data and prepends a 1-byte algorithm ID header.
-// Format: [algorithm_id: 1 byte][compressed_payload]
+// Compress compresses data using Gzip and prepends the AlgoGzip header.
 func (c *gzipCompressor) Compress(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return []byte{}, nil
@@ -79,7 +83,7 @@ func (c *gzipCompressor) Compress(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Decompress removes the algorithm ID header and decompresses the payload.
+// Decompress validates the header and decompresses data using Gzip.
 func (c *gzipCompressor) Decompress(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return []byte{}, nil
@@ -98,11 +102,10 @@ func (c *gzipCompressor) Decompress(data []byte) ([]byte, error) {
 	return io.ReadAll(gr)
 }
 
-// snappyCompressor implements snappy compression
+// snappyCompressor implements the Compressor interface using the Snappy algorithm.
 type snappyCompressor struct{}
 
-// Compress compresses data and prepends a 1-byte algorithm ID header.
-// Format: [algorithm_id: 1 byte][compressed_payload]
+// Compress compresses data using Snappy and prepends the AlgoSnappy header.
 func (c *snappyCompressor) Compress(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return []byte{}, nil
@@ -114,7 +117,7 @@ func (c *snappyCompressor) Compress(data []byte) ([]byte, error) {
 	return out, nil
 }
 
-// Decompress removes the algorithm ID header and decompresses the payload.
+// Decompress validates the header and decompresses data using Snappy.
 func (c *snappyCompressor) Decompress(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return []byte{}, nil
@@ -127,5 +130,5 @@ func (c *snappyCompressor) Decompress(data []byte) ([]byte, error) {
 	return snappy.Decode(nil, data[1:])
 }
 
-// ErrInvalidAlgorithm is returned when an invalid compression algorithm is specified
+// ErrInvalidAlgorithm is returned when an unsupported compression algorithm is requested.
 var ErrInvalidAlgorithm = fmt.Errorf("invalid compression algorithm")
