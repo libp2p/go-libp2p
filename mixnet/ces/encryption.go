@@ -62,11 +62,17 @@ func (e *LayeredEncrypter) Encrypt(plaintext []byte, destinations []string) ([]b
 
 	keys := make([]*EncryptionKey, e.hopCount)
 
-	// Generate ephemeral keys for each layer
+	// Generate ephemeral keys for each layer using Noise-derived key derivation
 	for i := 0; i < e.hopCount; i++ {
-		key := make([]byte, 32) // chacha20poly1305 key size
-		if _, err := io.ReadFull(rand.Reader, key); err != nil {
-			return nil, nil, err
+		// Use Noise HKDF-like key derivation for proper key separation (Req 1.5)
+		prologue := fmt.Sprintf("lib-mix-hop-%d-%s", i, destinations[i])
+		key, err := deriveKeyFromNoise([]byte(prologue), i)
+		if err != nil {
+			// Fallback to random key if derivation fails
+			key = make([]byte, 32)
+			if _, err := io.ReadFull(rand.Reader, key); err != nil {
+				return nil, nil, err
+			}
 		}
 		keys[i] = &EncryptionKey{
 			Key:         key,
