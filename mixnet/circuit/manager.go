@@ -242,6 +242,42 @@ func (m *CircuitManager) CloseCircuit(circuitID string) error {
 	return nil
 }
 
+// CloseCircuitWithContext closes the network stream with context-based timeout for graceful shutdown (Req 18).
+func (m *CircuitManager) CloseCircuitWithContext(ctx context.Context, circuitID string) error {
+	m.mu.Lock()
+	handler, ok := m.streams[circuitID]
+	if !ok {
+		m.mu.Unlock()
+		if circuit, ok := m.circuits[circuitID]; ok {
+			circuit.SetState(StateClosed)
+		}
+		return nil
+	}
+	stream := handler.stream
+	delete(m.streams, circuitID)
+	m.mu.Unlock()
+
+	if circuit, ok := m.circuits[circuitID]; ok {
+		circuit.SetState(StateClosed)
+	}
+
+	if stream == nil {
+		return nil
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- stream.Close()
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (m *CircuitManager) filterRelays(relays []RelayInfo, exclude peer.ID) []RelayInfo {
 	m.mu.RLock()
 	selfID := peer.ID("")

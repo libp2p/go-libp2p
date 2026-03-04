@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/routing"
 
 	"github.com/libp2p/go-libp2p/mixnet/ces"
@@ -221,6 +222,19 @@ func (m *Mixnet) discoverRelays(ctx context.Context, dest peer.ID) ([]circuit.Re
 	for p := range providersChan {
 		providers = append(providers, p)
 	}
+
+	// CRITICAL FIX (Req 12): Verify protocol support using Peerstore
+	// After getting providers, verify each peer actually advertises /lib-mix/1.0.0
+	var validRelays []peer.AddrInfo
+	for _, p := range providers {
+		supported, err := m.host.Peerstore().SupportsProtocols(p.ID, protocol.ID(ProtocolID))
+		if err == nil && len(supported) > 0 {
+			validRelays = append(validRelays, p)
+		}
+	}
+
+	// Use only verified relays
+	providers = validRelays
 
 	if len(providers) == 0 {
 		return m.getSampleRelays(ctx, dest)
@@ -552,7 +566,7 @@ func (m *Mixnet) Close() error {
 	// Unregister the protocol handler (Req 12).
 	m.host.RemoveStreamHandler(ProtocolID)
 
-	// Send close signal through all active circuits
+	// Send close signal through all active circuits and wait for acknowledgment (Req 18)
 	m.mu.RLock()
 	var closeSignals []string
 	for dest := range m.activeConnections {
@@ -566,27 +580,34 @@ func (m *Mixnet) Close() error {
 	m.mu.RUnlock()
 
 	// Wait for acknowledgments with timeout (Req 18.2)
+	// Use libp2p's stream close semantics properly - close each circuit and wait for completion
 	ackTimeout := 10 * time.Second
-	ackChan := make(chan error, len(closeSignals))
+	ctx, cancel := context.WithTimeout(context.Background(), ackTimeout)
+	defer cancel()
 
+	// Close all circuits and collect errors
+	var closeErrors []error
 	var wg sync.WaitGroup
+
 	for _, circuitID := range closeSignals {
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
-			// Wait for close acknowledgment
-			select {
-			case <-ackChan:
-			case <-time.After(ackTimeout):
-				// Timeout - log and continue (Req 18.5)
-				ackChan <- fmt.Errorf("close ack timeout for circuit %s", id)
+			// Close the circuit and wait for completion
+			// Use context to allow timeout
+			err := m.circuitMgr.CloseCircuitWithContext(ctx, id)
+			if err != nil {
+				closeErrors = append(closeErrors, fmt.Errorf("failed to close circuit %s: %w", id, err))
 			}
 		}(circuitID)
 	}
 
-	// Close all circuits
-	for _, circuitID := range closeSignals {
-		m.circuitMgr.CloseCircuit(circuitID)
+	wg.Wait()
+
+	// Check for context timeout (Req 18.5)
+	if ctx.Err() == context.DeadlineExceeded {
+		// Log timeout but don't fail - circuits will be cleaned up eventually
+		fmt.Printf("Warning: close acknowledgment timeout after %v\n", ackTimeout)
 	}
 
 	// Close underlying circuit manager

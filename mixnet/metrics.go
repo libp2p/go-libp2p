@@ -16,6 +16,8 @@ type MetricsCollector struct {
 	throughputBytes  uint64
 	compressionRatio float64
 	activeCircuits   int
+	resourceUtilization float64 // CPU/memory utilization percentage (0-100)
+	maxResourceUtilization float64 // Peak resource utilization observed
 }
 
 // NewMetricsCollector creates a new instance of MetricsCollector.
@@ -159,4 +161,49 @@ func (m *MetricsCollector) ActiveCircuits() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.activeCircuits
+}
+
+// CircuitFailures returns the total number of failed circuit establishments.
+func (m *MetricsCollector) CircuitFailures() uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.circuitFail
+}
+
+// ThroughputPerCircuit returns the average throughput per active circuit in bytes.
+// Returns 0 if there are no active circuits.
+func (m *MetricsCollector) ThroughputPerCircuit() uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.activeCircuits == 0 {
+		return 0
+	}
+	return m.throughputBytes / uint64(m.activeCircuits)
+}
+
+// RecordResourceUtilization records the current resource utilization (CPU/memory).
+// The utilization parameter should be a percentage value between 0 and 100.
+func (m *MetricsCollector) RecordResourceUtilization(utilization float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.resourceUtilization = utilization
+	if utilization > m.maxResourceUtilization {
+		m.maxResourceUtilization = utilization
+	}
+}
+
+// CurrentResourceUtilization returns the current resource utilization percentage.
+func (m *MetricsCollector) CurrentResourceUtilization() float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.resourceUtilization
+}
+
+// MaxResourceUtilization returns the peak resource utilization percentage observed.
+func (m *MetricsCollector) MaxResourceUtilization() float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.maxResourceUtilization
 }
