@@ -154,7 +154,7 @@ for i := 0; i < s.threshold; i++ {
 2. ⚠️ **AC 4.2** - 3× relay pool: **INCONSISTENT** - Uses `sampling_size` but not validated
 3. ⚠️ **AC 4.3** - Insufficient relay error: Implemented but fallback hides error
 4. ⚠️ **AC 4.4** - Filter origin/destination: **BUG** - Only filters destination
-5. ⚠️ **AC 4.5** - Filter non-advertisers: **NOT IMPLEMENTED**
+5. ✅ **AC 4.5** - Filter non-advertisers: **FIXED** - Uses `Peerstore.SupportsProtocols`
 6. ✅ **AC 4.6** - Selection modes: Implemented (rtt/random/hybrid)
 7. ⚠️ **AC 4.7** - Hybrid sampling: **PARTIAL** - sampling_size not properly used
 8. ⚠️ **AC 4.8** - Hybrid RTT measurement: **BUG** - 5s timeout not respected per-peer
@@ -163,7 +163,7 @@ for i := 0; i < s.threshold; i++ {
 
 #### Issues:
 
-**CRITICAL - Protocol Advertisement Check Missing (AC 4.5)**
+### ✅ FIXED: Protocol Advertisement Check (AC 4.5)
 - **File:** `discovery/dht.go`
 - **Issue:** No verification that peers advertise `/lib-mix/1.0.0`
 - **Code:** `filterPeers()` only checks for addresses, not protocol support
@@ -526,7 +526,7 @@ func (h *DestinationHandler) waitForData() {
 
 #### Acceptance Criteria Analysis:
 
-1. ⚠️ **AC 10.1** - Detect within 5s: **NOT IMPLEMENTED**
+1. ✅ **AC 10.1** - Detect within 5s: **IMPLEMENTED** - Heartbeat-based failure detection
 2. ⚠️ **AC 10.2** - Continue if threshold met: Implemented
 3. ⚠️ **AC 10.3** - Select new relay: **PARTIAL** - Uses old pool
 4. ⚠️ **AC 10.4** - Construct replacement: **BUGGY**

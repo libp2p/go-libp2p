@@ -53,7 +53,7 @@ This report identifies discrepancies between the implemented mixnet code and the
 
 #### Acceptance Criteria Analysis:
 
-1. ❌ **AC 10.1** - Detect failure within 5s: **NOT IMPLEMENTED**
+1. ✅ **AC 10.1** - Detect failure within 5s: **IMPLEMENTED** - Heartbeat-based
 2. ⚠️ **AC 10.2** - Continue if threshold met: **PARTIAL** - Logic exists but no active monitoring
 3. ⚠️ **AC 10.3** - Select new relay: **BUGGY** - Discovers but discards result
 4. ⚠️ **AC 10.4** - Construct replacement: **IMPLEMENTED** but uses old pool
