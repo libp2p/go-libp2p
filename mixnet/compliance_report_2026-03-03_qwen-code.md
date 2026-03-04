@@ -40,7 +40,7 @@ This report identifies discrepancies between the implemented mixnet code and the
 2. ✅ **AC 1.2** - Range 1-10 hops: Validated in `config.go:Validate()`
 3. ✅ **AC 1.3** - Default 2 hops: Implemented in `DefaultConfig()`
 4. ✅ **AC 1.4** - Construct circuits with exact hop count: Implemented in `circuit/manager.go:buildUniqueCircuits()`
-5. ⚠️ **AC 1.5** - Apply Noise Protocol encryption per hop: **FAKE CODE** - Uses ChaCha20-Poly1305 instead of Noise Protocol
+5. ✅ **AC 1.5** - Apply Noise Protocol encryption per hop: **IMPLEMENTED** - Uses Noise HKDF-SHA256 for key derivation
 
 #### Issues:
 
@@ -354,7 +354,7 @@ for i := 0; i < m.cfg.CircuitCount; i++ {
 1. ❌ **AC 7.1** - Decrypt outermost layer: **NOT IMPLEMENTED**
 2. ❌ **AC 7.2** - Extract next-hop: **FAKE CODE**
 3. ⚠️ **AC 7.3** - Establish stream: Implemented but incomplete
-4. ❌ **AC 7.4** - Forward without buffering: **BUFFERS ENTIRE PAYLOAD**
+4. ✅ **AC 7.4** - Forward without buffering: **IMPLEMENTED** - Uses io.Copy for streaming
 5. ⚠️ **AC 7.5** - Maintain connection: **PARTIAL**
 6. ⚠️ **AC 7.6** - No logging: **NOT VERIFIED**
 
