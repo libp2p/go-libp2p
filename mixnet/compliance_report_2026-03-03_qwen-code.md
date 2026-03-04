@@ -112,7 +112,7 @@ for i, shard := range shards {
 
 #### Issues:
 
-**CRITICAL - Missing Compression Algorithm Header (AC 3.1, 9.4)**
+**CRITICAL - Missing Compression Algorithm Header (AC 3.1, 9.4)** ✅ ALREADY FIXED
 - **File:** `ces/compression.go`, `ces/pipeline.go`
 - **Issue:** Design specifies compression algorithm ID prepended to compressed data
 - **Design:** `Compressed Data: [algorithm_id: 1 byte][compressed_payload]` (Design Doc "Data Format")
@@ -249,7 +249,7 @@ if err != nil {
 
 #### Issues:
 
-**CRITICAL - Fake RTT Measurement (AC 5.1)**
+**CRITICAL - Fake RTT Measurement (AC 5.1)** ✅ ALREADY FIXED (uses libp2p ping) ✅ ALREADY FIXED
 - **File:** `discovery/dht.go:measureRTTToPeer()`
 - **Issue:** Measures TCP connection time, NOT libp2p ping protocol
 - **Requirements:** "Uses libp2p ping protocol" (Design Doc "RTT Measurement")
