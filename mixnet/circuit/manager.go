@@ -1,3 +1,4 @@
+// Package circuit manages the establishment and maintenance of multi-hop mixnet paths.
 package circuit
 
 import (
@@ -15,33 +16,40 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-// RelayInfo holds relay information for circuit building
+// RelayInfo holds metadata and performance information for a potential relay node.
 type RelayInfo struct {
+	// PeerID is the unique identifier of the relay peer.
 	PeerID    peer.ID
+	// AddrInfo contains the network addresses of the relay.
 	AddrInfo  peer.AddrInfo
+	// Latency is the measured round-trip time to the relay.
 	Latency   time.Duration
+	// Connected indicates if there is currently an active connection to the relay.
 	Connected bool
 }
 
-// CircuitConfig holds circuit configuration
+// CircuitConfig contains parameters for circuit creation and management.
 type CircuitConfig struct {
+	// HopCount is the number of relays per circuit.
 	HopCount      int
+	// CircuitCount is the number of parallel circuits.
 	CircuitCount  int
+	// StreamTimeout is the maximum time to wait for stream operations.
 	StreamTimeout time.Duration
 }
 
-// StreamHandler handles sending and receiving data on a circuit
+// StreamHandler manages the network stream associated with a specific circuit.
 type StreamHandler struct {
 	stream network.Stream
 	peerID peer.ID
 }
 
-// Stream returns the underlying network stream
+// Stream returns the underlying network stream.
 func (h *StreamHandler) Stream() network.Stream {
 	return h.stream
 }
 
-// CircuitManager manages circuit lifecycle
+// CircuitManager is responsible for the entire lifecycle of mixnet circuits.
 type CircuitManager struct {
 	cfg       *CircuitConfig
 	circuits  map[string]*Circuit
@@ -55,7 +63,7 @@ type CircuitManager struct {
 	cancel    context.CancelFunc
 }
 
-// NewCircuitManager creates a new circuit manager
+// NewCircuitManager creates a new CircuitManager instance with the given configuration.
 func NewCircuitManager(cfg *CircuitConfig) *CircuitManager {
 	threshold := cfg.CircuitCount - 1
 	if threshold < 1 {
@@ -79,14 +87,14 @@ func NewCircuitManager(cfg *CircuitConfig) *CircuitManager {
 	}
 }
 
-// SetHost sets the libp2p host for circuit establishment
+// SetHost sets the libp2p host to be used for establishing circuit streams.
 func (m *CircuitManager) SetHost(h host.Host) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.host = h
 }
 
-// BuildCircuits constructs N independent circuits to destination
+// BuildCircuits selects relays and constructs a set of independent circuits to the destination.
 func (m *CircuitManager) BuildCircuits(ctx context.Context, dest peer.ID, relays []RelayInfo) ([]*Circuit, error) {
 	if len(relays) < m.cfg.HopCount*m.cfg.CircuitCount {
 		return nil, fmt.Errorf("insufficient relays: have %d, need %d",
@@ -113,7 +121,30 @@ func (m *CircuitManager) BuildCircuits(ctx context.Context, dest peer.ID, relays
 	return circuits, nil
 }
 
-// EstablishCircuit establishes a stream to the entry relay for a circuit
+// BuildCircuit builds a single new circuit using the available relay pool.
+func (m *CircuitManager) BuildCircuit() (*Circuit, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.relayPool) < m.cfg.HopCount {
+		return nil, fmt.Errorf("insufficient relays in pool")
+	}
+
+	// Simple random selection from pool
+	rand.Shuffle(len(m.relayPool), func(i, j int) {
+		m.relayPool[i], m.relayPool[j] = m.relayPool[j], m.relayPool[i]
+	})
+
+	peers := make([]peer.ID, m.cfg.HopCount)
+	copy(peers, m.relayPool[:m.cfg.HopCount])
+
+	id := fmt.Sprintf("circuit-%d", len(m.circuits))
+	c := NewCircuit(id, peers)
+	m.circuits[id] = c
+	return c, nil
+}
+
+// EstablishCircuit opens a network stream to the first relay of the specified circuit.
 func (m *CircuitManager) EstablishCircuit(circuit *Circuit, dest peer.ID, protocolID string) error {
 	if len(circuit.Peers) == 0 {
 		return fmt.Errorf("circuit has no peers")
@@ -166,7 +197,7 @@ func (m *CircuitManager) EstablishCircuit(circuit *Circuit, dest peer.ID, protoc
 	return nil
 }
 
-// SendData sends encrypted data through a circuit
+// SendData sends raw bytes through the network stream of the specified circuit.
 func (m *CircuitManager) SendData(circuitID string, data []byte) error {
 	m.mu.RLock()
 	handler, ok := m.streams[circuitID]
@@ -180,7 +211,7 @@ func (m *CircuitManager) SendData(circuitID string, data []byte) error {
 	return err
 }
 
-// ReadData reads data from a circuit
+// ReadData reads data from the network stream of the specified circuit into the provided buffer.
 func (m *CircuitManager) ReadData(circuitID string, buf []byte) (int, error) {
 	m.mu.RLock()
 	handler, ok := m.streams[circuitID]
@@ -193,7 +224,7 @@ func (m *CircuitManager) ReadData(circuitID string, buf []byte) (int, error) {
 	return handler.stream.Read(buf)
 }
 
-// CloseCircuit closes a specific circuit
+// CloseCircuit closes the network stream and updates the state for the specified circuit.
 func (m *CircuitManager) CloseCircuit(circuitID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -262,7 +293,7 @@ func (m *CircuitManager) buildUniqueCircuits(relays []RelayInfo) []*Circuit {
 	return circuits
 }
 
-// ActivateCircuit marks a circuit as active
+// ActivateCircuit transition the circuit state to StateActive.
 func (m *CircuitManager) ActivateCircuit(circuitID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -276,7 +307,7 @@ func (m *CircuitManager) ActivateCircuit(circuitID string) error {
 	return nil
 }
 
-// DetectFailure detects if a circuit has failed
+// DetectFailure returns true if the circuit is in a failed or closed state.
 func (m *CircuitManager) DetectFailure(circuitID string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -290,7 +321,7 @@ func (m *CircuitManager) DetectFailure(circuitID string) bool {
 	return state == StateFailed || state == StateClosed
 }
 
-// ActiveCircuitCount returns the number of active circuits
+// ActiveCircuitCount returns the number of circuits currently in the StateActive state.
 func (m *CircuitManager) ActiveCircuitCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -304,12 +335,12 @@ func (m *CircuitManager) ActiveCircuitCount() int {
 	return count
 }
 
-// CanRecover checks if we can recover from failures
+// CanRecover returns true if the number of active circuits is still above the reconstruction threshold.
 func (m *CircuitManager) CanRecover() bool {
 	return m.ActiveCircuitCount() >= m.threshold
 }
 
-// RecoveryCapacity returns how many more circuits can fail
+// RecoveryCapacity returns the number of additional circuit failures that can be tolerated.
 func (m *CircuitManager) RecoveryCapacity() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -327,8 +358,7 @@ func (m *CircuitManager) RecoveryCapacity() int {
 	return -1
 }
 
-// RebuildCircuit rebuilds a failed circuit using available relays,
-// excluding the peers that are in the failed circuit to avoid reuse (Req 10.3).
+// RebuildCircuit creates a new circuit as a replacement for a failed one, ensuring no peer reuse from the failed circuit.
 func (m *CircuitManager) RebuildCircuit(failedID string) (*Circuit, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -386,7 +416,7 @@ func (m *CircuitManager) RebuildCircuit(failedID string) (*Circuit, error) {
 	return circuit, nil
 }
 
-// Close closes all circuits
+// Close terminates all active circuits and releases associated resources.
 func (m *CircuitManager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -410,7 +440,7 @@ func (m *CircuitManager) Close() error {
 	return nil
 }
 
-// GetCircuit returns a circuit by ID
+// GetCircuit retrieves a circuit by its unique identifier.
 func (m *CircuitManager) GetCircuit(id string) (*Circuit, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -419,7 +449,7 @@ func (m *CircuitManager) GetCircuit(id string) (*Circuit, bool) {
 	return c, ok
 }
 
-// ListCircuits returns all circuits
+// ListCircuits returns a slice containing all managed circuits.
 func (m *CircuitManager) ListCircuits() []*Circuit {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -431,7 +461,7 @@ func (m *CircuitManager) ListCircuits() []*Circuit {
 	return result
 }
 
-// MarkCircuitFailed marks a circuit as failed
+// MarkCircuitFailed sets the state of the specified circuit to StateFailed.
 func (m *CircuitManager) MarkCircuitFailed(circuitID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -441,9 +471,7 @@ func (m *CircuitManager) MarkCircuitFailed(circuitID string) {
 	}
 }
 
-// UpdateRelayPool replaces the relay pool with a fresh set of relays (Req 10.3).
-// This ensures that circuit recovery uses newly discovered relays rather than
-// a potentially stale pool that may contain failed nodes.
+// UpdateRelayPool refreshes the internal pool of available relay peers.
 func (m *CircuitManager) UpdateRelayPool(relays []RelayInfo) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -454,7 +482,7 @@ func (m *CircuitManager) UpdateRelayPool(relays []RelayInfo) {
 	}
 }
 
-// GetRelaysForCircuit returns relays for a specific circuit
+// GetRelaysForCircuit returns the list of peer IDs forming the specified circuit.
 func (m *CircuitManager) GetRelaysForCircuit(circuitID string) ([]peer.ID, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -467,12 +495,12 @@ func (m *CircuitManager) GetRelaysForCircuit(circuitID string) ([]peer.ID, error
 	return circuit.Peers, nil
 }
 
-// Config returns the circuit configuration
+// Config returns the circuit manager's configuration.
 func (m *CircuitManager) Config() *CircuitConfig {
 	return m.cfg
 }
 
-// GetStream returns the stream handler for a circuit
+// GetStream returns the StreamHandler associated with the specified circuit ID.
 func (m *CircuitManager) GetStream(circuitID string) (*StreamHandler, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
