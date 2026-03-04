@@ -54,6 +54,8 @@ type Circuit struct {
 	UpdatedAt   time.Time
 	// FailureCount is the number of failed operations on this circuit.
 	FailureCount int
+	// LastHeartbeat is the last time a heartbeat was received for this circuit.
+	LastHeartbeat time.Time
 	mu          sync.RWMutex
 }
 

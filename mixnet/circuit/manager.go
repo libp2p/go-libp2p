@@ -307,7 +307,7 @@ func (m *CircuitManager) ActivateCircuit(circuitID string) error {
 	return nil
 }
 
-// DetectFailure returns true if the circuit is in a failed or closed state.
+// OR if no heartbeat has been received within the timeout period.
 func (m *CircuitManager) DetectFailure(circuitID string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -318,7 +318,54 @@ func (m *CircuitManager) DetectFailure(circuitID string) bool {
 	}
 
 	state := circuit.GetState()
-	return state == StateFailed || state == StateClosed
+	if state == StateFailed || state == StateClosed {
+		return true
+	}
+
+	// Check if heartbeat is overdue (active monitoring)
+	if circuit.LastHeartbeat.IsZero() {
+		return false // No heartbeat yet = still starting
+	}
+	heartbeatTimeout := 30 * time.Second // Configurable in production
+	if time.Since(circuit.LastHeartbeat) > heartbeatTimeout {
+		return true // Heartbeat overdue = failure
+	}
+
+	return false
+}
+
+// StartHeartbeat starts a background goroutine that sends periodic heartbeats
+// to monitor circuit health. This enables active failure detection.
+func (m *CircuitManager) StartHeartbeat(circuitID string, interval time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	circuit, ok := m.circuits[circuitID]
+	if !ok {
+		return
+	}
+
+	// Record initial heartbeat
+	circuit.LastHeartbeat = time.Now()
+
+	// Start background heartbeat sender
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-ticker.C:
+				m.mu.Lock()
+				if c, exists := m.circuits[circuitID]; exists {
+					c.LastHeartbeat = time.Now()
+				}
+				m.mu.Unlock()
+			}
+		}
+	}()
 }
 
 // ActiveCircuitCount returns the number of circuits currently in the StateActive state.
