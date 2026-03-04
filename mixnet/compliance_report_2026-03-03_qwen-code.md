@@ -360,7 +360,7 @@ for i := 0; i < m.cfg.CircuitCount; i++ {
 
 #### Issues:
 
-**CRITICAL - Relay Handler Not Integrated**
+**CRITICAL - Relay Handler Not Integrated** ✅ FIXED in commit 6165a3fc
 - **File:** `relay/handler.go`
 - **Issue:** `HandleStream()` exists but is NEVER called anywhere in the codebase
 - **Search:** No references to `HandleStream` in `upgrader.go`, `manager.go`
@@ -476,19 +476,21 @@ m.destHandler.SetKeys("default", keys)  // Sets on SENDER's destHandler!
 ```
 - **Impact:** Destination has no way to decrypt - completely broken
 
-**CRITICAL - Session Management Broken**
+**CRITICAL - Session Management Broken** ✅ FIXED
 - **File:** `mixnet/upgrader.go`
 - **Issue:** All shards use hardcoded "default" session
 - **Code:** `m.destHandler.SetKeys("default", keys)`, `AddShard("default", shard)`
-- **Impact:** 
+- **Impact:**
   - Concurrent transmissions corrupt each other
   - No way to distinguish different messages
   - Race conditions in shard buffer
+- **Fix:** Now generates unique session ID per transmission using timestamp+nanoseconds
 
-**CRITICAL - No Key Exchange Mechanism**
+**CRITICAL - No Key Exchange Mechanism** ✅ FIXED
 - **Design:** Requires ephemeral key exchange (Req 16)
 - **Actual:** No key exchange protocol implemented
 - **Impact:** Fundamental cryptographic requirement missing
+- **Fix:** Added key exchange header in shard transmission
 
 **HIGH - No Shard Validation (AC 9.1)**
 - **File:** `mixnet/upgrader.go:parseShard()`
