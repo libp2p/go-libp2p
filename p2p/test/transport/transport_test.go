@@ -460,14 +460,9 @@ var transportsToTest = []TransportTestCase{
 }
 
 func TestPing(t *testing.T) {
-	
+
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			// Skip explicit IPv6 WebRTC test on Windows due to unstable loopback/ICE behavior.
-			// This keeps CI (Linux) coverage while avoiding false negatives on Windows dev machines.
-			if tc.Name == "WebRTC - IP6" && runtime.GOOS == "windows" {
-				t.Skip("WebRTC IPv6 direct is unstable on Windows loopback")
-			}
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
