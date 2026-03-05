@@ -1,0 +1,532 @@
+{
+  "agents": {
+    "mixnet-encryptor": {
+      "agentId": "mixnet-encryptor",
+      "agentType": "security-architect",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:54:54.667Z",
+      "domain": "cryptography",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-relay": {
+      "agentId": "mixnet-relay",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:55:37.992Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-circuit": {
+      "agentId": "mixnet-circuit",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:55:54.703Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-discovery": {
+      "agentId": "mixnet-discovery",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:56:26.852Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-ces": {
+      "agentId": "mixnet-ces",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:56:54.222Z",
+      "domain": "data-processing",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-shard-tx": {
+      "agentId": "mixnet-shard-tx",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:58:35.476Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-shards": {
+      "agentId": "mixnet-shards",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:57:49.967Z",
+      "domain": "data-processing",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-recovery": {
+      "agentId": "mixnet-recovery",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:58:17.939Z",
+      "domain": "reliability",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-shard-rx": {
+      "agentId": "mixnet-shard-rx",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:59:09.857Z",
+      "domain": "data-processing",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-auditor": {
+      "agentId": "mixnet-auditor",
+      "agentType": "security-auditor",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:59:19.953Z",
+      "domain": "security",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-coordinator": {
+      "agentId": "mixnet-coordinator",
+      "agentType": "hierarchical-coordinator",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "maxAgents": 15,
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T13:59:32.834Z",
+      "domain": "orchestration",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-tester": {
+      "agentId": "mixnet-tester",
+      "agentType": "tester",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:00:47.532Z",
+      "domain": "testing",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "mixnet-review": {
+      "agentId": "mixnet-review",
+      "agentType": "reviewer",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:00:27.603Z",
+      "domain": "code-review",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-encryption-remaining": {
+      "agentId": "fix-encryption-remaining",
+      "agentType": "security-architect",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:23:04.565Z",
+      "domain": "cryptography",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-circuit-extension": {
+      "agentId": "fix-circuit-extension",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:23:25.977Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-failure-detection": {
+      "agentId": "fix-failure-detection",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:23:44.474Z",
+      "domain": "reliability",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-destination-keys": {
+      "agentId": "fix-destination-keys",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:23:52.806Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-protocol-verification": {
+      "agentId": "fix-protocol-verification",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:24:14.155Z",
+      "domain": "security",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "verify-fixes-tester": {
+      "agentId": "verify-fixes-tester",
+      "agentType": "tester",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:24:53.762Z",
+      "domain": "testing",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "run-mixnet-tests": {
+      "agentId": "run-mixnet-tests",
+      "agentType": "tester",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "high",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T14:25:01.335Z",
+      "domain": "testing",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-1-encryption-protocol": {
+      "agentId": "fix-1-encryption-protocol",
+      "agentType": "security-architect",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:10:43.011Z",
+      "domain": "cryptography",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-1-encryption": {
+      "agentId": "fix-1-encryption",
+      "agentType": "security-architect",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:11:02.316Z",
+      "domain": "cryptography",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-4-protocol": {
+      "agentId": "fix-4-protocol",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:11:25.030Z",
+      "domain": "security",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-2-protocol-ad": {
+      "agentId": "fix-2-protocol-ad",
+      "agentType": "security-auditor",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:11:35.612Z",
+      "domain": "security",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-3-fake-protocol": {
+      "agentId": "fix-3-fake-protocol",
+      "agentType": "security-auditor",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:11:54.642Z",
+      "domain": "security",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-4-noise": {
+      "agentId": "fix-4-noise",
+      "agentType": "security-architect",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:12:02.369Z",
+      "domain": "cryptography",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-4-noise-handshake": {
+      "agentId": "fix-4-noise-handshake",
+      "agentType": "security-architect",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:12:12.923Z",
+      "domain": "cryptography",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-5-circuit-ext": {
+      "agentId": "fix-5-circuit-ext",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:12:34.509Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-6-decrypt-relay": {
+      "agentId": "fix-6-decrypt-relay",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:12:53.996Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-7-payload-buffer": {
+      "agentId": "fix-7-payload-buffer",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:13:25.009Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-8-keys-dest": {
+      "agentId": "fix-8-keys-dest",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:14:04.594Z",
+      "domain": "networking",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-9-fail-detect": {
+      "agentId": "fix-9-fail-detect",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:14:16.822Z",
+      "domain": "reliability",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-9-failure-det": {
+      "agentId": "fix-9-failure-det",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:14:32.702Z",
+      "domain": "reliability",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "coordinator-9": {
+      "agentId": "coordinator-9",
+      "agentType": "hierarchical-coordinator",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "maxAgents": 15,
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:14:43.883Z",
+      "domain": "orchestration",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    },
+    "fix-coordinator": {
+      "agentId": "fix-coordinator",
+      "agentType": "hierarchical-coordinator",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "priority": "critical",
+        "model": "opus"
+      },
+      "createdAt": "2026-03-04T15:14:53.956Z",
+      "domain": "orchestration",
+      "model": "opus",
+      "modelRoutedBy": "explicit"
+    }
+  },
+  "version": "3.0.0"
+}
