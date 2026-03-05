@@ -638,6 +638,7 @@ func quicSimnet(isPubliclyReachably bool, router *simnet.SimpleFirewallRouter) l
 				router.SetAddrPubliclyReachable(address)
 			}
 			c := simnet.NewSimConn(address)
+			c.SetUpPacketReceiver(router)
 			router.AddNode(address, c)
 			return c, nil
 		}))

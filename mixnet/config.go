@@ -3,6 +3,7 @@ package mixnet
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,9 @@ const (
 
 // MixnetConfig holds the configuration parameters for a Mixnet instance.
 type MixnetConfig struct {
+	mu     sync.RWMutex
+	locked bool
+
 	// HopCount is the number of relay nodes in each circuit.
 	HopCount int
 	// CircuitCount is the number of parallel circuits to establish.
@@ -74,6 +78,9 @@ func NewMixnetConfig() *MixnetConfig {
 
 // Validate checks if the configuration parameters are within acceptable ranges.
 func (c *MixnetConfig) Validate() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	// Hop count validation (Req 1.2)
 	if c.HopCount < 1 || c.HopCount > 10 {
 		return fmt.Errorf("hop count must be between 1 and 10, got %d", c.HopCount)
@@ -128,44 +135,89 @@ func (c *MixnetConfig) Validate() error {
 }
 
 // SetHopCount sets the number of relays per circuit.
-func (c *MixnetConfig) SetHopCount(n int) {
+func (c *MixnetConfig) SetHopCount(n int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
 	c.HopCount = n
+	return nil
 }
 
 // SetCircuitCount sets the number of parallel circuits.
-func (c *MixnetConfig) SetCircuitCount(n int) {
+func (c *MixnetConfig) SetCircuitCount(n int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
 	c.CircuitCount = n
+	return nil
 }
 
 // SetCompression sets the compression algorithm.
-func (c *MixnetConfig) SetCompression(algo string) {
+func (c *MixnetConfig) SetCompression(algo string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
 	c.Compression = algo
+	return nil
 }
 
 // SetErasureThreshold sets the reconstruction threshold.
-func (c *MixnetConfig) SetErasureThreshold(n int) {
+func (c *MixnetConfig) SetErasureThreshold(n int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
 	c.ErasureThreshold = n
+	return nil
 }
 
 // SetSelectionMode sets the relay selection strategy.
-func (c *MixnetConfig) SetSelectionMode(mode SelectionMode) {
+func (c *MixnetConfig) SetSelectionMode(mode SelectionMode) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
 	c.SelectionMode = mode
+	return nil
 }
 
 // SetSamplingSize sets the number of relays to sample from the DHT.
-func (c *MixnetConfig) SetSamplingSize(n int) {
+func (c *MixnetConfig) SetSamplingSize(n int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
 	c.SamplingSize = n
+	return nil
 }
 
 // SetRandomnessFactor sets the randomness factor for relay selection.
-func (c *MixnetConfig) SetRandomnessFactor(f float64) {
+func (c *MixnetConfig) SetRandomnessFactor(f float64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
 	c.RandomnessFactor = f
+	return nil
 }
 
 // GetErasureThreshold returns the effective threshold.
 // When ErasureThreshold is zero the default is ceil(CircuitCount * 0.6) per the
 // design document "Data Models" section (60% reconstruction threshold).
 func (c *MixnetConfig) GetErasureThreshold() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if c.ErasureThreshold != 0 {
 		return c.ErasureThreshold
 	}
@@ -179,6 +231,9 @@ func (c *MixnetConfig) GetErasureThreshold() int {
 
 // GetSamplingSize returns the effective sampling size.
 func (c *MixnetConfig) GetSamplingSize() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if c.SamplingSize == 0 {
 		return c.HopCount * c.CircuitCount * 3
 	}
@@ -188,8 +243,14 @@ func (c *MixnetConfig) GetSamplingSize() int {
 // ErrConfigValidation is returned when config validation fails.
 var ErrConfigValidation = errors.New("config validation failed")
 
+// ErrConfigImmutable is returned when attempting to mutate config while circuits are active.
+var ErrConfigImmutable = errors.New("config is immutable while circuits are active")
+
 // InitDefaults initializes unset fields with default values.
 func (c *MixnetConfig) InitDefaults() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.HopCount == 0 {
 		c.HopCount = 2
 	}
@@ -205,6 +266,20 @@ func (c *MixnetConfig) InitDefaults() {
 	if c.RandomnessFactor == 0 {
 		c.RandomnessFactor = 0.3
 	}
+}
+
+// Lock marks the config as immutable. Further mutation attempts are ignored.
+func (c *MixnetConfig) Lock() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.locked = true
+}
+
+// IsLocked returns true if the config is immutable.
+func (c *MixnetConfig) IsLocked() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.locked
 }
 
 // RTTUnreliableThreshold defines the latency above which a relay is considered unreliable.

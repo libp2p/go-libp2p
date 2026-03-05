@@ -14,7 +14,7 @@ func testAddr() multiaddr.Multiaddr {
 }
 
 func TestRelayDiscovery_NewRelayDiscovery(t *testing.T) {
-	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "rtt")
+	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "rtt", 0.3)
 
 	if rd == nil {
 		t.Error("expected non-nil discovery")
@@ -22,12 +22,12 @@ func TestRelayDiscovery_NewRelayDiscovery(t *testing.T) {
 }
 
 func TestRelayDiscovery_FilterPeers(t *testing.T) {
-	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "rtt")
+	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "rtt", 0.3)
 
 	peers := []peer.AddrInfo{
-		{ID: "peer1"},                              // No addrs - should be filtered
-		{ID: "peer2", Addrs: nil},                  // Should be filtered
-		{ID: "peer3", Addrs: []multiaddr.Multiaddr{}}, // Empty - should be filtered
+		{ID: "peer1"},                                           // No addrs - should be filtered
+		{ID: "peer2", Addrs: nil},                               // Should be filtered
+		{ID: "peer3", Addrs: []multiaddr.Multiaddr{}},           // Empty - should be filtered
 		{ID: "peer4", Addrs: []multiaddr.Multiaddr{testAddr()}}, // Has addr - should pass
 	}
 
@@ -43,7 +43,7 @@ func TestRelayDiscovery_FilterPeers(t *testing.T) {
 }
 
 func TestRelayDiscovery_SelectRandom(t *testing.T) {
-	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "random")
+	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "random", 0.3)
 
 	peers := []peer.AddrInfo{
 		{ID: "r1", Addrs: []multiaddr.Multiaddr{testAddr()}},
@@ -73,7 +73,7 @@ func TestRelayDiscovery_SelectRandom(t *testing.T) {
 }
 
 func TestRelayDiscovery_SelectRandom_Insufficient(t *testing.T) {
-	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "random")
+	rd := NewRelayDiscovery("/lib-mix/1.0.0", 10, "random", 0.3)
 
 	peers := []peer.AddrInfo{
 		{ID: "r1", Addrs: []multiaddr.Multiaddr{testAddr()}},
@@ -87,7 +87,7 @@ func TestRelayDiscovery_SelectRandom_Insufficient(t *testing.T) {
 }
 
 func TestRelayDiscovery_RandomSample(t *testing.T) {
-	rd := NewRelayDiscovery("/lib-mix/1.0.0", 3, "rtt")
+	rd := NewRelayDiscovery("/lib-mix/1.0.0", 3, "rtt", 0.3)
 
 	peers := []peer.AddrInfo{
 		{ID: "r1"}, {ID: "r2"}, {ID: "r3"},

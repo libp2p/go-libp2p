@@ -12,24 +12,26 @@ import (
 // MetricsCollector accumulates performance metrics for a Mixnet instance.
 // It also implements libp2p's metrics.Reporter interface for seamless Prometheus integration.
 type MetricsCollector struct {
-	mu               sync.RWMutex
-	avgRTT           time.Duration
-	rttSamples       int
-	circuitSuccess   uint64
-	circuitFail      uint64
-	recoveryEvents   uint64
-	throughputBytes  uint64
-	compressionRatio float64
-	activeCircuits   int
-	resourceUtilization float64 // CPU/memory utilization percentage (0-100)
+	mu                     sync.RWMutex
+	avgRTT                 time.Duration
+	rttSamples             int
+	circuitSuccess         uint64
+	circuitFail            uint64
+	recoveryEvents         uint64
+	throughputBytes        uint64
+	compressionRatio       float64
+	activeCircuits         int
+	resourceUtilization    float64 // CPU/memory utilization percentage (0-100)
 	maxResourceUtilization float64 // Peak resource utilization observed
+	relayActiveCircuits    int
+	relayBandwidthPerSec   int64
 
 	// Bandwidth tracking for metrics.Reporter interface
-	statsLock       sync.RWMutex
-	totalIn        int64
-	totalOut       int64
-	peerStats       map[peer.ID]metrics.Stats
-	protocolStats   map[protocol.ID]metrics.Stats
+	statsLock     sync.RWMutex
+	totalIn       int64
+	totalOut      int64
+	peerStats     map[peer.ID]metrics.Stats
+	protocolStats map[protocol.ID]metrics.Stats
 }
 
 // Ensure MetricsCollector implements libp2p's metrics.Reporter interface
@@ -127,14 +129,18 @@ func (m *MetricsCollector) GetMetrics() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"avg_rtt_ns":            m.avgRTT.Nanoseconds(),
-		"circuit_success":       m.circuitSuccess,
-		"circuit_fail":          m.circuitFail,
-		"circuit_success_rate":  successRate,
-		"recovery_events":       m.recoveryEvents,
-		"throughput_bytes":     m.throughputBytes,
-		"compression_ratio":    m.compressionRatio,
-		"active_circuits":      m.activeCircuits,
+		"avg_rtt_ns":               m.avgRTT.Nanoseconds(),
+		"circuit_success":          m.circuitSuccess,
+		"circuit_fail":             m.circuitFail,
+		"circuit_success_rate":     successRate,
+		"recovery_events":          m.recoveryEvents,
+		"throughput_bytes":         m.throughputBytes,
+		"compression_ratio":        m.compressionRatio,
+		"active_circuits":          m.activeCircuits,
+		"relay_active_circuits":    m.relayActiveCircuits,
+		"relay_bandwidth_bps":      m.relayBandwidthPerSec,
+		"resource_utilization":     m.resourceUtilization,
+		"resource_utilization_max": m.maxResourceUtilization,
 	}
 }
 
@@ -155,6 +161,13 @@ func (m *MetricsCollector) CircuitSuccessRate() float64 {
 		return 0
 	}
 	return float64(m.circuitSuccess) / float64(total)
+}
+
+// CircuitSuccesses returns the total number of successful circuit establishments.
+func (m *MetricsCollector) CircuitSuccesses() uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.circuitSuccess
 }
 
 // RecoveryEvents returns the total number of circuit recovery events.
@@ -214,6 +227,28 @@ func (m *MetricsCollector) RecordResourceUtilization(utilization float64) {
 	if utilization > m.maxResourceUtilization {
 		m.maxResourceUtilization = utilization
 	}
+}
+
+// RecordRelayResourceUsage records relay-specific resource usage snapshots.
+func (m *MetricsCollector) RecordRelayResourceUsage(activeCircuits int, bandwidthPerSec int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.relayActiveCircuits = activeCircuits
+	m.relayBandwidthPerSec = bandwidthPerSec
+}
+
+// RelayActiveCircuits returns the number of active relay circuits on this node.
+func (m *MetricsCollector) RelayActiveCircuits() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.relayActiveCircuits
+}
+
+// RelayBandwidthPerSec returns observed relay bandwidth in bytes per second.
+func (m *MetricsCollector) RelayBandwidthPerSec() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.relayBandwidthPerSec
 }
 
 // CurrentResourceUtilization returns the current resource utilization percentage.

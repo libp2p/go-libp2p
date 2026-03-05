@@ -1,4 +1,4 @@
-// Package mixnet provides DHT-based relay discovery with proper protocol verification.
+// Package mixnet provides discovery wrappers and traffic-shaping helpers.
 package mixnet
 
 import (
@@ -9,7 +9,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/routing"
 
 	"github.com/ipfs/go-cid"
@@ -19,213 +18,42 @@ import (
 	"github.com/libp2p/go-libp2p/mixnet/discovery"
 )
 
-// ============================================================
-// Req 4: DHT-Based Relay Discovery - Protocol Filtering
-// ============================================================
-
-// FilterRelaysWithOrigin filters relays excluding both destination and origin (self).
-// This implements AC 4.4 - Filter origin/destination.
-func FilterRelaysWithOrigin(relays []circuit.RelayInfo, exclude peer.ID, selfID peer.ID) []circuit.RelayInfo {
-	var result []circuit.RelayInfo
-	for _, r := range relays {
-		if r.PeerID != exclude && r.PeerID != selfID {
-			result = append(result, r)
-		}
-	}
-	return result
-}
-
-// FilterByProtocol verifies and filters relays that advertise the mixnet protocol.
-// This implements AC 4.5 - Filter non-advertisers.
-func FilterByProtocol(h host.Host, relays []circuit.RelayInfo, protoID protocol.ID) ([]circuit.RelayInfo, error) {
-	var result []circuit.RelayInfo
-
-	for _, r := range relays {
-		supported, err := h.Peerstore().SupportsProtocols(r.PeerID, protoID)
-		if err != nil {
-			continue
-		}
-
-		for _, sp := range supported {
-			if protocol.ID(sp) == protoID {
-				result = append(result, r)
-				break
-			}
-		}
-	}
-
-	if len(result) == 0 {
-		return nil, fmt.Errorf("no relays advertise protocol %s", protoID)
-	}
-
-	return result, nil
-}
-
-// DiscoverRelaysWithVerification discovers relays and verifies protocol support.
-func DiscoverRelaysWithVerification(ctx context.Context, h host.Host, r routing.Routing, dest peer.ID, protoID string) ([]circuit.RelayInfo, error) {
-	selfID := h.ID()
-
-	// Create CID for discovery (same as upgrader.go)
-	h_hash, _ := mh.Encode([]byte(protoID+"-relay-v1"), mh.SHA2_256)
-	c := cid.NewCidV1(cid.Raw, h_hash)
+// DiscoverRelaysWithVerification discovers relay providers and delegates filtering/selection
+// to the canonical discovery layer in mixnet/discovery.
+func DiscoverRelaysWithVerification(ctx context.Context, h host.Host, r routing.Routing, dest peer.ID, protoID string, hopCount, circuitCount int, samplingSize int, selectionMode string, randomnessFactor float64) ([]circuit.RelayInfo, error) {
+	// Create CID for discovery (same model used by upgrader).
+	hHash, _ := mh.Encode([]byte(protoID+"-relay-v1"), mh.SHA2_256)
+	c := cid.NewCidV1(cid.Raw, hHash)
 
 	providersChan := r.FindProvidersAsync(ctx, c, 0)
-
 	var providers []peer.AddrInfo
 	for p := range providersChan {
 		providers = append(providers, p)
 	}
 
-	// Convert to RelayInfo
-	relays := make([]circuit.RelayInfo, len(providers))
-	for i, p := range providers {
-		relays[i] = circuit.RelayInfo{
-			PeerID:   p.ID,
-			AddrInfo: p,
-		}
+	// Canonical exclusion logic lives in discovery.FilterByExclusion.
+	providers = discovery.FilterByExclusion(providers, dest, h.ID())
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("no relay providers after exclusion")
 	}
 
-	// AC 4.4: Filter origin and destination
-	relays = FilterRelaysWithOrigin(relays, dest, selfID)
-
-	// AC 4.5: Filter by protocol support
-	filtered, err := FilterByProtocol(h, relays, protocol.ID(protoID))
+	disc := discovery.NewRelayDiscoveryWithHost(h, protoID, samplingSize, selectionMode, randomnessFactor)
+	sel, err := disc.FindRelays(ctx, providers, hopCount, circuitCount)
 	if err != nil {
 		return nil, err
 	}
 
-	return filtered, nil
+	out := make([]circuit.RelayInfo, len(sel))
+	for i, ri := range sel {
+		out[i] = circuit.RelayInfo{PeerID: ri.PeerID, AddrInfo: ri.AddrInfo, Latency: ri.Latency, Connected: ri.Available}
+	}
+	return out, nil
 }
 
-// UseDiscoveryService uses the existing discovery service for relay selection.
-func UseDiscoveryService(h host.Host, protoID string, samplingSize int, selectionMode string) (*discovery.RelayDiscovery, error) {
-	disc := discovery.NewRelayDiscoveryWithHost(h, protoID, samplingSize, selectionMode)
+// UseDiscoveryService returns the canonical discovery service implementation.
+func UseDiscoveryService(h host.Host, protoID string, samplingSize int, selectionMode string, randomnessFactor float64) (*discovery.RelayDiscovery, error) {
+	disc := discovery.NewRelayDiscoveryWithHost(h, protoID, samplingSize, selectionMode, randomnessFactor)
 	return disc, nil
-}
-
-// ============================================================
-// Req 5: Latency-Based Relay Selection - Proper RTT Measurement
-// ============================================================
-
-// LatencyMeasurer measures latency to peers using libp2p ping.
-type LatencyMeasurer struct {
-	host host.Host
-	mu   sync.RWMutex
-	rtt  map[peer.ID]time.Duration
-}
-
-// NewLatencyMeasurer creates a new latency measurer using libp2p ping.
-func NewLatencyMeasurer(h host.Host) *LatencyMeasurer {
-	return &LatencyMeasurer{
-		host: h,
-		rtt:  make(map[peer.ID]time.Duration),
-	}
-}
-
-// MeasureRTT measures RTT to a peer using libp2p ping protocol.
-// This implements AC 5.1 - Uses libp2p ping protocol.
-func (lm *LatencyMeasurer) MeasureRTT(ctx context.Context, p peer.ID) (time.Duration, error) {
-	pingProto := protocol.ID("/ipfs/ping/1.0.0")
-
-	supported, err := lm.host.Peerstore().SupportsProtocols(p, pingProto)
-	if err != nil || len(supported) == 0 {
-		return 0, fmt.Errorf("peer does not support ping protocol")
-	}
-
-	start := time.Now()
-	stream, err := lm.host.NewStream(ctx, p, pingProto)
-	if err != nil {
-		return 0, err
-	}
-	defer stream.Close()
-
-	pingMsg := []byte("ping")
-	_, err = stream.Write(pingMsg)
-	if err != nil {
-		return 0, err
-	}
-
-	buf := make([]byte, 4)
-	_, err = stream.Read(buf)
-	if err != nil {
-		return 0, err
-	}
-
-	rtt := time.Since(start)
-
-	lm.mu.Lock()
-	lm.rtt[p] = rtt
-	lm.mu.Unlock()
-
-	return rtt, nil
-}
-
-// MeasureRTTWithTimeout measures RTT with per-peer timeout.
-func (lm *LatencyMeasurer) MeasureRTTWithTimeout(ctx context.Context, p peer.ID, timeout time.Duration) (time.Duration, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	return lm.MeasureRTT(ctx, p)
-}
-
-// GetRTT gets cached RTT for a peer.
-func (lm *LatencyMeasurer) GetRTT(p peer.ID) (time.Duration, bool) {
-	lm.mu.RLock()
-	defer lm.mu.RUnlock()
-	r, ok := lm.rtt[p]
-	return r, ok
-}
-
-// MeasureAllRTT measures RTT to all peers with per-peer timeout.
-func (lm *LatencyMeasurer) MeasureAllRTT(ctx context.Context, peers []peer.ID, timeout time.Duration) map[peer.ID]time.Duration {
-	results := make(map[peer.ID]time.Duration)
-	var wg sync.WaitGroup
-
-	for _, p := range peers {
-		wg.Add(1)
-		go func(pid peer.ID) {
-			defer wg.Done()
-			rtt, err := lm.MeasureRTTWithTimeout(ctx, pid, timeout)
-			if err == nil {
-				results[pid] = rtt
-			}
-		}(p)
-	}
-
-	wg.Wait()
-	return results
-}
-
-// SelectByRTT selects the best relays by RTT.
-func SelectByRTT(relays []circuit.RelayInfo, rtt map[peer.ID]time.Duration, limit int) []circuit.RelayInfo {
-	if limit <= 0 {
-		limit = len(relays)
-	}
-
-	sorted := make([]circuit.RelayInfo, len(relays))
-	copy(sorted, relays)
-
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := 0; j < len(sorted)-i-1; j++ {
-			rtt1 := rtt[sorted[j].PeerID]
-			rtt2 := rtt[sorted[j+1].PeerID]
-
-			if rtt1 == 0 && rtt2 > 0 {
-				continue
-			}
-			if rtt2 == 0 && rtt1 > 0 {
-				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
-				continue
-			}
-			if rtt1 > rtt2 {
-				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
-			}
-		}
-	}
-
-	if limit > len(sorted) {
-		limit = len(sorted)
-	}
-	return sorted[:limit]
 }
 
 // ============================================================

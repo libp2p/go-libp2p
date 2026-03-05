@@ -17,43 +17,46 @@ import (
 
 // RelayDiscovery provides mechanisms for discovering and selecting mixnet relays.
 type RelayDiscovery struct {
-	protocolID    string
-	samplingSize  int
-	selectionMode string // "rtt", "random", "hybrid"
-	host          host.Host
-	pingService   *ping.PingService
+	protocolID       string
+	samplingSize     int
+	selectionMode    string // "rtt", "random", "hybrid"
+	randomnessFactor float64
+	host             host.Host
+	pingService      *ping.PingService
 }
 
 // RelayInfo contains information about a candidate relay node discovered in the network.
 type RelayInfo struct {
 	// PeerID is the unique ID of the relay peer.
-	PeerID    peer.ID
+	PeerID peer.ID
 	// AddrInfo contains the addresses of the relay peer.
-	AddrInfo  peer.AddrInfo
+	AddrInfo peer.AddrInfo
 	// Latency is the measured RTT to the relay.
-	Latency   time.Duration
+	Latency time.Duration
 	// Available indicates if the relay is currently considered reachable.
 	Available bool
 }
 
 // NewRelayDiscovery creates a new RelayDiscovery instance with the specified parameters.
-func NewRelayDiscovery(protocolID string, samplingSize int, selectionMode string) *RelayDiscovery {
+func NewRelayDiscovery(protocolID string, samplingSize int, selectionMode string, randomnessFactor float64) *RelayDiscovery {
 	return &RelayDiscovery{
-		protocolID:    protocolID,
-		samplingSize:  samplingSize,
-		selectionMode: selectionMode,
+		protocolID:       protocolID,
+		samplingSize:     samplingSize,
+		selectionMode:    selectionMode,
+		randomnessFactor: randomnessFactor,
 	}
 }
 
 // NewRelayDiscoveryWithHost creates a RelayDiscovery instance that uses a libp2p host for RTT measurements.
-func NewRelayDiscoveryWithHost(h host.Host, protocolID string, samplingSize int, selectionMode string) *RelayDiscovery {
+func NewRelayDiscoveryWithHost(h host.Host, protocolID string, samplingSize int, selectionMode string, randomnessFactor float64) *RelayDiscovery {
 	ps := ping.NewPingService(h)
 	return &RelayDiscovery{
-		protocolID:    protocolID,
-		samplingSize:  samplingSize,
-		selectionMode: selectionMode,
-		host:          h,
-		pingService:   ps,
+		protocolID:       protocolID,
+		samplingSize:     samplingSize,
+		selectionMode:    selectionMode,
+		randomnessFactor: randomnessFactor,
+		host:             h,
+		pingService:      ps,
 	}
 }
 
@@ -78,7 +81,7 @@ func (r *RelayDiscovery) FindRelays(ctx context.Context, peers []peer.AddrInfo, 
 	case "random":
 		return r.selectRandom(filtered, required)
 	case "hybrid":
-		return r.selectHybrid(ctx, filtered, required, hopCount, circuitCount, 0.3)
+		return r.selectHybrid(ctx, filtered, required, hopCount, circuitCount, r.randomnessFactor)
 	case "rtt":
 		fallthrough
 	default:

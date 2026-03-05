@@ -2,12 +2,12 @@
 package mixnet
 
 import (
+	"crypto/rand"
 	"fmt"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
-
 )
 
 // ============================================================
@@ -22,6 +22,21 @@ type TransportInfo struct {
 	PeerID     peer.ID
 	Supported  []string // e.g., "/tcp/0", "/quic/1", "/webrtc"
 	Multiaddrs []string
+}
+
+// SupportsStandardTransport returns true when the peer advertises a standard
+// libp2p stream transport (TCP, QUIC, or WebRTC).
+func SupportsStandardTransport(info *TransportInfo) bool {
+	if info == nil {
+		return false
+	}
+	for _, t := range info.Supported {
+		switch {
+		case t == "/tcp/6", t == "/quic/460", t == "/quic-v1/461", t == "/webrtc-direct/276", t == "/webrtc/280":
+			return true
+		}
+	}
+	return false
 }
 
 // DetectTransportCapabilities detects what transports a peer supports using multiaddr.
@@ -313,14 +328,19 @@ func generateRandomPadding(min, max int) []byte {
 	if min >= max {
 		max = min + 1
 	}
-	// Use pseudo-random for now (in production, use crypto/rand)
 	size := min
 	if max > min {
-		size = min + ((min * 17) % (max - min))
+		span := max - min
+		buf := []byte{0}
+		if _, err := rand.Read(buf); err == nil {
+			size = min + int(buf[0])%span
+		}
 	}
 	padding := make([]byte, size)
-	for i := range padding {
-		padding[i] = byte(i * 17 % 256)
+	if _, err := rand.Read(padding); err != nil {
+		for i := range padding {
+			padding[i] = byte(i * 17 % 256)
+		}
 	}
 	return padding
 }

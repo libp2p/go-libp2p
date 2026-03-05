@@ -2,8 +2,8 @@
 package relay
 
 import (
+	"bufio"
 	"context"
-	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -20,6 +21,8 @@ import (
 const (
 	// ProtocolID is the libp2p protocol identifier for mixnet relaying.
 	ProtocolID = "/lib-mix/relay/1.0.0"
+	// FinalProtocolID is the protocol identifier used when forwarding to the destination.
+	FinalProtocolID = "/lib-mix/1.0.0"
 
 	// MaxPayloadSize is the maximum allowed size for a single packet.
 	MaxPayloadSize = 64 * 1024 // 64KB
@@ -29,6 +32,12 @@ const (
 
 	// nonceSize is the nonce size for ChaCha20-Poly1305 (12 bytes for standard, 24 for X)
 	nonceSize = 24 // XChaCha20-Poly1305
+)
+
+const (
+	msgTypeData     byte = 0x00
+	msgTypeCloseReq byte = 0x01
+	msgTypeCloseAck byte = 0x02
 )
 
 // RelayInfo contains runtime statistics and state for an active relay circuit on this node.
@@ -48,88 +57,19 @@ type RelayInfo struct {
 
 // Handler manages all active relay streams and enforces resource limits.
 type Handler struct {
-	host         host.Host
-	maxBandwidth int64
-	maxCircuits  int
-	activeRelays map[string]*RelayInfo // circuitID -> relay info
-	protocolID   string
-	mu           sync.RWMutex
-
-	// hopKey is the global encryption key for decrypting outermost layer (AC 7.1)
-	hopKey []byte
-	// hopKeys stores decryption keys for each hop layer indexed by session/circuit ID
-	hopKeys map[string][][]byte // sessionID -> []keys (one per hop)
-	muKeys  sync.RWMutex
-}
-
-// HopDecrypter defines the interface for decrypting onion-encrypted layers at each relay hop.
-// This implements AC 7.1 - Decrypt outermost layer.
-type HopDecrypter interface {
-	// DecryptHopLayer decrypts the outermost layer of onion encryption and extracts the next hop.
-	// Returns the next hop peer ID, remaining encrypted payload, and any error.
-	DecryptHopLayer(ciphertext []byte, key []byte) (string, []byte, error)
-}
-
-// noiseHopDecrypter implements HopDecrypter using ChaCha20-Poly1305 (same cipher as libp2p Noise).
-type noiseHopDecrypter struct{}
-
-// NewNoiseHopDecrypter creates a new hop decrypter.
-func NewNoiseHopDecrypter() HopDecrypter {
-	return &noiseHopDecrypter{}
-}
-
-// DecryptHopLayer decrypts one layer of onion encryption and extracts the next hop.
-// AC 7.1: Decrypt outermost layer using ChaCha20-Poly1305 (same cipher as libp2p Noise)
-// AC 7.2: Extract next-hop from decrypted header
-func (d *noiseHopDecrypter) DecryptHopLayer(ciphertext []byte, key []byte) (string, []byte, error) {
-	if len(ciphertext) < nonceSize {
-		return "", nil, fmt.Errorf("ciphertext too short: need at least %d bytes", nonceSize)
-	}
-
-	// Create ChaCha20-Poly1305 cipher - SAME CIPHER as libp2p Noise uses internally
-	aead, err := chacha20poly1305.NewX(key)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to create cipher: %w", err)
-	}
-
-	// Extract nonce (first nonceSize bytes) and ciphertext
-	nonce := ciphertext[:nonceSize]
-	encrypted := ciphertext[nonceSize:]
-
-	// Decrypt - no additional data (authenticated encryption)
-	plaintext, err := aead.Open(nil, nonce, encrypted, nil)
-	if err != nil {
-		return "", nil, fmt.Errorf("decryption failed: %w", err)
-	}
-
-	// AC 7.2: Extract next-hop from header
-	// Header format: [dest_len(2)][dest][remaining_data]
-	if len(plaintext) < 2 {
-		return "", nil, fmt.Errorf("invalid header: too short")
-	}
-
-	destLen := int(binary.LittleEndian.Uint16(plaintext[0:2]))
-	if len(plaintext) < 2+destLen {
-		return "", nil, fmt.Errorf("invalid destination length: have %d, need %d", len(plaintext)-2, destLen)
-	}
-
-	nextHop := string(plaintext[2 : 2+destLen])
-	remaining := plaintext[2+destLen:]
-
-	return nextHop, remaining, nil
-}
-
-// deriveHopKey derives a hop-specific decryption key using HKDF.
-// This matches the key derivation used at the origin for encryption.
-func deriveHopKey(prologue string, hopIndex int) ([]byte, error) {
-	// Use HKDF with SHA-256 for key derivation (Noise-like)
-	derivationInput := []byte(prologue)
-	h := sha256.New()
-	h.Write(derivationInput)
-	h.Write([]byte(fmt.Sprintf("lib-mix-hop-%d", hopIndex)))
-	h.Write([]byte("libp2p-mixnet-key derivation"))
-	key := h.Sum(nil)
-	return key[:32], nil
+	host              host.Host
+	maxBandwidth      int64
+	maxCircuits       int
+	useRCMgr          bool
+	serviceName       string
+	activeRelays      map[string]*RelayInfo // circuitID -> relay info
+	protocolID        string
+	mu                sync.RWMutex
+	muKeys            sync.RWMutex
+	circuitKeys       map[string][]byte // circuitID -> hop key
+	waitBandwidth     func(context.Context, int64) error
+	recordBandwidth   func(string, int64)
+	reportUtilization func(int)
 }
 
 // NewHandler creates a new relay Handler with the specified limits.
@@ -138,9 +78,11 @@ func NewHandler(host host.Host, maxCircuits int, maxBandwidth int64) *Handler {
 		host:         host,
 		maxBandwidth: maxBandwidth,
 		maxCircuits:  maxCircuits,
+		useRCMgr:     true,
+		serviceName:  "mixnet-relay",
 		activeRelays: make(map[string]*RelayInfo),
 		protocolID:   ProtocolID,
-		hopKeys:      make(map[string][][]byte),
+		circuitKeys:  make(map[string][]byte),
 	}
 }
 
@@ -152,9 +94,9 @@ func (h *Handler) HandleStream(stream network.Stream) {
 	ctx := context.Background()
 	defer stream.Close()
 
-	// Enforce circuit limit (Req 20.1, 20.3).
+	// Enforce compatibility circuit limits only when rcmgr integration is disabled.
 	h.mu.Lock()
-	if h.maxCircuits > 0 && len(h.activeRelays) >= h.maxCircuits {
+	if !h.useRCMgr && h.maxCircuits > 0 && len(h.activeRelays) >= h.maxCircuits {
 		h.mu.Unlock()
 		return
 	}
@@ -165,175 +107,188 @@ func (h *Handler) HandleStream(stream network.Stream) {
 		CircuitID:    circuitID,
 		LastActivity: time.Now(),
 	}
+	if h.reportUtilization != nil {
+		h.reportUtilization(len(h.activeRelays))
+	}
 	h.mu.Unlock()
 
 	defer func() {
 		h.mu.Lock()
 		delete(h.activeRelays, circuitID)
+		if h.reportUtilization != nil {
+			h.reportUtilization(len(h.activeRelays))
+		}
 		h.mu.Unlock()
 	}()
 
 	// Set a read deadline so the relay cannot be held open indefinitely (Req 6.3).
 	stream.SetDeadline(time.Now().Add(ReadTimeout))
 
-	// AC 7.1: Read the encrypted payload - the entire stream is onion-encrypted
-	encryptedPayload, err := io.ReadAll(io.LimitReader(stream, int64(MaxPayloadSize)))
-	if err != nil {
-		return
-	}
+	reader := bufio.NewReader(stream)
+	var dst network.Stream
+	var dstPeer peer.ID
+	var dstIsFinal bool
 
-	if len(encryptedPayload) == 0 {
-		return
-	}
-
-	// AC 7.1: Decrypt the outermost layer to extract next hop
-	decrypter := NewNoiseHopDecrypter()
-
-	// Try each available key to find the right one (for multi-hop circuits)
-	var nextHop string
-	var remainingPayload []byte
-	var keyUsed bool
-
-	// Try session-specific keys first
-	h.muKeys.RLock()
-	for _, keys := range h.hopKeys {
-		for _, key := range keys {
-			nextHop, remainingPayload, err = decrypter.DecryptHopLayer(encryptedPayload, key)
-			if err == nil {
-				keyUsed = true
-				break
-			}
-		}
-		if keyUsed {
-			break
-		}
-	}
-	h.muKeys.RUnlock()
-
-	// If no session key worked, try the global hop key
-	if !keyUsed && len(h.hopKey) > 0 {
-		nextHop, remainingPayload, err = decrypter.DecryptHopLayer(encryptedPayload, h.hopKey)
+	for {
+		circuitID, encPayload, releaseMem, err := readEncryptedFrame(reader, stream.Scope())
 		if err != nil {
-			// If decryption fails, treat the first bytes as next hop (backward compatibility)
-			nextHop = ""
-			remainingPayload = encryptedPayload
+			return
 		}
-	} else if !keyUsed {
-		// No keys available - forward as-is (backward compatibility)
-		nextHop = ""
-		remainingPayload = encryptedPayload
-	}
+		err = func() error {
+			if releaseMem != nil {
+				defer releaseMem()
+			}
+			if h.recordBandwidth != nil {
+				h.recordBandwidth("in", int64(len(encPayload)))
+			}
 
-	// AC 7.2: Extract next-hop from decrypted header
-	// If nextHop is empty after decryption, try to read from header format
-	if nextHop == "" && len(remainingPayload) >= 2 {
-		// Fallback: read from legacy cleartext format
-		destLen := int(binary.LittleEndian.Uint16(remainingPayload[0:2]))
-		if destLen > 0 && destLen < len(remainingPayload)-2 {
-			nextHop = string(remainingPayload[2:2+destLen])
-			remainingPayload = remainingPayload[2+destLen:]
+			key := h.getCircuitKey(circuitID)
+			if len(key) == 0 {
+				return fmt.Errorf("missing circuit key")
+			}
+
+			plaintext, err := decryptHopPayload(key, encPayload)
+			if err != nil {
+				return err
+			}
+
+			isFinal, nextHop, innerPayload, err := parseHopPayload(plaintext)
+			if err != nil {
+				return err
+			}
+
+			// Determine protocol based on whether this is the final hop.
+			nextProto := ProtocolID
+			if isFinal {
+				nextProto = FinalProtocolID
+			}
+
+			// Parse the next hop as a peer ID; fall back to multiaddr parsing.
+			nextPeer, err := peer.Decode(nextHop)
+			if err != nil {
+				if dst != nil {
+					_ = dst.Close()
+					dst = nil
+				}
+				return h.forwardByAddressEncrypted(ctx, nextHop, circuitID, innerPayload, nextProto)
+			}
+
+			// Keep per-circuit streams open; rotate only when route target/mode changes.
+			if dst == nil || dstPeer != nextPeer || dstIsFinal != isFinal {
+				if dst != nil {
+					_ = dst.Close()
+				}
+				s, err := h.openStream(ctx, nextPeer, nextProto)
+				if err != nil {
+					return err
+				}
+				dst = s
+				dstPeer = nextPeer
+				dstIsFinal = isFinal
+			}
+
+			// Apply bandwidth limit as a rate-limited writer if configured (Req 20.2, 20.4).
+			var writer io.Writer = dst
+			h.mu.RLock()
+			maxBandwidth := h.maxBandwidth
+			waitBandwidth := h.waitBandwidth
+			recordBandwidth := h.recordBandwidth
+			h.mu.RUnlock()
+			if maxBandwidth > 0 {
+				writer = &rateLimitedWriter{w: dst, bytesPerSec: maxBandwidth}
+			}
+			if waitBandwidth != nil {
+				if err := waitBandwidth(ctx, int64(len(innerPayload))); err != nil {
+					return err
+				}
+			}
+
+			if isFinal {
+				n, err := writer.Write(innerPayload)
+				if err != nil {
+					return err
+				}
+				if recordBandwidth != nil {
+					recordBandwidth("out", int64(n))
+				}
+				if len(innerPayload) > 0 && innerPayload[0] == msgTypeCloseReq {
+					if err := waitForCloseAck(dst); err != nil {
+						return err
+					}
+					if _, err := stream.Write([]byte{msgTypeCloseAck}); err != nil {
+						return err
+					}
+					_ = dst.Close()
+					return io.EOF
+				}
+			} else {
+				n, err := writeEncryptedFrame(writer, circuitID, innerPayload)
+				if err != nil {
+					return err
+				}
+				if recordBandwidth != nil {
+					recordBandwidth("out", int64(n))
+				}
+			}
+
+			return nil
+		}()
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			return
 		}
 	}
-
-	// If we still don't have a next hop, we can't forward
-	if nextHop == "" {
-		return
-	}
-
-	// Parse the next hop as a peer ID; fall back to multiaddr parsing.
-	nextPeer, err := peer.Decode(nextHop)
-	if err != nil {
-		// Forward by address using the remaining payload
-		_ = h.forwardByAddressWithPayload(ctx, nextHop, remainingPayload)
-		return
-	}
-
-	// AC 7.2: Forward to the extracted next hop with remaining encrypted payload
-	_ = h.forwardToPeerStreamWithPayload(ctx, nextPeer, remainingPayload)
 }
 
-// forwardToPeerStream opens a stream to nextPeer and pipes the remaining encrypted payload directly.
-func (h *Handler) forwardToPeerStream(ctx context.Context, nextPeer peer.ID, src network.Stream) error {
+func (h *Handler) openStream(ctx context.Context, nextPeer peer.ID, protoID string) (network.Stream, error) {
 	h.mu.RLock()
 	host := h.host
-	maxBandwidth := h.maxBandwidth
+	useRCMgr := h.useRCMgr
+	serviceName := h.serviceName
 	h.mu.RUnlock()
 
 	if host == nil {
-		return fmt.Errorf("no host configured")
+		return nil, fmt.Errorf("no host configured")
 	}
-
-	// Check if we're already connected
 	if host.Network().Connectedness(nextPeer) != network.Connected {
 		connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		if err := host.Connect(connectCtx, peer.AddrInfo{ID: nextPeer}); err != nil {
-			return fmt.Errorf("failed to connect to next hop: %w", err)
+			return nil, fmt.Errorf("failed to connect to next hop: %w", err)
 		}
 	}
 
-	dst, err := host.NewStream(ctx, nextPeer, ProtocolID)
-	if err != nil {
-		return fmt.Errorf("failed to open stream to %s: %w", nextPeer, err)
+	// Pre-admit outbound stream with rcmgr so resource policies are enforced centrally.
+	var managedScope network.StreamManagementScope
+	if useRCMgr {
+		rm := host.Network().ResourceManager()
+		scope, err := rm.OpenStream(nextPeer, network.DirOutbound)
+		if err != nil {
+			return nil, fmt.Errorf("rcmgr rejected outbound stream: %w", err)
+		}
+		if err := scope.SetProtocol(protocol.ID(protoID)); err != nil {
+			scope.Done()
+			return nil, fmt.Errorf("rcmgr protocol scope setup failed: %w", err)
+		}
+		// Best effort. Service names are optional in rcmgr.
+		_ = scope.SetService(serviceName)
+		managedScope = scope
 	}
-	defer dst.Close()
 
-	// Apply bandwidth limit as a rate-limited writer if configured (Req 20.2, 20.4).
-	var writer io.Writer = dst
-	if maxBandwidth > 0 {
-		writer = &rateLimitedWriter{w: dst, bytesPerSec: maxBandwidth}
+	if managedScope != nil {
+		defer managedScope.Done()
 	}
-
-	if _, err := io.Copy(writer, src); err != nil {
-		return fmt.Errorf("failed to forward payload: %w", err)
-	}
-	return nil
+	return host.NewStream(ctx, nextPeer, protocol.ID(protoID))
 }
 
-// forwardToPeerStreamWithPayload forwards the remaining decrypted payload to the next peer (AC 7.2).
-func (h *Handler) forwardToPeerStreamWithPayload(ctx context.Context, nextPeer peer.ID, payload []byte) error {
+func (h *Handler) forwardByAddressEncrypted(ctx context.Context, addr string, circuitID string, payload []byte, protoID string) error {
 	h.mu.RLock()
 	host := h.host
 	maxBandwidth := h.maxBandwidth
-	h.mu.RUnlock()
-
-	if host == nil {
-		return fmt.Errorf("no host configured")
-	}
-
-	// Check if we're already connected
-	if host.Network().Connectedness(nextPeer) != network.Connected {
-		connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		if err := host.Connect(connectCtx, peer.AddrInfo{ID: nextPeer}); err != nil {
-			return fmt.Errorf("failed to connect to next hop: %w", err)
-		}
-	}
-
-	dst, err := host.NewStream(ctx, nextPeer, ProtocolID)
-	if err != nil {
-		return fmt.Errorf("failed to open stream to %s: %w", nextPeer, err)
-	}
-	defer dst.Close()
-
-	// Apply bandwidth limit as a rate-limited writer if configured (Req 20.2, 20.4).
-	var writer io.Writer = dst
-	if maxBandwidth > 0 {
-		writer = &rateLimitedWriter{w: dst, bytesPerSec: maxBandwidth}
-	}
-
-	// Write the remaining encrypted payload (after removing outermost layer)
-	if _, err := writer.Write(payload); err != nil {
-		return fmt.Errorf("failed to forward payload: %w", err)
-	}
-
-	return nil
-}
-
-// forwardByAddress parses addr as a multiaddr peer info string and streams the payload there.
-func (h *Handler) forwardByAddress(ctx context.Context, addr string, src network.Stream) error {
-	h.mu.RLock()
-	host := h.host
+	waitBandwidth := h.waitBandwidth
+	recordBandwidth := h.recordBandwidth
 	h.mu.RUnlock()
 
 	if host == nil {
@@ -347,81 +302,152 @@ func (h *Handler) forwardByAddress(ctx context.Context, addr string, src network
 
 	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-
 	if err := host.Connect(connectCtx, *addrInfo); err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
 
-	dst, err := host.NewStream(ctx, addrInfo.ID, ProtocolID)
+	dst, err := host.NewStream(ctx, addrInfo.ID, protocol.ID(protoID))
 	if err != nil {
 		return fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("failed to forward payload: %w", err)
+	var writer io.Writer = dst
+	if maxBandwidth > 0 {
+		writer = &rateLimitedWriter{w: dst, bytesPerSec: maxBandwidth}
+	}
+	if waitBandwidth != nil {
+		if err := waitBandwidth(ctx, int64(len(payload))); err != nil {
+			return err
+		}
+	}
+
+	n, err := writeEncryptedFrame(writer, circuitID, payload)
+	if err != nil {
+		return err
+	}
+	if recordBandwidth != nil {
+		recordBandwidth("out", int64(n))
 	}
 	return nil
 }
 
-// forwardByAddressWithPayload forwards the remaining payload to an address (AC 7.2).
-func (h *Handler) forwardByAddressWithPayload(ctx context.Context, addr string, payload []byte) error {
-	h.mu.RLock()
-	host := h.host
-	h.mu.RUnlock()
-
-	if host == nil {
-		return fmt.Errorf("no host configured")
+func waitForCloseAck(stream network.Stream) error {
+	_ = stream.SetReadDeadline(time.Now().Add(10 * time.Second))
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(stream, buf); err != nil {
+		return err
 	}
-
-	addrInfo, err := peer.AddrInfoFromString(addr)
-	if err != nil {
-		return fmt.Errorf("failed to parse address: %w", err)
+	if buf[0] != msgTypeCloseAck {
+		return fmt.Errorf("unexpected close ack: %x", buf[0])
 	}
-
-	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	if err := host.Connect(connectCtx, *addrInfo); err != nil {
-		return fmt.Errorf("failed to connect to %s: %w", addr, err)
-	}
-
-	dst, err := host.NewStream(ctx, addrInfo.ID, ProtocolID)
-	if err != nil {
-		return fmt.Errorf("failed to open stream: %w", err)
-	}
-	defer dst.Close()
-
-	// Write the remaining encrypted payload
-	if _, err := dst.Write(payload); err != nil {
-		return fmt.Errorf("failed to forward payload: %w", err)
-	}
-
 	return nil
 }
 
-// SetHopKey sets the global encryption key for this relay to decrypt the outermost layer.
-// This enables AC 7.1 - decrypting at relays.
-func (h *Handler) SetHopKey(key []byte) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.hopKey = make([]byte, len(key))
-	copy(h.hopKey, key)
+func readEncryptedFrame(r *bufio.Reader, scope network.StreamScope) (string, []byte, func(), error) {
+	cidLen, err := r.ReadByte()
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if cidLen == 0 {
+		return "", nil, nil, fmt.Errorf("empty circuit id")
+	}
+	cid := make([]byte, int(cidLen))
+	if _, err := io.ReadFull(r, cid); err != nil {
+		return "", nil, nil, err
+	}
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return "", nil, nil, err
+	}
+	payloadLen := int(binary.LittleEndian.Uint32(lenBuf))
+	if payloadLen <= 0 || payloadLen > MaxPayloadSize*4 {
+		return "", nil, nil, fmt.Errorf("invalid encrypted payload length")
+	}
+
+	release := func() {}
+	if scope != nil {
+		if err := scope.ReserveMemory(payloadLen, network.ReservationPriorityMedium); err != nil {
+			return "", nil, nil, fmt.Errorf("rcmgr inbound memory reservation failed: %w", err)
+		}
+		release = func() { scope.ReleaseMemory(payloadLen) }
+	}
+
+	payload := make([]byte, payloadLen)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		release()
+		return "", nil, nil, err
+	}
+	return string(cid), payload, release, nil
 }
 
-// RegisterHopKeys registers encryption keys for a specific session/circuit.
-// This allows the relay to decrypt onion layers for multi-hop circuits.
-func (h *Handler) RegisterHopKeys(sessionID string, keys [][]byte) {
-	h.muKeys.Lock()
-	defer h.muKeys.Unlock()
-	h.hopKeys[sessionID] = keys
+func writeEncryptedFrame(w io.Writer, circuitID string, payload []byte) (int, error) {
+	if len(circuitID) == 0 || len(circuitID) > 255 {
+		return 0, fmt.Errorf("invalid circuit id")
+	}
+	header := make([]byte, 1+len(circuitID)+4)
+	header[0] = byte(len(circuitID))
+	copy(header[1:], []byte(circuitID))
+	binary.LittleEndian.PutUint32(header[1+len(circuitID):], uint32(len(payload)))
+	hn, err := w.Write(header)
+	if err != nil {
+		return hn, err
+	}
+	pn, err := w.Write(payload)
+	return hn + pn, err
 }
 
-// ClearHopKeys removes all registered hop keys for a session.
-func (h *Handler) ClearHopKeys(sessionID string) {
+func decryptHopPayload(key []byte, payload []byte) ([]byte, error) {
+	if len(payload) < nonceSize {
+		return nil, fmt.Errorf("payload too short")
+	}
+	aead, err := chacha20poly1305.NewX(key)
+	if err != nil {
+		return nil, err
+	}
+	nonce := payload[:nonceSize]
+	ciphertext := payload[nonceSize:]
+	return aead.Open(nil, nonce, ciphertext, nil)
+}
+
+func parseHopPayload(plaintext []byte) (bool, string, []byte, error) {
+	if len(plaintext) < 1+2 {
+		return false, "", nil, fmt.Errorf("plaintext too short")
+	}
+	isFinal := plaintext[0] == 1
+	nextLen := int(binary.LittleEndian.Uint16(plaintext[1:3]))
+	if len(plaintext) < 3+nextLen {
+		return false, "", nil, fmt.Errorf("invalid next hop length")
+	}
+	nextHop := string(plaintext[3 : 3+nextLen])
+	inner := plaintext[3+nextLen:]
+	return isFinal, nextHop, inner, nil
+}
+
+// HandleKeyExchange registers hop keys for a circuit using a Noise XX handshake.
+func (h *Handler) HandleKeyExchange(stream network.Stream) {
+	defer stream.Close()
+	payload, err := runNoiseXXResponder(context.Background(), stream)
+	if err != nil {
+		return
+	}
+	circuitID, key, err := decodeKeyExchangePayload(payload)
+	if err != nil {
+		return
+	}
+	h.setCircuitKey(circuitID, key)
+}
+
+func (h *Handler) setCircuitKey(circuitID string, key []byte) {
 	h.muKeys.Lock()
 	defer h.muKeys.Unlock()
-	delete(h.hopKeys, sessionID)
+	h.circuitKeys[circuitID] = key
+}
+
+func (h *Handler) getCircuitKey(circuitID string) []byte {
+	h.muKeys.RLock()
+	defer h.muKeys.RUnlock()
+	return h.circuitKeys[circuitID]
 }
 
 type rateLimitedWriter struct {
@@ -507,4 +533,42 @@ func (h *Handler) SetHost(host host.Host) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.host = host
+}
+
+// EnableLibp2pResourceManager toggles rcmgr-based admission and accounting.
+func (h *Handler) EnableLibp2pResourceManager(enabled bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.useRCMgr = enabled
+}
+
+// SetResourceServiceName sets the rcmgr service name for stream scopes.
+func (h *Handler) SetResourceServiceName(name string) {
+	if name == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.serviceName = name
+}
+
+// SetBandwidthBackpressure sets a callback used to enforce bandwidth backpressure.
+func (h *Handler) SetBandwidthBackpressure(fn func(context.Context, int64) error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.waitBandwidth = fn
+}
+
+// SetBandwidthRecorder sets a callback used to record inbound/outbound bandwidth.
+func (h *Handler) SetBandwidthRecorder(fn func(direction string, bytes int64)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recordBandwidth = fn
+}
+
+// SetUtilizationReporter sets a callback to publish active relay circuit utilization.
+func (h *Handler) SetUtilizationReporter(fn func(activeCircuits int)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.reportUtilization = fn
 }

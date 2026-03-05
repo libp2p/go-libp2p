@@ -1,6 +1,7 @@
 package mixnet
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -120,13 +121,27 @@ func TestMixnetConfig_Validation(t *testing.T) {
 
 func TestMixnetConfig_Setters(t *testing.T) {
 	cfg := NewMixnetConfig()
-	cfg.SetHopCount(5)
-	cfg.SetCircuitCount(10)
-	cfg.SetCompression("snappy")
-	cfg.SetErasureThreshold(8)
-	cfg.SetSelectionMode(SelectionModeHybrid)
-	cfg.SetSamplingSize(20)
-	cfg.SetRandomnessFactor(0.5)
+	if err := cfg.SetHopCount(5); err != nil {
+		t.Fatalf("SetHopCount() error = %v", err)
+	}
+	if err := cfg.SetCircuitCount(10); err != nil {
+		t.Fatalf("SetCircuitCount() error = %v", err)
+	}
+	if err := cfg.SetCompression("snappy"); err != nil {
+		t.Fatalf("SetCompression() error = %v", err)
+	}
+	if err := cfg.SetErasureThreshold(8); err != nil {
+		t.Fatalf("SetErasureThreshold() error = %v", err)
+	}
+	if err := cfg.SetSelectionMode(SelectionModeHybrid); err != nil {
+		t.Fatalf("SetSelectionMode() error = %v", err)
+	}
+	if err := cfg.SetSamplingSize(20); err != nil {
+		t.Fatalf("SetSamplingSize() error = %v", err)
+	}
+	if err := cfg.SetRandomnessFactor(0.5); err != nil {
+		t.Fatalf("SetRandomnessFactor() error = %v", err)
+	}
 
 	if cfg.HopCount != 5 {
 		t.Errorf("expected hop count 5, got %d", cfg.HopCount)
@@ -148,6 +163,18 @@ func TestMixnetConfig_Setters(t *testing.T) {
 	}
 	if cfg.RandomnessFactor != 0.5 {
 		t.Errorf("expected randomness factor 0.5, got %f", cfg.RandomnessFactor)
+	}
+}
+
+func TestMixnetConfig_Immutable(t *testing.T) {
+	cfg := NewMixnetConfig()
+	cfg.Lock()
+
+	if err := cfg.SetHopCount(4); err == nil {
+		t.Fatalf("expected SetHopCount() to fail on locked config")
+	}
+	if !errors.Is(cfg.SetCircuitCount(4), ErrConfigImmutable) {
+		t.Fatalf("expected ErrConfigImmutable for SetCircuitCount()")
 	}
 }
 
@@ -176,7 +203,7 @@ func TestMixnetConfig_GetErasureThreshold(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &MixnetConfig{
 				ErasureThreshold: tt.threshold,
-				CircuitCount:      tt.circuitCount,
+				CircuitCount:     tt.circuitCount,
 			}
 			if got := cfg.GetErasureThreshold(); got != tt.want {
 				t.Errorf("GetErasureThreshold() = %d, want %d", got, tt.want)
