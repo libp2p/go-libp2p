@@ -3,9 +3,14 @@ package mixnet
 import (
 	"sync"
 	"time"
+
+	"github.com/libp2p/go-libp2p/core/metrics"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
 // MetricsCollector accumulates performance metrics for a Mixnet instance.
+// It also implements libp2p's metrics.Reporter interface for seamless Prometheus integration.
 type MetricsCollector struct {
 	mu               sync.RWMutex
 	avgRTT           time.Duration
@@ -18,11 +23,24 @@ type MetricsCollector struct {
 	activeCircuits   int
 	resourceUtilization float64 // CPU/memory utilization percentage (0-100)
 	maxResourceUtilization float64 // Peak resource utilization observed
+
+	// Bandwidth tracking for metrics.Reporter interface
+	statsLock       sync.RWMutex
+	totalIn        int64
+	totalOut       int64
+	peerStats       map[peer.ID]metrics.Stats
+	protocolStats   map[protocol.ID]metrics.Stats
 }
+
+// Ensure MetricsCollector implements libp2p's metrics.Reporter interface
+var _ metrics.Reporter = (*MetricsCollector)(nil)
 
 // NewMetricsCollector creates a new instance of MetricsCollector.
 func NewMetricsCollector() *MetricsCollector {
-	return &MetricsCollector{}
+	return &MetricsCollector{
+		peerStats:     make(map[peer.ID]metrics.Stats),
+		protocolStats: make(map[protocol.ID]metrics.Stats),
+	}
 }
 
 // RecordRTT records a new round-trip time measurement and updates the running average.
@@ -62,10 +80,14 @@ func (m *MetricsCollector) RecordRecovery() {
 }
 
 // RecordThroughput adds the specified number of bytes to the total throughput.
+// This also logs the message to the metrics.Reporter interface for Prometheus integration.
 func (m *MetricsCollector) RecordThroughput(bytes uint64) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.throughputBytes += bytes
+	m.mu.Unlock()
+
+	// Also log to metrics.Reporter interface for Prometheus integration
+	m.LogSentMessage(int64(bytes))
 }
 
 // RecordCompressionRatio updates the running average of the compression ratio.
@@ -206,4 +228,139 @@ func (m *MetricsCollector) MaxResourceUtilization() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.maxResourceUtilization
+}
+
+// ============ metrics.Reporter interface implementation ============
+// These methods integrate with libp2p's built-in Prometheus metrics system.
+
+// LogSentMessage logs a message sent event for bandwidth tracking.
+func (m *MetricsCollector) LogSentMessage(size int64) {
+	m.statsLock.Lock()
+	defer m.statsLock.Unlock()
+	m.totalOut += size
+}
+
+// LogRecvMessage logs a message received event for bandwidth tracking.
+func (m *MetricsCollector) LogRecvMessage(size int64) {
+	m.statsLock.Lock()
+	defer m.statsLock.Unlock()
+	m.totalIn += size
+}
+
+// LogSentMessageStream logs a message sent on a specific stream.
+func (m *MetricsCollector) LogSentMessageStream(size int64, proto protocol.ID, p peer.ID) {
+	m.statsLock.Lock()
+	defer m.statsLock.Unlock()
+	m.totalOut += size
+
+	// Update protocol stats
+	if m.protocolStats == nil {
+		m.protocolStats = make(map[protocol.ID]metrics.Stats)
+	}
+	stats := m.protocolStats[proto]
+	stats.TotalOut += size
+	m.protocolStats[proto] = stats
+
+	// Update peer stats
+	if m.peerStats == nil {
+		m.peerStats = make(map[peer.ID]metrics.Stats)
+	}
+	peerStats := m.peerStats[p]
+	peerStats.TotalOut += size
+	m.peerStats[p] = peerStats
+}
+
+// LogRecvMessageStream logs a message received on a specific stream.
+func (m *MetricsCollector) LogRecvMessageStream(size int64, proto protocol.ID, p peer.ID) {
+	m.statsLock.Lock()
+	defer m.statsLock.Unlock()
+	m.totalIn += size
+
+	// Update protocol stats
+	if m.protocolStats == nil {
+		m.protocolStats = make(map[protocol.ID]metrics.Stats)
+	}
+	stats := m.protocolStats[proto]
+	stats.TotalIn += size
+	m.protocolStats[proto] = stats
+
+	// Update peer stats
+	if m.peerStats == nil {
+		m.peerStats = make(map[peer.ID]metrics.Stats)
+	}
+	peerStats := m.peerStats[p]
+	peerStats.TotalIn += size
+	m.peerStats[p] = peerStats
+}
+
+// GetBandwidthForPeer returns bandwidth statistics for a specific peer.
+func (m *MetricsCollector) GetBandwidthForPeer(p peer.ID) metrics.Stats {
+	m.statsLock.RLock()
+	defer m.statsLock.RUnlock()
+
+	if m.peerStats == nil {
+		return metrics.Stats{}
+	}
+	return m.peerStats[p]
+}
+
+// GetBandwidthForProtocol returns bandwidth statistics for a specific protocol.
+func (m *MetricsCollector) GetBandwidthForProtocol(proto protocol.ID) metrics.Stats {
+	m.statsLock.RLock()
+	defer m.statsLock.RUnlock()
+
+	if m.protocolStats == nil {
+		return metrics.Stats{}
+	}
+	return m.protocolStats[proto]
+}
+
+// GetBandwidthTotals returns total bandwidth statistics.
+func (m *MetricsCollector) GetBandwidthTotals() metrics.Stats {
+	m.statsLock.RLock()
+	defer m.statsLock.RUnlock()
+
+	return metrics.Stats{
+		TotalIn:  m.totalIn,
+		TotalOut: m.totalOut,
+	}
+}
+
+// GetBandwidthByPeer returns bandwidth statistics grouped by peer.
+func (m *MetricsCollector) GetBandwidthByPeer() map[peer.ID]metrics.Stats {
+	m.statsLock.RLock()
+	defer m.statsLock.RUnlock()
+
+	if m.peerStats == nil {
+		return make(map[peer.ID]metrics.Stats)
+	}
+	return m.peerStats
+}
+
+// GetBandwidthByProtocol returns bandwidth statistics grouped by protocol.
+func (m *MetricsCollector) GetBandwidthByProtocol() map[protocol.ID]metrics.Stats {
+	m.statsLock.RLock()
+	defer m.statsLock.RUnlock()
+
+	if m.protocolStats == nil {
+		return make(map[protocol.ID]metrics.Stats)
+	}
+	return m.protocolStats
+}
+
+// Reset resets all bandwidth statistics.
+func (m *MetricsCollector) Reset() {
+	m.statsLock.Lock()
+	defer m.statsLock.Unlock()
+
+	m.totalIn = 0
+	m.totalOut = 0
+	m.peerStats = make(map[peer.ID]metrics.Stats)
+	m.protocolStats = make(map[protocol.ID]metrics.Stats)
+}
+
+// TrimIdle removes statistics for idle peers.
+func (m *MetricsCollector) TrimIdle(since time.Time) {
+	// No-op for now - could implement cleanup of old peer stats if needed
+	_ = since
 }

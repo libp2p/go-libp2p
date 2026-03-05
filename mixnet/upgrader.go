@@ -667,6 +667,7 @@ func (m *Mixnet) ActiveConnections() map[peer.ID][]*circuit.Circuit {
 }
 
 // StreamUpgrader implements the libp2p stream upgrader interface for Mixnet.
+// This allows Mixnet to be used as a stream upgrader with libp2p.
 type StreamUpgrader struct {
 	mixnet *Mixnet
 	config *MixnetConfig
@@ -783,4 +784,5 @@ func (m *Mixnet) RecoverFromFailure(ctx context.Context, dest peer.ID) error {
 
 	return nil
 }
+
 // Package mixnet provides a high-performance, metadata-private communication protocol for libp2p.
