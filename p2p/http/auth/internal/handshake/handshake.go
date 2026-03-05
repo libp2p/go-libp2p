@@ -56,12 +56,12 @@ func (p *params) parsePeerIDAuthSchemeParams(headerVal []byte) error {
 	for ; err == nil; advance, token, err = splitAuthHeaderParams(headerVal, true) {
 		headerVal = headerVal[advance:]
 		bs := token
-		splitAt := bytes.Index(bs, []byte("="))
-		if splitAt == -1 {
+		before, after, ok := bytes.Cut(bs, []byte("="))
+		if !ok {
 			return errInvalid
 		}
-		kB := bs[:splitAt]
-		v := bs[splitAt+1:]
+		kB := before
+		v := after
 		if len(v) < 2 || v[0] != '"' || v[len(v)-1] != '"' {
 			return errInvalid
 		}

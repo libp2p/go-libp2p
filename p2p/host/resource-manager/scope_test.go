@@ -68,11 +68,9 @@ func TestCheckMemory(t *testing.T) {
 	})
 
 	f := func(limit uint64, res uint64, currentMem uint64, priShift uint8) bool {
-		limit = (limit % math.MaxInt64) + 1
-		if limit < 1024 {
+		limit = max((limit%math.MaxInt64)+1,
 			// We set the min to 1KiB
-			limit = 1024
-		}
+			1024)
 		currentMem = (currentMem % limit) // We can't have reserved more than our limit
 		res = (res >> 14)                 // We won't reasonably ever have a reservation > 2^50
 		rc := resources{limit: &BaseLimit{

@@ -2,6 +2,7 @@ package rcmgr
 
 import (
 	"bytes"
+	"slices"
 	"sort"
 	"strings"
 
@@ -86,9 +87,7 @@ func (r *resourceManager) ListProtocols() []protocol.ID {
 		result = append(result, p)
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i] < result[j]
-	})
+	slices.Sort(result)
 
 	return result
 }

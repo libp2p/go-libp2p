@@ -26,10 +26,10 @@ func getSleepDurationAndRequestCount(rps float64) (time.Duration, int) {
 
 func assertLimiter(t *testing.T, rl *Limiter, ipAddr netip.Addr, allowed, errorMargin int) {
 	t.Helper()
-	for i := 0; i < allowed; i++ {
+	for range allowed {
 		require.True(t, rl.Allow(ipAddr))
 	}
-	for i := 0; i < errorMargin; i++ {
+	for range errorMargin {
 		rl.Allow(ipAddr)
 	}
 	require.False(t, rl.Allow(ipAddr))
@@ -51,7 +51,7 @@ func TestLimiterGlobal(t *testing.T) {
 			}
 			if limit.RPS == 0 {
 				// 0 implies no rate limiting, any large number would do
-				for i := 0; i < 1000; i++ {
+				for range 1000 {
 					require.True(t, rl.Allow(addr))
 				}
 				return

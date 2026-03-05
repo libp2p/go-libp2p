@@ -237,10 +237,9 @@ loop:
 			break
 		}
 
-		maxSleep := 10 * (i + 1) * (i + 1) // in ms
-		if maxSleep > 200 {
-			maxSleep = 200
-		}
+		maxSleep := min(
+			// in ms
+			10*(i+1)*(i+1), 200)
 		d := 10*time.Millisecond + time.Duration(rand.Intn(maxSleep))*time.Millisecond
 		if timer == nil {
 			timer = time.NewTimer(d)

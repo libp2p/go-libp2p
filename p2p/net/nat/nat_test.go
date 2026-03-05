@@ -195,7 +195,7 @@ func TestNATRediscoveryOnConnectionError(t *testing.T) {
 	errConnectionRefused := errors.New("goupnp: error performing SOAP HTTP request: Post \"http://192.168.1.1:1234/ctl/IPConn\": dial tcp 192.168.1.1:1234: connect: connection refused")
 
 	// Set up expectations for the failures that will trigger rediscovery
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		expectPortMappingFailure(mockNAT, "tcp", 10000+i, errConnectionRefused)
 	}
 
@@ -204,7 +204,7 @@ func TestNATRediscoveryOnConnectionError(t *testing.T) {
 	expectPortMappingSuccess(newMockNAT, "udp", 4002, 4002)
 
 	// Now trigger the failures
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		externalPort := n.establishMapping(context.Background(), "tcp", 10000+i)
 		require.Equal(t, 0, externalPort)
 	}
@@ -270,7 +270,7 @@ func TestNATRediscoveryOldRouterReturns(t *testing.T) {
 	errConnectionRefused := errors.New("goupnp: error performing SOAP HTTP request: dial tcp 192.168.1.1:1234: connect: connection refused")
 
 	// Set up expectations for the first two failures
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000+i, gomock.Any(), MappingDuration).Return(0, errConnectionRefused).Times(1)
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000+i, gomock.Any(), time.Duration(0)).Return(0, errConnectionRefused).Times(1)
 	}
@@ -283,7 +283,7 @@ func TestNATRediscoveryOldRouterReturns(t *testing.T) {
 	mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 4001, gomock.Any(), MappingDuration).Return(4001, nil).Times(1)
 
 	// Trigger the failures
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		n.establishMapping(context.Background(), "tcp", 10000+i)
 	}
 	n.establishMapping(context.Background(), "tcp", 10002)
@@ -330,7 +330,7 @@ func TestNATRediscoveryFailureThreshold(t *testing.T) {
 	errOther := errors.New("some other error")
 
 	// Test 1: Only 2 failures - should NOT trigger rediscovery
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000+i, gomock.Any(), MappingDuration).Return(0, errConnectionRefused).Times(1)
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000+i, gomock.Any(), time.Duration(0)).Return(0, errConnectionRefused).Times(1)
 		n.establishMapping(context.Background(), "tcp", 10000+i)
@@ -345,7 +345,7 @@ func TestNATRediscoveryFailureThreshold(t *testing.T) {
 	n.establishMapping(context.Background(), "tcp", 10002)
 
 	// Now even 2 more connection failures shouldn't trigger (counter was reset)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10003+i, gomock.Any(), MappingDuration).Return(0, errConnectionRefused).Times(1)
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10003+i, gomock.Any(), time.Duration(0)).Return(0, errConnectionRefused).Times(1)
 		n.establishMapping(context.Background(), "tcp", 10003+i)
@@ -359,7 +359,7 @@ func TestNATRediscoveryFailureThreshold(t *testing.T) {
 	n.establishMapping(context.Background(), "tcp", 10005)
 
 	// Again, 2 failures shouldn't trigger
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10006+i, gomock.Any(), MappingDuration).Return(0, errConnectionRefused).Times(1)
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10006+i, gomock.Any(), time.Duration(0)).Return(0, errConnectionRefused).Times(1)
 		n.establishMapping(context.Background(), "tcp", 10006+i)
@@ -410,14 +410,14 @@ func TestNATRediscoveryConcurrency(t *testing.T) {
 
 	// Simulate multiple goroutines hitting failures after threshold
 	// First get to threshold
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000+i, gomock.Any(), MappingDuration).Return(0, errConnectionRefused).Times(1)
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", 10000+i, gomock.Any(), time.Duration(0)).Return(0, errConnectionRefused).Times(1)
 		n.establishMapping(context.Background(), "tcp", 10000+i)
 	}
 
 	// Set up expectations for concurrent failure attempts
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		port := 10003 + i
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", port, gomock.Any(), MappingDuration).Return(0, errConnectionRefused).AnyTimes()
 		mockNAT.EXPECT().AddPortMapping(gomock.Any(), "tcp", port, gomock.Any(), time.Duration(0)).Return(0, errConnectionRefused).AnyTimes()
@@ -425,7 +425,7 @@ func TestNATRediscoveryConcurrency(t *testing.T) {
 
 	// Now launch multiple goroutines that would all try to trigger rediscovery
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		wg.Add(1)
 		go func(port int) {
 			defer wg.Done()

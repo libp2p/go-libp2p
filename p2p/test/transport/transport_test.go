@@ -519,7 +519,7 @@ func TestBigPing(t *testing.T) {
 				defer s.Close()
 
 				go func() {
-					for i := 0; i < totalSends; i++ {
+					for range totalSends {
 						_, err := io.ReadFull(s, recvBuf)
 						if err != nil {
 							errCh <- err
@@ -534,7 +534,7 @@ func TestBigPing(t *testing.T) {
 					errCh <- err
 				}()
 
-				for i := 0; i < totalSends; i++ {
+				for range totalSends {
 					s.Write(sendBuf)
 				}
 				s.CloseWrite()
@@ -591,7 +591,7 @@ func TestLotsOfDataManyStreams(t *testing.T) {
 
 			sem := make(chan struct{}, parallel)
 			var wg sync.WaitGroup
-			for i := 0; i < totalStreams; i++ {
+			for range totalStreams {
 				wg.Add(1)
 				sem <- struct{}{}
 				go func() {
@@ -641,7 +641,7 @@ func TestManyStreams(t *testing.T) {
 			})
 
 			streams := make([]network.Stream, streamCount)
-			for i := 0; i < streamCount; i++ {
+			for i := range streamCount {
 				s, err := h2.NewStream(context.Background(), h1.ID(), "echo")
 				require.NoError(t, err)
 				streams[i] = s
@@ -716,7 +716,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 			var sawFirstErr atomic.Bool
 
 			workQueue := make(chan struct{}, streamCount)
-			for i := 0; i < streamCount; i++ {
+			for range streamCount {
 				workQueue <- struct{}{}
 			}
 			close(workQueue)

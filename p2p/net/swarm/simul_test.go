@@ -70,7 +70,7 @@ func TestSimultOpenFewStress(t *testing.T) {
 	rounds := 10
 	// rounds := 100
 
-	for i := 0; i < rounds; i++ {
+	for range rounds {
 		subtestSwarm(t, swarms, msgs)
 		<-time.After(10 * time.Millisecond)
 	}

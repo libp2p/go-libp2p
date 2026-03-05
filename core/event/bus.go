@@ -6,17 +6,17 @@ import (
 )
 
 // SubscriptionOpt represents a subscriber option. Use the options exposed by the implementation of choice.
-type SubscriptionOpt = func(interface{}) error
+type SubscriptionOpt = func(any) error
 
 // EmitterOpt represents an emitter option. Use the options exposed by the implementation of choice.
-type EmitterOpt = func(interface{}) error
+type EmitterOpt = func(any) error
 
 // CancelFunc closes a subscriber.
 type CancelFunc = func()
 
 // wildcardSubscriptionType is a virtual type to represent wildcard
 // subscriptions.
-type wildcardSubscriptionType interface{}
+type wildcardSubscriptionType any
 
 // WildcardSubscription is the type to subscribe to receive all events
 // emitted in the eventbus.
@@ -30,7 +30,7 @@ type Emitter interface {
 	// calls to Emit will block.
 	//
 	// Calling this function with wrong event type will cause a panic.
-	Emit(evt interface{}) error
+	Emit(evt any) error
 }
 
 // Subscription represents a subscription to one or multiple event types.
@@ -38,7 +38,7 @@ type Subscription interface {
 	io.Closer
 
 	// Out returns the channel from which to consume events.
-	Out() <-chan interface{}
+	Out() <-chan any
 
 	// Name returns the name for the subscription
 	Name() string
@@ -79,7 +79,7 @@ type Bus interface {
 	//        [...]
 	//    }
 	//  }
-	Subscribe(eventType interface{}, opts ...SubscriptionOpt) (Subscription, error)
+	Subscribe(eventType any, opts ...SubscriptionOpt) (Subscription, error)
 
 	// Emitter creates a new event emitter.
 	//
@@ -89,7 +89,7 @@ type Bus interface {
 	//  em, err := eventbus.Emitter(new(EventT))
 	//  defer em.Close() // MUST call this after being done with the emitter
 	//  em.Emit(EventT{})
-	Emitter(eventType interface{}, opts ...EmitterOpt) (Emitter, error)
+	Emitter(eventType any, opts ...EmitterOpt) (Emitter, error)
 
 	// GetAllEventTypes returns all the event types that this bus knows about
 	// (having emitters and subscribers). It omits the WildcardSubscription.

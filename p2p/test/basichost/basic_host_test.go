@@ -12,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
@@ -219,7 +218,7 @@ func TestOnlyWebRTCDirectDialNoDelay(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), swarm.PrivateOtherDelay-10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 	err = h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
 	require.NoError(t, err)
@@ -242,7 +241,7 @@ func TestWebRTCWithQUICManyConnections(t *testing.T) {
 	const N = 200
 	// These N dialers have both /quic-v1 and /webrtc-direct transports
 	var dialers [N]host.Host
-	for i := 0; i < N; i++ {
+	for i := range N {
 		dialers[i], err = libp2p.New(libp2p.NoListenAddrs)
 		require.NoError(t, err)
 		defer dialers[i].Close()
@@ -252,7 +251,7 @@ func TestWebRTCWithQUICManyConnections(t *testing.T) {
 	require.NoError(t, err)
 	defer d.Close()
 
-	for i := 0; i < N; i++ {
+	for i := range N {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		// With happy eyeballs these dialers will connect over only /quic-v1

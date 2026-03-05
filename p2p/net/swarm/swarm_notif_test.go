@@ -2,6 +2,7 @@ package swarm_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -80,11 +81,8 @@ func TestNotifications(t *testing.T) {
 
 			for _, c := range cons {
 				var found bool
-				for _, c2 := range expect {
-					if c == c2 {
-						found = true
-						break
-					}
+				if slices.Contains(expect, c) {
+					found = true
 				}
 
 				if !found {

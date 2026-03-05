@@ -2,6 +2,7 @@ package test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -9,7 +10,7 @@ import (
 
 func GenerateTestAddrs(n int) []ma.Multiaddr {
 	out := make([]ma.Multiaddr, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		a, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i))
 		if err != nil {
 			continue
@@ -26,14 +27,7 @@ func AssertAddressesEqual(t *testing.T, exp, act []ma.Multiaddr) {
 	}
 
 	for _, a := range exp {
-		found := false
-
-		for _, b := range act {
-			if a.Equal(b) {
-				found = true
-				break
-			}
-		}
+		found := slices.ContainsFunc(act, a.Equal)
 
 		if !found {
 			t.Fatalf("expected address %s not found", a)

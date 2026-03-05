@@ -116,8 +116,8 @@ func TestProbeManager(t *testing.T) {
 
 	t.Run("successes", func(t *testing.T) {
 		pm := makeNewProbeManager([]ma.Multiaddr{pub1, pub2})
-		for j := 0; j < 2; j++ {
-			for i := 0; i < targetConfidence; i++ {
+		for range 2 {
+			for range targetConfidence {
 				reqs := nextProbe(pm)
 				pm.CompleteProbe(reqs, autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 			}
@@ -396,7 +396,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		}
 		tr := newTracker(mockClient, nil)
 		var addrs []ma.Multiaddr
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.1.1.1/tcp/%d", i)))
 		}
 		slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return -a.Compare(b) }) // sort in reverse order
@@ -460,7 +460,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		require.True(t, drainNotify()) // check that we did receive probes
 
 		backoffInterval := backoffStartInterval
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			drainNotify()
 			cl.Add(backoffInterval / 2)
 			select {
@@ -512,7 +512,7 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		tr.UpdateAddrs([]ma.Multiaddr{pub1})
 		assertFirstEvent(t, tr, []ma.Multiaddr{pub1})
 
-		for i := 0; i < minConfidence; i++ {
+		for range minConfidence {
 			select {
 			case <-notify:
 			case <-time.After(1 * time.Second):
@@ -677,7 +677,7 @@ func TestRefreshReachability(t *testing.T) {
 		time.Sleep(50 * time.Millisecond) // wait for the cancellation to be processed
 
 	outer:
-		for i := 0; i < defaultMaxConcurrency; i++ {
+		for range defaultMaxConcurrency {
 			select {
 			case <-block:
 			default:
@@ -991,10 +991,7 @@ func FuzzAddrsReachabilityTracker(f *testing.F) {
 		}
 		ips = ips[1:]
 		var x, y int64
-		split := 128 / 8
-		if len(ips) < split {
-			split = len(ips)
-		}
+		split := min(len(ips), 128/8)
 		var b [8]byte
 		copy(b[:], ips[:split])
 		x = int64(binary.LittleEndian.Uint64(b[:]))

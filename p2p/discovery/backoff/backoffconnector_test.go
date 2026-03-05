@@ -40,9 +40,9 @@ func (h *maxDialHost) Connect(ctx context.Context, ai peer.AddrInfo) error {
 }
 
 func getNetHosts(t *testing.T, n int) []host.Host {
-	var out []host.Host
+	out := make([]host.Host, 0, n)
 
-	for i := 0; i < n; i++ {
+	for range n {
 		netw := swarmt.GenSwarm(t)
 		h := bhost.NewBlankHost(netw)
 		t.Cleanup(func() { h.Close() })

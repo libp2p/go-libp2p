@@ -167,7 +167,7 @@ func benchDataTransfer(b *benchenv, dataSize int64, m testMode) {
 
 	plainTextBufs := make([][]byte, 61)
 	writeTos := make(map[int]io.Writer)
-	for i := 0; i < len(plainTextBufs); i++ {
+	for i := range plainTextBufs {
 		var rbuf []byte
 		// plaintext will be 2 KB to 62 KB
 		plainTextBufs[i] = make([]byte, (i+2)*1024)

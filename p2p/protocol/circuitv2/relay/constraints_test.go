@@ -40,7 +40,7 @@ func TestConstraints(t *testing.T) {
 		res := infResources()
 		res.MaxReservations = limit
 		c := newConstraints(res)
-		for i := 0; i < limit; i++ {
+		for range limit {
 			if err := c.Reserve(test.RandPeerIDFatal(t), randomIPv4Addr(t), expiry); err != nil {
 				t.Fatal(err)
 			}
@@ -77,7 +77,7 @@ func TestConstraints(t *testing.T) {
 		res := infResources()
 		res.MaxReservationsPerIP = limit
 		c := newConstraints(res)
-		for i := 0; i < limit; i++ {
+		for range limit {
 			if err := c.Reserve(test.RandPeerIDFatal(t), ip, expiry); err != nil {
 				t.Fatal(err)
 			}
@@ -104,7 +104,7 @@ func TestConstraints(t *testing.T) {
 		res.MaxReservationsPerASN = limit
 		c := newConstraints(res)
 		const ipv6Prefix = "2a03:2880:f003:c07:face:b00c::"
-		for i := 0; i < limit; i++ {
+		for i := range limit {
 			addr := getAddr(t, net.ParseIP(fmt.Sprintf("%s%d", ipv6Prefix, i+1)))
 			if err := c.Reserve(test.RandPeerIDFatal(t), addr, expiry); err != nil {
 				t.Fatal(err)
@@ -130,7 +130,7 @@ func TestConstraintsCleanup(t *testing.T) {
 		MaxReservationsPerASN:  math.MaxInt32,
 	}
 	c := newConstraints(res)
-	for i := 0; i < limit; i++ {
+	for range limit {
 		if err := c.Reserve(test.RandPeerIDFatal(t), randomIPv4Addr(t), expiry); err != nil {
 			t.Fatal(err)
 		}

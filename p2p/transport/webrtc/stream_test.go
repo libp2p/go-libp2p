@@ -112,7 +112,7 @@ func assertDataChannelOpen(t *testing.T, dc *datachannel.DataChannel) {
 	if err != nil {
 		t.Fatal("unexpected mashalling error", err)
 	}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, err := dc.Write(msg)
 		if err != nil {
 			t.Fatal("unexpected write err: ", err)
@@ -132,7 +132,7 @@ func assertDataChannelClosed(t *testing.T, dc *datachannel.DataChannel) {
 	if err != nil {
 		t.Fatal("unexpected mashalling error", err)
 	}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err := dc.Write(msg)
 		if err != nil {
 			if errors.Is(err, sctp.ErrStreamClosed) {
@@ -221,22 +221,22 @@ func TestStreamSkipEmptyFrames(t *testing.T) {
 	clientStr := newStream(client.dc, client.rwc, maxSendMessageSize, func() {})
 	serverStr := newStream(server.dc, server.rwc, maxSendMessageSize, func() {})
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
 	}
 	require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{Message: []byte("foo")}))
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
 	}
 	require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{Message: []byte("bar")}))
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
 	}
 	require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{Flag: pb.Message_FIN.Enum()}))
 
 	var read []byte
 	var count int
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		b := make([]byte, 10)
 		count++
 		n, err := clientStr.Read(b)
@@ -356,7 +356,7 @@ func TestStreamWriteDeadlineAsync(t *testing.T) {
 	}
 	clientStr.SetWriteDeadline(start.Add(timeout))
 	var hitDeadline bool
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		if _, err := clientStr.Write(b); err != nil {
 			t.Logf("wrote %d kB", i)
 			require.ErrorIs(t, err, os.ErrDeadlineExceeded)

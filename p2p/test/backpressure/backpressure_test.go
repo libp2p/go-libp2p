@@ -48,7 +48,7 @@ func TestStBackpressureStreamWrite(t *testing.T) {
 	// If nobody is reading, we should eventually time out.
 	require.NoError(t, s.SetWriteDeadline(time.Now().Add(100*time.Millisecond)))
 	data := make([]byte, 16*1024)
-	for i := 0; i < 5*1024; i++ { // write at most 100MiB
+	for range 5 * 1024 { // write at most 100MiB
 		if _, err := s.Write(data); err != nil {
 			require.True(t, os.IsTimeout(err), err)
 			return
