@@ -268,7 +268,7 @@ func (c *MixnetConfig) InitDefaults() {
 	}
 }
 
-// Lock marks the config as immutable. Further mutation attempts are ignored.
+// Lock marks the config as immutable. Further mutation attempts return ErrConfigImmutable.
 func (c *MixnetConfig) Lock() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

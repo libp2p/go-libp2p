@@ -73,7 +73,7 @@ func main() {
 	maxBandwidth := int64(1024 * 1024 * 10)
 	relayHandler := relay.NewHandler(h, maxCircuits, maxBandwidth)
 	h.SetStreamHandler(relay.ProtocolID, relayHandler.HandleStream)
-	h.SetStreamHandler("/lib-mix/key-exchange/1.0.0", relayHandler.HandleKeyExchange)
+	h.SetStreamHandler(mixnet.KeyExchangeProtocolID, relayHandler.HandleKeyExchange)
 
 	// 2. Parse Peers from environment (supports both MIXNET_PEERS and MIXNET_RELAYS)
 	peersStr := os.Getenv("MIXNET_PEERS")
@@ -106,7 +106,6 @@ func main() {
 	cfg := mixnet.DefaultConfig()
 	cfg.HopCount = 1
 	cfg.CircuitCount = 2
-	cfg.ErasureThreshold = 1
 	cfg.ErasureThreshold = 1
 	cfg.SamplingSize = 8
 	

@@ -15,7 +15,7 @@ import (
 )
 
 // KeyExchangeProtocolID is the protocol used to negotiate per-circuit hop keys.
-const KeyExchangeProtocolID = "/lib-mix/key/1.0.0"
+const KeyExchangeProtocolID = "/lib-mix/key-exchange/1.0.0"
 
 var keyExchangeCipherSuite = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.HashSHA256)
 

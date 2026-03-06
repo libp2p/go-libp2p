@@ -3,7 +3,6 @@ package mixnet
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -22,7 +21,10 @@ import (
 // to the canonical discovery layer in mixnet/discovery.
 func DiscoverRelaysWithVerification(ctx context.Context, h host.Host, r routing.Routing, dest peer.ID, protoID string, hopCount, circuitCount int, samplingSize int, selectionMode string, randomnessFactor float64) ([]circuit.RelayInfo, error) {
 	// Create CID for discovery (same model used by upgrader).
-	hHash, _ := mh.Encode([]byte(protoID+"-relay-v1"), mh.SHA2_256)
+	hHash, err := mh.Encode([]byte(protoID+"-relay-v1"), mh.SHA2_256)
+	if err != nil {
+		return nil, ErrDiscoveryFailed("failed to encode discovery CID").WithCause(err)
+	}
 	c := cid.NewCidV1(cid.Raw, hHash)
 
 	providersChan := r.FindProvidersAsync(ctx, c, 0)
@@ -34,13 +36,13 @@ func DiscoverRelaysWithVerification(ctx context.Context, h host.Host, r routing.
 	// Canonical exclusion logic lives in discovery.FilterByExclusion.
 	providers = discovery.FilterByExclusion(providers, dest, h.ID())
 	if len(providers) == 0 {
-		return nil, fmt.Errorf("no relay providers after exclusion")
+		return nil, ErrDiscoveryFailed("no relay providers after exclusion")
 	}
 
 	disc := discovery.NewRelayDiscoveryWithHost(h, protoID, samplingSize, selectionMode, randomnessFactor)
 	sel, err := disc.FindRelays(ctx, providers, hopCount, circuitCount)
 	if err != nil {
-		return nil, err
+		return nil, ErrDiscoveryFailed("relay selection failed").WithCause(err)
 	}
 
 	out := make([]circuit.RelayInfo, len(sel))

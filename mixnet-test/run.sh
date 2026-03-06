@@ -75,10 +75,18 @@ echo "Starting PentAGI..."
 cd pentagi
 if [ ! -f .env ]; then
     cp .env.example .env
+    # Configure cross-platform sed in-place flag
+    if sed -i'' --version /dev/null >/dev/null 2>&1; then
+        # GNU sed (accepts --version and -i'' works without a backup suffix)
+        SED_INPLACE=(sed -i'')
+    else
+        # BSD/macOS sed
+        SED_INPLACE=(sed -i '')
+    fi
     # Inject keys if provided in shell env
-    [ ! -z "$OPEN_AI_KEY" ] && sed -i '' "s/OPEN_AI_KEY=.*/OPEN_AI_KEY=$OPEN_AI_KEY/" .env || true
-    [ ! -z "$ANTHROPIC_API_KEY" ] && sed -i '' "s/ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY/" .env || true
-    [ ! -z "$GEMINI_API_KEY" ] && sed -i '' "s/GEMINI_API_KEY=.*/GEMINI_API_KEY=$GEMINI_API_KEY/" .env || true
+    [ ! -z "$OPEN_AI_KEY" ] && "${SED_INPLACE[@]}" "s/OPEN_AI_KEY=.*/OPEN_AI_KEY=$OPEN_AI_KEY/" .env || true
+    [ ! -z "$ANTHROPIC_API_KEY" ] && "${SED_INPLACE[@]}" "s/ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY/" .env || true
+    [ ! -z "$GEMINI_API_KEY" ] && "${SED_INPLACE[@]}" "s/GEMINI_API_KEY=.*/GEMINI_API_KEY=$GEMINI_API_KEY/" .env || true
 fi
 docker compose up -d
 cd ..

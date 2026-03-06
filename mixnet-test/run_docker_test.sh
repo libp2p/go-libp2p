@@ -9,7 +9,8 @@ echo "  Mixnet Docker Network Test"
 echo "  Starting 10 nodes in Docker containers"
 echo "=============================================="
 
-cd /Users/abhinavnehra/git/Libp2p/go-libp2p-mixnet-impl/mixnet-test
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 # Cleanup function
 cleanup() {

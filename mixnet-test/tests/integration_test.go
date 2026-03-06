@@ -111,7 +111,7 @@ func NewTestNetwork(t *testing.T, numNodes int) *TestNetwork {
 		maxBandwidth := int64(1024 * 1024 * 10)
 		relayHandler := relay.NewHandler(network.hosts[i], maxCircuits, maxBandwidth)
 		network.hosts[i].SetStreamHandler(relay.ProtocolID, relayHandler.HandleStream)
-		network.hosts[i].SetStreamHandler("/lib-mix/key-exchange/1.0.0", relayHandler.HandleKeyExchange)
+		network.hosts[i].SetStreamHandler(mixnet.KeyExchangeProtocolID, relayHandler.HandleKeyExchange)
 
 		// Create mixnet config - use smaller values for test network
 		// With hopCount=1 and circuitCount=2, we need at least 6 relays (3x required)
