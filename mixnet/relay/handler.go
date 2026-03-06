@@ -27,6 +27,10 @@ const (
 	// MaxPayloadSize is the maximum allowed size for a single packet.
 	MaxPayloadSize = 64 * 1024 // 64KB
 
+	// maxEncryptedPayloadSize is the maximum allowed size for an encrypted frame payload.
+	// The 4x multiplier accounts for encryption overhead and multi-hop wrapping.
+	maxEncryptedPayloadSize = MaxPayloadSize * 4
+
 	// ReadTimeout is the duration after which an inactive relay stream is closed.
 	ReadTimeout = 30 * time.Second
 
@@ -128,6 +132,12 @@ func (h *Handler) HandleStream(stream network.Stream) {
 	var dst network.Stream
 	var dstPeer peer.ID
 	var dstIsFinal bool
+
+	defer func() {
+		if dst != nil {
+			_ = dst.Close()
+		}
+	}()
 
 	for {
 		circuitID, encPayload, releaseMem, err := readEncryptedFrame(reader, stream.Scope())
@@ -261,7 +271,6 @@ func (h *Handler) openStream(ctx context.Context, nextPeer peer.ID, protoID stri
 	}
 
 	// Pre-admit outbound stream with rcmgr so resource policies are enforced centrally.
-	var managedScope network.StreamManagementScope
 	if useRCMgr {
 		rm := host.Network().ResourceManager()
 		scope, err := rm.OpenStream(nextPeer, network.DirOutbound)
@@ -274,13 +283,18 @@ func (h *Handler) openStream(ctx context.Context, nextPeer peer.ID, protoID stri
 		}
 		// Best effort. Service names are optional in rcmgr.
 		_ = scope.SetService(serviceName)
-		managedScope = scope
+		defer scope.Done()
 	}
 
-	if managedScope != nil {
-		defer managedScope.Done()
+	s, err := host.NewStream(ctx, nextPeer, protocol.ID(protoID))
+	if err != nil {
+		return nil, err
 	}
-	return host.NewStream(ctx, nextPeer, protocol.ID(protoID))
+	// Tag the stream's own scope with service so resource policies are enforced correctly.
+	if useRCMgr {
+		_ = s.Scope().SetService(serviceName)
+	}
+	return s, nil
 }
 
 func (h *Handler) forwardByAddressEncrypted(ctx context.Context, addr string, circuitID string, payload []byte, protoID string) error {
@@ -361,7 +375,7 @@ func readEncryptedFrame(r *bufio.Reader, scope network.StreamScope) (string, []b
 		return "", nil, nil, err
 	}
 	payloadLen := int(binary.LittleEndian.Uint32(lenBuf))
-	if payloadLen <= 0 || payloadLen > MaxPayloadSize*4 {
+	if payloadLen <= 0 || payloadLen > maxEncryptedPayloadSize {
 		return "", nil, nil, fmt.Errorf("invalid encrypted payload length")
 	}
 
@@ -384,6 +398,9 @@ func readEncryptedFrame(r *bufio.Reader, scope network.StreamScope) (string, []b
 func writeEncryptedFrame(w io.Writer, circuitID string, payload []byte) (int, error) {
 	if len(circuitID) == 0 || len(circuitID) > 255 {
 		return 0, fmt.Errorf("invalid circuit id")
+	}
+	if len(payload) > maxEncryptedPayloadSize {
+		return 0, fmt.Errorf("payload too large: %d bytes exceeds limit of %d", len(payload), maxEncryptedPayloadSize)
 	}
 	header := make([]byte, 1+len(circuitID)+4)
 	header[0] = byte(len(circuitID))

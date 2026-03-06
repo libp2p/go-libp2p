@@ -14,7 +14,9 @@ import (
 type MixStream struct {
 	mixnet    *Mixnet
 	dest      peer.ID
+	proto     string
 	sessionID string
+	ctx       context.Context
 	ch        <-chan []byte
 	mu        sync.Mutex
 	closed    bool
@@ -32,6 +34,7 @@ func (m *Mixnet) OpenStream(ctx context.Context, dest peer.ID) (*MixStream, erro
 		mixnet:    m,
 		dest:      dest,
 		sessionID: sessionID,
+		ctx:       ctx,
 		ch:        ch,
 	}, nil
 }
@@ -77,7 +80,7 @@ func (s *MixStream) Write(p []byte) (int, error) {
 	}
 	s.mu.Unlock()
 
-	if err := s.mixnet.SendWithSession(context.Background(), s.dest, p, s.sessionID); err != nil {
+	if err := s.mixnet.SendWithSession(s.ctx, s.dest, p, s.sessionID); err != nil {
 		return 0, err
 	}
 	return len(p), nil

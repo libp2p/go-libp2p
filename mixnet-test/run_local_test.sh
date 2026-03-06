@@ -23,7 +23,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-cd /Users/abhinavnehra/git/Libp2p/go-libp2p-mixnet-impl
+cd "$(git rev-parse --show-toplevel)"
 
 echo ""
 echo "Step 1: Building mixnet node binary..."
