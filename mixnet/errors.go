@@ -8,25 +8,25 @@ import (
 // Error codes for mixnet operations.
 const (
 	// ErrCodeConfig indicates a configuration-related error.
-	ErrCodeConfig       = "CONFIG"
+	ErrCodeConfig = "CONFIG"
 	// ErrCodeDiscovery indicates a failure during relay discovery.
-	ErrCodeDiscovery    = "DISCOVERY"
+	ErrCodeDiscovery = "DISCOVERY"
 	// ErrCodeCircuit indicates a failure in circuit establishment or maintenance.
-	ErrCodeCircuit      = "CIRCUIT"
+	ErrCodeCircuit = "CIRCUIT"
 	// ErrCodeEncryption indicates a failure in the encryption/decryption process.
-	ErrCodeEncryption   = "ENCRYPTION"
+	ErrCodeEncryption = "ENCRYPTION"
 	// ErrCodeCompression indicates a failure during data compression or decompression.
-	ErrCodeCompression  = "COMPRESSION"
+	ErrCodeCompression = "COMPRESSION"
 	// ErrCodeSharding indicates a failure in data sharding or reconstruction.
-	ErrCodeSharding    = "SHARDING"
+	ErrCodeSharding = "SHARDING"
 	// ErrCodeTransport indicates a failure in the underlying network transport.
-	ErrCodeTransport    = "TRANSPORT"
+	ErrCodeTransport = "TRANSPORT"
 	// ErrCodeTimeout indicates that an operation timed out.
-	ErrCodeTimeout      = "TIMEOUT"
+	ErrCodeTimeout = "TIMEOUT"
 	// ErrCodeResource indicates that a resource limit has been reached.
-	ErrCodeResource     = "RESOURCE"
+	ErrCodeResource = "RESOURCE"
 	// ErrCodeProtocol indicates a protocol-level error or mismatch.
-	ErrCodeProtocol     = "PROTOCOL"
+	ErrCodeProtocol = "PROTOCOL"
 )
 
 // MixnetError represents an error that occurred during mixnet operations.
@@ -109,6 +109,14 @@ func ErrProtocolError(msg string) *MixnetError {
 	return &MixnetError{Code: ErrCodeProtocol, Message: msg}
 }
 
+// ErrReconstructionMissingShards returns a reconstruction error including missing shard IDs.
+func ErrReconstructionMissingShards(sessionID string, have, need int, missing []int) *MixnetError {
+	return &MixnetError{
+		Code:    ErrCodeSharding,
+		Message: fmt.Sprintf("reconstruction failed for session %s: have=%d need=%d missing_shard_ids=%v", sessionID, have, need, missing),
+	}
+}
+
 // IsRetryable returns true if the error indicates a condition that might be resolved by retrying.
 func IsRetryable(err error) bool {
 	if err == nil {
@@ -150,13 +158,13 @@ var (
 	ErrInsufficientRelays    = ErrDiscoveryFailed("insufficient relays available")
 	ErrCircuitClosed         = ErrCircuitFailed("circuit is closed")
 	ErrEncryptionNotReady    = ErrEncryptionFailed("encryption not initialized")
-	ErrDecryptionFailed     = ErrEncryptionFailed("decryption failed")
-	ErrResourceLimit        = ErrResourceExhausted("resource limit exceeded")
-	ErrProtocolMismatch     = ErrProtocolError("protocol version mismatch")
+	ErrDecryptionFailed      = ErrEncryptionFailed("decryption failed")
+	ErrResourceLimit         = ErrResourceExhausted("resource limit exceeded")
+	ErrProtocolMismatch      = ErrProtocolError("protocol version mismatch")
 )
 
 // Internal sentinel errors for context-related failures.
 var (
-	contextCanceled       = errors.New("context canceled")
+	contextCanceled         = errors.New("context canceled")
 	contextDeadlineExceeded = errors.New("context deadline exceeded")
 )

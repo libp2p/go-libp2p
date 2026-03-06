@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/protocol"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -46,6 +48,7 @@ func DefaultResourceConfig() *ResourceConfig {
 // ResourceManager manages relay node resources and enforces limits.
 type ResourceManager struct {
 	config *ResourceConfig
+	libp2p network.ResourceManager
 
 	// Circuit tracking (AC 20.1, 20.3)
 	mu             sync.RWMutex
@@ -89,6 +92,52 @@ func NewResourceManager(cfg *ResourceConfig) *ResourceManager {
 		backpressureCh:  make(chan struct{}, 1),
 		stopCh:          make(chan struct{}),
 	}
+}
+
+// NewLibp2pResourceManager creates a resource manager that is backed by libp2p rcmgr.
+func NewLibp2pResourceManager(h host.Host, cfg *ResourceConfig) *ResourceManager {
+	rm := NewResourceManager(cfg)
+	if h != nil && h.Network() != nil {
+		rm.libp2p = h.Network().ResourceManager()
+	}
+	return rm
+}
+
+// UsesLibp2p reports whether this manager is backed by libp2p rcmgr.
+func (rm *ResourceManager) UsesLibp2p() bool {
+	return rm != nil && rm.libp2p != nil
+}
+
+// AdmitOutboundStream asks libp2p rcmgr for an outbound stream scope and tags it.
+// The returned function must be called to release the scope.
+func (rm *ResourceManager) AdmitOutboundStream(p peer.ID, protoID protocol.ID, service string) (func(), error) {
+	if rm == nil || rm.libp2p == nil {
+		return func() {}, nil
+	}
+	scope, err := rm.libp2p.OpenStream(p, network.DirOutbound)
+	if err != nil {
+		return nil, err
+	}
+	if err := scope.SetProtocol(protoID); err != nil {
+		scope.Done()
+		return nil, err
+	}
+	if service != "" {
+		_ = scope.SetService(service)
+	}
+	return scope.Done, nil
+}
+
+// ReserveInboundMemory reserves memory against a stream scope in libp2p rcmgr.
+// The returned function releases the reservation.
+func (rm *ResourceManager) ReserveInboundMemory(scope network.StreamScope, bytes int) (func(), error) {
+	if rm == nil || rm.libp2p == nil || scope == nil || bytes <= 0 {
+		return func() {}, nil
+	}
+	if err := scope.ReserveMemory(bytes, network.ReservationPriorityMedium); err != nil {
+		return nil, err
+	}
+	return func() { scope.ReleaseMemory(bytes) }, nil
 }
 
 // CanAcceptCircuit checks if we can accept a new circuit (AC 20.3).
@@ -226,6 +275,18 @@ func (rm *ResourceManager) ActiveCircuitCount() int {
 	return int(atomic.LoadInt64(&rm.circuitCount))
 }
 
+// SetActiveCircuitCount sets the observed active circuit count.
+// Used when relay layer tracks active circuits directly.
+func (rm *ResourceManager) SetActiveCircuitCount(n int) {
+	if rm == nil {
+		return
+	}
+	if n < 0 {
+		n = 0
+	}
+	atomic.StoreInt64(&rm.circuitCount, int64(n))
+}
+
 // BandwidthPerSec returns current bandwidth usage per second.
 func (rm *ResourceManager) BandwidthPerSec() int64 {
 	rm.bandwidthMu.Lock()
@@ -264,12 +325,43 @@ func (rm *ResourceManager) CleanupIdleCircuits() {
 
 // UpdateActivity updates the last active time for a circuit.
 func (rm *ResourceManager) UpdateActivity(circuitID string) {
-	rm.mu.RLock()
-	defer rm.mu.RUnlock()
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
 
 	if rc, ok := rm.activeCircuits[circuitID]; ok {
 		rc.LastActive = time.Now()
 	}
+}
+
+// Config returns the resource manager configuration.
+func (rm *ResourceManager) Config() *ResourceConfig {
+	if rm == nil {
+		return nil
+	}
+	return rm.config
+}
+
+// UtilizationPercent returns a coarse 0-100 utilization based on max of
+// circuit occupancy and bandwidth occupancy.
+func (rm *ResourceManager) UtilizationPercent() float64 {
+	if rm == nil || rm.config == nil {
+		return 0
+	}
+
+	circuitUtil := 0.0
+	if rm.config.MaxConcurrentCircuits > 0 {
+		circuitUtil = float64(rm.ActiveCircuitCount()) / float64(rm.config.MaxConcurrentCircuits) * 100
+	}
+
+	bwUtil := 0.0
+	if rm.config.MaxBandwidthBytesPerSec > 0 {
+		bwUtil = float64(rm.BandwidthPerSec()) / float64(rm.config.MaxBandwidthBytesPerSec) * 100
+	}
+
+	if bwUtil > circuitUtil {
+		return bwUtil
+	}
+	return circuitUtil
 }
 
 // StartCleanup starts the background cleanup goroutine.
@@ -313,7 +405,13 @@ func NewMixnetWithResources(cfg *MixnetConfig, h host.Host, r routing.Routing, r
 		return nil, err
 	}
 
-	resourceMgr := NewResourceManager(resourceCfg)
+	resourceMgr := NewLibp2pResourceManager(h, resourceCfg)
+
+	// Default to libp2p rcmgr-driven resource enforcement at the relay layer.
+	if mix.relayHandler != nil {
+		mix.relayHandler.EnableLibp2pResourceManager(true)
+		mix.relayHandler.SetResourceServiceName("mixnet-relay")
+	}
 
 	return &MixnetWithResources{
 		Mixnet:      mix,

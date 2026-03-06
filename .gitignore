@@ -6,3 +6,7 @@
 *.sqlog.zst
 go.work
 go.work.sum
+pentagi
+.DS_Store
+mixnet-test/docker-compose.test.yml
+mixnet-test/docker-compose.generated.yml

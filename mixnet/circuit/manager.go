@@ -435,6 +435,10 @@ func (m *CircuitManager) RebuildCircuit(failedID string) (*Circuit, error) {
 		}
 		inUse := false
 		for _, c := range m.circuits {
+			state := c.GetState()
+			if state == StateFailed || state == StateClosed {
+				continue
+			}
 			for _, p := range c.Peers {
 				if p == id {
 					inUse = true
