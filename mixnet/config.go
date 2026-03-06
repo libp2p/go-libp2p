@@ -44,6 +44,10 @@ type MixnetConfig struct {
 	SamplingSize int
 	// RandomnessFactor is a value between 0.0 and 1.0 used in hybrid selection.
 	RandomnessFactor float64
+
+	// MaxJitter is the maximum random delay in milliseconds added between shard
+	// transmissions to break timing correlations. Set to 0 to disable jitter.
+	MaxJitter int
 }
 
 // DefaultConfig returns a MixnetConfig with recommended default values.
@@ -58,6 +62,10 @@ func DefaultConfig() *MixnetConfig {
 		SelectionMode:    SelectionModeRTT,
 		SamplingSize:     0, // 0 means auto-calculate
 		RandomnessFactor: 0.3,
+
+		// Jitter defaults - 10-50ms random delay between shard transmissions
+		// to break timing correlations (Req 7.3)
+		MaxJitter: 50,
 	}
 }
 
@@ -73,6 +81,7 @@ func NewMixnetConfig() *MixnetConfig {
 	cfg.SelectionMode = ""
 	cfg.SamplingSize = 0
 	cfg.RandomnessFactor = 0
+	cfg.MaxJitter = 0
 	return cfg
 }
 

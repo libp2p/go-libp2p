@@ -2,6 +2,7 @@ package mixnet
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log"
 	"os"
@@ -1176,6 +1177,19 @@ func (m *Mixnet) sendShardsAcrossCircuits(ctx context.Context, dest peer.ID, ses
 	errCh := make(chan error, sendCount)
 
 	for i := 0; i < sendCount; i++ {
+		// Apply jitter for all shards after the first to break timing correlations.
+		// This prevents global observers from linking shards by correlating arrival times.
+		if i > 0 && m.config.MaxJitter > 0 {
+			var b [1]byte
+			rand.Read(b[:])
+			jitter := time.Duration(b[0]%uint8(m.config.MaxJitter)) * time.Millisecond
+			select {
+			case <-time.After(jitter):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
 		circuitID := circuits[i].ID
 		shard := shards[i]
 

@@ -200,17 +200,13 @@ func (n *CircuitFailureNotifier) scanCircuits() {
 				continue
 			}
 
-			handler, ok := n.mixnet.CircuitManager().GetStream(c.ID)
-			if !ok || handler == nil || handler.Stream() == nil {
-				n.enqueueFailure(c.ID, "", "")
-				continue
-			}
+			// NOTE: Do not treat missing stream handler as a failure here.
+			// Mixnet circuits may use short-lived streams for sharded sends, so a nil
+			// stream is not necessarily a circuit failure.
+			_, _ = n.mixnet.CircuitManager().GetStream(c.ID)
 
+			// Connectedness checks can be noisy for short-lived circuits; rely on heartbeat instead.
 			entry := c.Peers[0]
-			if n.host != nil && n.host.Network().Connectedness(entry) != network.Connected {
-				n.enqueueFailure(c.ID, entry, "")
-				continue
-			}
 
 			if !c.LastHeartbeat.IsZero() && time.Since(c.LastHeartbeat) > failureDetectionDeadline {
 				n.enqueueFailure(c.ID, entry, "")
