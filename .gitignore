@@ -6,3 +6,5 @@
 *.sqlog.zst
 go.work
 go.work.sum
+pentagi
+.DS_Store
