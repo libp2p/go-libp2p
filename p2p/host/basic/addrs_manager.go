@@ -43,6 +43,16 @@ type ObservedAddrsManager interface {
 	AddrsFor(local ma.Multiaddr) []ma.Multiaddr
 }
 
+// NATManager is a simple interface to manage NAT devices.
+// It listens Listen and ListenClose notifications from the network.Network,
+// and tries to obtain port mappings for those.
+type NATManager interface {
+	GetMapping(ma.Multiaddr) ma.Multiaddr
+	HasDiscoveredNAT() bool
+	Start()
+	io.Closer
+}
+
 type hostAddrs struct {
 	addrs            []ma.Multiaddr
 	localAddrs       []ma.Multiaddr
@@ -156,12 +166,6 @@ func (a *addrsManager) Start() error {
 
 func (a *addrsManager) Close() {
 	a.ctxCancel()
-	if a.natManager != nil {
-		err := a.natManager.Close()
-		if err != nil {
-			log.Warn("error closing natmgr", "err", err)
-		}
-	}
 	if a.addrsReachabilityTracker != nil {
 		err := a.addrsReachabilityTracker.Close()
 		if err != nil {
