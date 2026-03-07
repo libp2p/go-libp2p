@@ -12,6 +12,11 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
+const (
+	frameVersionFullOnion  byte = 0x01
+	frameVersionHeaderOnly byte = 0x02
+)
+
 func encryptOnion(payload []byte, c *circuit.Circuit, dest peer.ID, hopKeys [][]byte) ([]byte, error) {
 	if c == nil || len(c.Peers) == 0 {
 		return nil, fmt.Errorf("empty circuit")
@@ -71,12 +76,17 @@ func encryptHopPayload(key []byte, payload []byte) ([]byte, error) {
 }
 
 func encodeEncryptedFrame(circuitID string, payload []byte) ([]byte, error) {
+	return encodeEncryptedFrameWithVersion(circuitID, frameVersionFullOnion, payload)
+}
+
+func encodeEncryptedFrameWithVersion(circuitID string, version byte, payload []byte) ([]byte, error) {
 	if len(circuitID) == 0 || len(circuitID) > 255 {
 		return nil, fmt.Errorf("invalid circuit id")
 	}
-	header := make([]byte, 1+len(circuitID)+4)
+	header := make([]byte, 1+len(circuitID)+1+4)
 	header[0] = byte(len(circuitID))
 	copy(header[1:], []byte(circuitID))
-	binary.LittleEndian.PutUint32(header[1+len(circuitID):], uint32(len(payload)))
+	header[1+len(circuitID)] = version
+	binary.LittleEndian.PutUint32(header[1+len(circuitID)+1:], uint32(len(payload)))
 	return append(header, payload...), nil
 }

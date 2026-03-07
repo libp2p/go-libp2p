@@ -138,7 +138,13 @@ func (n *CircuitFailureNotifier) Start(ctx context.Context) error {
 
 // Stop stops the failure notifier and unregisters from the network.
 func (n *CircuitFailureNotifier) Stop() error {
-	close(n.stopCh)
+	select {
+	case <-n.stopCh:
+		// Already stopped
+		return nil
+	default:
+		close(n.stopCh)
+	}
 
 	if n.host != nil {
 		n.host.Network().StopNotify(n)

@@ -24,6 +24,16 @@ const (
 	SelectionModeHybrid SelectionMode = "hybrid"
 )
 
+// EncryptionMode defines how data is encrypted across hops.
+type EncryptionMode string
+
+const (
+	// EncryptionModeFull applies layered encryption to the entire payload per hop.
+	EncryptionModeFull EncryptionMode = "full"
+	// EncryptionModeHeaderOnly applies layered encryption only to routing headers.
+	EncryptionModeHeaderOnly EncryptionMode = "header-only"
+)
+
 // MixnetConfig holds the configuration parameters for a Mixnet instance.
 type MixnetConfig struct {
 	mu     sync.RWMutex
@@ -48,6 +58,9 @@ type MixnetConfig struct {
 	// MaxJitter is the maximum random delay in milliseconds added between shard
 	// transmissions to break timing correlations. Set to 0 to disable jitter.
 	MaxJitter int
+
+	// EncryptionMode selects full per-hop encryption or header-only onion encryption.
+	EncryptionMode EncryptionMode
 }
 
 // DefaultConfig returns a MixnetConfig with recommended default values.
@@ -66,6 +79,9 @@ func DefaultConfig() *MixnetConfig {
 		// Jitter defaults - 10-50ms random delay between shard transmissions
 		// to break timing correlations (Req 7.3)
 		MaxJitter: 50,
+
+		// Encryption defaults
+		EncryptionMode: EncryptionModeFull,
 	}
 }
 
@@ -82,6 +98,7 @@ func NewMixnetConfig() *MixnetConfig {
 	cfg.SamplingSize = 0
 	cfg.RandomnessFactor = 0
 	cfg.MaxJitter = 0
+	cfg.EncryptionMode = ""
 	return cfg
 }
 
@@ -140,6 +157,14 @@ func (c *MixnetConfig) Validate() error {
 		return fmt.Errorf("randomness factor must be between 0.0 and 1.0, got %f", c.RandomnessFactor)
 	}
 
+	// Encryption mode validation
+	if c.EncryptionMode == "" {
+		c.EncryptionMode = EncryptionModeFull
+	}
+	if c.EncryptionMode != EncryptionModeFull && c.EncryptionMode != EncryptionModeHeaderOnly {
+		return fmt.Errorf("encryption mode must be full or header-only, got %s", c.EncryptionMode)
+	}
+
 	return nil
 }
 
@@ -195,6 +220,17 @@ func (c *MixnetConfig) SetSelectionMode(mode SelectionMode) error {
 		return ErrConfigImmutable
 	}
 	c.SelectionMode = mode
+	return nil
+}
+
+// SetEncryptionMode sets the mixnet encryption mode.
+func (c *MixnetConfig) SetEncryptionMode(mode EncryptionMode) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locked {
+		return ErrConfigImmutable
+	}
+	c.EncryptionMode = mode
 	return nil
 }
 

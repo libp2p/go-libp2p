@@ -36,6 +36,9 @@ const (
 
 	// nonceSize is the nonce size for ChaCha20-Poly1305 (12 bytes for standard, 24 for X)
 	nonceSize = 24 // XChaCha20-Poly1305
+
+	frameVersionFullOnion  byte = 0x01
+	frameVersionHeaderOnly byte = 0x02
 )
 
 const (
@@ -140,7 +143,7 @@ func (h *Handler) HandleStream(stream network.Stream) {
 	}()
 
 	for {
-		circuitID, encPayload, releaseMem, err := readEncryptedFrame(reader, stream.Scope())
+		circuitID, frameVersion, encPayload, releaseMem, err := readEncryptedFrame(reader, stream.Scope())
 		if err != nil {
 			return
 		}
@@ -157,14 +160,45 @@ func (h *Handler) HandleStream(stream network.Stream) {
 				return fmt.Errorf("missing circuit key")
 			}
 
-			plaintext, err := decryptHopPayload(key, encPayload)
-			if err != nil {
-				return err
-			}
+			var (
+				isFinal     bool
+				nextHop     string
+				innerHeader []byte
+				dataPayload []byte
+			)
 
-			isFinal, nextHop, innerPayload, err := parseHopPayload(plaintext)
-			if err != nil {
-				return err
+			switch frameVersion {
+			case frameVersionFullOnion:
+				plaintext, err := decryptHopPayload(key, encPayload)
+				if err != nil {
+					return err
+				}
+				parsedFinal, parsedHop, innerPayload, err := parseHopPayload(plaintext)
+				if err != nil {
+					return err
+				}
+				isFinal = parsedFinal
+				nextHop = parsedHop
+				innerHeader = innerPayload
+			case frameVersionHeaderOnly:
+				encryptedHeader, payload, err := parseHeaderOnlyPayload(encPayload)
+				if err != nil {
+					return err
+				}
+				plaintext, err := decryptHopPayload(key, encryptedHeader)
+				if err != nil {
+					return err
+				}
+				parsedFinal, parsedHop, headerPayload, err := parseHopPayload(plaintext)
+				if err != nil {
+					return err
+				}
+				isFinal = parsedFinal
+				nextHop = parsedHop
+				innerHeader = headerPayload
+				dataPayload = payload
+			default:
+				return fmt.Errorf("unknown frame version: %d", frameVersion)
 			}
 
 			// Determine protocol based on whether this is the final hop.
@@ -180,7 +214,13 @@ func (h *Handler) HandleStream(stream network.Stream) {
 					_ = dst.Close()
 					dst = nil
 				}
-				return h.forwardByAddressEncrypted(ctx, nextHop, circuitID, innerPayload, nextProto)
+				forwardPayload := innerHeader
+				forwardVersion := frameVersion
+				if frameVersion == frameVersionHeaderOnly {
+					forwardPayload = buildHeaderOnlyPayload(innerHeader, dataPayload)
+					forwardVersion = frameVersionHeaderOnly
+				}
+				return h.forwardByAddressEncrypted(ctx, nextHop, circuitID, forwardVersion, forwardPayload, nextProto)
 			}
 
 			// Keep per-circuit streams open; rotate only when route target/mode changes.
@@ -208,20 +248,29 @@ func (h *Handler) HandleStream(stream network.Stream) {
 				writer = &rateLimitedWriter{w: dst, bytesPerSec: maxBandwidth}
 			}
 			if waitBandwidth != nil {
-				if err := waitBandwidth(ctx, int64(len(innerPayload))); err != nil {
+				targetLen := len(innerHeader)
+				if frameVersion == frameVersionHeaderOnly {
+					targetLen = len(dataPayload) + len(innerHeader)
+				}
+				if err := waitBandwidth(ctx, int64(targetLen)); err != nil {
 					return err
 				}
 			}
 
 			if isFinal {
-				n, err := writer.Write(innerPayload)
+				finalPayload := innerHeader
+				if frameVersion == frameVersionHeaderOnly {
+					finalPayload = append([]byte{msgTypeData}, finalPayload...)
+					finalPayload = append(finalPayload, dataPayload...)
+				}
+				n, err := writer.Write(finalPayload)
 				if err != nil {
 					return err
 				}
 				if recordBandwidth != nil {
 					recordBandwidth("out", int64(n))
 				}
-				if len(innerPayload) > 0 && innerPayload[0] == msgTypeCloseReq {
+				if len(finalPayload) > 0 && finalPayload[0] == msgTypeCloseReq {
 					if err := waitForCloseAck(dst); err != nil {
 						return err
 					}
@@ -232,7 +281,13 @@ func (h *Handler) HandleStream(stream network.Stream) {
 					return io.EOF
 				}
 			} else {
-				n, err := writeEncryptedFrame(writer, circuitID, innerPayload)
+				forwardPayload := innerHeader
+				forwardVersion := frameVersion
+				if frameVersion == frameVersionHeaderOnly {
+					forwardPayload = buildHeaderOnlyPayload(innerHeader, dataPayload)
+					forwardVersion = frameVersionHeaderOnly
+				}
+				n, err := writeEncryptedFrame(writer, circuitID, forwardVersion, forwardPayload)
 				if err != nil {
 					return err
 				}
@@ -297,7 +352,7 @@ func (h *Handler) openStream(ctx context.Context, nextPeer peer.ID, protoID stri
 	return s, nil
 }
 
-func (h *Handler) forwardByAddressEncrypted(ctx context.Context, addr string, circuitID string, payload []byte, protoID string) error {
+func (h *Handler) forwardByAddressEncrypted(ctx context.Context, addr string, circuitID string, version byte, payload []byte, protoID string) error {
 	h.mu.RLock()
 	host := h.host
 	maxBandwidth := h.maxBandwidth
@@ -336,7 +391,7 @@ func (h *Handler) forwardByAddressEncrypted(ctx context.Context, addr string, ci
 		}
 	}
 
-	n, err := writeEncryptedFrame(writer, circuitID, payload)
+	n, err := writeEncryptedFrame(writer, circuitID, version, payload)
 	if err != nil {
 		return err
 	}
@@ -358,31 +413,35 @@ func waitForCloseAck(stream network.Stream) error {
 	return nil
 }
 
-func readEncryptedFrame(r *bufio.Reader, scope network.StreamScope) (string, []byte, func(), error) {
+func readEncryptedFrame(r *bufio.Reader, scope network.StreamScope) (string, byte, []byte, func(), error) {
 	cidLen, err := r.ReadByte()
 	if err != nil {
-		return "", nil, nil, err
+		return "", 0, nil, nil, err
 	}
 	if cidLen == 0 {
-		return "", nil, nil, fmt.Errorf("empty circuit id")
+		return "", 0, nil, nil, fmt.Errorf("empty circuit id")
 	}
 	cid := make([]byte, int(cidLen))
 	if _, err := io.ReadFull(r, cid); err != nil {
-		return "", nil, nil, err
+		return "", 0, nil, nil, err
+	}
+	version, err := r.ReadByte()
+	if err != nil {
+		return "", 0, nil, nil, err
 	}
 	lenBuf := make([]byte, 4)
 	if _, err := io.ReadFull(r, lenBuf); err != nil {
-		return "", nil, nil, err
+		return "", 0, nil, nil, err
 	}
 	payloadLen := int(binary.LittleEndian.Uint32(lenBuf))
 	if payloadLen <= 0 || payloadLen > maxEncryptedPayloadSize {
-		return "", nil, nil, fmt.Errorf("invalid encrypted payload length")
+		return "", 0, nil, nil, fmt.Errorf("invalid encrypted payload length")
 	}
 
 	release := func() {}
 	if scope != nil {
 		if err := scope.ReserveMemory(payloadLen, network.ReservationPriorityMedium); err != nil {
-			return "", nil, nil, fmt.Errorf("rcmgr inbound memory reservation failed: %w", err)
+			return "", 0, nil, nil, fmt.Errorf("rcmgr inbound memory reservation failed: %w", err)
 		}
 		release = func() { scope.ReleaseMemory(payloadLen) }
 	}
@@ -390,22 +449,23 @@ func readEncryptedFrame(r *bufio.Reader, scope network.StreamScope) (string, []b
 	payload := make([]byte, payloadLen)
 	if _, err := io.ReadFull(r, payload); err != nil {
 		release()
-		return "", nil, nil, err
+		return "", 0, nil, nil, err
 	}
-	return string(cid), payload, release, nil
+	return string(cid), version, payload, release, nil
 }
 
-func writeEncryptedFrame(w io.Writer, circuitID string, payload []byte) (int, error) {
+func writeEncryptedFrame(w io.Writer, circuitID string, version byte, payload []byte) (int, error) {
 	if len(circuitID) == 0 || len(circuitID) > 255 {
 		return 0, fmt.Errorf("invalid circuit id")
 	}
 	if len(payload) > maxEncryptedPayloadSize {
 		return 0, fmt.Errorf("payload too large: %d bytes exceeds limit of %d", len(payload), maxEncryptedPayloadSize)
 	}
-	header := make([]byte, 1+len(circuitID)+4)
+	header := make([]byte, 1+len(circuitID)+1+4)
 	header[0] = byte(len(circuitID))
 	copy(header[1:], []byte(circuitID))
-	binary.LittleEndian.PutUint32(header[1+len(circuitID):], uint32(len(payload)))
+	header[1+len(circuitID)] = version
+	binary.LittleEndian.PutUint32(header[1+len(circuitID)+1:], uint32(len(payload)))
 	hn, err := w.Write(header)
 	if err != nil {
 		return hn, err
@@ -439,6 +499,27 @@ func parseHopPayload(plaintext []byte) (bool, string, []byte, error) {
 	nextHop := string(plaintext[3 : 3+nextLen])
 	inner := plaintext[3+nextLen:]
 	return isFinal, nextHop, inner, nil
+}
+
+func parseHeaderOnlyPayload(payload []byte) ([]byte, []byte, error) {
+	if len(payload) < 4 {
+		return nil, nil, fmt.Errorf("header-only payload too short")
+	}
+	headerLen := int(binary.LittleEndian.Uint32(payload[:4]))
+	if headerLen <= 0 || len(payload) < 4+headerLen {
+		return nil, nil, fmt.Errorf("invalid header length")
+	}
+	encryptedHeader := payload[4 : 4+headerLen]
+	data := payload[4+headerLen:]
+	return encryptedHeader, data, nil
+}
+
+func buildHeaderOnlyPayload(encryptedHeader []byte, payload []byte) []byte {
+	buf := make([]byte, 4+len(encryptedHeader)+len(payload))
+	binary.LittleEndian.PutUint32(buf[:4], uint32(len(encryptedHeader)))
+	copy(buf[4:], encryptedHeader)
+	copy(buf[4+len(encryptedHeader):], payload)
+	return buf
 }
 
 // HandleKeyExchange registers hop keys for a circuit using a Noise XX handshake.

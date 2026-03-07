@@ -57,10 +57,22 @@ Lib-Mix is a high-performance, sharded, configurable-hop mixnet protocol for lib
 
 1. WHEN data is submitted for transmission, THE CES_Pipeline SHALL compress the data using a configurable compression algorithm
 2. THE CES_Pipeline SHALL support Gzip and Snappy compression algorithms
-3. WHEN compression completes, THE CES_Pipeline SHALL apply layered Noise_Protocol encryption with one layer per configured hop
+3. WHEN compression completes, THE CES_Pipeline SHALL apply layered Noise_Protocol encryption based on the configured encryption mode (full-payload per hop or header-only per hop)
 4. WHEN encryption completes, THE CES_Pipeline SHALL apply Reed_Solomon_Coding to generate shards equal to the configured circuit count
 5. THE CES_Pipeline SHALL generate shards such that any subset of shards meeting the erasure coding threshold can reconstruct the original data
 6. THE CES_Pipeline SHALL process data in sequential order without reordering operations
+
+### Requirement 3A: Header-Only Onion Optimization
+
+**User Story:** As a libp2p developer, I want an optional header-only onion mode, so that I can reduce per-hop encryption overhead while keeping routing metadata private.
+
+#### Acceptance Criteria
+
+1. THE Lib_Mix_Protocol SHALL expose an `encryption_mode` configuration with values `full` and `header-only`
+2. WHEN `encryption_mode` is `full`, THE Lib_Mix_Protocol SHALL apply layered encryption to the entire shard payload per hop
+3. WHEN `encryption_mode` is `header-only`, THE Lib_Mix_Protocol SHALL apply layered encryption only to routing/control headers and forward the end-to-end encrypted shard payload unchanged across hops
+4. WHEN `encryption_mode` is `header-only`, THE routing header SHALL include the encrypted destination and per-shard control metadata required by the destination to reconstruct data
+5. THE Lib_Mix_Protocol SHALL default to `full` encryption mode unless explicitly configured otherwise
 
 ### Requirement 4: DHT-Based Relay Discovery
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
@@ -53,7 +54,8 @@ type Mixnet struct {
 	activeConnections map[peer.ID][]*circuit.Circuit
 	pendingShards     map[peer.ID]*PendingTransmission
 
-	mu sync.RWMutex
+	mu      sync.RWMutex
+	closed atomic.Bool
 }
 
 // PendingTransmission tracks shards that need re-scheduling after circuit recovery.
@@ -686,6 +688,27 @@ func (h *DestinationHandler) DataChan() <-chan []byte {
 
 // Close shuts down the Mixnet instance and releases all resources.
 func (m *Mixnet) Close() error {
+	// Idempotency: check if already closed
+	if !m.closed.CompareAndSwap(false, true) {
+		return nil // Already closed
+	}
+
+
+	// Idempotency: check if already closed
+	if !m.closed.CompareAndSwap(false, true) {
+		return nil // Already closed
+	}
+
+	// Cancel origin context to stop new operations
+	if m.originCancel != nil {
+		m.originCancel()
+	}
+
+	// Idempotency: check if already closed
+	if !m.closed.CompareAndSwap(false, true) {
+		return nil // Already closed
+	}
+
 	// Cancel origin context to stop new operations
 	if m.originCancel != nil {
 		m.originCancel()
@@ -901,7 +924,7 @@ func (m *Mixnet) sendCloseAndWait(ctx context.Context, circuitID string) error {
 	if err != nil {
 		return err
 	}
-	fullData, err := encodeEncryptedFrame(keyID, encryptedPayload)
+	fullData, err := encodeEncryptedFrameWithVersion(keyID, frameVersionFullOnion, encryptedPayload)
 	if err != nil {
 		return err
 	}
@@ -1217,7 +1240,6 @@ func (m *Mixnet) sendShardsAcrossCircuits(ctx context.Context, dest peer.ID, ses
 				errCh <- ErrProtocolError("failed to encode privacy shard").WithCause(err)
 				return
 			}
-			shardPayload := append([]byte{msgTypeData}, privacyShard...)
 
 			keyID := m.circuitKeyID(circuits[idx])
 			hopKeys, ok := m.getCircuitKeys(keyID)
@@ -1225,15 +1247,43 @@ func (m *Mixnet) sendShardsAcrossCircuits(ctx context.Context, dest peer.ID, ses
 				errCh <- ErrEncryptionFailed(fmt.Sprintf("missing hop keys for circuit %s", circuitID))
 				return
 			}
-			encryptedPayload, err := encryptOnion(shardPayload, circuits[idx], dest, hopKeys)
-			if err != nil {
-				errCh <- ErrEncryptionFailed(fmt.Sprintf("failed to encrypt shard for circuit %s", circuitID)).WithCause(err)
-				return
-			}
-			fullData, err := encodeEncryptedFrame(keyID, encryptedPayload)
-			if err != nil {
-				errCh <- ErrProtocolError("failed to frame encrypted shard").WithCause(err)
-				return
+			var fullData []byte
+			switch m.config.EncryptionMode {
+			case EncryptionModeHeaderOnly:
+				controlHeader, err := EncodePrivacyShard(nil, PrivacyShardHeader{
+					SessionID:   sessionIDBytes,
+					ShardIndex:  uint32(shardIndex),
+					TotalShards: uint32(sendCount),
+					HasKeys:     includeKeys,
+					KeyData:     keyPayload,
+				})
+				if err != nil {
+					errCh <- ErrProtocolError("failed to encode control header").WithCause(err)
+					return
+				}
+				onionHeader, err := encryptOnionHeader(controlHeader, circuits[idx], dest, hopKeys)
+				if err != nil {
+					errCh <- ErrEncryptionFailed(fmt.Sprintf("failed to encrypt header for circuit %s", circuitID)).WithCause(err)
+					return
+				}
+				payload := buildHeaderOnlyPayload(onionHeader, shardData)
+				fullData, err = encodeEncryptedFrameWithVersion(keyID, frameVersionHeaderOnly, payload)
+				if err != nil {
+					errCh <- ErrProtocolError("failed to frame header-only shard").WithCause(err)
+					return
+				}
+			default:
+				shardPayload := append([]byte{msgTypeData}, privacyShard...)
+				encryptedPayload, err := encryptOnion(shardPayload, circuits[idx], dest, hopKeys)
+				if err != nil {
+					errCh <- ErrEncryptionFailed(fmt.Sprintf("failed to encrypt shard for circuit %s", circuitID)).WithCause(err)
+					return
+				}
+				fullData, err = encodeEncryptedFrameWithVersion(keyID, frameVersionFullOnion, encryptedPayload)
+				if err != nil {
+					errCh <- ErrProtocolError("failed to frame encrypted shard").WithCause(err)
+					return
+				}
 			}
 
 			// Apply per-stream write deadline (Req 8.2).

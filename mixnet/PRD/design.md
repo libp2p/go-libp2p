@@ -9,6 +9,7 @@ Lib-Mix is a high-performance metadata-private communication protocol for libp2p
 1. **Transport Agnostic**: Works over any libp2p transport (QUIC, TCP, WebRTC) without transport-specific dependencies
 2. **Configurable Privacy-Performance Trade-off**: Adjustable hop count (1-10) and circuit count (1-20) to balance anonymity and latency
 3. **Zero-Knowledge Relays**: Relay nodes forward encrypted data without knowledge of origin, destination, or content
+4. **Header-Only Onion Optimization**: Optional mode encrypts only routing/control headers per hop while keeping payload encrypted end-to-end
 4. **Erasure-Coded Redundancy**: Reed-Solomon coding enables reconstruction from partial shard delivery
 5. **Ephemeral Cryptography**: Per-circuit ephemeral keys prevent cross-session linkability
 
@@ -41,9 +42,9 @@ graph TB
 
 1. **Outbound (Origin → Destination)**:
    - Application writes data to stream
-   - CES Pipeline: Compress → Encrypt (layered) → Shard
+   - CES Pipeline: Compress → Encrypt (end-to-end) → Shard
    - Circuit Manager distributes shards across parallel circuits
-   - Each relay decrypts one layer and forwards to next hop
+   - Each relay decrypts one layer of the routing header and forwards to the next hop
    - Destination receives shards, reconstructs, decrypts, decompresses
 
 2. **Inbound (Destination → Origin)**:
@@ -244,6 +245,104 @@ Compressed Data: [algorithm_id: 1 byte][compressed_payload: variable]
 Encrypted Layer: [next_hop_multiaddr: variable][encrypted_payload: variable][auth_tag: 16 bytes]
 
 Shard: [shard_id: 2 bytes][total_shards: 2 bytes][shard_data: variable][checksum: 4 bytes]
+```
+
+### 3.1 Hybrid Onion Encryption Optimization
+
+**Problem**: The original CES pipeline encrypts the **entire payload** at each hop. For a circuit with N hops and payload size P, this requires O(N × P) encryption work.
+
+**Solution**: Use hybrid encryption where:
+1. **Payload** is encrypted **once** end-to-end (after compression, before sharding)
+2. **Routing headers** (~100 bytes per hop) use layered onion encryption
+3. **Per-hop processing**: Decrypt only the routing header to determine next hop
+4. **Exit node**: Uses end-to-end key to decrypt payload once
+
+**Architecture**:
+```
+Original Approach:
+  Payload → [Encrypt Hop 1] → [Encrypt Hop 2] → [Encrypt Hop 3] → Shard
+  Work: 3 × payload_size encryption
+
+Optimized Hybrid Approach:
+  Payload → Compress → [Encrypt End-to-End] → Shard
+  Routing: [Onion Layer Hop 1] → [Onion Layer Hop 2] → [Onion Layer Hop 3]
+  Work: 1 × payload_size + 3 × header_size encryption
+  (header_size ≈ 100 bytes << payload_size)
+```
+
+**Performance Improvement**:
+| Payload Size | 3 Hops (Original) | 3 Hops (Optimized) | Speedup |
+|--------------|-------------------|-------------------|---------|
+| 1 KB         | 3 KB encryption   | 1.3 KB encryption | 2.3×    |
+| 16 KB        | 48 KB encryption  | 16.3 KB encryption| 2.9×    |
+| 1 MB         | 3 MB encryption   | 1.0 MB encryption | 3.0×    |
+
+**Per-Hop Decryption**:
+- **Original**: Decrypt entire payload (1 KB - 1 MB) at each hop
+- **Optimized**: Decrypt only routing header (~100 bytes) at each hop
+- **Speedup**: 10-10,000× faster per-hop processing
+
+**Data Flow**:
+1. **Origin**:
+   - Compress payload
+   - Generate ephemeral end-to-end key
+   - Encrypt compressed payload with end-to-end key (once)
+   - Build onion routing header with layered encryption (~100 bytes × hops)
+   - Apply erasure coding to encrypted payload → shards
+   - Transmit shards + routing header through circuits
+
+2. **Intermediate Relay (Hop N)**:
+   - Receive shard + encrypted routing header
+   - Decrypt routing header layer with hop key (~100 bytes)
+   - Extract: is_final?, next_hop, end-to-end key (encrypted)
+   - Forward shard unchanged to next hop
+   - **Never decrypts the actual payload**
+
+3. **Exit Relay (Final Hop)**:
+   - Decrypt routing header layer
+   - Extract end-to-end key
+   - Forward shard + end-to-end key to destination
+
+4. **Destination**:
+   - Reconstruct encrypted payload from shards (≥60% received)
+   - Decrypt payload with end-to-end key
+   - Decompress to recover original data
+
+**Security Properties**:
+- Entry relay: Knows origin, not destination, not payload content
+- Intermediate relays: Know previous hop and next hop, not payload content
+- Exit relay: Knows destination, not origin, has end-to-end key but payload already encrypted
+- Destination: Only entity that sees full payload in plaintext
+
+**Trade-offs**:
+- ✅ **Pros**: 2-5× performance improvement, reduced per-hop latency
+- ✅ **Pros**: Better scalability for large payloads (video, file transfer)
+- ✅ **Pros**: Reduced computational load on relay nodes
+- ⚠️ **Cons**: Slightly more complex key management
+- ⚠️ **Cons**: Routing header must be authenticated separately
+
+**Implementation Requirements**:
+1. End-to-end key must be generated at origin and transmitted securely in onion layers
+2. Each routing layer must include: is_final flag, next_hop peer ID, end-to-end key
+3. Routing header size target: <100 bytes per hop
+4. Per-hop decryption must validate authentication tag before forwarding
+5. Exit relay must verify it is the final hop before releasing end-to-end key
+
+**Configuration**:
+```rust
+struct HybridEncryptionConfig {
+    // Enable hybrid encryption (default: true for payload > 1KB)
+    enabled: bool,
+    
+    // Minimum payload size to use hybrid encryption
+    min_payload_size: usize,  // default: 1024 bytes
+    
+    // Routing header encryption algorithm
+    routing_cipher: Cipher,   // default: ChaCha20-Poly1305
+    
+    // End-to-end encryption algorithm
+    e2e_cipher: Cipher,       // default: ChaCha20-Poly1305-X
+}
 ```
 
 ### 4. Relay Discovery
