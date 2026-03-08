@@ -6,6 +6,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/libp2p/go-libp2p v0.0.0
 	github.com/multiformats/go-multiaddr v0.16.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
