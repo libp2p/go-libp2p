@@ -693,22 +693,6 @@ func (m *Mixnet) Close() error {
 		return nil // Already closed
 	}
 
-
-	// Idempotency: check if already closed
-	if !m.closed.CompareAndSwap(false, true) {
-		return nil // Already closed
-	}
-
-	// Cancel origin context to stop new operations
-	if m.originCancel != nil {
-		m.originCancel()
-	}
-
-	// Idempotency: check if already closed
-	if !m.closed.CompareAndSwap(false, true) {
-		return nil // Already closed
-	}
-
 	// Cancel origin context to stop new operations
 	if m.originCancel != nil {
 		m.originCancel()

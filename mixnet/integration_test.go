@@ -357,6 +357,9 @@ func TestIntegration_StreamCommunication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to write: %v", err)
 	}
+	if err := stream.CloseWrite(); err != nil {
+		t.Fatalf("Failed to close write side: %v", err)
+	}
 
 	// Read response
 	response, err := io.ReadAll(stream)
@@ -534,6 +537,9 @@ func TestIntegration_DataPatterns(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to write: %v", err)
 			}
+			if err := stream.CloseWrite(); err != nil {
+				t.Fatalf("Failed to close write side: %v", err)
+			}
 
 			response, err := io.ReadAll(stream)
 			if err != nil {
@@ -573,6 +579,7 @@ func BenchmarkIntegration_StreamThroughput(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		stream, _ := sender.NewStream(ctx, receiver.ID(), testProtocolID)
 		stream.Write(testData)
+		stream.CloseWrite()
 		io.ReadAll(stream)
 		stream.Close()
 	}
