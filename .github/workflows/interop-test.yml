@@ -36,6 +36,8 @@ jobs:
       - uses: libp2p/test-plans/.github/actions/run-transport-interop-test@master
         with:
           test-filter: go-libp2p-head
+          # Known incompatiblity between the draft versions of WebTransport
+          test-ignore: "go-libp2p-head x go-v0.46 (webtransport)|go-libp2p-head x go-v0.45 (webtransport)"
           extra-versions: ${{ github.workspace }}/test-plans/ping-version.json
           s3-cache-bucket: ${{ vars.S3_LIBP2P_BUILD_CACHE_BUCKET_NAME }}
           s3-access-key-id: ${{ vars.S3_LIBP2P_BUILD_CACHE_AWS_ACCESS_KEY_ID }}
