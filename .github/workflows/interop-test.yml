@@ -4,21 +4,21 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'config/**'
-      - 'core/**'
-      - 'internal/**'
-      - 'p2p/**'
-      - 'test-plans/**'
-      - '.github/workflows/interop-test.yml'
+      - "config/**"
+      - "core/**"
+      - "internal/**"
+      - "p2p/**"
+      - "test-plans/**"
+      - ".github/workflows/interop-test.yml"
   push:
     branches:
       - "master"
     paths:
-      - 'config/**'
-      - 'core/**'
-      - 'internal/**'
-      - 'p2p/**'
-      - 'test-plans/**'
+      - "config/**"
+      - "core/**"
+      - "internal/**"
+      - "p2p/**"
+      - "test-plans/**"
 
 jobs:
   run-transport-interop:
