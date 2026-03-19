@@ -261,7 +261,7 @@ func TestTransportConstructorWithWrongOpts(t *testing.T) {
 		Transport(quic.NewTransport, tcp.DisableReuseport()),
 		DisableRelay(),
 	)
-	require.EqualError(t, err, "transport constructor doesn't take any options")
+	require.EqualError(t, err, "transport option of type tcp.Option not assignable to libp2pquic.Option")
 }
 
 func TestSecurityConstructor(t *testing.T) {
