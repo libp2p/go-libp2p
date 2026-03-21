@@ -125,6 +125,20 @@ func skipIfNoIPv6(t *testing.T) {
 	ln.Close()
 }
 
+// skipWebRTCIPv6OnWindows skips WebRTC IPv6 loopback integration scenarios on Windows only.
+//
+// The test listens on /ip6/::1/udp/.../webrtc-direct. Pion gathers ICE candidates on
+// link-local and global IPv6 interfaces; Windows rejects UDP sends from those addresses
+// to ::1 with wsasendto "The requested address is not valid in its context" (scope
+// mismatch), so packets never leave the stack and a loopback capture shows no IPv6 UDP.
+// Linux CI continues to run this transport case.
+func skipWebRTCIPv6OnWindows(t *testing.T, transportName string) {
+	t.Helper()
+	if transportName == "WebRTC - IP6" && runtime.GOOS == "windows" {
+		t.Skip(`WebRTC IPv6 over ::1 skipped on Windows: ICE uses non-loopback IPv6 locals; wsasendto to ::1 fails with "The requested address is not valid in its context" (scope mismatch). See PR discussion.`)
+	}
+}
+
 var transportsToTest = []TransportTestCase{
 	{
 		Name: "TCP / Noise / Yamux",
@@ -463,6 +477,7 @@ func TestPing(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -492,6 +507,7 @@ func TestBigPing(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -620,6 +636,7 @@ func TestManyStreams(t *testing.T) {
 	const streamCount = 128
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 			defer h1.Close()
@@ -844,6 +861,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 func TestListenerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -873,6 +891,7 @@ func TestListenerStreamResets(t *testing.T) {
 func TestDialerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -904,6 +923,7 @@ func TestDialerStreamResets(t *testing.T) {
 func TestStreamReadDeadline(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -958,6 +978,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -1002,6 +1023,7 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
@@ -1082,6 +1104,7 @@ func TestConnDroppedWhenBlocked(t *testing.T) {
 func TestConnClosedWhenRemoteCloses(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer server.Close()
@@ -1122,6 +1145,7 @@ func TestErrorCodes(t *testing.T) {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer server.Close()

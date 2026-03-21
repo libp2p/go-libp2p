@@ -281,7 +281,6 @@ func (l *listener) setupConnection(
 		remoteMultiaddr,
 		w.IncomingDataChannels,
 		w.PeerConnectionClosedCh,
-		nil,
 	)
 	if err != nil {
 		return nil, err

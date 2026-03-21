@@ -29,7 +29,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 	"github.com/libp2p/go-msgio"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -270,10 +269,7 @@ func (t *WebRTCTransport) Dial(ctx context.Context, remoteMultiaddr ma.Multiaddr
 }
 
 func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, p peer.ID) (tConn tpt.CapableConn, err error) {
-	var (
-		w       webRTCConnection
-		dialMux *udpmux.UDPMux
-	)
+	var w webRTCConnection
 	defer func() {
 		if err != nil {
 			if w.PeerConnection != nil {
@@ -282,9 +278,6 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 			if tConn != nil {
 				_ = tConn.Close()
 				tConn = nil
-			}
-			if dialMux != nil {
-				_ = dialMux.Close()
 			}
 		}
 	}()
@@ -308,25 +301,6 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		return nil, fmt.Errorf("resolve udp address: %w", err)
 	}
 
-	if raddr.IP.IsLoopback() {
-		network := "udp4"
-		loopbackIP := net.IPv4(127, 0, 0, 1)
-		if raddr.IP.To4() == nil {
-			network = "udp6"
-			loopbackIP = net.IPv6loopback
-		}
-		socket, listenErr := t.listenUDP(network, &net.UDPAddr{IP: loopbackIP, Port: 0})
-		if listenErr != nil {
-			log.Debug("failed to create loopback UDP socket for WebRTC dial, falling back to default ICE sockets",
-				"network", network,
-				"local_ip", loopbackIP.String(),
-				"error", listenErr)
-		} else {
-			dialMux = udpmux.NewUDPMux(socket)
-			dialMux.Start()
-		}
-	}
-
 	// Instead of encoding the local fingerprint we
 	// generate a random UUID as the connection ufrag.
 	// The only requirement here is that the ufrag and password
@@ -336,9 +310,6 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 
 	settingEngine := webrtc.SettingEngine{
 		LoggerFactory: pionLoggerFactory,
-	}
-	if dialMux != nil {
-		settingEngine.SetICEUDPMux(dialMux)
 	}
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.DetachDataChannels()
@@ -355,17 +326,6 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	// If you run pion on a system with only the loopback interface UP,
 	// it will not connect to anything.
 	settingEngine.SetIncludeLoopbackCandidate(true)
-	// When connecting to a loopback address, restrict ICE candidate gathering to
-	// loopback IPs only. On Windows, sending UDP from a non-loopback address (e.g.
-	// a link-local fe80:: or a global address) to a loopback destination (::1 or
-	// 127.0.0.1) fails with "wsasendto: The requested address is not valid in its
-	// context" — a socket-level scope mismatch that prevents any packet from being
-	// sent. Filtering to loopback-only candidates avoids all cross-scope pairs.
-	if raddr.IP.IsLoopback() {
-		settingEngine.SetIPFilter(func(ip net.IP) bool {
-			return ip.IsLoopback()
-		})
-	}
 	settingEngine.SetSCTPMaxReceiveBufferSize(sctpReceiveBufferSize)
 	if err := scope.ReserveMemory(sctpReceiveBufferSize, network.ReservationPriorityMedium); err != nil {
 		return nil, err
@@ -449,7 +409,6 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		remoteMultiaddrWithoutCerthash,
 		w.IncomingDataChannels,
 		w.PeerConnectionClosedCh,
-		dialMux,
 	)
 	if err != nil {
 		return nil, err

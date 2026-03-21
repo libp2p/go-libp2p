@@ -13,7 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
@@ -44,8 +43,6 @@ type connection struct {
 	pc        *webrtc.PeerConnection
 	transport *WebRTCTransport
 	scope     network.ConnManagementScope
-
-	dialMux *udpmux.UDPMux
 
 	closeOnce sync.Once
 	closeErr  error
@@ -81,15 +78,12 @@ func newConnection(
 	remoteMultiaddr ma.Multiaddr,
 	incomingDataChannels chan dataChannel,
 	peerConnectionClosedCh chan struct{},
-	dialMux *udpmux.UDPMux,
 ) (*connection, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &connection{
 		pc:        pc,
 		transport: transport,
 		scope:     scope,
-
-		dialMux: dialMux,
 
 		localPeer:      localPeer,
 		localMultiaddr: localMultiaddr,
@@ -161,10 +155,6 @@ func (c *connection) closeWithError(err error) {
 		c.cancel()
 		// closing peerconnection will close the datachannels associated with the streams
 		c.pc.Close()
-
-		if c.dialMux != nil {
-			c.dialMux.Close()
-		}
 
 		c.m.Lock()
 		streams := c.streams

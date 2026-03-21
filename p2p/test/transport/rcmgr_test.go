@@ -27,6 +27,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			for _, testDialer := range []bool{true, false} {
 				t.Run(tc.Name+fmt.Sprintf(" test_dialer=%v", testDialer), func(t *testing.T) {
+					skipWebRTCIPv6OnWindows(t, tc.Name)
 
 					var reservedMemory, releasedMemory atomic.Int32
 					defer func() {

@@ -68,6 +68,7 @@ func TestInterceptPeerDial(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -90,6 +91,7 @@ func TestInterceptAddrDial(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -115,6 +117,7 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -148,6 +151,7 @@ func TestInterceptUpgradedOutgoing(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -184,6 +188,7 @@ func TestInterceptAccept(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -232,6 +237,7 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
@@ -265,6 +271,7 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipWebRTCIPv6OnWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			connGater := NewMockConnectionGater(ctrl)
