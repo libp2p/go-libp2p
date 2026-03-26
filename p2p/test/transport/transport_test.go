@@ -125,17 +125,17 @@ func skipIfNoIPv6(t *testing.T) {
 	ln.Close()
 }
 
-// skipWebRTCIPv6OnWindows skips WebRTC IPv6 loopback integration scenarios on Windows only.
+// skipWebRTCIPv6OnWindows skips IPv6 loopback integration scenarios on Windows for
+// transports whose name ends in "- IP6" (WebRTC - IP6, WebTransport - IP6).
 //
-// The test listens on /ip6/::1/udp/.../webrtc-direct. Pion gathers ICE candidates on
-// link-local and global IPv6 interfaces; Windows rejects UDP sends from those addresses
-// to ::1 with wsasendto "The requested address is not valid in its context" (scope
-// mismatch), so packets never leave the stack and a loopback capture shows no IPv6 UDP.
-// Linux CI continues to run this transport case.
+// Both transports bind the listener on /ip6/::1. Windows rejects UDP sends from
+// link-local/global IPv6 interfaces to ::1 with wsasendto "The requested address is
+// not valid in its context" (scope mismatch), so packets never leave the stack and
+// peer connection setup times out. Linux CI continues to run these cases.
 func skipWebRTCIPv6OnWindows(t *testing.T, transportName string) {
 	t.Helper()
-	if transportName == "WebRTC - IP6" && runtime.GOOS == "windows" {
-		t.Skip(`WebRTC IPv6 over ::1 skipped on Windows: ICE uses non-loopback IPv6 locals; wsasendto to ::1 fails with "The requested address is not valid in its context" (scope mismatch). See PR discussion.`)
+	if strings.HasSuffix(transportName, "- IP6") && runtime.GOOS == "windows" {
+		t.Skipf("%s over ::1 skipped on Windows: link-local/global IPv6 locals cause wsasendto to fail with \"The requested address is not valid in its context\" (scope mismatch). See PR discussion.", transportName)
 	}
 }
 
@@ -444,6 +444,7 @@ var transportsToTest = []TransportTestCase{
 		Name: "WebTransport - IP6",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			skipIfNoIPv6(t)
+			skipWebRTCIPv6OnWindows(t, "WebTransport - IP6")
 			libp2pOpts := transformOpts(opts)
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -459,6 +460,7 @@ var transportsToTest = []TransportTestCase{
 		Name: "WebRTC - IP6",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			skipIfNoIPv6(t)
+			skipWebRTCIPv6OnWindows(t, "WebRTC - IP6")
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
 			if opts.NoListen {
@@ -474,7 +476,6 @@ var transportsToTest = []TransportTestCase{
 }
 
 func TestPing(t *testing.T) {
-
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			skipWebRTCIPv6OnWindows(t, tc.Name)
