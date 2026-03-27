@@ -125,17 +125,10 @@ func skipIfNoIPv6(t *testing.T) {
 	ln.Close()
 }
 
-// skipWebRTCIPv6OnWindows skips IPv6 loopback integration scenarios on Windows for
-// transports whose name ends in "- IP6" (WebRTC - IP6, WebTransport - IP6).
-//
-// Both transports bind the listener on /ip6/::1. Windows rejects UDP sends from
-// link-local/global IPv6 interfaces to ::1 with wsasendto "The requested address is
-// not valid in its context" (scope mismatch), so packets never leave the stack and
-// peer connection setup times out. Linux CI continues to run these cases.
-func skipWebRTCIPv6OnWindows(t *testing.T, transportName string) {
+func skipWindows(t *testing.T, transportName string) {
 	t.Helper()
-	if strings.HasSuffix(transportName, "- IP6") && runtime.GOOS == "windows" {
-		t.Skipf("%s over ::1 skipped on Windows: link-local/global IPv6 locals cause wsasendto to fail with \"The requested address is not valid in its context\" (scope mismatch). See PR discussion.", transportName)
+	if transportName == "WebRTC - IP6" && runtime.GOOS == "windows" {
+		t.Skip("WebRTC IPv6 over loopback is not supported on Windows. See WebRTC - IP6 HostGenerator for details.")
 	}
 }
 
@@ -444,7 +437,6 @@ var transportsToTest = []TransportTestCase{
 		Name: "WebTransport - IP6",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			skipIfNoIPv6(t)
-			skipWebRTCIPv6OnWindows(t, "WebTransport - IP6")
 			libp2pOpts := transformOpts(opts)
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -460,7 +452,12 @@ var transportsToTest = []TransportTestCase{
 		Name: "WebRTC - IP6",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			skipIfNoIPv6(t)
-			skipWebRTCIPv6OnWindows(t, "WebRTC - IP6")
+			// The WebRTC IPv6 loopback listener is /ip6/::1/udp/.../webrtc-direct.
+			// Pion ICE gathers candidates on link-local/global IPv6 interfaces, and on
+			// Windows wsasendto rejects sends from those locals to ::1 with
+			// "The requested address is not valid in its context" (scope mismatch).
+			// Those packets never leave the stack, so captures show no IPv6 UDP loopback traffic.
+			skipWindows(t, "WebRTC - IP6")
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
 			if opts.NoListen {
@@ -478,7 +475,7 @@ var transportsToTest = []TransportTestCase{
 func TestPing(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -508,7 +505,7 @@ func TestBigPing(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -637,7 +634,7 @@ func TestManyStreams(t *testing.T) {
 	const streamCount = 128
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 			defer h1.Close()
@@ -862,7 +859,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 func TestListenerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -892,7 +889,7 @@ func TestListenerStreamResets(t *testing.T) {
 func TestDialerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -924,7 +921,7 @@ func TestDialerStreamResets(t *testing.T) {
 func TestStreamReadDeadline(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -979,7 +976,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -1024,7 +1021,7 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
@@ -1105,7 +1102,7 @@ func TestConnDroppedWhenBlocked(t *testing.T) {
 func TestConnClosedWhenRemoteCloses(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer server.Close()
@@ -1146,7 +1143,7 @@ func TestErrorCodes(t *testing.T) {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer server.Close()

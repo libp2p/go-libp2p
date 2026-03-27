@@ -16,7 +16,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 	sendBuf := make([]byte, 10<<20)
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			skipWebRTCIPv6OnWindows(t, tc.Name)
+			skipWindows(t, tc.Name)
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
 			defer listener.Close()
 			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
