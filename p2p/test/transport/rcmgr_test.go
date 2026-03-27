@@ -27,18 +27,11 @@ func TestResourceManagerIsUsed(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			for _, testDialer := range []bool{true, false} {
 				t.Run(tc.Name+fmt.Sprintf(" test_dialer=%v", testDialer), func(t *testing.T) {
-					skipWindows(t, tc.Name)
-
 					var reservedMemory, releasedMemory atomic.Int32
-					defer func() {
-						require.Equal(t, reservedMemory.Load(), releasedMemory.Load())
-						require.NotEqual(t, 0, reservedMemory.Load())
-					}()
 
 					ctrl := gomock.NewController(t)
 					defer ctrl.Finish()
 					rcmgr := mocknetwork.NewMockResourceManager(ctrl)
-					rcmgr.EXPECT().Close()
 
 					var listener, dialer host.Host
 					var expectedPeer peer.ID
@@ -57,6 +50,15 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						expectedDir = network.DirInbound
 						expectedAddr = gomock.Any()
 					}
+					// WebRTC - IP6 skips on Windows inside HostGenerator (skipWindows). If we
+					// registered gomock EXPECT() or the memory assert defer before HostGenerator,
+					// t.Skip would unwind with unmet mock expectations or bogus require() in defers.
+					// HostGenerator runs first; only then do we register Close and the memory check.
+					defer func() {
+						require.Equal(t, reservedMemory.Load(), releasedMemory.Load())
+						require.NotEqual(t, 0, reservedMemory.Load())
+					}()
+					rcmgr.EXPECT().Close()
 
 					peerScope := mocknetwork.NewMockPeerScope(ctrl)
 					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, _ uint8) {
