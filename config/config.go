@@ -28,8 +28,10 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/host/natmanager"
 	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
+	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
@@ -39,6 +41,7 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/insecure"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcpreuse"
@@ -117,9 +120,10 @@ type Config struct {
 	ConnManager     connmgr.ConnManager
 	ResourceManager network.ResourceManager
 
-	NATManager NATManagerC
-	Peerstore  peerstore.Peerstore
-	Reporter   metrics.Reporter
+	EnableNATPortMap bool
+	NATManager       bhost.NATManager
+	Peerstore        peerstore.Peerstore
+	Reporter         metrics.Reporter
 
 	MultiaddrResolver network.MultiaddrDNSResolver
 
@@ -446,13 +450,10 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *auton
 		ConnManager:          cfg.ConnManager,
 		AddrsFactory:         cfg.AddrsFactory,
 		NATManager:           cfg.NATManager,
-		EnablePing:           !cfg.DisablePing,
 		UserAgent:            cfg.UserAgent,
 		ProtocolVersion:      cfg.ProtocolVersion,
 		EnableHolePunching:   cfg.EnableHolePunching,
 		HolePunchingOptions:  cfg.HolePunchingOptions,
-		EnableRelayService:   cfg.EnableRelayService,
-		RelayServiceOpts:     cfg.RelayServiceOpts,
 		EnableMetrics:        !cfg.DisableMetrics,
 		PrometheusRegisterer: cfg.PrometheusRegisterer,
 		AutoNATv2:            an,
@@ -554,6 +555,17 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			})
 			return o, nil
 		}),
+		fx.Provide(func(s *swarm.Swarm, lifecycle fx.Lifecycle) (bhost.NATManager, error) {
+			if !cfg.EnableNATPortMap && cfg.NATManager == nil {
+				return nil, nil
+			}
+			if cfg.NATManager != nil {
+				return cfg.NATManager, nil
+			}
+			nm := natmanager.New(s)
+			lifecycle.Append(fx.StartStopHook(nm.Start, nm.Close))
+			return nm, nil
+		}),
 		fx.Provide(func() (*autonatv2.AutoNAT, error) {
 			if !cfg.EnableAutoNATv2 {
 				return nil, nil
@@ -580,6 +592,13 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			return bh
 		}),
 		fx.Provide(func(h *swarm.Swarm) peer.ID { return h.LocalPeer() }),
+		fx.Provide(func(h host.Host) (*pstoremanager.PeerstoreManager, error) {
+			psm, err := pstoremanager.NewPeerstoreManager(h.Peerstore(), h.EventBus(), h.Network())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create PeerstoreManager: %w", err)
+			}
+			return psm, nil
+		}),
 	}
 	transportOpts, err := cfg.addTransports()
 	if err != nil {
@@ -596,6 +615,11 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			}),
 		)
 	}
+
+	fxopts = append(fxopts, fx.Invoke(func(psm *pstoremanager.PeerstoreManager, lifecycle fx.Lifecycle) error {
+		lifecycle.Append(fx.StartStopHook(psm.Start, psm.Close))
+		return nil
+	}))
 
 	// enable autorelay
 	fxopts = append(fxopts,
@@ -618,6 +642,30 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			return nil
 		}),
 	)
+
+	if !cfg.DisablePing {
+		fxopts = append(fxopts, fx.Invoke(func(h *bhost.BasicHost) {
+			ping.NewPingService(h)
+		}))
+	}
+
+	if cfg.EnableRelayService {
+		fxopts = append(fxopts, fx.Invoke(func(h host.Host, lifecycle fx.Lifecycle) error {
+			if !cfg.DisableMetrics {
+				// Prefer explicitly provided metrics tracer
+				metricsOpt := []relayv2.Option{
+					relayv2.WithMetricsTracer(
+						relayv2.NewMetricsTracer(relayv2.WithRegisterer(cfg.PrometheusRegisterer)))}
+				cfg.RelayServiceOpts = append(metricsOpt, cfg.RelayServiceOpts...)
+			}
+			rs, err := relayv2.New(h, cfg.RelayServiceOpts...)
+			if err != nil {
+				return err
+			}
+			lifecycle.Append(fx.StartStopHook(rs.Start, rs.Close))
+			return nil
+		}))
+	}
 
 	var bh *bhost.BasicHost
 	fxopts = append(fxopts, fx.Invoke(func(bho *bhost.BasicHost) { bh = bho }))
