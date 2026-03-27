@@ -116,6 +116,22 @@ func selfSignedTLSConfig(t *testing.T) *tls.Config {
 	return tlsConfig
 }
 
+func skipIfNoIPv6(t *testing.T) {
+	t.Helper()
+	ln, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skip("IPv6 loopback not available")
+	}
+	ln.Close()
+}
+
+func skipWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("WebRTC IPv6 over loopback is not supported on Windows. See WebRTC - IP6 HostGenerator for details.")
+	}
+}
+
 var transportsToTest = []TransportTestCase{
 	{
 		Name: "TCP / Noise / Yamux",
@@ -347,6 +363,105 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP / Noise / Yamux - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(noise.ID, noise.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP / TLS / Yamux - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebSocket - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0/ws"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "QUIC - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebTransport - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1/webtransport"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebRTC - IP6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			skipIfNoIPv6(t)
+			// Pion ICE gathers candidates on link-local/global IPv6 interfaces. On Windows,
+			// wsasendto rejects sends from those addresses to ::1 with "The requested address
+			// is not valid in its context" (scope mismatch), so packets never leave the stack.
+			skipWindows(t)
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/webrtc-direct"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
 			require.NoError(t, err)
@@ -900,6 +1015,20 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
+
+			// The WebRTC - IP6 HostGenerator calls skipWindows() on Windows (IPv6 loopback
+			// is unreliable there; see comment on that HostGenerator). That invokes t.Skip().
+			//
+			// If we registered mock expectations before HostGenerator, t.Skip would still run
+			// deferred ctrl.Finish(), and GoMock would report unmet expectations because the
+			// blocked-connection path never executed. We therefore create the mock first (it
+			// must be passed into HostGenerator), but call HostGenerator before any EXPECT().
+			// On skip, no expectations exist yet, so Finish is a no-op for verification.
+			server := tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: mockRcmgr})
+			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer server.Close()
+			defer client.Close()
+
 			if matched, _ := regexp.MatchString(`^(QUIC|WebTransport)`, tc.Name); matched {
 				mockRcmgr.EXPECT().VerifySourceAddress(gomock.Any()).AnyTimes().Return(false)
 				// If the initial TLS ClientHello is split into two quic-go might call the transport multiple times to open a
@@ -910,11 +1039,6 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 				mockRcmgr.EXPECT().OpenConnection(network.DirInbound, gomock.Any(), gomock.Any()).Return(nil, errors.New("connection blocked"))
 			}
 			mockRcmgr.EXPECT().Close().AnyTimes()
-
-			server := tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: mockRcmgr})
-			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
-			defer server.Close()
-			defer client.Close()
 
 			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
