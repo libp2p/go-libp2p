@@ -1008,7 +1008,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 func TestCloseConnWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
 		// WebRTC doesn't have a connection when rcmgr blocks it, so there's nothing to close.
-		if tc.Name == "WebRTC" {
+		if strings.Contains(tc.Name, "WebRTC") {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
@@ -1057,7 +1057,7 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 // connection attempt
 func TestConnDroppedWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
-		if tc.Name != "WebRTC" {
+		if !strings.Contains(tc.Name, "WebRTC") {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
@@ -1219,11 +1219,11 @@ func TestErrorCodes(t *testing.T) {
 				})
 			})
 
-			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebRTC" {
-					t.Skipf("skipping: %s, not implemented", tc.Name)
-					return
-				}
+		t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTC") {
+				t.Skipf("skipping: %s, not implemented", tc.Name)
+				return
+			}
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				s, err := client.NewStream(ctx, server.ID(), "/test")
@@ -1247,11 +1247,11 @@ func TestErrorCodes(t *testing.T) {
 				})
 			})
 
-			t.Run("NewStreamErrorByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebRTC" {
-					t.Skipf("skipping: %s, not implemented", tc.Name)
-					return
-				}
+		t.Run("NewStreamErrorByConnCloseWithError", func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebRTC") {
+				t.Skipf("skipping: %s, not implemented", tc.Name)
+				return
+			}
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()

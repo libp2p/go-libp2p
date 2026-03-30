@@ -87,7 +87,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						}
 						return nil
 					})
-					if tc.Name == "WebRTC" {
+					if strings.Contains(tc.Name, "WebRTC") {
 						// webrtc receive buffer is a fix sized buffer allocated up front
 						connScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any())
 					}
