@@ -267,6 +267,48 @@ func TestBackoff(t *testing.T) {
 	require.Equal(t, 2, int(reservations.Load()))
 }
 
+func TestRemovePeerFromBackoffAfterSuccess(t *testing.T) {
+	const backoff = 20 * time.Second
+	cl := newMockClock()
+
+	rh := newRelay(t)
+
+	var counter atomic.Int32
+	h, err := libp2p.New(
+		libp2p.ForceReachabilityPrivate(),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+
+	ar, err := autorelay.NewAutoRelay(h,
+		autorelay.WithPeerSource(
+			func(context.Context, int) <-chan peer.AddrInfo {
+				// always return the same node, and make sure we don't try to connect to it too frequently
+				counter.Add(1)
+				peerChan := make(chan peer.AddrInfo, 1)
+				peerChan <- peer.AddrInfo{ID: rh.ID(), Addrs: rh.Addrs()}
+				close(peerChan)
+				return peerChan
+			}),
+		autorelay.WithNumRelays(1),
+		autorelay.WithBootDelay(0),
+		autorelay.WithBackoff(backoff),
+		autorelay.WithMinCandidates(1),
+		autorelay.WithMaxCandidateAge(1),
+		autorelay.WithClock(cl),
+		autorelay.WithMinInterval(0),
+	)
+	require.NoError(t, err)
+	ar.Start()
+	defer ar.Close()
+
+	require.Eventually(t, func() bool {
+		return numRelays(h) > 0
+	}, 5*time.Second, 100*time.Millisecond, "should successfully reserve relay")
+
+	require.False(t, ar.IsPeerInBackoff(rh.ID()), "successfully added relay should not be in backoff list")
+}
+
 func TestStaticRelays(t *testing.T) {
 	const numStaticRelays = 3
 	staticRelays := make([]peer.AddrInfo, 0, numStaticRelays)

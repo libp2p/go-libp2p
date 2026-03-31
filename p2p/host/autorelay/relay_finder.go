@@ -663,13 +663,13 @@ func (rf *relayFinder) connectToRelay(ctx context.Context, cand *candidate) (*ci
 		}
 	}
 
-	rf.candidateMx.Lock()
-	rf.backoff[id] = rf.conf.clock.Now()
-	rf.candidateMx.Unlock()
 	var err error
 	if cand.supportsRelayV2 {
 		rsvp, err = circuitv2.Reserve(ctx, rf.host, cand.ai)
 		if err != nil {
+			rf.candidateMx.Lock()
+			rf.backoff[id] = rf.conf.clock.Now()
+			rf.candidateMx.Unlock()
 			err = fmt.Errorf("failed to reserve slot: %w", err)
 		}
 	}
