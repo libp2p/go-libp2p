@@ -5,12 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 	pt "github.com/libp2p/go-libp2p/p2p/host/peerstore/test"
 
 	mockclock "github.com/benbjohnson/clock"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,6 +56,10 @@ func TestDsAddrBook(t *testing.T) {
 			opts := DefaultOpts()
 			opts.GCPurgeInterval = 1 * time.Second
 			opts.CacheSize = 1024
+			// Shared addr-book suite inserts batches larger than the default
+			// per-peer cap; disable the cap so the suite exercises general
+			// behavior, not the cap path.
+			opts.MaxAddrsPerPeer = 0
 			clk := mockclock.NewMock()
 			opts.Clock = clk
 
@@ -64,10 +70,75 @@ func TestDsAddrBook(t *testing.T) {
 			opts := DefaultOpts()
 			opts.GCPurgeInterval = 1 * time.Second
 			opts.CacheSize = 0
+			opts.MaxAddrsPerPeer = 0
 			clk := mockclock.NewMock()
 			opts.Clock = clk
 
 			pt.TestAddrBook(t, addressBookFactory(t, dsFactory, opts), clk)
+		})
+	}
+}
+
+func TestDsMaxAddrsPerPeerEvictsNearestExpiry(t *testing.T) {
+	for name, dsFactory := range dstores {
+		t.Run(name, func(t *testing.T) {
+			opts := DefaultOpts()
+			opts.MaxAddrsPerPeer = 3
+			clk := mockclock.NewMock()
+			opts.Clock = clk
+
+			ds, closeDs := dsFactory(t)
+			defer closeDs()
+			ab, err := NewAddrBook(context.Background(), ds, opts)
+			require.NoError(t, err)
+			defer ab.Close()
+
+			const p = peer.ID("peer-cap")
+			a1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+			a2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+			a3 := ma.StringCast("/ip4/1.2.3.4/tcp/3")
+			a4 := ma.StringCast("/ip4/1.2.3.4/tcp/4")
+
+			ab.AddAddr(p, a1, time.Hour)      // furthest expiry
+			ab.AddAddr(p, a2, 30*time.Minute) // middle
+			ab.AddAddr(p, a3, 10*time.Minute) // nearest expiry, will be evicted first
+			require.ElementsMatch(t, []ma.Multiaddr{a1, a2, a3}, ab.Addrs(p))
+
+			ab.AddAddr(p, a4, 45*time.Minute)
+			require.ElementsMatch(t, []ma.Multiaddr{a1, a2, a4}, ab.Addrs(p))
+		})
+	}
+}
+
+func TestDsMaxAddrsPerPeerDoesNotEvictConnected(t *testing.T) {
+	for name, dsFactory := range dstores {
+		t.Run(name, func(t *testing.T) {
+			opts := DefaultOpts()
+			opts.MaxAddrsPerPeer = 2
+			clk := mockclock.NewMock()
+			opts.Clock = clk
+
+			ds, closeDs := dsFactory(t)
+			defer closeDs()
+			ab, err := NewAddrBook(context.Background(), ds, opts)
+			require.NoError(t, err)
+			defer ab.Close()
+
+			const p = peer.ID("peer-connected")
+			live := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+			a1 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+			a2 := ma.StringCast("/ip4/1.2.3.4/tcp/3")
+			a3 := ma.StringCast("/ip4/1.2.3.4/tcp/4")
+
+			ab.AddAddr(p, live, pstore.ConnectedAddrTTL)
+			ab.AddAddr(p, a1, 10*time.Minute)
+			ab.AddAddr(p, a2, 20*time.Minute)
+			require.ElementsMatch(t, []ma.Multiaddr{live, a1, a2}, ab.Addrs(p))
+
+			// Adding a third unconnected addr must evict an unconnected one
+			// (a1 has the soonest expiry), never the connected addr.
+			ab.AddAddr(p, a3, 30*time.Minute)
+			require.ElementsMatch(t, []ma.Multiaddr{live, a2, a3}, ab.Addrs(p))
 		})
 	}
 }

@@ -23,6 +23,13 @@ type Options struct {
 	// MaxProtocols is the maximum number of protocols we store for one peer.
 	MaxProtocols int
 
+	// MaxAddrsPerPeer bounds the number of unconnected addresses stored per
+	// peer. When the limit is reached, the unconnected entry with the nearest
+	// expiry is evicted before the new entry is inserted. Addresses held by a
+	// live connection (TTL >= ConnectedAddrTTL) are not counted and never
+	// evicted. A value <= 0 disables the cap.
+	MaxAddrsPerPeer int
+
 	// Sweep interval to purge expired addresses from the datastore. If this is a zero value, GC will not run
 	// automatically, but it'll be available on demand via explicit calls.
 	GCPurgeInterval time.Duration
@@ -42,6 +49,7 @@ type Options struct {
 //
 // * Cache size: 1024.
 // * MaxProtocols: 1024.
+// * MaxAddrsPerPeer: 64.
 // * GC purge interval: 2 hours.
 // * GC lookahead interval: disabled.
 // * GC initial delay: 60 seconds.
@@ -49,6 +57,7 @@ func DefaultOpts() Options {
 	return Options{
 		CacheSize:           1024,
 		MaxProtocols:        1024,
+		MaxAddrsPerPeer:     64,
 		GCPurgeInterval:     2 * time.Hour,
 		GCLookaheadInterval: 0,
 		GCInitialDelay:      60 * time.Second,

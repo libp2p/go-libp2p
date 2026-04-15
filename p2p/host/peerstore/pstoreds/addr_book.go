@@ -470,6 +470,13 @@ func (ab *dsAddrBook) ClearAddrs(p peer.ID) {
 	}
 }
 
+// ttlIsConnected reports whether the given TTL marks the address as held by
+// a live connection. Such entries are not subject to the per-peer cap and are
+// never evicted to make room for incoming addrs.
+func ttlIsConnected(ttl time.Duration) bool {
+	return ttl >= pstore.ConnectedAddrTTL
+}
+
 func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duration, mode ttlWriteMode, _ bool) (err error) {
 	if len(addrs) == 0 {
 		return nil
@@ -517,6 +524,43 @@ func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 		return existingEntry
 	}
 
+	// Per-peer cap on unconnected addrs. Entries held by a live connection
+	// (TTL >= ConnectedAddrTTL) are not counted and never evicted; this
+	// bounds peerstore pollution from sources like DHT gossip while leaving
+	// addresses tied to active sessions intact.
+	maxCap := ab.opts.MaxAddrsPerPeer
+	incomingIsUnconnected := !ttlIsConnected(ttl)
+	unconnectedCount := 0
+	if maxCap > 0 && incomingIsUnconnected {
+		for _, a := range pr.Addrs {
+			if !ttlIsConnected(time.Duration(a.Ttl)) {
+				unconnectedCount++
+			}
+		}
+	}
+	// evictNearestUnconnected drops the unconnected entry from pr.Addrs with
+	// the soonest expiry. Returns false when every remaining entry is held by
+	// a live connection, in which case the caller must drop the new addr.
+	evictNearestUnconnected := func() bool {
+		victim := -1
+		var soonest int64
+		for i, a := range pr.Addrs {
+			if ttlIsConnected(time.Duration(a.Ttl)) {
+				continue
+			}
+			if victim == -1 || a.Expiry < soonest {
+				victim = i
+				soonest = a.Expiry
+			}
+		}
+		if victim == -1 {
+			return false
+		}
+		delete(addrsMap, string(pr.Addrs[victim].Addr))
+		pr.Addrs = append(pr.Addrs[:victim], pr.Addrs[victim+1:]...)
+		return true
+	}
+
 	var entries []*pb.AddrBookRecord_AddrEntry
 	for _, incoming := range addrs {
 		existingEntry := updateExisting(incoming)
@@ -526,6 +570,13 @@ func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 			// 		entries = append(entries, existingEntry)
 			// 	}
 			// } else {
+			if maxCap > 0 && incomingIsUnconnected && unconnectedCount >= maxCap {
+				if !evictNearestUnconnected() {
+					// Every existing addr is protected; drop the new one.
+					continue
+				}
+				unconnectedCount--
+			}
 			// new addr, add & broadcast
 			entry := &pb.AddrBookRecord_AddrEntry{
 				Addr:   incoming.Bytes(),
@@ -533,6 +584,9 @@ func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 				Expiry: newExp,
 			}
 			entries = append(entries, entry)
+			if incomingIsUnconnected {
+				unconnectedCount++
+			}
 
 			// note: there's a minor chance that writing the record will fail, in which case we would've broadcast
 			// the addresses without persisting them. This is very unlikely and not much of an issue.

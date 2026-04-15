@@ -244,7 +244,8 @@ func WithMaxSignedPeerRecords(n int) AddrBookOption {
 // stored per peer. When the limit is reached, the unconnected entry with
 // the nearest expiry is evicted before the new entry is inserted.
 // Addresses held by a live connection (TTL >= ConnectedAddrTTL) are not
-// counted and never evicted. Default is defaultMaxAddrsPerPeer.
+// counted and never evicted. A value <= 0 disables the cap. Default is
+// defaultMaxAddrsPerPeer.
 func WithMaxAddressesPerPeer(n int) AddrBookOption {
 	return func(b *memoryAddrBook) error {
 		b.maxAddrsPerPeer = n
@@ -422,8 +423,9 @@ func (mab *memoryAddrBook) addAddrsUnlocked(p peer.ID, addrs []ma.Multiaddr, ttl
 		a, found := mab.addrs.FindAddr(p, addr)
 		if !found {
 			// Enforce the per-peer cap on unconnected addrs. Entries held
-			// by a live connection are not counted.
-			if !ttlIsConnected(ttl) && mab.numUnconnectedAddrsForPeerUnlocked(p) >= mab.maxAddrsPerPeer {
+			// by a live connection are not counted. A non-positive cap
+			// disables the check.
+			if mab.maxAddrsPerPeer > 0 && !ttlIsConnected(ttl) && mab.numUnconnectedAddrsForPeerUnlocked(p) >= mab.maxAddrsPerPeer {
 				if !mab.evictNearestExpiryUnconnectedForPeerUnlocked(p) {
 					// Every existing addr is protected; drop the new one.
 					continue
@@ -497,7 +499,7 @@ func (mab *memoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Du
 				}
 				// Same per-peer cap check as addAddrsUnlocked: bound
 				// how many unconnected addrs we keep for one peer.
-				if !ttlIsConnected(ttl) && mab.numUnconnectedAddrsForPeerUnlocked(p) >= mab.maxAddrsPerPeer {
+				if mab.maxAddrsPerPeer > 0 && !ttlIsConnected(ttl) && mab.numUnconnectedAddrsForPeerUnlocked(p) >= mab.maxAddrsPerPeer {
 					if !mab.evictNearestExpiryUnconnectedForPeerUnlocked(p) {
 						continue
 					}
