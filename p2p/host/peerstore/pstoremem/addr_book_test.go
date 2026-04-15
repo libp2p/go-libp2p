@@ -8,7 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/record"
+	"github.com/libp2p/go-libp2p/core/test"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -184,6 +188,56 @@ func TestPeerLimits(t *testing.T) {
 		ab.AddAddr(p.Peer, p.Addr, p.TTL)
 	}
 	require.Equal(t, 1024, ab.addrs.NumUnconnectedAddrs())
+}
+
+// TestConsumePeerRecordReplacesStaleAddrs verifies replace-semantics on a
+// newer signed peer record: addrs dropped from the new record are evicted,
+// while unsigned addrs and addrs held by a live connection are kept.
+func TestConsumePeerRecordReplacesStaleAddrs(t *testing.T) {
+	ab := NewAddrBook()
+	defer ab.Close()
+
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
+	require.NoError(t, err)
+	id, err := peer.IDFromPrivateKey(priv)
+	require.NoError(t, err)
+
+	keep := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+	drop := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+	unsigned := ma.StringCast("/ip4/1.2.3.4/tcp/3")
+	connected := ma.StringCast("/ip4/1.2.3.4/tcp/4")
+
+	rec1 := peer.NewPeerRecord()
+	rec1.PeerID = id
+	rec1.Seq = 1
+	rec1.Addrs = []ma.Multiaddr{keep, drop, connected}
+	env1, err := record.Seal(rec1, priv)
+	require.NoError(t, err)
+
+	accepted, err := ab.ConsumePeerRecord(env1, time.Hour)
+	require.NoError(t, err)
+	require.True(t, accepted)
+
+	// Pin `connected` via ConnectedAddrTTL and add an unsigned addr.
+	ab.AddAddr(id, connected, peerstore.ConnectedAddrTTL)
+	ab.AddAddr(id, unsigned, time.Hour)
+	require.ElementsMatch(t, []ma.Multiaddr{keep, drop, connected, unsigned}, ab.Addrs(id))
+
+	// Newer record drops `drop` and only mentions `keep`. `drop` must go;
+	// `unsigned` (never in a signed record) and `connected` (held by a
+	// live connection) must stay.
+	rec2 := peer.NewPeerRecord()
+	rec2.PeerID = id
+	rec2.Seq = 2
+	rec2.Addrs = []ma.Multiaddr{keep}
+	env2, err := record.Seal(rec2, priv)
+	require.NoError(t, err)
+
+	accepted, err = ab.ConsumePeerRecord(env2, time.Hour)
+	require.NoError(t, err)
+	require.True(t, accepted)
+
+	require.ElementsMatch(t, []ma.Multiaddr{keep, connected, unsigned}, ab.Addrs(id))
 }
 
 func BenchmarkPeerAddrs(b *testing.B) {
