@@ -282,7 +282,21 @@ func (ab *dsAddrBook) AddAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 
 // ConsumePeerRecord adds addresses from a signed peer.PeerRecord (contained in
 // a record.Envelope), which will expire after the given TTL.
-// See https://godoc.org/github.com/libp2p/go-libp2p/core/peerstore#CertifiedAddrBook for more details.
+// See https://godoc.org/github.com/libp2p/go-libp2p/core/peerstore#CertifiedAddrBook
+// for more details.
+//
+// The signed peer record's Seq is treated as monotonic per peer: a record
+// with a Seq lower than the last accepted one is rejected. Equal Seq is
+// accepted as a TTL refresh.
+//
+// When a newer signed record is accepted, addrs that were present in the
+// previously stored signed record but absent in the new one are evicted, so
+// the peerstore reflects the peer's current self-advertised set instead of
+// the union of every record we have ever seen. Unsigned addrs (added via
+// AddAddr / SetAddr from sources like DHT gossip, or from an identify
+// exchange where the peer did not send a signed record) are not touched, and
+// addrs held by a live connection (TTL >= ConnectedAddrTTL) are also kept so
+// active sessions are not dropped.
 func (ab *dsAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl time.Duration) (bool, error) {
 	r, err := recordEnvelope.Record()
 	if err != nil {
@@ -303,6 +317,15 @@ func (ab *dsAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl tim
 	}
 
 	addrs := cleanAddrs(rec.Addrs, rec.PeerID)
+
+	// Diff against the previously stored signed record so we can drop addrs
+	// the peer no longer advertises before adding the new ones.
+	if superseded := ab.supersededSignedAddrs(rec.PeerID, addrs); len(superseded) > 0 {
+		if err := ab.deleteAddrs(rec.PeerID, superseded); err != nil {
+			return false, err
+		}
+	}
+
 	err = ab.setAddrs(rec.PeerID, addrs, ttl, ttlExtend, true)
 	if err != nil {
 		return false, err
@@ -313,6 +336,62 @@ func (ab *dsAddrBook) ConsumePeerRecord(recordEnvelope *record.Envelope, ttl tim
 		return false, err
 	}
 	return true, nil
+}
+
+// supersededSignedAddrs returns addrs that were present in the previously
+// stored signed peer record for p but are absent in newAddrs. Addrs held by
+// a live connection (TTL >= ConnectedAddrTTL) are excluded so an active
+// session is not torn down when the peer rotates its advertised set.
+func (ab *dsAddrBook) supersededSignedAddrs(p peer.ID, newAddrs []ma.Multiaddr) []ma.Multiaddr {
+	prevEnv := ab.GetPeerRecord(p)
+	if prevEnv == nil {
+		return nil
+	}
+	prev, err := prevEnv.Record()
+	if err != nil {
+		return nil
+	}
+	prevRec, ok := prev.(*peer.PeerRecord)
+	if !ok {
+		return nil
+	}
+
+	newSet := make(map[string]struct{}, len(newAddrs))
+	for _, a := range newAddrs {
+		newSet[string(a.Bytes())] = struct{}{}
+	}
+
+	pr, err := ab.loadRecord(p, true, false)
+	if err != nil {
+		return nil
+	}
+	pr.RLock()
+	connected := make(map[string]struct{})
+	for _, a := range pr.Addrs {
+		if ttlIsConnected(time.Duration(a.Ttl)) {
+			connected[string(a.Addr)] = struct{}{}
+		}
+	}
+	pr.RUnlock()
+
+	superseded := make([]ma.Multiaddr, 0, len(prevRec.Addrs))
+	for _, a := range prevRec.Addrs {
+		key := string(a.Bytes())
+		if _, still := newSet[key]; still {
+			continue
+		}
+		if _, isConn := connected[key]; isConn {
+			continue
+		}
+		superseded = append(superseded, a)
+	}
+	return superseded
+}
+
+// ttlIsConnected reports whether the given TTL marks the address as held by
+// a live connection.
+func ttlIsConnected(ttl time.Duration) bool {
+	return ttl >= pstore.ConnectedAddrTTL
 }
 
 func (ab *dsAddrBook) latestPeerRecordSeq(p peer.ID) uint64 {
