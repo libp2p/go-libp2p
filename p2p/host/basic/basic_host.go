@@ -127,6 +127,14 @@ type HostOpts struct {
 	// DisableSignedPeerRecord disables the generation of Signed Peer Records on this host.
 	DisableSignedPeerRecord bool
 
+	// DisableNonPublicAddrPublishing excludes addresses that are not in a
+	// globally-routable range (e.g. RFC 1918 private, RFC 6598 CGNAT, link-local,
+	// loopback, ULA, IPv6 documentation/multicast/reserved space) from the
+	// host's peerstore entry and signed peer record. This prevents leaking
+	// non-public IP addresses to remote peers via identify or the DHT.
+	// Multiaddrs without an IP component such as /p2p-circuit are not affected.
+	DisableNonPublicAddrPublishing bool
+
 	// EnableHolePunching enables the peer to initiate/respond to hole punching attempts for NAT traversal.
 	EnableHolePunching bool
 	// HolePunchingOptions are options for the hole punching service
@@ -238,6 +246,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		opts.EnableMetrics,
 		opts.PrometheusRegisterer,
 		opts.DisableSignedPeerRecord,
+		opts.DisableNonPublicAddrPublishing,
 		h.Peerstore().PrivKey(h.ID()),
 		h.Peerstore(),
 		h.ID(),
