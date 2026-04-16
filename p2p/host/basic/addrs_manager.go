@@ -71,10 +71,11 @@ type addrsManager struct {
 	addrsMx      sync.RWMutex
 	currentAddrs hostAddrs
 
-	signKey           crypto.PrivKey
-	addrStore         addrStore
-	signedRecordStore peerstore.CertifiedAddrBook
-	hostID            peer.ID
+	signKey                       crypto.PrivKey
+	addrStore                     addrStore
+	signedRecordStore             peerstore.CertifiedAddrBook
+	hostID                        peer.ID
+	disableLoopbackAddrPublishing bool
 
 	wg        sync.WaitGroup
 	ctx       context.Context
@@ -92,26 +93,28 @@ func newAddrsManager(
 	enableMetrics bool,
 	registerer prometheus.Registerer,
 	disableSignedPeerRecord bool,
+	disableLoopbackAddrPublishing bool,
 	signKey crypto.PrivKey,
 	addrStore addrStore,
 	hostID peer.ID,
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	as := &addrsManager{
-		bus:                       bus,
-		listenAddrs:               listenAddrs,
-		addCertHashes:             addCertHashes,
-		observedAddrsManager:      observedAddrsManager,
-		natManager:                natmgr,
-		addrsFactory:              addrsFactory,
-		triggerAddrsUpdateChan:    make(chan chan struct{}, 1),
-		triggerReachabilityUpdate: make(chan struct{}, 1),
-		interfaceAddrs:            &interfaceAddrsCache{},
-		signKey:                   signKey,
-		addrStore:                 addrStore,
-		hostID:                    hostID,
-		ctx:                       ctx,
-		ctxCancel:                 cancel,
+		bus:                           bus,
+		listenAddrs:                   listenAddrs,
+		addCertHashes:                 addCertHashes,
+		observedAddrsManager:          observedAddrsManager,
+		natManager:                    natmgr,
+		addrsFactory:                  addrsFactory,
+		triggerAddrsUpdateChan:        make(chan chan struct{}, 1),
+		triggerReachabilityUpdate:     make(chan struct{}, 1),
+		interfaceAddrs:                &interfaceAddrsCache{},
+		signKey:                       signKey,
+		addrStore:                     addrStore,
+		hostID:                        hostID,
+		disableLoopbackAddrPublishing: disableLoopbackAddrPublishing,
+		ctx:                           ctx,
+		ctxCancel:                     cancel,
 	}
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
@@ -343,9 +346,16 @@ func (a *addrsManager) updateAddrs(prevHostAddrs hostAddrs, relayAddrs []ma.Mult
 
 // updatePeerStore updates the peer store for the host
 func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs []ma.Multiaddr) {
+	publishedAddrs := currentAddrs
+	var excludedAddrs []ma.Multiaddr
+	if a.disableLoopbackAddrPublishing {
+		publishedAddrs, excludedAddrs = splitPublishedAddrs(currentAddrs)
+	}
 	// update host addresses in the peer store
-	a.addrStore.SetAddrs(a.hostID, currentAddrs, peerstore.PermanentAddrTTL)
-	a.addrStore.SetAddrs(a.hostID, removedAddrs, 0)
+	a.addrStore.SetAddrs(a.hostID, publishedAddrs, peerstore.PermanentAddrTTL)
+	// clear both the addresses removed since last update and the ones excluded
+	// from publishing (e.g. loopback) to avoid stale entries.
+	a.addrStore.SetAddrs(a.hostID, append(removedAddrs, excludedAddrs...), 0)
 
 	var sr *record.Envelope
 	// Our addresses have changed.
@@ -354,7 +364,7 @@ func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs
 		var err error
 		// add signed peer record to the event
 		// in case of an error drop this event.
-		sr, err = a.makeSignedPeerRecord(currentAddrs)
+		sr, err = a.makeSignedPeerRecord(publishedAddrs)
 		if err != nil {
 			log.Error("error creating a signed peer record from the set of current addresses", "err", err)
 			return
@@ -364,6 +374,19 @@ func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs
 			return
 		}
 	}
+}
+
+// splitPublishedAddrs separates loopback addresses so they are not announced
+// to peers via the peerstore or signed peer records.
+func splitPublishedAddrs(addrs []ma.Multiaddr) (published, excluded []ma.Multiaddr) {
+	for _, addr := range addrs {
+		if manet.IsIPLoopback(addr) {
+			excluded = append(excluded, addr)
+		} else {
+			published = append(published, addr)
+		}
+	}
+	return
 }
 
 func (a *addrsManager) notifyAddrsUpdated(emitter event.Emitter, localAddrsEmitter event.Emitter, previous, current hostAddrs) {

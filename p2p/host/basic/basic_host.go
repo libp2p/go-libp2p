@@ -127,6 +127,14 @@ type HostOpts struct {
 	// DisableSignedPeerRecord disables the generation of Signed Peer Records on this host.
 	DisableSignedPeerRecord bool
 
+	// DisableLoopbackAddrPublishing excludes loopback addresses (127.0.0.0/8,
+	// ::1) from the host's entry in the peerstore and from the signed peer
+	// record, preventing them from being advertised to remote peers via
+	// identify or the DHT. Local loopback connectivity still works because
+	// identify's unsigned ListenAddrs path keeps loopback addresses on
+	// loopback-to-loopback connections.
+	DisableLoopbackAddrPublishing bool
+
 	// EnableHolePunching enables the peer to initiate/respond to hole punching attempts for NAT traversal.
 	EnableHolePunching bool
 	// HolePunchingOptions are options for the hole punching service
@@ -238,6 +246,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		opts.EnableMetrics,
 		opts.PrometheusRegisterer,
 		opts.DisableSignedPeerRecord,
+		opts.DisableLoopbackAddrPublishing,
 		h.Peerstore().PrivKey(h.ID()),
 		h.Peerstore(),
 		h.ID(),

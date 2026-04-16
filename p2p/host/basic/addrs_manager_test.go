@@ -64,14 +64,15 @@ type addrStoreArgs struct {
 }
 
 type addrsManagerArgs struct {
-	NATManager           NATManager
-	AddrsFactory         AddrsFactory
-	ObservedAddrsManager ObservedAddrsManager
-	ListenAddrs          func() []ma.Multiaddr
-	AddCertHashes        func([]ma.Multiaddr) []ma.Multiaddr
-	AutoNATClient        autonatv2Client
-	Bus                  event.Bus
-	AddrStoreArgs        addrStoreArgs
+	NATManager                    NATManager
+	AddrsFactory                  AddrsFactory
+	ObservedAddrsManager          ObservedAddrsManager
+	ListenAddrs                   func() []ma.Multiaddr
+	AddCertHashes                 func([]ma.Multiaddr) []ma.Multiaddr
+	AutoNATClient                 autonatv2Client
+	Bus                           event.Bus
+	AddrStoreArgs                 addrStoreArgs
+	DisableLoopbackAddrPublishing bool
 }
 
 type addrsManagerTestCase struct {
@@ -118,6 +119,7 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		true,
 		prometheus.DefaultRegisterer,
 		false,
+		args.DisableLoopbackAddrPublishing,
 		signKey,
 		addrStore,
 		pid,
@@ -486,6 +488,63 @@ func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 	pr = peerRecordFromEnvelope(t, ev)
 	require.Equal(t, pr.Addrs, []ma.Multiaddr{quic2})
 
+}
+
+func TestAddrsManagerLoopbackAddrPublishing(t *testing.T) {
+	loopback := ma.StringCast("/ip4/127.0.0.1/udp/1/quic-v1")
+	loopback6 := ma.StringCast("/ip6/::1/udp/1/quic-v1")
+	public := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
+
+	t.Run("publishes loopback by default", func(t *testing.T) {
+		pstore, err := pstoremem.NewPeerstore()
+		require.NoError(t, err)
+		cab, _ := peerstore.GetCertifiedAddrBook(pstore)
+		signKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+		require.NoError(t, err)
+		pid, err := peer.IDFromPrivateKey(signKey)
+		require.NoError(t, err)
+
+		am := newAddrsManagerTestCase(t, addrsManagerArgs{
+			ListenAddrs:  func() []ma.Multiaddr { return nil },
+			AddrsFactory: func([]ma.Multiaddr) []ma.Multiaddr { return []ma.Multiaddr{loopback, loopback6, public} },
+			AddrStoreArgs: addrStoreArgs{
+				AddrStore: pstore,
+				HostID:    pid,
+				SignKey:   signKey,
+			},
+		})
+		defer am.Close()
+
+		require.ElementsMatch(t, []ma.Multiaddr{loopback, loopback6, public}, pstore.Addrs(pid))
+		pr := peerRecordFromEnvelope(t, cab.GetPeerRecord(pid))
+		require.ElementsMatch(t, []ma.Multiaddr{loopback, loopback6, public}, pr.Addrs)
+	})
+
+	t.Run("strips loopback when publishing is disabled", func(t *testing.T) {
+		pstore, err := pstoremem.NewPeerstore()
+		require.NoError(t, err)
+		cab, _ := peerstore.GetCertifiedAddrBook(pstore)
+		signKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+		require.NoError(t, err)
+		pid, err := peer.IDFromPrivateKey(signKey)
+		require.NoError(t, err)
+
+		am := newAddrsManagerTestCase(t, addrsManagerArgs{
+			ListenAddrs:  func() []ma.Multiaddr { return nil },
+			AddrsFactory: func([]ma.Multiaddr) []ma.Multiaddr { return []ma.Multiaddr{loopback, loopback6, public} },
+			AddrStoreArgs: addrStoreArgs{
+				AddrStore: pstore,
+				HostID:    pid,
+				SignKey:   signKey,
+			},
+			DisableLoopbackAddrPublishing: true,
+		})
+		defer am.Close()
+
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{public}, pstore.Addrs(pid))
+		pr := peerRecordFromEnvelope(t, cab.GetPeerRecord(pid))
+		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{public}, pr.Addrs)
+	})
 }
 
 func TestRemoveIfNotInSource(t *testing.T) {

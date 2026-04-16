@@ -441,6 +441,20 @@ func Ping(enable bool) Option {
 	}
 }
 
+// LoopbackAddrPublishing controls whether the host advertises loopback
+// addresses (127.0.0.0/8 and ::1) to remote peers through the peerstore and
+// signed peer records. Loopback connectivity is still usable locally because
+// identify handles loopback-to-loopback connections separately.
+//
+// Defaults to true for backward compatibility. Set to false to avoid leaking
+// loopback addresses through DHT provider records and identify exchanges.
+func LoopbackAddrPublishing(enable bool) Option {
+	return func(cfg *Config) error {
+		cfg.DisableLoopbackAddrPublishing = !enable
+		return nil
+	}
+}
+
 // Routing will configure libp2p to use routing.
 func Routing(rt config.RoutingC) Option {
 	return func(cfg *Config) error {
