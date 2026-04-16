@@ -71,10 +71,11 @@ type addrsManager struct {
 	addrsMx      sync.RWMutex
 	currentAddrs hostAddrs
 
-	signKey           crypto.PrivKey
-	addrStore         addrStore
-	signedRecordStore peerstore.CertifiedAddrBook
-	hostID            peer.ID
+	signKey                        crypto.PrivKey
+	addrStore                      addrStore
+	signedRecordStore              peerstore.CertifiedAddrBook
+	hostID                         peer.ID
+	disableNonPublicAddrPublishing bool
 
 	wg        sync.WaitGroup
 	ctx       context.Context
@@ -92,26 +93,28 @@ func newAddrsManager(
 	enableMetrics bool,
 	registerer prometheus.Registerer,
 	disableSignedPeerRecord bool,
+	disableNonPublicAddrPublishing bool,
 	signKey crypto.PrivKey,
 	addrStore addrStore,
 	hostID peer.ID,
 ) (*addrsManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	as := &addrsManager{
-		bus:                       bus,
-		listenAddrs:               listenAddrs,
-		addCertHashes:             addCertHashes,
-		observedAddrsManager:      observedAddrsManager,
-		natManager:                natmgr,
-		addrsFactory:              addrsFactory,
-		triggerAddrsUpdateChan:    make(chan chan struct{}, 1),
-		triggerReachabilityUpdate: make(chan struct{}, 1),
-		interfaceAddrs:            &interfaceAddrsCache{},
-		signKey:                   signKey,
-		addrStore:                 addrStore,
-		hostID:                    hostID,
-		ctx:                       ctx,
-		ctxCancel:                 cancel,
+		bus:                            bus,
+		listenAddrs:                    listenAddrs,
+		addCertHashes:                  addCertHashes,
+		observedAddrsManager:           observedAddrsManager,
+		natManager:                     natmgr,
+		addrsFactory:                   addrsFactory,
+		triggerAddrsUpdateChan:         make(chan chan struct{}, 1),
+		triggerReachabilityUpdate:      make(chan struct{}, 1),
+		interfaceAddrs:                 &interfaceAddrsCache{},
+		signKey:                        signKey,
+		addrStore:                      addrStore,
+		hostID:                         hostID,
+		disableNonPublicAddrPublishing: disableNonPublicAddrPublishing,
+		ctx:                            ctx,
+		ctxCancel:                      cancel,
 	}
 	unknownReachability := network.ReachabilityUnknown
 	as.hostReachability.Store(&unknownReachability)
@@ -343,9 +346,19 @@ func (a *addrsManager) updateAddrs(prevHostAddrs hostAddrs, relayAddrs []ma.Mult
 
 // updatePeerStore updates the peer store for the host
 func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs []ma.Multiaddr) {
-	// update host addresses in the peer store
-	a.addrStore.SetAddrs(a.hostID, currentAddrs, peerstore.PermanentAddrTTL)
+	publishedAddrs := currentAddrs
+	var excludedAddrs []ma.Multiaddr
+	if a.disableNonPublicAddrPublishing {
+		publishedAddrs, excludedAddrs = splitNonPublicAddrs(currentAddrs)
+	}
+	// Set the addrs we want to publish with a permanent TTL.
+	a.addrStore.SetAddrs(a.hostID, publishedAddrs, peerstore.PermanentAddrTTL)
+	// Clear previously published addrs that are no longer current, as well as
+	// any addrs being withheld because they are non-public. Use separate calls
+	// to avoid appending into the caller's removedAddrs backing array, which
+	// could race with or overwrite its state.
 	a.addrStore.SetAddrs(a.hostID, removedAddrs, 0)
+	a.addrStore.SetAddrs(a.hostID, excludedAddrs, 0)
 
 	var sr *record.Envelope
 	// Our addresses have changed.
@@ -354,7 +367,7 @@ func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs
 		var err error
 		// add signed peer record to the event
 		// in case of an error drop this event.
-		sr, err = a.makeSignedPeerRecord(currentAddrs)
+		sr, err = a.makeSignedPeerRecord(publishedAddrs)
 		if err != nil {
 			log.Error("error creating a signed peer record from the set of current addresses", "err", err)
 			return
@@ -364,6 +377,40 @@ func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs
 			return
 		}
 	}
+}
+
+// splitNonPublicAddrs separates IP-based multiaddrs that are not in a
+// globally-routable range so they are not announced via the peerstore or
+// signed peer records. Multiaddrs without an IP or DNS component
+// (e.g. /p2p-circuit) are kept as-is because manet.IsPublicAddr returns
+// false for them; DNS components are evaluated by manet.IsPublicAddr
+// (special-use names like .local, .invalid, .localhost are non-public).
+func splitNonPublicAddrs(addrs []ma.Multiaddr) (published, excluded []ma.Multiaddr) {
+	for _, addr := range addrs {
+		if hasIPOrDNSComponent(addr) && !manet.IsPublicAddr(addr) {
+			excluded = append(excluded, addr)
+		} else {
+			published = append(published, addr)
+		}
+	}
+	return
+}
+
+// hasIPOrDNSComponent reports whether addr contains an IP or DNS component.
+// Without this guard, splitNonPublicAddrs would also drop multiaddrs that
+// have no network-layer address for manet.IsPublicAddr to evaluate, such as
+// /p2p-circuit/p2p/<id>.
+func hasIPOrDNSComponent(addr ma.Multiaddr) bool {
+	found := false
+	ma.ForEach(addr, func(c ma.Component) bool {
+		switch c.Protocol().Code {
+		case ma.P_IP4, ma.P_IP6, ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func (a *addrsManager) notifyAddrsUpdated(emitter event.Emitter, localAddrsEmitter event.Emitter, previous, current hostAddrs) {
