@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -557,7 +558,7 @@ func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 			return false
 		}
 		delete(addrsMap, string(pr.Addrs[victim].Addr))
-		pr.Addrs = append(pr.Addrs[:victim], pr.Addrs[victim+1:]...)
+		pr.Addrs = slices.Delete(pr.Addrs, victim, victim+1)
 		return true
 	}
 
