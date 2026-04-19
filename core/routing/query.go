@@ -2,6 +2,7 @@ package routing
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -33,6 +34,12 @@ const (
 )
 
 // QueryEvent is emitted for every notable event that happens during a DHT query.
+//
+// Publishers may mutate Responses (and the AddrInfo values it points at)
+// freely after calling PublishQueryEvent: the event is deep-copied before
+// it reaches subscribers. Subscribers must still treat their copy as
+// read-only, since events are fanned out by pointer to a single consumer
+// channel.
 type QueryEvent struct {
 	ID        peer.ID
 	Type      QueryEventType
@@ -92,6 +99,10 @@ func RegisterForQueryEvents(ctx context.Context) (context.Context, <-chan *Query
 
 // PublishQueryEvent publishes a query event to the query event channel
 // associated with the given context, if any.
+//
+// The event's Responses slice (and each AddrInfo.Addrs slice it points
+// at) is deep-copied before delivery, so the caller can safely keep
+// mutating its own copy after this call returns.
 func PublishQueryEvent(ctx context.Context, ev *QueryEvent) {
 	ich := ctx.Value(routingQueryKey{})
 	if ich == nil {
@@ -100,7 +111,31 @@ func PublishQueryEvent(ctx context.Context, ev *QueryEvent) {
 
 	// We *want* to panic here.
 	ech := ich.(*eventChannel)
-	ech.send(ctx, ev)
+	ech.send(ctx, cloneForPublish(ev))
+}
+
+// cloneForPublish returns ev with Responses (and each AddrInfo.Addrs)
+// replaced by independent copies. Without this, a publisher mutating its
+// AddrInfo slice after PublishQueryEvent returns would race with any
+// subscriber reading Responses.
+//
+// The deeper Multiaddr values are treated as immutable by convention and
+// are not copied.
+func cloneForPublish(ev *QueryEvent) *QueryEvent {
+	if len(ev.Responses) == 0 {
+		return ev
+	}
+	out := *ev
+	out.Responses = make([]*peer.AddrInfo, len(ev.Responses))
+	for i, ai := range ev.Responses {
+		if ai == nil {
+			continue
+		}
+		cp := *ai
+		cp.Addrs = slices.Clone(ai.Addrs)
+		out.Responses[i] = &cp
+	}
+	return &out
 }
 
 // SubscribesToQueryEvents returns true if the context subscribes to query
