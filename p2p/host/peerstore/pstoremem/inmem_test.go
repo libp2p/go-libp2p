@@ -48,8 +48,11 @@ func TestPeerstoreProtoStoreLimits(t *testing.T) {
 
 func TestInMemoryAddrBook(t *testing.T) {
 	clk := mockClock.NewMock()
+	// Shared addr-book suite inserts batches larger than the default
+	// per-peer cap; disable the cap so the suite exercises general
+	// behavior, not the cap path.
 	pt.TestAddrBook(t, func() (pstore.AddrBook, func()) {
-		ps, err := NewPeerstore(WithClock(clk))
+		ps, err := NewPeerstore(WithClock(clk), WithMaxAddressesPerPeer(0))
 		require.NoError(t, err)
 		return ps, func() { ps.Close() }
 	}, clk)
