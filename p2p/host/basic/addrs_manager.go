@@ -347,18 +347,11 @@ func (a *addrsManager) updateAddrs(prevHostAddrs hostAddrs, relayAddrs []ma.Mult
 // updatePeerStore updates the peer store for the host
 func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs []ma.Multiaddr) {
 	publishedAddrs := currentAddrs
-	var excludedAddrs []ma.Multiaddr
 	if a.disableNonPublicAddrPublishing {
-		publishedAddrs, excludedAddrs = splitNonPublicAddrs(currentAddrs)
+		publishedAddrs = filterPublicAddrs(currentAddrs)
 	}
-	// Set the addrs we want to publish with a permanent TTL.
 	a.addrStore.SetAddrs(a.hostID, publishedAddrs, peerstore.PermanentAddrTTL)
-	// Clear previously published addrs that are no longer current, as well as
-	// any addrs being withheld because they are non-public. Use separate calls
-	// to avoid appending into the caller's removedAddrs backing array, which
-	// could race with or overwrite its state.
 	a.addrStore.SetAddrs(a.hostID, removedAddrs, 0)
-	a.addrStore.SetAddrs(a.hostID, excludedAddrs, 0)
 
 	var sr *record.Envelope
 	// Our addresses have changed.
@@ -379,38 +372,38 @@ func (a *addrsManager) updatePeerStore(currentAddrs []ma.Multiaddr, removedAddrs
 	}
 }
 
-// splitNonPublicAddrs separates IP-based multiaddrs that are not in a
-// globally-routable range so they are not announced via the peerstore or
-// signed peer records. Multiaddrs without an IP or DNS component
-// (e.g. /p2p-circuit) are kept as-is because manet.IsPublicAddr returns
-// false for them; DNS components are evaluated by manet.IsPublicAddr
-// (special-use names like .local, .invalid, .localhost are non-public).
-func splitNonPublicAddrs(addrs []ma.Multiaddr) (published, excluded []ma.Multiaddr) {
+// filterPublicAddrs drops IP-based multiaddrs that are not in a globally
+// routable range. Addrs without an IP or DNS component (e.g. /p2p-circuit)
+// are kept as-is because manet.IsPublicAddr returns false for them.
+// DNS components are evaluated by manet.IsPublicAddr (special-use names
+// like .local, .invalid, .localhost are non-public).
+func filterPublicAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
+	filtered := make([]ma.Multiaddr, 0, len(addrs))
 	for _, addr := range addrs {
 		if hasIPOrDNSComponent(addr) && !manet.IsPublicAddr(addr) {
-			excluded = append(excluded, addr)
-		} else {
-			published = append(published, addr)
+			continue
 		}
+		filtered = append(filtered, addr)
 	}
-	return
+	return filtered
 }
 
-// hasIPOrDNSComponent reports whether addr contains an IP or DNS component.
-// Without this guard, splitNonPublicAddrs would also drop multiaddrs that
-// have no network-layer address for manet.IsPublicAddr to evaluate, such as
-// /p2p-circuit/p2p/<id>.
+// hasIPOrDNSComponent reports whether addr's leading component is an IP,
+// DNS, or IP6ZONE wrapper. Transport multiaddrs encode their network layer
+// at the front, so the leading component is sufficient to tell whether
+// manet.IsPublicAddr can meaningfully evaluate the addr. Without this
+// guard, filterPublicAddrs would also drop multiaddrs that have no
+// network-layer address, such as /p2p-circuit/p2p/<id>.
 func hasIPOrDNSComponent(addr ma.Multiaddr) bool {
-	found := false
-	ma.ForEach(addr, func(c ma.Component) bool {
-		switch c.Protocol().Code {
-		case ma.P_IP4, ma.P_IP6, ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
-			found = true
-			return false
-		}
+	first, _ := ma.SplitFirst(addr)
+	if first == nil {
+		return false
+	}
+	switch first.Protocol().Code {
+	case ma.P_IP4, ma.P_IP6, ma.P_IP6ZONE, ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
 		return true
-	})
-	return found
+	}
+	return false
 }
 
 func (a *addrsManager) notifyAddrsUpdated(emitter event.Emitter, localAddrsEmitter event.Emitter, previous, current hostAddrs) {

@@ -505,6 +505,7 @@ func TestAddrsManagerNonPublicAddrPublishing(t *testing.T) {
 	circuit := ma.StringCast("/p2p/12D3KooWGyVU3Z7iEFEKnLRWUZSCgZkruxXt9TafKigQv9TUx2N1/p2p-circuit")
 	dnsPublic := ma.StringCast("/dns4/example.com/tcp/443/wss")
 	dnsLocal := ma.StringCast("/dns4/foo.local/tcp/443")
+	zonedLinkLocal6 := ma.StringCast("/ip6zone/eth0/ip6/fe80::1/tcp/4001")
 
 	all := []ma.Multiaddr{
 		publicV4, publicV6,
@@ -513,6 +514,7 @@ func TestAddrsManagerNonPublicAddrPublishing(t *testing.T) {
 		ula, linkLocal6,
 		reservedV6, docV6,
 		circuit, dnsPublic, dnsLocal,
+		zonedLinkLocal6,
 	}
 
 	t.Run("publishes everything by default", func(t *testing.T) {
@@ -562,7 +564,7 @@ func TestAddrsManagerNonPublicAddrPublishing(t *testing.T) {
 		defer am.Close()
 
 		// kept: public v4/v6, /p2p-circuit (no IP), public DNS
-		// stripped: loopback, RFC1918, CGNAT, link-local, ULA, reserved/doc IPv6, .local DNS
+		// stripped: loopback, RFC1918, CGNAT, link-local (incl. ip6zone-wrapped), ULA, reserved/doc IPv6, .local DNS
 		expected := []ma.Multiaddr{publicV4, publicV6, circuit, dnsPublic}
 		require.ElementsMatch(t, expected, pstore.Addrs(pid))
 		pr := peerRecordFromEnvelope(t, cab.GetPeerRecord(pid))
