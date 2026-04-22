@@ -395,11 +395,10 @@ func filterPublicAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 // guard, filterPublicAddrs would also drop multiaddrs that have no
 // network-layer address, such as /p2p-circuit/p2p/<id>.
 func hasIPOrDNSComponent(addr ma.Multiaddr) bool {
-	first, _ := ma.SplitFirst(addr)
-	if first == nil {
+	if len(addr) == 0 {
 		return false
 	}
-	switch first.Protocol().Code {
+	switch addr[0].Protocol().Code {
 	case ma.P_IP4, ma.P_IP6, ma.P_IP6ZONE, ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
 		return true
 	}
