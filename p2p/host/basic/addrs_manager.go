@@ -573,6 +573,13 @@ func (a *addrsManager) makeSignedPeerRecord(addrs []ma.Multiaddr) (*record.Envel
 	if a.signKey == nil {
 		return nil, errors.New("signKey is nil")
 	}
+	// Drop empty multiaddrs before sealing. A zero-component Multiaddr
+	// would otherwise enter the signed envelope and reach peers as "/"
+	// when they decode the wire bytes.
+	// See https://github.com/libp2p/js-libp2p/issues/3478#issuecomment-4322093929
+	addrs = slices.DeleteFunc(slices.Clone(addrs), func(m ma.Multiaddr) bool {
+		return len(m) == 0
+	})
 	// Limit the length of currentAddrs to ensure that our signed peer records aren't rejected
 	peerRecordSize := 64 // HostID
 	k, err := a.signKey.Raw()
