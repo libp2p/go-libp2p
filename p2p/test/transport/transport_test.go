@@ -33,6 +33,7 @@ import (
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
@@ -507,6 +508,124 @@ func TestLotsOfDataManyStreams(t *testing.T) {
 			}
 
 			wg.Wait()
+		})
+	}
+}
+
+func exerciseWebsocketEchoStream(host host.Host, peerID peer.ID, protocol string, payload []byte, deadline time.Duration) error {
+	s, err := host.NewStream(context.Background(), peerID, protocol.ID(protocol))
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	if err := s.SetDeadline(time.Now().Add(deadline)); err != nil {
+		return err
+	}
+
+	if _, err := s.Write(payload); err != nil {
+		return err
+	}
+	if err := s.CloseWrite(); err != nil {
+		return err
+	}
+
+	recvBuf := make([]byte, len(payload))
+	if _, err := io.ReadFull(s, recvBuf); err != nil {
+		return err
+	}
+	if !bytes.Equal(recvBuf, payload) {
+		return errors.New("received data does not match sent data")
+	}
+
+	if err := s.SetReadDeadline(time.Now().Add(deadline)); err != nil {
+		return err
+	}
+	_, err = s.Read([]byte{0})
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err == nil {
+		return errors.New("expected final read to return EOF")
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return fmt.Errorf("timed out waiting for EOF after CloseWrite; CI flakes blocked in gorilla/websocket.(*Conn).NextReader from p2p/transport/websocket.(*Conn).Read: %w", err)
+	}
+	return err
+}
+
+// TestWebsocketManyShortLivedStreamsRegression repeats the CloseWrite/read/EOF
+// pattern from TestLotsOfDataManyStreams against websocket transports only.
+// This is a regression reproducer for the CI flake that left goroutines stuck in
+// gorilla/websocket.(*Conn).NextReader via p2p/transport/websocket.(*Conn).Read.
+// The deadlines only convert that hang into an explicit test failure.
+func TestWebsocketManyShortLivedStreamsRegression(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on windows because of https://github.com/libp2p/go-libp2p/issues/2341")
+	}
+
+	const (
+		payloadSize    = 64 << 10
+		streamsPerRun  = 64
+		parallel       = 8
+		iterations     = 16
+		streamDeadline = 5 * time.Second
+	)
+
+	sendBuf := make([]byte, payloadSize)
+	_, err := rand.Read(sendBuf)
+	require.NoError(t, err)
+
+	for _, tc := range transportsToTest {
+		if tc.Name != "WebSocket" && tc.Name != "WebSocket-Secured" {
+			continue
+		}
+
+		t.Run(tc.Name, func(t *testing.T) {
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
+
+			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
+				ID:    h1.ID(),
+				Addrs: h1.Addrs(),
+			}))
+
+			const protocol = "/websocket-regression-echo"
+			h1.SetStreamHandler(protocol, func(s network.Stream) {
+				defer s.Close()
+				_, _ = io.Copy(s, s)
+			})
+
+			for i := range iterations {
+				errCh := make(chan error, 1)
+				sem := make(chan struct{}, parallel)
+				var wg sync.WaitGroup
+				for j := range streamsPerRun {
+					wg.Add(1)
+					sem <- struct{}{}
+					go func(iteration, streamIdx int) {
+						defer wg.Done()
+						defer func() { <-sem }()
+						if err := exerciseWebsocketEchoStream(h2, h1.ID(), protocol, sendBuf, streamDeadline); err != nil {
+							select {
+							case errCh <- fmt.Errorf("iteration %d stream %d: %w", iteration, streamIdx, err):
+							default:
+							}
+						}
+					}(i, j)
+				}
+				wg.Wait()
+
+				select {
+				case err := <-errCh:
+					t.Fatal(err)
+				default:
+				}
+			}
 		})
 	}
 }
