@@ -512,8 +512,8 @@ func TestLotsOfDataManyStreams(t *testing.T) {
 	}
 }
 
-func exerciseWebsocketEchoStream(host host.Host, peerID peer.ID, protocol string, payload []byte, deadline time.Duration) error {
-	s, err := host.NewStream(context.Background(), peerID, protocol.ID(protocol))
+func exerciseWebsocketEchoStream(host host.Host, peerID peer.ID, protocolName string, payload []byte, deadline time.Duration) error {
+	s, err := host.NewStream(context.Background(), peerID, protocol.ID(protocolName))
 	if err != nil {
 		return err
 	}
