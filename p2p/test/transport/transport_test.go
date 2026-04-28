@@ -541,7 +541,8 @@ func exerciseWebsocketEchoStream(host host.Host, peerID peer.ID, protocolName st
 	if err := s.SetReadDeadline(time.Now().Add(deadline)); err != nil {
 		return err
 	}
-	_, err = s.Read([]byte{0})
+	var eofBuf [1]byte
+	_, err = s.Read(eofBuf[:])
 	if errors.Is(err, io.EOF) {
 		return nil
 	}
@@ -594,14 +595,14 @@ func TestWebsocketManyShortLivedStreamsRegression(t *testing.T) {
 				Addrs: h1.Addrs(),
 			}))
 
-			const protocol = "/websocket-regression-echo"
-			h1.SetStreamHandler(protocol, func(s network.Stream) {
+			const echoProtocol = "/websocket-regression-echo"
+			h1.SetStreamHandler(echoProtocol, func(s network.Stream) {
 				defer s.Close()
 				_, _ = io.Copy(s, s)
 			})
 
+			errCh := make(chan error, 1)
 			for i := range iterations {
-				errCh := make(chan error, 1)
 				sem := make(chan struct{}, parallel)
 				var wg sync.WaitGroup
 				for j := range streamsPerRun {
@@ -610,7 +611,7 @@ func TestWebsocketManyShortLivedStreamsRegression(t *testing.T) {
 					go func(iteration, streamIdx int) {
 						defer wg.Done()
 						defer func() { <-sem }()
-						if err := exerciseWebsocketEchoStream(h2, h1.ID(), protocol, sendBuf, streamDeadline); err != nil {
+						if err := exerciseWebsocketEchoStream(h2, h1.ID(), echoProtocol, sendBuf, streamDeadline); err != nil {
 							select {
 							case errCh <- fmt.Errorf("iteration %d stream %d: %w", iteration, streamIdx, err):
 							default:
