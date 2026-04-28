@@ -538,9 +538,6 @@ func exerciseWebsocketEchoStream(host host.Host, peerID peer.ID, protocolName st
 		return errors.New("received data does not match sent data")
 	}
 
-	if err := s.SetReadDeadline(time.Now().Add(deadline)); err != nil {
-		return err
-	}
 	var eofBuf [1]byte
 	_, err = s.Read(eofBuf[:])
 	if errors.Is(err, io.EOF) {
@@ -601,7 +598,7 @@ func TestWebsocketManyShortLivedStreamsRegression(t *testing.T) {
 				_, _ = io.Copy(s, s)
 			})
 
-			errCh := make(chan error, 1)
+			errCh := make(chan error, streamsPerRun)
 			for i := range iterations {
 				sem := make(chan struct{}, parallel)
 				var wg sync.WaitGroup
