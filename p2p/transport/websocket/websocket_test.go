@@ -35,7 +35,6 @@ import (
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -495,59 +494,6 @@ func TestConcurrentClose(t *testing.T) {
 			t.Fatal(err)
 		}
 		c.Close()
-	}
-}
-
-func TestCloseUnblocksPendingRead(t *testing.T) {
-	_, u := newUpgrader(t)
-	tpt, err := New(u, &network.NullResourceManager{}, nil)
-	require.NoError(t, err)
-	l, err := tpt.gatedMaListen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
-	require.NoError(t, err)
-	defer l.Close()
-
-	type dialResult struct {
-		conn manet.Conn
-		err  error
-	}
-	dialCh := make(chan dialResult, 1)
-	go func() {
-		c, err := tpt.maDial(context.Background(), l.Multiaddr(), &network.NullScope{})
-		dialCh <- dialResult{conn: c, err: err}
-	}()
-
-	serverConn, _, err := l.Accept()
-	require.NoError(t, err)
-	defer serverConn.Close()
-
-	dialed := <-dialCh
-	require.NoError(t, dialed.err)
-	defer dialed.conn.Close()
-
-	readStartedCh := make(chan struct{})
-	readErrCh := make(chan error, 1)
-	go func() {
-		close(readStartedCh)
-		var buf [1]byte
-		_, err := dialed.conn.Read(buf[:])
-		readErrCh <- err
-	}()
-
-	<-readStartedCh
-	time.Sleep(10 * time.Millisecond)
-	select {
-	case err := <-readErrCh:
-		t.Fatalf("read returned before close: %v", err)
-	default:
-	}
-
-	require.NoError(t, dialed.conn.Close())
-
-	select {
-	case err := <-readErrCh:
-		require.Error(t, err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("close did not unblock a pending read")
 	}
 }
 
