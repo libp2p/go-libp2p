@@ -524,14 +524,22 @@ func TestCloseUnblocksPendingRead(t *testing.T) {
 	require.NoError(t, dialed.err)
 	defer dialed.conn.Close()
 
+	readStartedCh := make(chan struct{})
 	readErrCh := make(chan error, 1)
 	go func() {
+		close(readStartedCh)
 		var buf [1]byte
 		_, err := dialed.conn.Read(buf[:])
 		readErrCh <- err
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	<-readStartedCh
+	select {
+	case err := <-readErrCh:
+		t.Fatalf("read returned before close: %v", err)
+	default:
+	}
+
 	require.NoError(t, dialed.conn.Close())
 
 	select {
