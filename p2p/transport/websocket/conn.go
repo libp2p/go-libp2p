@@ -142,6 +142,7 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) closeOnceFn() error {
+	_ = c.Conn.SetReadDeadline(time.Now())
 	err1 := c.Conn.WriteControl(
 		ws.CloseMessage,
 		ws.FormatCloseMessage(ws.CloseNormalClosure, "closed"),
