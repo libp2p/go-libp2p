@@ -534,6 +534,7 @@ func TestCloseUnblocksPendingRead(t *testing.T) {
 	}()
 
 	<-readStartedCh
+	time.Sleep(10 * time.Millisecond)
 	select {
 	case err := <-readErrCh:
 		t.Fatalf("read returned before close: %v", err)
