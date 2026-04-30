@@ -475,8 +475,8 @@ func testCertifiedAddresses(m pstore.AddrBook, clk *mockClock.Mock) func(*testin
 			t.Error("unable to retrieve signed routing record from addrbook")
 		}
 
-		// Adding a new envelope should clear existing certified addresses.
-		// Only the newly-added ones should remain
+		// A newer signed record drops addrs the peer no longer advertises.
+		// Unsigned addrs (added via plain AddAddrs) are retained.
 		certifiedAddrs = certifiedAddrs[:3]
 		rec4 := peer.NewPeerRecord()
 		rec4.PeerID = id
@@ -488,8 +488,9 @@ func testCertifiedAddresses(m pstore.AddrBook, clk *mockClock.Mock) func(*testin
 		if !accepted {
 			t.Error("expected peer record to be accepted")
 		}
-		// AssertAddressesEqual(t, certifiedAddrs, m.Addrs(id))
-		AssertAddressesEqual(t, allAddrs, m.Addrs(id))
+		expectedAfterRec4 := append([]multiaddr.Multiaddr{}, certifiedAddrs...)
+		expectedAfterRec4 = append(expectedAfterRec4, uncertifiedAddrs...)
+		AssertAddressesEqual(t, expectedAfterRec4, m.Addrs(id))
 
 		// update TTL on signed addrs to -1 to remove them.
 		// the signed routing record should be deleted

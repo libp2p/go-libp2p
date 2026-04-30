@@ -125,6 +125,8 @@ type Config struct {
 
 	DisablePing bool
 
+	DisableNonPublicAddrPublishing bool
+
 	Routing RoutingC
 
 	EnableAutoRelay bool
@@ -442,21 +444,22 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 
 func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *autonatv2.AutoNAT, o bhost.ObservedAddrsManager) (*bhost.BasicHost, error) {
 	h, err := bhost.NewHost(swrm, &bhost.HostOpts{
-		EventBus:             eventBus,
-		ConnManager:          cfg.ConnManager,
-		AddrsFactory:         cfg.AddrsFactory,
-		NATManager:           cfg.NATManager,
-		EnablePing:           !cfg.DisablePing,
-		UserAgent:            cfg.UserAgent,
-		ProtocolVersion:      cfg.ProtocolVersion,
-		EnableHolePunching:   cfg.EnableHolePunching,
-		HolePunchingOptions:  cfg.HolePunchingOptions,
-		EnableRelayService:   cfg.EnableRelayService,
-		RelayServiceOpts:     cfg.RelayServiceOpts,
-		EnableMetrics:        !cfg.DisableMetrics,
-		PrometheusRegisterer: cfg.PrometheusRegisterer,
-		AutoNATv2:            an,
-		ObservedAddrsManager: o,
+		EventBus:                       eventBus,
+		ConnManager:                    cfg.ConnManager,
+		AddrsFactory:                   cfg.AddrsFactory,
+		NATManager:                     cfg.NATManager,
+		EnablePing:                     !cfg.DisablePing,
+		UserAgent:                      cfg.UserAgent,
+		ProtocolVersion:                cfg.ProtocolVersion,
+		EnableHolePunching:             cfg.EnableHolePunching,
+		HolePunchingOptions:            cfg.HolePunchingOptions,
+		EnableRelayService:             cfg.EnableRelayService,
+		RelayServiceOpts:               cfg.RelayServiceOpts,
+		EnableMetrics:                  !cfg.DisableMetrics,
+		PrometheusRegisterer:           cfg.PrometheusRegisterer,
+		DisableNonPublicAddrPublishing: cfg.DisableNonPublicAddrPublishing,
+		AutoNATv2:                      an,
+		ObservedAddrsManager:           o,
 	})
 	if err != nil {
 		return nil, err

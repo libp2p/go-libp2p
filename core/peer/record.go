@@ -234,7 +234,7 @@ func addrsFromProtobuf(addrs []*pb.PeerRecord_AddressInfo) []ma.Multiaddr {
 	out := make([]ma.Multiaddr, 0, len(addrs))
 	for _, addr := range addrs {
 		a, err := ma.NewMultiaddrBytes(addr.Multiaddr)
-		if err != nil {
+		if err != nil || len(a) == 0 {
 			continue
 		}
 		out = append(out, a)
@@ -245,6 +245,14 @@ func addrsFromProtobuf(addrs []*pb.PeerRecord_AddressInfo) []ma.Multiaddr {
 func addrsToProtobuf(addrs []ma.Multiaddr) []*pb.PeerRecord_AddressInfo {
 	out := make([]*pb.PeerRecord_AddressInfo, 0, len(addrs))
 	for _, addr := range addrs {
+		// Drop empty multiaddrs. Since go-multiaddr v0.15 made Multiaddr a
+		// slice type, a zero-value Multiaddr has no components and encodes
+		// to zero bytes on the wire. Receivers that skip the empty-input
+		// check decode those bytes as "/" and reject the address.
+		// See https://github.com/libp2p/js-libp2p/issues/3478#issuecomment-4322093929
+		if len(addr) == 0 {
+			continue
+		}
 		out = append(out, &pb.PeerRecord_AddressInfo{Multiaddr: addr.Bytes()})
 	}
 	return out

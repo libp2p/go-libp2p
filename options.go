@@ -441,6 +441,21 @@ func Ping(enable bool) Option {
 	}
 }
 
+// NonPublicAddrPublishing controls whether the host advertises addresses that
+// are not in a globally-routable range (RFC 1918 private, RFC 6598 CGNAT,
+// link-local, loopback, ULA, IPv6 documentation/multicast/reserved space)
+// through the peerstore and signed peer records. Multiaddrs without an IP
+// component such as /p2p-circuit are not affected.
+//
+// Defaults to true for backward compatibility. Set to false on public-facing
+// nodes to avoid leaking internal topology through identify and DHT records.
+func NonPublicAddrPublishing(enable bool) Option {
+	return func(cfg *Config) error {
+		cfg.DisableNonPublicAddrPublishing = !enable
+		return nil
+	}
+}
+
 // Routing will configure libp2p to use routing.
 func Routing(rt config.RoutingC) Option {
 	return func(cfg *Config) error {
