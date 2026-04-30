@@ -212,6 +212,26 @@ func TestMaxAddrsPerPeerEvictsNearestExpiry(t *testing.T) {
 	require.ElementsMatch(t, []ma.Multiaddr{a1, a2, a4}, ab.Addrs(p))
 }
 
+// TestMaxAddrsPerPeerEnforcedOnSetAddrs verifies the per-peer cap fires on
+// the SetAddrs path too, not only AddAddr.
+func TestMaxAddrsPerPeerEnforcedOnSetAddrs(t *testing.T) {
+	ab := NewAddrBook(WithMaxAddressesPerPeer(2))
+	defer ab.Close()
+
+	const p = peer.ID("peer-setaddrs")
+	a1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+	a2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+	a3 := ma.StringCast("/ip4/1.2.3.4/tcp/3")
+
+	ab.AddAddr(p, a1, time.Hour)      // furthest expiry
+	ab.AddAddr(p, a2, 10*time.Minute) // nearest expiry, eviction target
+	require.ElementsMatch(t, []ma.Multiaddr{a1, a2}, ab.Addrs(p))
+
+	// SetAddrs with a new addr hits the cap; nearest-expiry a2 must go.
+	ab.SetAddrs(p, []ma.Multiaddr{a3}, 30*time.Minute)
+	require.ElementsMatch(t, []ma.Multiaddr{a1, a3}, ab.Addrs(p))
+}
+
 // TestMaxAddrsPerPeerDoesNotEvictConnected verifies that addrs held by live
 // connections (TTL >= ConnectedAddrTTL) are neither counted toward the cap
 // nor eligible for eviction.

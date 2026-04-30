@@ -2,6 +2,7 @@ package pstoreds
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -109,6 +110,64 @@ func TestDsMaxAddrsPerPeerEvictsNearestExpiry(t *testing.T) {
 
 			ab.AddAddr(p, a4, 45*time.Minute)
 			require.ElementsMatch(t, []ma.Multiaddr{a1, a2, a4}, ab.Addrs(p))
+		})
+	}
+}
+
+func TestDsMaxAddrsPerPeerEnforcedOnSetAddrs(t *testing.T) {
+	for name, dsFactory := range dstores {
+		t.Run(name, func(t *testing.T) {
+			opts := DefaultOpts()
+			opts.MaxAddrsPerPeer = 2
+			clk := mockclock.NewMock()
+			opts.Clock = clk
+
+			ds, closeDs := dsFactory(t)
+			defer closeDs()
+			ab, err := NewAddrBook(context.Background(), ds, opts)
+			require.NoError(t, err)
+			defer ab.Close()
+
+			const p = peer.ID("peer-setaddrs")
+			a1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+			a2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+			a3 := ma.StringCast("/ip4/1.2.3.4/tcp/3")
+
+			ab.AddAddr(p, a1, time.Hour)      // furthest expiry
+			ab.AddAddr(p, a2, 10*time.Minute) // nearest expiry, eviction target
+			require.ElementsMatch(t, []ma.Multiaddr{a1, a2}, ab.Addrs(p))
+
+			// SetAddrs with a new addr hits the cap; nearest-expiry a2 must go.
+			ab.SetAddrs(p, []ma.Multiaddr{a3}, 30*time.Minute)
+			require.ElementsMatch(t, []ma.Multiaddr{a1, a3}, ab.Addrs(p))
+		})
+	}
+}
+
+// TestDsMaxAddrsPerPeerDisabled verifies that MaxAddrsPerPeer = 0 disables
+// the cap so callers can store more than the default 64 addrs per peer.
+func TestDsMaxAddrsPerPeerDisabled(t *testing.T) {
+	for name, dsFactory := range dstores {
+		t.Run(name, func(t *testing.T) {
+			opts := DefaultOpts()
+			opts.MaxAddrsPerPeer = 0
+			clk := mockclock.NewMock()
+			opts.Clock = clk
+
+			ds, closeDs := dsFactory(t)
+			defer closeDs()
+			ab, err := NewAddrBook(context.Background(), ds, opts)
+			require.NoError(t, err)
+			defer ab.Close()
+
+			const p = peer.ID("peer-disabled")
+			const n = 200 // well above the default cap of 64
+			addrs := make([]ma.Multiaddr, n)
+			for i := range addrs {
+				addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i+1))
+				ab.AddAddr(p, addrs[i], time.Hour)
+			}
+			require.Len(t, ab.Addrs(p), n)
 		})
 	}
 }
