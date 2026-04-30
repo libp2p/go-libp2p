@@ -167,11 +167,11 @@ func (rc realclock) Now() time.Time {
 const (
 	defaultMaxSignedPeerRecords = 100_000
 	defaultMaxUnconnectedAddrs  = 1_000_000
-	// defaultMaxAddrsPerPeer bounds the number of unconnected addresses
-	// stored per peer. Set conservatively above observed real-world
-	// maxima (~26 for well-connected multi-transport nodes) so honest
-	// peers are not clipped while bounding DHT pollution where third
-	// parties gossip stale or misconfigured peerstore contents.
+	// defaultMaxAddrsPerPeer caps the unconnected addresses stored per
+	// peer. Sized well above observed real-world maxima (~26 for
+	// well-connected multi-transport nodes) to leave honest peers
+	// untouched while bounding DHT pollution from third parties gossiping
+	// stale or misconfigured peerstore contents.
 	defaultMaxAddrsPerPeer = 64
 )
 
@@ -242,12 +242,11 @@ func WithMaxSignedPeerRecords(n int) AddrBookOption {
 	}
 }
 
-// WithMaxAddressesPerPeer sets the maximum number of unconnected addresses
-// stored per peer. When the limit is reached, the unconnected entry with
-// the nearest expiry is evicted before the new entry is inserted.
-// Addresses held by a live connection (TTL >= ConnectedAddrTTL) are not
-// counted and never evicted. A value <= 0 disables the cap. Default is
-// defaultMaxAddrsPerPeer.
+// WithMaxAddressesPerPeer caps the unconnected addresses stored per peer.
+// When the cap is full, adding a new addr evicts the unconnected entry
+// with the nearest expiry. Addresses held by a live connection
+// (TTL >= ConnectedAddrTTL) bypass the cap and survive eviction. Pass 0
+// or a negative value to disable the cap. Defaults to 64.
 func WithMaxAddressesPerPeer(n int) AddrBookOption {
 	return func(b *memoryAddrBook) error {
 		b.maxAddrsPerPeer = n
@@ -427,12 +426,12 @@ func (mab *memoryAddrBook) numUnconnectedAddrsForPeerUnlocked(p peer.ID) int {
 
 // evictNearestExpiryUnconnectedForPeerUnlocked drops p's unconnected addr
 // with the earliest expiry. Returns false when every remaining addr for p
-// is held by a live connection, in which case the caller must drop the
-// incoming addr rather than evicting a connected one.
+// is held by a live connection; the caller must then drop the incoming
+// addr.
 //
 // Shorter-TTL entries (e.g. DHT gossip at TempAddrTTL) expire sooner than
-// identify-written peer-vouched addrs (RecentlyConnectedAddrTTL), so this
-// rule naturally sheds gossip first without needing to classify sources.
+// identify-written peer-vouched addrs (RecentlyConnectedAddrTTL), so the
+// rule sheds gossip first without classifying sources.
 func (mab *memoryAddrBook) evictNearestExpiryUnconnectedForPeerUnlocked(p peer.ID) bool {
 	var victim *expiringAddr
 	for _, a := range mab.addrs.Addrs[p] {

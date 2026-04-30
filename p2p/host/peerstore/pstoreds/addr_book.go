@@ -389,9 +389,9 @@ func (ab *dsAddrBook) supersededSignedAddrs(p peer.ID, newAddrs []ma.Multiaddr) 
 	return superseded
 }
 
-// ttlIsConnected reports whether the given TTL marks the address as held by
-// a live connection. Such entries are not subject to the per-peer cap and are
-// never evicted to make room for incoming addrs.
+// ttlIsConnected reports whether the TTL marks the address as held by a
+// live connection. Such entries bypass the per-peer cap and survive
+// eviction.
 func ttlIsConnected(ttl time.Duration) bool {
 	return ttl >= pstore.ConnectedAddrTTL
 }
@@ -599,9 +599,9 @@ func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 	}
 
 	// Per-peer cap on unconnected addrs. Entries held by a live connection
-	// (TTL >= ConnectedAddrTTL) are not counted and never evicted; this
-	// bounds peerstore pollution from sources like DHT gossip while leaving
-	// addresses tied to active sessions intact.
+	// (TTL >= ConnectedAddrTTL) bypass the cap and survive eviction. The
+	// cap bounds peerstore pollution from sources like DHT gossip while
+	// leaving addresses tied to active sessions intact.
 	maxCap := ab.opts.MaxAddrsPerPeer
 	incomingIsUnconnected := !ttlIsConnected(ttl)
 	unconnectedCount := 0
