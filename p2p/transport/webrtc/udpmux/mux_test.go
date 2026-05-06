@@ -248,6 +248,54 @@ func TestMuxedConnection(t *testing.T) {
 	require.Empty(t, addrUfragMap)
 }
 
+func TestAddrsPerUfragCap(t *testing.T) {
+	c := newPacketConn(t)
+	m := NewUDPMux(c)
+	m.Start()
+	defer m.Close()
+
+	const ufrag = "a"
+
+	// First call creates the connection. Subsequent calls below the cap each
+	// add the new address to the per-ufrag tracking.
+	base := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1}
+	_, err := m.GetConn(ufrag, base)
+	require.NoError(t, err)
+
+	for i := 2; i <= maxAddrsPerUfrag; i++ {
+		addr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: i}
+		_, err := m.GetConn(ufrag, addr)
+		require.NoError(t, err)
+	}
+
+	key := ufragConnKey{ufrag: ufrag, isIPv6: false}
+	m.mx.Lock()
+	require.Len(t, m.ufragAddrMap[key], maxAddrsPerUfrag)
+	require.Len(t, m.addrMap, maxAddrsPerUfrag)
+	m.mx.Unlock()
+
+	// Past the cap, additional addresses still resolve to the same connection
+	// but do not extend the tracking maps.
+	for i := maxAddrsPerUfrag + 1; i <= maxAddrsPerUfrag+10; i++ {
+		addr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: i}
+		_, err := m.GetConn(ufrag, addr)
+		require.NoError(t, err)
+	}
+
+	m.mx.Lock()
+	require.Len(t, m.ufragAddrMap[key], maxAddrsPerUfrag)
+	require.Len(t, m.addrMap, maxAddrsPerUfrag)
+	m.mx.Unlock()
+
+	// Cleanup releases the cap, so a second ufrag can populate freely.
+	m.RemoveConnByUfrag(ufrag)
+
+	m.mx.Lock()
+	require.Empty(t, m.ufragAddrMap[key])
+	require.Empty(t, m.addrMap)
+	m.mx.Unlock()
+}
+
 func TestRemovingUfragClosesConn(t *testing.T) {
 	c := newPacketConn(t)
 	m := NewUDPMux(c)

@@ -25,6 +25,12 @@ var log = logging.Logger("webrtc-udpmux")
 // used to decide the packet size on the write path.
 const ReceiveBufSize = 1500
 
+// maxAddrsPerUfrag bounds the number of remote addresses we will track for a
+// single ufrag. ICE typically advertises a handful of candidates per session
+// (host + server-reflexive + relay, per IP family); 32 leaves comfortable
+// headroom while keeping the per-ufrag bookkeeping bounded.
+const maxAddrsPerUfrag = 32
+
 type Candidate struct {
 	Ufrag string
 	Addr  *net.UDPAddr
@@ -289,6 +295,12 @@ func (mux *UDPMux) getOrCreateConn(ufrag string, isIPv6 bool, _ *UDPMux, addr ne
 	defer mux.mx.Unlock()
 
 	if conn, ok := mux.ufragMap[key]; ok {
+		// Cap per-ufrag address tracking. Once we have already associated
+		// maxAddrsPerUfrag addresses with this connection, ignore further
+		// candidates rather than letting the bookkeeping grow unbounded.
+		if len(mux.ufragAddrMap[key]) >= maxAddrsPerUfrag {
+			return false, conn
+		}
 		mux.addrMap[addr.String()] = conn
 		mux.ufragAddrMap[key] = append(mux.ufragAddrMap[key], addr)
 		return false, conn
