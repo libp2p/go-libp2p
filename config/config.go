@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"slices"
 	"time"
@@ -292,9 +293,11 @@ func (cfg *Config) makeAutoNATV2Host() (host.Host, error) {
 func (cfg *Config) addTransports() ([]fx.Option, error) {
 	fxopts := []fx.Option{
 		fx.WithLogger(func() fxevent.Logger {
-			return &fxevent.SlogLogger{
+			l := &fxevent.SlogLogger{
 				Logger: log.With("system", "fx"),
 			}
+			l.UseLogLevel(slog.LevelDebug)
+			return l
 		}),
 		fx.Provide(fx.Annotate(tptu.New, fx.ParamTags(`name:"security"`))),
 		fx.Supply(cfg.Muxers),
