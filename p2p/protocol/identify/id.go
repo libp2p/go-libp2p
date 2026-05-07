@@ -55,6 +55,10 @@ const (
 	// localhost, private IP or public IP address
 	recentlyConnectedPeerMaxAddrs = 20
 	connectedPeerMaxAddrs         = 500
+	// maxPeerProtocols is the maximum number of protocols we store for a
+	// remote peer. This bounds memory usage when a peer advertises an
+	// excessive number of protocols through chunked identify messages.
+	maxPeerProtocols = 1024
 )
 
 var (
@@ -726,6 +730,11 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 
 	supported, _ := ids.Host.Peerstore().GetProtocols(p)
 	mesProtocols := protocol.ConvertFromStrings(mes.Protocols)
+	if len(mesProtocols) > maxPeerProtocols {
+		log.Warn("peer advertises too many protocols, truncating",
+			"peer", p, "advertised", len(mesProtocols), "limit", maxPeerProtocols)
+		mesProtocols = mesProtocols[:maxPeerProtocols]
+	}
 	added, removed := diff(supported, mesProtocols)
 	ids.Host.Peerstore().SetProtocols(p, mesProtocols...)
 	if isPush {
