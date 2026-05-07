@@ -25,7 +25,7 @@ func TestProtocolListFromSingleChunk(t *testing.T) {
 	// Sanity check: a single identify message with a handful of protocols
 	// should come through untouched.
 	msg := &pb.Identify{}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		msg.Protocols = append(msg.Protocols, fmt.Sprintf("/test/proto/%d", i))
 	}
 
@@ -57,9 +57,9 @@ func TestChunkedIdentifyAmplifiesProtocolList(t *testing.T) {
 
 	var buf bytes.Buffer
 	w := pbio.NewDelimitedWriter(&buf)
-	for chunk := 0; chunk < numChunks; chunk++ {
+	for chunk := range numChunks {
 		msg := &pb.Identify{}
-		for i := 0; i < protocolsPerChunk; i++ {
+		for i := range protocolsPerChunk {
 			msg.Protocols = append(msg.Protocols, fmt.Sprintf("/x/%d/%d", chunk, i))
 		}
 		if err := w.WriteMsg(msg); err != nil {
@@ -118,7 +118,7 @@ func TestChunkedMergeMemoryCost(t *testing.T) {
 
 	var buf bytes.Buffer
 	w := pbio.NewDelimitedWriter(&buf)
-	for chunk := 0; chunk < numChunks; chunk++ {
+	for chunk := range numChunks {
 		msg := &pb.Identify{}
 		for i := 0; i < protocolsPerChunk; i++ {
 			msg.Protocols = append(msg.Protocols, fmt.Sprintf("/x/%d/%d", chunk, i))
