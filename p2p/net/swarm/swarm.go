@@ -424,7 +424,11 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	c.notifyLk.Lock()
 	s.conns.Unlock()
 
-	s.connectednessEventEmitter.AddConn(p)
+	if !s.connectednessEventEmitter.AddConn(p) {
+		c.notifyLk.Unlock()
+		c.Close()
+		return nil, fmt.Errorf("connectedness event emitter at capacity")
+	}
 
 	if !isLimited {
 		// Notify goroutines waiting for a direct connection

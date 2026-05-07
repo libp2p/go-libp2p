@@ -48,17 +48,19 @@ func newConnectednessEventEmitter(connectedness func(peer.ID) network.Connectedn
 	return c
 }
 
-func (c *connectednessEventEmitter) AddConn(p peer.ID) {
+func (c *connectednessEventEmitter) AddConn(p peer.ID) bool {
 	c.mx.RLock()
 	defer c.mx.RUnlock()
 	if c.ctx.Err() != nil {
-		return
+		return false
 	}
 
 	select {
 	case c.newConns <- p:
+		return true
 	default:
-		log.Warn("connectedness event emitter channel full, dropping event", "peer", p)
+		log.Error("connectedness event emitter channel full, dropping event", "peer", p)
+		return false
 	}
 }
 
