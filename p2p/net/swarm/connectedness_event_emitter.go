@@ -55,7 +55,11 @@ func (c *connectednessEventEmitter) AddConn(p peer.ID) {
 		return
 	}
 
-	c.newConns <- p
+	select {
+	case c.newConns <- p:
+	default:
+		log.Warn("connectedness event emitter channel full, dropping event", "peer", p)
+	}
 }
 
 func (c *connectednessEventEmitter) RemoveConn(p peer.ID) {
