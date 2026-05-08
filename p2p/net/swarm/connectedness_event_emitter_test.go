@@ -8,71 +8,82 @@ import (
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 )
 
-// We found an issue where the connectedness event emitter could accidentally
-// freeze a connection. When a new connection is made, the swarm calls AddConn
-// to emit a "Connected" event. But AddConn pushes to a channel with a strict
-// limit of 32.
-//
-// If the background worker reading from this channel gets delayed (like if an
-// event subscriber is slow), the channel fills up. Because the push to the
-// channel was a blocking operation, AddConn would just wait forever. Worse,
-// the swarm holds a notification lock when calling AddConn, so the entire
-// connection would stall out, and the swarm would leak a reference.
-//
-// The fix makes AddConn non-blocking and returns false when the channel is
-// full. The caller (swarm.addConn) then tears down the connection — it's
-// better to reject a connection than to let it sit around as a zombie that
-// nobody knows about.
-func TestAddConnDoesNotBlockWhenChannelIsFull(t *testing.T) {
-	bus := eventbus.NewBus()
-	emitter, err := bus.Emitter(&event.EvtPeerConnectednessChanged{})
-	if err != nil {
-		t.Fatal(err)
+type connectednessEventRecorder struct {
+	events []event.EvtPeerConnectednessChanged
+}
+
+var _ event.Emitter = (*connectednessEventRecorder)(nil)
+
+func (r *connectednessEventRecorder) Emit(evt any) error {
+	r.events = append(r.events, evt.(event.EvtPeerConnectednessChanged))
+	return nil
+}
+
+func (r *connectednessEventRecorder) Close() error {
+	return nil
+}
+
+// TestAddConnQueuesBurstWithoutEmitterDrain verifies that a burst of new
+// connections can be queued even if the emitter goroutine has not drained
+// newConns yet. This avoids stalls from the old fixed-size channel while
+// preserving the invariant that every connection is queued before AddConn
+// returns.
+func TestAddConnQueuesBurstWithoutEmitterDrain(t *testing.T) {
+	const burstSize = 100
+
+	ctx := t.Context()
+	emitter := &connectednessEventRecorder{}
+
+	cee := &connectednessEventEmitter{
+		lastEvent: make(map[peer.ID]network.Connectedness),
+		connectedness: func(peer.ID) network.Connectedness {
+			return network.Connected
+		},
+		emitter:      emitter,
+		newConnNotif: make(chan struct{}, 1),
+		ctx:          ctx,
 	}
 
-	connectedness := func(p peer.ID) network.Connectedness {
-		return network.Connected
-	}
-
-	cee := newConnectednessEventEmitter(connectedness, emitter)
-
-	// Use a timeout to catch deadlocks — if AddConn blocks, this test
-	// will fail instead of hanging forever.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	doneCh := make(chan struct{})
-	var dropped int
 
 	go func() {
 		defer close(doneCh)
-
-		// The newConns channel only holds 32 events. We blast 100 into it.
-		// The first ~32 should succeed, the rest should return false
-		// instead of blocking.
-		for i := 0; i < 100; i++ {
+		for i := 0; i < burstSize; i++ {
 			p := peer.ID(string([]byte{byte(i % 255)}))
-			if !cee.AddConn(p) {
-				dropped++
-			}
+			cee.AddConn(p)
 		}
 	}()
 
 	select {
 	case <-ctx.Done():
-		t.Fatal("AddConn blocked! The channel filled up and caused a stall.")
+		t.Fatalf("AddConn blocked during a %d-connection burst", burstSize)
 	case <-doneCh:
-		t.Logf("All 100 AddConn calls completed without deadlocking (%d dropped)", dropped)
-		if dropped == 0 {
-			// The background goroutine might have drained some, but we expect
-			// at least a few drops when blasting 100 events into a 32-slot channel.
-			t.Log("Note: no events were dropped — the background worker kept up. " +
-				"This is fine, the important thing is that nothing blocked.")
-		}
 	}
 
-	cee.Close()
+	cee.newConnsMx.Lock()
+	queued := len(cee.newConns)
+	cee.newConnsMx.Unlock()
+	if queued != burstSize {
+		t.Fatalf("expected %d queued connections, got %d", burstSize, queued)
+	}
+
+	if !cee.sendConnAddedNotifications() {
+		t.Fatal("expected queued connections to be drained")
+	}
+
+	if len(emitter.events) != burstSize {
+		t.Fatalf("expected %d connectedness events, got %d", burstSize, len(emitter.events))
+	}
+
+	cee.newConnsMx.Lock()
+	queued = len(cee.newConns)
+	cee.newConnsMx.Unlock()
+	if queued != 0 {
+		t.Fatalf("expected queued connections to be cleared, got %d", queued)
+	}
 }

@@ -14,9 +14,11 @@ import (
 // the peer disconnects. This is because peers can observe a connection before they are notified
 // of the connection by a peer connectedness changed event.
 type connectednessEventEmitter struct {
-	mx sync.RWMutex
-	// newConns is the channel that holds the peerIDs we recently connected to
-	newConns      chan peer.ID
+	mx         sync.RWMutex
+	newConnsMx sync.Mutex
+	// newConns is a slice of peerIDs we have recently connected to
+	newConns []peer.ID
+
 	removeConnsMx sync.Mutex
 	// removeConns is a slice of peerIDs we have recently closed connections to
 	removeConns []peer.ID
@@ -27,6 +29,7 @@ type connectednessEventEmitter struct {
 	// emitter is the PeerConnectednessChanged event emitter
 	emitter         event.Emitter
 	wg              sync.WaitGroup
+	newConnNotif    chan struct{}
 	removeConnNotif chan struct{}
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -35,8 +38,8 @@ type connectednessEventEmitter struct {
 func newConnectednessEventEmitter(connectedness func(peer.ID) network.Connectedness, emitter event.Emitter) *connectednessEventEmitter {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &connectednessEventEmitter{
-		newConns:        make(chan peer.ID, 32),
 		lastEvent:       make(map[peer.ID]network.Connectedness),
+		newConnNotif:    make(chan struct{}, 1),
 		removeConnNotif: make(chan struct{}, 1),
 		connectedness:   connectedness,
 		emitter:         emitter,
@@ -48,19 +51,24 @@ func newConnectednessEventEmitter(connectedness func(peer.ID) network.Connectedn
 	return c
 }
 
-func (c *connectednessEventEmitter) AddConn(p peer.ID) bool {
+func (c *connectednessEventEmitter) AddConn(p peer.ID) {
 	c.mx.RLock()
 	defer c.mx.RUnlock()
 	if c.ctx.Err() != nil {
-		return false
+		return
 	}
 
+	c.newConnsMx.Lock()
+	// This queue is roughly bounded by the total number of added connections we
+	// have. If consumers of connectedness events are slow, we queue connection
+	// notifications without blocking the connection setup path on a fixed-size
+	// channel.
+	c.newConns = append(c.newConns, p)
+	c.newConnsMx.Unlock()
+
 	select {
-	case c.newConns <- p:
-		return true
+	case c.newConnNotif <- struct{}{}:
 	default:
-		log.Error("connectedness event emitter channel full, dropping event", "peer", p)
-		return false
 	}
 }
 
@@ -73,8 +81,8 @@ func (c *connectednessEventEmitter) RemoveConn(p peer.ID) {
 
 	c.removeConnsMx.Lock()
 	// This queue is roughly bounded by the total number of added connections we
-	// have. If consumers of connectedness events are slow, we apply
-	// backpressure to AddConn operations.
+	// have. If consumers of connectedness events are slow, queued connection
+	// notifications remain bounded by the swarm's connection limits.
 	//
 	// We purposefully don't block/backpressure here to avoid deadlocks, since it's
 	// reasonable for a consumer of the event to want to remove a connection.
@@ -97,20 +105,17 @@ func (c *connectednessEventEmitter) runEmitter() {
 	defer c.wg.Done()
 	for {
 		select {
-		case p := <-c.newConns:
-			c.notifyPeer(p, true)
+		case <-c.newConnNotif:
+			c.sendConnAddedNotifications()
 		case <-c.removeConnNotif:
 			c.sendConnRemovedNotifications()
 		case <-c.ctx.Done():
 			c.mx.Lock() // Wait for all pending AddConn & RemoveConn operations to complete
 			defer c.mx.Unlock()
 			for {
-				select {
-				case p := <-c.newConns:
-					c.notifyPeer(p, true)
-				case <-c.removeConnNotif:
-					c.sendConnRemovedNotifications()
-				default:
+				added := c.sendConnAddedNotifications()
+				removed := c.sendConnRemovedNotifications()
+				if !added && !removed {
 					return
 				}
 			}
@@ -138,7 +143,18 @@ func (c *connectednessEventEmitter) notifyPeer(p peer.ID, forceNotConnectedEvent
 	}
 }
 
-func (c *connectednessEventEmitter) sendConnRemovedNotifications() {
+func (c *connectednessEventEmitter) sendConnAddedNotifications() bool {
+	c.newConnsMx.Lock()
+	newConns := c.newConns
+	c.newConns = nil
+	c.newConnsMx.Unlock()
+	for _, p := range newConns {
+		c.notifyPeer(p, true)
+	}
+	return len(newConns) > 0
+}
+
+func (c *connectednessEventEmitter) sendConnRemovedNotifications() bool {
 	c.removeConnsMx.Lock()
 	removeConns := c.removeConns
 	c.removeConns = nil
@@ -146,4 +162,5 @@ func (c *connectednessEventEmitter) sendConnRemovedNotifications() {
 	for _, p := range removeConns {
 		c.notifyPeer(p, false)
 	}
+	return len(removeConns) > 0
 }
