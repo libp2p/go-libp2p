@@ -14,56 +14,70 @@ import (
 // the peer disconnects. This is because peers can observe a connection before they are notified
 // of the connection by a peer connectedness changed event.
 type connectednessEventEmitter struct {
-	mx sync.RWMutex
 	// newConns is the channel that holds the peerIDs we recently connected to
 	newConns      chan peer.ID
 	removeConnsMx sync.Mutex
 	// removeConns is a slice of peerIDs we have recently closed connections to
 	removeConns []peer.ID
+	// removeConnNotif is used to notify the event loop on an addition to `removeConns`.
+	removeConnNotif chan struct{}
 	// lastEvent is the last connectedness event sent for a particular peer.
 	lastEvent map[peer.ID]network.Connectedness
 	// connectedness is the function that gives the peers current connectedness state
 	connectedness func(peer.ID) network.Connectedness
 	// emitter is the PeerConnectednessChanged event emitter
-	emitter         event.Emitter
-	wg              sync.WaitGroup
-	removeConnNotif chan struct{}
-	ctx             context.Context
-	cancel          context.CancelFunc
+	emitter event.Emitter
+	// closeMu serializes the (closed-check + wg.Add) pair against Close. It is
+	// only held across that pair, never during the actual dispatch work, so
+	// Add/Remove operations across different conns still run concurrently.
+	closeMu sync.Mutex
+	closed  bool
+	wg      sync.WaitGroup
+	// loopCtx / loopWG track the runEmitter goroutine separately from the
+	// in-flight Add/Remove operations.
+	loopWG sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func newConnectednessEventEmitter(connectedness func(peer.ID) network.Connectedness, emitter event.Emitter) *connectednessEventEmitter {
-	ctx, cancel := context.WithCancel(context.Background())
+	loopCtx, loopCancel := context.WithCancel(context.Background())
 	c := &connectednessEventEmitter{
 		newConns:        make(chan peer.ID, 32),
 		lastEvent:       make(map[peer.ID]network.Connectedness),
 		removeConnNotif: make(chan struct{}, 1),
 		connectedness:   connectedness,
 		emitter:         emitter,
-		ctx:             ctx,
-		cancel:          cancel,
+		ctx:             loopCtx,
+		cancel:          loopCancel,
 	}
-	c.wg.Add(1)
+	c.loopWG.Add(1)
 	go c.runEmitter()
 	return c
 }
 
 func (c *connectednessEventEmitter) AddConn(p peer.ID) {
-	c.mx.RLock()
-	defer c.mx.RUnlock()
-	if c.ctx.Err() != nil {
+	c.closeMu.Lock()
+	if c.closed {
+		c.closeMu.Unlock()
 		return
 	}
+	c.wg.Add(1)
+	c.closeMu.Unlock()
+	defer c.wg.Done()
 
 	c.newConns <- p
 }
 
 func (c *connectednessEventEmitter) RemoveConn(p peer.ID) {
-	c.mx.RLock()
-	defer c.mx.RUnlock()
-	if c.ctx.Err() != nil {
+	c.closeMu.Lock()
+	if c.closed {
+		c.closeMu.Unlock()
 		return
 	}
+	c.wg.Add(1)
+	c.closeMu.Unlock()
+	defer c.wg.Done()
 
 	c.removeConnsMx.Lock()
 	// This queue is roughly bounded by the total number of added connections we
@@ -83,12 +97,16 @@ func (c *connectednessEventEmitter) RemoveConn(p peer.ID) {
 }
 
 func (c *connectednessEventEmitter) Close() {
+	c.closeMu.Lock()
+	c.closed = true
+	c.closeMu.Unlock()
+	c.wg.Wait() // safe: closed=true blocks any new wg.Add
 	c.cancel()
-	c.wg.Wait()
+	c.loopWG.Wait()
 }
 
 func (c *connectednessEventEmitter) runEmitter() {
-	defer c.wg.Done()
+	defer c.loopWG.Done()
 	for {
 		select {
 		case p := <-c.newConns:
@@ -96,8 +114,6 @@ func (c *connectednessEventEmitter) runEmitter() {
 		case <-c.removeConnNotif:
 			c.sendConnRemovedNotifications()
 		case <-c.ctx.Done():
-			c.mx.Lock() // Wait for all pending AddConn & RemoveConn operations to complete
-			defer c.mx.Unlock()
 			for {
 				select {
 				case p := <-c.newConns:
