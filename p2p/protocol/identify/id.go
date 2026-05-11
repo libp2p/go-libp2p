@@ -731,7 +731,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	supported, _ := ids.Host.Peerstore().GetProtocols(p)
 	mesProtocols := protocol.ConvertFromStrings(mes.Protocols)
 	if len(mesProtocols) > maxPeerProtocols {
-		log.Warn("peer advertises too many protocols, truncating",
+		log.Debug("peer advertises too many protocols, truncating",
 			"peer", p, "advertised", len(mesProtocols), "limit", maxPeerProtocols)
 		clear(mesProtocols[maxPeerProtocols:])
 		mesProtocols = mesProtocols[:maxPeerProtocols]
