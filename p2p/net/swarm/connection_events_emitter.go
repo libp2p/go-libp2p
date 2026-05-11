@@ -9,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-// connectednessEventEmitter emits PeerConnectednessChanged events and dispatches
+// connectionEventsEmitter emits PeerConnectednessChanged events and dispatches
 // per-conn Connected / Disconnected callbacks supplied by the owner.
 //
 // We ensure that for any peer we connected to we always sent atleast 1 NotConnected Event after
@@ -25,7 +25,7 @@ import (
 // Callers that want a non-blocking close (e.g. doClose) invoke RemoveConn
 // from a goroutine; AddConn always runs onConnected synchronously so callers
 // see Connected fire before they continue.
-type connectednessEventEmitter struct {
+type connectionEventsEmitter struct {
 	// newConns is the channel that holds the peerIDs we recently connected to
 	newConns      chan peer.ID
 	removeConnsMx sync.Mutex
@@ -64,14 +64,14 @@ type connectednessEventEmitter struct {
 	pendingDisconnect map[*Conn]struct{}
 }
 
-func newConnectednessEventEmitter(
+func newConnectionEventsEmitter(
 	connectedness func(peer.ID) network.Connectedness,
 	emitter event.Emitter,
 	onConnected func(*Conn),
 	onDisconnected func(*Conn),
-) *connectednessEventEmitter {
+) *connectionEventsEmitter {
 	loopCtx, loopCancel := context.WithCancel(context.Background())
-	c := &connectednessEventEmitter{
+	c := &connectionEventsEmitter{
 		newConns:          make(chan peer.ID, 32),
 		lastEvent:         make(map[peer.ID]network.Connectedness),
 		removeConnNotif:   make(chan struct{}, 1),
@@ -89,7 +89,7 @@ func newConnectednessEventEmitter(
 	return c
 }
 
-func (c *connectednessEventEmitter) AddConn(conn *Conn) {
+func (c *connectionEventsEmitter) AddConn(conn *Conn) {
 	c.closeMu.Lock()
 	if c.closed {
 		c.closeMu.Unlock()
@@ -121,7 +121,7 @@ func (c *connectednessEventEmitter) AddConn(conn *Conn) {
 	}
 }
 
-func (c *connectednessEventEmitter) RemoveConn(conn *Conn) {
+func (c *connectionEventsEmitter) RemoveConn(conn *Conn) {
 	c.closeMu.Lock()
 	if c.closed {
 		c.closeMu.Unlock()
@@ -164,7 +164,7 @@ func (c *connectednessEventEmitter) RemoveConn(conn *Conn) {
 	}
 }
 
-func (c *connectednessEventEmitter) Close() {
+func (c *connectionEventsEmitter) Close() {
 	c.closeMu.Lock()
 	c.closed = true
 	c.closeMu.Unlock()
@@ -173,7 +173,7 @@ func (c *connectednessEventEmitter) Close() {
 	c.loopWG.Wait()
 }
 
-func (c *connectednessEventEmitter) runEmitter() {
+func (c *connectionEventsEmitter) runEmitter() {
 	defer c.loopWG.Done()
 	for {
 		select {
@@ -202,7 +202,7 @@ func (c *connectednessEventEmitter) runEmitter() {
 // In case a peer is disconnected before we sent the Connected event, we still
 // send the Disconnected event because a connection to the peer can be observed
 // in such cases.
-func (c *connectednessEventEmitter) notifyPeer(p peer.ID, forceNotConnectedEvent bool) {
+func (c *connectionEventsEmitter) notifyPeer(p peer.ID, forceNotConnectedEvent bool) {
 	oldState := c.lastEvent[p]
 	c.lastEvent[p] = c.connectedness(p)
 	if c.lastEvent[p] == network.NotConnected {
@@ -216,7 +216,7 @@ func (c *connectednessEventEmitter) notifyPeer(p peer.ID, forceNotConnectedEvent
 	}
 }
 
-func (c *connectednessEventEmitter) sendConnRemovedNotifications() {
+func (c *connectionEventsEmitter) sendConnRemovedNotifications() {
 	c.removeConnsMx.Lock()
 	removeConns := c.removeConns
 	c.removeConns = nil

@@ -98,7 +98,7 @@ func (c *Conn) doClose(errCode network.ConnErrorCode) {
 	// The s.refs ref added in addConn is released here.
 	go func() {
 		defer c.swarm.refs.Done()
-		c.swarm.connectednessEventEmitter.RemoveConn(c)
+		c.swarm.connectionEventsEmitter.RemoveConn(c)
 	}()
 }
 

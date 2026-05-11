@@ -62,13 +62,13 @@ func recordingCallbacks() (onConnected func(*Conn), onDisconnected func(*Conn), 
 	return
 }
 
-func newEmitterForTest(t *testing.T, onConnected, onDisconnected func(*Conn)) *connectednessEventEmitter {
+func newEmitterForTest(t *testing.T, onConnected, onDisconnected func(*Conn)) *connectionEventsEmitter {
 	t.Helper()
 	bus := eventbus.NewBus()
 	em, err := bus.Emitter(new(event.EvtPeerConnectednessChanged))
 	require.NoError(t, err)
 	connectedness := func(peer.ID) network.Connectedness { return network.NotConnected }
-	e := newConnectednessEventEmitter(connectedness, em, onConnected, onDisconnected)
+	e := newConnectionEventsEmitter(connectedness, em, onConnected, onDisconnected)
 	t.Cleanup(func() { e.Close() })
 	return e
 }

@@ -217,11 +217,11 @@ type Swarm struct {
 
 	dialRanker network.DialRanker
 
-	connectednessEventEmitter *connectednessEventEmitter
-	udpBHF                    *BlackHoleSuccessCounter
-	ipv6BHF                   *BlackHoleSuccessCounter
-	bhd                       *blackHoleDetector
-	readOnlyBHD               bool
+	connectionEventsEmitter *connectionEventsEmitter
+	udpBHF                  *BlackHoleSuccessCounter
+	ipv6BHF                 *BlackHoleSuccessCounter
+	bhd                     *blackHoleDetector
+	readOnlyBHD             bool
 }
 
 // NewSwarm constructs a Swarm.
@@ -254,7 +254,7 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 	s.transports.m = make(map[int]transport.Transport)
 	s.notifs.m = make(map[network.Notifiee]struct{})
 	s.directConnNotifs.m = make(map[peer.ID][]chan struct{})
-	s.connectednessEventEmitter = newConnectednessEventEmitter(
+	s.connectionEventsEmitter = newConnectionEventsEmitter(
 		s.Connectedness, emitter,
 		func(c *Conn) { s.notifyAll(func(f network.Notifiee) { f.Connected(s, c) }) },
 		func(c *Conn) { s.notifyAll(func(f network.Notifiee) { f.Disconnected(s, c) }) },
@@ -333,7 +333,7 @@ func (s *Swarm) close() {
 	// We must wait for all the connection notifications to complete before
 	// closing the events emitter.
 	s.refs.Wait()
-	s.connectednessEventEmitter.Close()
+	s.connectionEventsEmitter.Close()
 	s.emitter.Close()
 
 	// Now close out any transports (if necessary). Do this after closing
@@ -443,7 +443,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	// AddConn dispatches PeerConnectednessChanged and Notifiee.Connected before
 	// c.start() spawns the AcceptStream loop, so handlers see the conn before
 	// any inbound stream arrives.
-	s.connectednessEventEmitter.AddConn(c)
+	s.connectionEventsEmitter.AddConn(c)
 
 	c.start()
 	return c, nil
