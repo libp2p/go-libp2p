@@ -22,7 +22,7 @@ func (closeTestHost) Addrs() []ma.Multiaddr                               { retu
 func (closeTestHost) SetStreamHandler(protocol.ID, network.StreamHandler) {}
 func (closeTestHost) RemoveStreamHandler(protocol.ID)                     {}
 
-func TestWaitForPublicAddrUnlocksMutexWhenCanceledAfterAddressDiscovery(t *testing.T) {
+func TestWaitForPublicAddr_NoDeadlockOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	enteredListenAddrs := make(chan struct{})
 	releaseListenAddrs := make(chan struct{})
@@ -46,22 +46,16 @@ func TestWaitForPublicAddrUnlocksMutexWhenCanceledAfterAddressDiscovery(t *testi
 		close(done)
 	}()
 
-	// Force cancellation after waitForPublicAddr has entered listenAddrs, but
-	// before listenAddrs returns a public address. The next code path in
-	// waitForPublicAddr acquires holePuncherMx and observes the canceled context.
 	<-enteredListenAddrs
 	cancel()
 	close(releaseListenAddrs)
 	<-done
 
-	// The canceled-after-address-discovery path must not leak the mutex.
 	if !s.holePuncherMx.TryLock() {
 		t.Fatal("holePuncherMx remained locked after cancellation path")
 	}
 	s.holePuncherMx.Unlock()
 
-	// Close takes the same mutex. If waitForPublicAddr leaked it, Close would
-	// block forever.
 	closed := make(chan struct{})
 	go func() {
 		_ = s.Close()
