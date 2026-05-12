@@ -143,13 +143,13 @@ func (s *Service) waitForPublicAddr() {
 	}
 
 	s.holePuncherMx.Lock()
+	defer s.holePuncherMx.Unlock()
 	if s.ctx.Err() != nil {
 		// service is closed
 		return
 	}
 	s.holePuncher = newHolePuncher(s.host, s.ids, s.listenAddrs, s.tracer, s.filter)
 	s.holePuncher.directDialTimeout = s.directDialTimeout
-	s.holePuncherMx.Unlock()
 	close(s.hasPublicAddrsChan)
 }
 
