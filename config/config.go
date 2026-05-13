@@ -230,22 +230,28 @@ func (cfg *Config) makeAutoNATV2Host() (host.Host, error) {
 	}
 
 	autoNatCfg := Config{
-		Transports:                  cfg.Transports,
-		Muxers:                      cfg.Muxers,
-		SecurityTransports:          cfg.SecurityTransports,
-		Insecure:                    cfg.Insecure,
-		PSK:                         cfg.PSK,
-		ConnectionGater:             cfg.ConnectionGater,
-		Reporter:                    cfg.Reporter,
-		PeerKey:                     autonatPrivKey,
-		Peerstore:                   ps,
-		DialRanker:                  swarm.NoDelayDialRanker,
-		UDPBlackHoleSuccessCounter:  cfg.UDPBlackHoleSuccessCounter,
-		IPv6BlackHoleSuccessCounter: cfg.IPv6BlackHoleSuccessCounter,
-		ResourceManager:             cfg.ResourceManager,
+		Transports:         cfg.Transports,
+		Muxers:             cfg.Muxers,
+		SecurityTransports: cfg.SecurityTransports,
+		Insecure:           cfg.Insecure,
+		PSK:                cfg.PSK,
+		ConnectionGater:    cfg.ConnectionGater,
+		Reporter:           cfg.Reporter,
+		PeerKey:            autonatPrivKey,
+		Peerstore:          ps,
+		DialRanker:         swarm.NoDelayDialRanker,
+		ResourceManager:    cfg.ResourceManager,
 		SwarmOpts: []swarm.Option{
-			// Don't update black hole state for failed autonat dials
-			swarm.WithReadOnlyBlackHoleDetector(),
+			// The dialerHost only dials addresses clients explicitly ask
+			// us to test, so the black hole detector has no useful role
+			// here. Sharing the main host's counters in read-only mode
+			// causes every dial-back to be refused with E_DIAL_REFUSED
+			// while the main host is still in the Probing state, which
+			// in turn keeps the client's QUIC address stuck in Unknown
+			// (see #3491). Disable the detectors entirely, matching the
+			// approach used for the AutoNAT v1 dialer (#2529).
+			swarm.WithUDPBlackHoleSuccessCounter(nil),
+			swarm.WithIPv6BlackHoleSuccessCounter(nil),
 		},
 	}
 	fxopts, err := autoNatCfg.addTransports()
