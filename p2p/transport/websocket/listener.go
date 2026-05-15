@@ -14,6 +14,8 @@ import (
 
 	ws "github.com/gorilla/websocket"
 	logging "github.com/libp2p/go-libp2p/gologshim"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
@@ -41,6 +43,11 @@ type listener struct {
 	closeErr  error
 	closed    chan struct{}
 	wsurl     *url.URL
+
+	// fallbackHTTPHandler serves any request that is not a WebSocket upgrade.
+	// Nil means non-upgrade requests get a 404 (the historical behaviour).
+	// See [WithFallbackHTTPHandler] for the full rationale.
+	fallbackHTTPHandler http.Handler
 }
 
 var _ transport.GatedMaListener = &listener{}
@@ -59,7 +66,9 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration) (*listener, error) {
+// fallbackHTTPHandler may be nil; when non-nil it serves every request that is
+// not a WebSocket upgrade.
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration, fallbackHTTPHandler http.Handler) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -124,6 +133,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 			},
 			HandshakeTimeout: handshakeTimeout,
 		},
+		fallbackHTTPHandler: fallbackHTTPHandler,
 	}
 	ln.server = http.Server{
 		Handler: ln,
@@ -133,6 +143,32 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		ConnContext: ln.ConnContext,
 		TLSConfig:   tlsConf,
 	}
+	// On a plaintext /ws listener with a fallback handler, wrap the handler
+	// so the same listener also accepts HTTP/2 cleartext (h2c). Reverse
+	// proxies that talk h2c to backends (Caddy, Traefik, nginx with the
+	// right config) get connection multiplexing for free; reverse proxies
+	// that only speak h1 to backends keep working through the same handler.
+	// On a /tls/ws listener we don't need this: h2 is negotiated via ALPN
+	// inside http.Server.ServeTLS.
+	if !parsed.isWSS && fallbackHTTPHandler != nil {
+		ln.server.Handler = h2c.NewHandler(ln, &http2.Server{})
+	}
+	// Note on RFC 8441 (WebSocket-over-HTTP/2):
+	//
+	// We do NOT explicitly enable the HTTP/2 SETTINGS_ENABLE_CONNECT_PROTOCOL
+	// flag here, because Go's bundled http2 stack and golang.org/x/net/http2
+	// do not yet expose a per-server API for it (golang/go#71128). The flag
+	// is gated by a process-global GODEBUG=http2xconnect=1, which a library
+	// must not set on its own.
+	//
+	// The dispatch in ServeHTTP is, however, written to upgrade
+	// transparently: it defers the "is this a WebSocket upgrade?" decision
+	// to ws.IsWebSocketUpgrade. When upstream Go exposes the setting and
+	// gorilla/websocket adds server-side ext-CONNECT support (most likely
+	// by extending IsWebSocketUpgrade and Upgrader.Upgrade to recognise
+	// `:method=CONNECT, :protocol=websocket`), this listener will accept
+	// WS-over-HTTP/2 with no code change — only a gorilla bump and a
+	// future Go upgrade.
 	return ln, nil
 }
 
@@ -175,6 +211,35 @@ func (l *listener) extractConnFromContext(ctx context.Context) (*negotiatingConn
 }
 
 func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Route non-WebSocket requests to the fallback handler if one is set.
+	// This is what lets a /tls/ws listener share a port with an ordinary
+	// HTTPS site; see [WithFallbackHTTPHandler]. The handler is invoked
+	// for every HTTP version the listener accepts (h1 and h2 over TLS,
+	// h1 and h2c on plaintext) so callers do not have to pre-screen
+	// clients by HTTP version.
+	if !ws.IsWebSocketUpgrade(r) {
+		if l.fallbackHTTPHandler == nil {
+			http.NotFound(w, r)
+			return
+		}
+		// Disarm the handshake-timeout that would otherwise close the
+		// underlying connection 15s after Accept. The fallback handler may
+		// run for longer than that (HTTP/2 streams, HTTP/1.1 keep-alive),
+		// so the timer must go away once we know a request has arrived.
+		// Unwrap is idempotent; subsequent requests on a kept-alive
+		// connection are no-ops.
+		if nc, err := l.extractConnFromContext(r.Context()); err == nil {
+			if _, err := nc.Unwrap(); err != nil {
+				// The handshake-timeout fired between Accept and now; the
+				// connection is already closed. Nothing useful to send.
+				log.Debug("connection timed out before fallback request", "remote_addr", r.RemoteAddr)
+				return
+			}
+		}
+		l.fallbackHTTPHandler.ServeHTTP(w, r)
+		return
+	}
+
 	c, err := l.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// The upgrader writes a response for us.
