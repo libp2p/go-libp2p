@@ -134,7 +134,7 @@ func TestFallbackHTTPHandler_HTTP2(t *testing.T) {
 // TestFallbackHTTPHandler_WebSocketStillWorks confirms that installing a
 // fallback handler does not break the original /tls/ws traffic.
 func TestFallbackHTTPHandler_WebSocketStillWorks(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		t.Errorf("fallback should not be called for a websocket upgrade, got %s %s", r.Method, r.URL.Path)
 	})
 
@@ -211,7 +211,7 @@ func TestFallbackHTTPHandler_PlainWS_H2C(t *testing.T) {
 // behind a reverse proxy that terminates TLS upstream and may forward
 // HTTP/1.1.
 func TestFallbackHTTPHandler_PlainWS(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, "plain")
 	})
 
