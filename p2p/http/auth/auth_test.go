@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -245,6 +246,119 @@ func (irt *instrumentedRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 
 func (irt *instrumentedRoundTripper) TLSClientConfig() *tls.Config {
 	return irt.RoundTripper.(*http.Transport).TLSClientConfig
+}
+
+func TestAuthenticatedDoClosesIntermediateHandshakeResponses(t *testing.T) {
+	serverKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	auth := ServerPeerIDAuth{
+		PrivKey: serverKey,
+		ValidHostnameFn: func(s string) bool {
+			return s == "example.com"
+		},
+		TokenTTL: time.Hour,
+		NoTLS:    true,
+	}
+	ts := httptest.NewServer(&auth)
+	t.Cleanup(ts.Close)
+
+	client := ts.Client()
+	var closed atomic.Int32
+	client.Transport = closeCountingRoundTripper{
+		RoundTripper: client.Transport,
+		closed:       &closed,
+	}
+
+	req, err := http.NewRequest("POST", ts.URL, nil)
+	require.NoError(t, err)
+	req.Host = "example.com"
+
+	clientAuth := ClientPeerIDAuth{PrivKey: clientKey}
+	_, resp, err := clientAuth.AuthenticatedDo(client, req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.EqualValues(t, 1, closed.Load(), "handshake-only response body must be closed before returning")
+
+	require.NoError(t, resp.Body.Close())
+	require.EqualValues(t, 2, closed.Load(), "final response body remains owned by the caller")
+}
+
+func TestAuthenticatedDoClosesTokenRejectionResponsesBeforeReauthentication(t *testing.T) {
+	serverKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	auth := ServerPeerIDAuth{
+		PrivKey: serverKey,
+		ValidHostnameFn: func(s string) bool {
+			return s == "example.com"
+		},
+		TokenTTL: time.Hour,
+		NoTLS:    true,
+	}
+	ts := httptest.NewServer(&auth)
+	t.Cleanup(ts.Close)
+
+	client := ts.Client()
+	var closed atomic.Int32
+	client.Transport = closeCountingRoundTripper{
+		RoundTripper: client.Transport,
+		closed:       &closed,
+	}
+
+	clientAuth := ClientPeerIDAuth{PrivKey: clientKey}
+	req, err := http.NewRequest("POST", ts.URL, nil)
+	require.NoError(t, err)
+	req.Host = "example.com"
+	_, resp, err := clientAuth.AuthenticatedDo(client, req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, clientAuth.HasToken("example.com"))
+
+	closed.Store(0)
+	auth.hmacPool = newHmacPool([]byte("server-side-token-key-rotated-32"))
+
+	req, err = http.NewRequest("POST", ts.URL, nil)
+	require.NoError(t, err)
+	req.Host = "example.com"
+	req.GetBody = func() (io.ReadCloser, error) {
+		return nil, nil
+	}
+
+	_, resp, err = clientAuth.AuthenticatedDo(client, req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.EqualValues(t, 2, closed.Load(), "rejected token and handshake challenge bodies must be closed before returning")
+
+	require.NoError(t, resp.Body.Close())
+	require.EqualValues(t, 3, closed.Load(), "final reauthenticated response body remains owned by the caller")
+}
+
+type closeCountingRoundTripper struct {
+	http.RoundTripper
+	closed *atomic.Int32
+}
+
+func (rt closeCountingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := rt.RoundTripper.RoundTrip(req)
+	if resp != nil && resp.Body != nil {
+		resp.Body = closeCountingBody{ReadCloser: resp.Body, closed: rt.closed}
+	}
+	return resp, err
+}
+
+type closeCountingBody struct {
+	io.ReadCloser
+	closed *atomic.Int32
+}
+
+func (b closeCountingBody) Close() error {
+	b.closed.Add(1)
+	return b.ReadCloser.Close()
 }
 
 func TestConcurrentAuth(t *testing.T) {

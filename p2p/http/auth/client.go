@@ -111,6 +111,9 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 
 		resp, err = rt.RoundTrip(req)
 		if err != nil {
+			if resp != nil && resp.Body != nil {
+				resp.Body.Close()
+			}
 			return "", nil, err
 		}
 
@@ -122,7 +125,12 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 		}
 
 		if maxSteps--; maxSteps == 0 {
+			resp.Body.Close()
 			return "", nil, errors.New("handshake took too many steps")
+		}
+
+		if !hs.HandshakeDone() || !sentBody {
+			resp.Body.Close()
 		}
 	}
 
