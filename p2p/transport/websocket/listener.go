@@ -226,8 +226,8 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// underlying connection 15s after Accept. The fallback handler may
 		// run for longer than that (HTTP/2 streams, HTTP/1.1 keep-alive),
 		// so the timer must go away once we know a request has arrived.
-		// Unwrap is idempotent; subsequent requests on a kept-alive
-		// connection are no-ops.
+		// Unwrap serializes through sync.Once, so concurrent h2 streams
+		// on the same TCP connection all see the same result.
 		if nc, err := l.extractConnFromContext(r.Context()); err == nil {
 			if _, err := nc.Unwrap(); err != nil {
 				// The handshake-timeout fired between Accept and now; the
@@ -352,28 +352,39 @@ func (c connWithScope) Close() error {
 
 type negotiatingConn struct {
 	connWithScope
-	ctx       context.Context
-	cancelCtx context.CancelFunc
-	stopClose func() bool
+	ctx        context.Context
+	cancelCtx  context.CancelFunc
+	stopClose  func() bool
+	disarmOnce sync.Once
+	timedOut   bool // written once inside disarmOnce, read after
 }
 
-// Close closes the negotiating conn and the underlying connWithScope
-// This will be called in case the tls handshake or websocket upgrade fails.
+// disarm stops the handshake-timeout AfterFunc set up in Accept and reports
+// whether the connection is still alive. Concurrent callers see the same
+// result, which the HTTP/2 fallback path needs when several streams share
+// one *negotiatingConn.
+func (c *negotiatingConn) disarm() (alive bool) {
+	c.disarmOnce.Do(func() {
+		if c.stopClose != nil {
+			c.timedOut = !c.stopClose()
+			c.stopClose = nil
+		}
+	})
+	return !c.timedOut
+}
+
+// Close closes the negotiating conn and the underlying connWithScope.
+// Called when the TLS handshake or WebSocket upgrade fails.
 func (c *negotiatingConn) Close() error {
 	defer c.cancelCtx()
-	if c.stopClose != nil {
-		c.stopClose()
-	}
+	c.disarm()
 	return c.connWithScope.Close()
 }
 
 func (c *negotiatingConn) Unwrap() (connWithScope, error) {
 	defer c.cancelCtx()
-	if c.stopClose != nil {
-		if !c.stopClose() {
-			return connWithScope{}, errors.New("timed out")
-		}
-		c.stopClose = nil
+	if !c.disarm() {
+		return connWithScope{}, errors.New("timed out")
 	}
 	return c.connWithScope, nil
 }

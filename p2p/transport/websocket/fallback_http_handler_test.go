@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	gws "github.com/gorilla/websocket"
 	"github.com/libp2p/go-libp2p/core/network"
 	"golang.org/x/net/http2"
+	"golang.org/x/sync/errgroup"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -416,4 +418,85 @@ func TestFallbackHTTPHandler_KeepAlive(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, "HTTP/2.0", resp.Proto, "second request must reuse the same h2 connection")
+}
+
+// TestFallbackHTTPHandler_ConcurrentH2Streams exercises the handshake-timer
+// disarm under HTTP/2 multiplexing. All streams on one h2 connection share
+// a single *negotiatingConn, so Unwrap must be safe under concurrent calls.
+// Run with `go test -race`. Before the sync.Once fix, two goroutines could
+// both pass the stopClose nil-check and race on the AfterFunc stop; the
+// loser silently dropped its request.
+func TestFallbackHTTPHandler_ConcurrentH2Streams(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, "ok")
+	})
+
+	hostPort := startWSSListener(t, handler)
+
+	// ALPN-h2-only keeps every Get on a single TCP connection, so the
+	// streams really do race for the same *negotiatingConn.
+	client := httpsClient([]string{"h2"})
+
+	const streams = 32
+	ready := make(chan struct{})
+	var g errgroup.Group
+	for range streams {
+		g.Go(func() error {
+			<-ready
+			resp, err := client.Get("https://" + hostPort + "/concurrent")
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("status=%d", resp.StatusCode)
+			}
+			if resp.Proto != "HTTP/2.0" {
+				return fmt.Errorf("proto=%s, want HTTP/2.0", resp.Proto)
+			}
+			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+	close(ready)
+	require.NoError(t, g.Wait())
+}
+
+// TestNegotiatingConnUnwrapConcurrent locks down the disarm contract that
+// the HTTP/2 fallback path relies on: many goroutines calling Unwrap on the
+// same *negotiatingConn must all return nil, and the underlying stopClose
+// must fire exactly once. Before the sync.Once fix, only the first caller
+// returned nil; every other caller saw "timed out" because the AfterFunc
+// stop function returns false after the first stop.
+func TestNegotiatingConnUnwrapConcurrent(t *testing.T) {
+	var stopCalls atomic.Int32
+	nc := &negotiatingConn{
+		cancelCtx: func() {},
+		stopClose: func() bool {
+			// Mirror context.AfterFunc: only the first stop call returns true.
+			return stopCalls.Add(1) == 1
+		},
+	}
+
+	const goroutines = 256
+	ready := make(chan struct{})
+	var ok atomic.Int32
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			<-ready
+			if _, err := nc.Unwrap(); err == nil {
+				ok.Add(1)
+			}
+		}()
+	}
+	close(ready)
+	wg.Wait()
+
+	require.Equal(t, int32(goroutines), ok.Load(), "every concurrent Unwrap must succeed")
+	require.Equal(t, int32(1), stopCalls.Load(), "stopClose must fire exactly once")
 }
