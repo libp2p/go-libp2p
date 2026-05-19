@@ -129,6 +129,8 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 			return "", nil, errors.New("handshake took too many steps")
 		}
 
+		// Intermediate auth responses are consumed only for their headers.
+		// The final authenticated response is returned to the caller below.
 		if !hs.HandshakeDone() || !sentBody {
 			resp.Body.Close()
 		}

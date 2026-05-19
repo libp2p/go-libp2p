@@ -320,6 +320,7 @@ func TestAuthenticatedDo_ClosesRejectedTokenResponse(t *testing.T) {
 	require.True(t, clientAuth.HasToken("example.com"))
 
 	closed.Store(0)
+	// Simulate server-side token invalidation so the client has to reauthenticate.
 	auth.hmacPool = newHmacPool([]byte("server-side-token-key-rotated-32"))
 
 	req, err = http.NewRequest("POST", ts.URL, nil)
