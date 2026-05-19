@@ -92,9 +92,17 @@ func (c *Conn) doClose(errCode network.ConnErrorCode) {
 		s.Reset()
 	}
 
-	// Dispatch the close notifications in a goroutine: a Notifiee.Disconnected
-	// handler that calls Conn.Close would otherwise deadlock on closeOnce,
-	// since the in-flight doClose hasn't returned yet.
+	// Dispatch the close notifications in a goroutine. Two deadlocks are
+	// avoided by this:
+	//   - A PeerConnectednessChanged subscriber that calls Conn.Close would
+	//     otherwise call RemoveConn synchronously, blocking on the emitter's
+	//     event channel while the run loop is itself blocked waiting for the
+	//     subscriber to return.
+	//   - A Notifiee.Disconnected handler that calls Conn.Close (which is a
+	//     misuse — Disconnected fires because the conn is already closing)
+	//     would otherwise re-enter closeOnce.Do while the in-flight doClose
+	//     still holds it, deadlocking on sync.Once's internal mutex. We
+	//     tolerate the misuse rather than deadlock the caller.
 	// The s.refs ref added in addConn is released here.
 	go func() {
 		defer c.swarm.refs.Done()
