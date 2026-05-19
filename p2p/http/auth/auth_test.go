@@ -248,7 +248,7 @@ func (irt *instrumentedRoundTripper) TLSClientConfig() *tls.Config {
 	return irt.RoundTripper.(*http.Transport).TLSClientConfig
 }
 
-func TestAuthenticatedDoClosesIntermediateHandshakeResponses(t *testing.T) {
+func TestAuthenticatedDo_ClosesHandshakeResponse(t *testing.T) {
 	serverKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(t, err)
 	clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
@@ -286,7 +286,7 @@ func TestAuthenticatedDoClosesIntermediateHandshakeResponses(t *testing.T) {
 	require.EqualValues(t, 2, closed.Load(), "final response body remains owned by the caller")
 }
 
-func TestAuthenticatedDoClosesTokenRejectionResponsesBeforeReauthentication(t *testing.T) {
+func TestAuthenticatedDo_ClosesRejectedTokenResponse(t *testing.T) {
 	serverKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(t, err)
 	clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
