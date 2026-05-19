@@ -18,6 +18,7 @@ func FuzzClash(f *testing.F) {
 	add('O', 'P', 'T')
 	add('T', 'R', 'A')
 	add('P', 'A', 'T')
+	add('P', 'R', 'I') // h2c preface
 	// tls
 	add('\x16', '\x03', '\x01')
 	add('\x16', '\x03', '\x02')
