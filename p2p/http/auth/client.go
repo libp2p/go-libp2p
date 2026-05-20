@@ -102,6 +102,11 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 
 	sentBody := false
 	for !hs.HandshakeDone() || !sentBody {
+		if resp != nil && resp.Body != nil {
+			// If there was a prior response, close it.
+			resp.Body.Close()
+			resp = nil
+		}
 		req = req.Clone(req.Context())
 		hs.AddHeader(req.Header)
 		if hs.ServerAuthenticated() {
@@ -111,9 +116,6 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 
 		resp, err = rt.RoundTrip(req)
 		if err != nil {
-			if resp != nil && resp.Body != nil {
-				resp.Body.Close()
-			}
 			return "", nil, err
 		}
 
@@ -127,12 +129,6 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 		if maxSteps--; maxSteps == 0 {
 			resp.Body.Close()
 			return "", nil, errors.New("handshake took too many steps")
-		}
-
-		// Intermediate auth responses are consumed only for their headers.
-		// The final authenticated response is returned to the caller below.
-		if !hs.HandshakeDone() || !sentBody {
-			resp.Body.Close()
 		}
 	}
 
