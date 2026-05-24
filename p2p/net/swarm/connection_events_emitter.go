@@ -3,11 +3,15 @@ package swarm
 import (
 	"context"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
+
+const connectednessEventQueueStallTimeout = 30 * time.Second
 
 type peerConnectednessEventType int
 
@@ -24,9 +28,10 @@ type peerConnectednessEvent struct {
 // connectionEventsEmitter emits PeerConnectednessChanged events and dispatches
 // per-conn Connected / Disconnected callbacks supplied by the owner.
 //
-// We ensure that for any peer we connected to we always sent atleast 1 NotConnected Event after
-// the peer disconnects. This is because peers can observe a connection before they are notified
-// of the connection by a peer connectedness changed event.
+// Under normal operation, we ensure that for any peer we connected to we always
+// send at least 1 NotConnected Event after the peer disconnects. This is
+// because peers can observe a connection before they are notified of the
+// connection by a peer connectedness changed event.
 //
 // For the per-conn callbacks, we guarantee that for a given *Conn,
 // onDisconnected never fires before the corresponding onConnected has finished.
@@ -38,8 +43,9 @@ type peerConnectednessEvent struct {
 // from a goroutine; AddConn always runs onConnected synchronously so callers
 // see Connected fire before they continue.
 type connectionEventsEmitter struct {
-	// peerConnectednessCh carries add and remove events to the run loop, which
-	// uses them to emit PeerConnectednessChanged events.
+	// peerConnectednessCh is intentionally bounded. A slow connectedness event
+	// consumer should apply backpressure instead of allowing unbounded pending
+	// peer state to accumulate in the swarm.
 	peerConnectednessCh chan peerConnectednessEvent
 	// lastConnectednessEvent is the last connectedness event sent for a particular peer.
 	lastConnectednessEvent map[peer.ID]network.Connectedness
@@ -55,9 +61,12 @@ type connectionEventsEmitter struct {
 	// closeMu serializes the (closed-check + wg.Add) pair against Close. It is
 	// only held across that pair, never during the actual dispatch work, so
 	// Add/Remove operations across different conns still run concurrently.
-	closeMu sync.Mutex
-	closed  bool
-	wg      sync.WaitGroup
+	closeMu        sync.Mutex
+	closed         bool
+	shuttingDown   atomic.Bool
+	shutdownOnce   sync.Once
+	shutdownNotify chan struct{}
+	wg             sync.WaitGroup
 	// loopCtx / loopWG track the runEmitter goroutine separately from the
 	// in-flight Add/Remove operations.
 	loopWG sync.WaitGroup
@@ -86,6 +95,7 @@ func newConnectionEventsEmitter(
 		emitter:                emitter,
 		ctx:                    loopCtx,
 		cancel:                 loopCancel,
+		shutdownNotify:         make(chan struct{}),
 		connected:              make(map[*Conn]struct{}),
 		pendingDisconnect:      make(map[*Conn]struct{}),
 		onConnected:            onConnected,
@@ -106,10 +116,10 @@ func (c *connectionEventsEmitter) AddConn(conn *Conn) {
 	c.closeMu.Unlock()
 	defer c.wg.Done()
 
-	c.peerConnectednessCh <- peerConnectednessEvent{
+	c.enqueuePeerConnectednessEvent(peerConnectednessEvent{
 		PeerID: conn.RemotePeer(),
 		Type:   addConnEvent,
-	}
+	})
 
 	// Dispatch onConnected before touching notifsLk so that a concurrent
 	// RemoveConn cannot observe `connected[conn]` and fire onDisconnected
@@ -149,10 +159,10 @@ func (c *connectionEventsEmitter) RemoveConn(conn *Conn) {
 	c.closeMu.Unlock()
 	defer c.wg.Done()
 
-	c.peerConnectednessCh <- peerConnectednessEvent{
+	c.enqueuePeerConnectednessEvent(peerConnectednessEvent{
 		PeerID: conn.RemotePeer(),
 		Type:   removeConnEvent,
-	}
+	})
 
 	var dispatchDisconnect bool
 	c.notifsLk.Lock()
@@ -175,9 +185,56 @@ func (c *connectionEventsEmitter) Close() {
 	c.closeMu.Lock()
 	c.closed = true
 	c.closeMu.Unlock()
-	c.wg.Wait() // safe: closed=true blocks any new wg.Add
 	c.cancel()
-	c.loopWG.Wait()
+	c.wg.Wait() // safe: closed=true blocks any new wg.Add
+	// Do not make Swarm.Close wait on a slow eventbus subscriber. The loop
+	// goroutine will finish once any in-flight Emit returns.
+	go func() {
+		c.loopWG.Wait()
+		_ = c.emitter.Close()
+	}()
+}
+
+// StartShutdown switches the enqueue path from runtime backpressure to
+// best-effort delivery. During shutdown, freeing connection goroutines is more
+// important than preserving every final connectedness event.
+func (c *connectionEventsEmitter) StartShutdown() {
+	c.shuttingDown.Store(true)
+	c.shutdownOnce.Do(func() { close(c.shutdownNotify) })
+}
+
+func (c *connectionEventsEmitter) enqueuePeerConnectednessEvent(evt peerConnectednessEvent) {
+	if c.shuttingDown.Load() {
+		// Closing the swarm has already made the final peer state observable via
+		// Network.Connectedness. Avoid blocking shutdown on a full event queue.
+		select {
+		case c.peerConnectednessCh <- evt:
+		default:
+			log.Warn("dropping connectedness event during swarm shutdown because the queue is full", "peer", evt.PeerID)
+		}
+		return
+	}
+
+	timer := time.NewTimer(connectednessEventQueueStallTimeout)
+	defer timer.Stop()
+	select {
+	case c.peerConnectednessCh <- evt:
+		return
+	case <-c.shutdownNotify:
+		return
+	case <-c.ctx.Done():
+		return
+	case <-timer.C:
+		log.Error("slow connectedness event consumer, connection notification stalled", "peer", evt.PeerID)
+	}
+
+	// Preserve the existing backpressure semantics after logging. This keeps the
+	// queue bounded and avoids dropping connectedness events during normal use.
+	select {
+	case c.peerConnectednessCh <- evt:
+	case <-c.shutdownNotify:
+	case <-c.ctx.Done():
+	}
 }
 
 func (c *connectionEventsEmitter) runEmitter() {

@@ -307,6 +307,10 @@ func (s *Swarm) close() {
 	s.conns.m = nil
 	s.conns.Unlock()
 
+	// From here on, RemoveConn notifications are part of shutdown cleanup. They
+	// must not keep Close blocked behind a slow connectedness event subscriber.
+	s.connectionEventsEmitter.StartShutdown()
+
 	// Lots of goroutines but we might as well do this in parallel. We want to shut down as fast as
 	// possible.
 	s.refs.Add(len(listeners))
@@ -330,11 +334,8 @@ func (s *Swarm) close() {
 	}
 
 	// Wait for everything to finish.
-	// We must wait for all the connection notifications to complete before
-	// closing the events emitter.
 	s.refs.Wait()
 	s.connectionEventsEmitter.Close()
-	s.emitter.Close()
 
 	// Now close out any transports (if necessary). Do this after closing
 	// all connections/listeners.

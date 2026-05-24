@@ -49,6 +49,76 @@ func checkEvent(t *testing.T, sub event.Subscription, expected event.EvtPeerConn
 	}
 }
 
+func blockConnectednessSubscriberOnSignal(t *testing.T, bus event.Bus) (block, unblock chan struct{}) {
+	t.Helper()
+
+	sub, err := bus.Subscribe(new(event.EvtPeerConnectednessChanged), eventbus.BufSize(1))
+	require.NoError(t, err)
+	t.Cleanup(func() { sub.Close() })
+
+	block = make(chan struct{})
+	unblock = make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-block:
+				<-sub.Out()
+				<-unblock
+				return
+			case _, ok := <-sub.Out():
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+	return block, unblock
+}
+
+func connectSwarmPeers(t *testing.T, dialer *Swarm, count int) []*Swarm {
+	t.Helper()
+
+	peers := make([]*Swarm, 0, count)
+	for range count {
+		listener := swarmt.GenSwarm(t)
+		dialer.Peerstore().AddAddrs(listener.LocalPeer(), []ma.Multiaddr{listener.ListenAddresses()[0]}, time.Hour)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, err := dialer.DialPeer(ctx, listener.LocalPeer())
+		cancel()
+		require.NoError(t, err)
+
+		peers = append(peers, listener)
+	}
+	return peers
+}
+
+func TestConnectednessBackpressureAllowsSwarmClose(t *testing.T) {
+	bus := eventbus.NewBus()
+	sw := swarmt.GenSwarm(t, swarmt.EventBus(bus))
+
+	block, unblock := blockConnectednessSubscriberOnSignal(t, bus)
+	t.Cleanup(func() { close(unblock) })
+
+	peers := connectSwarmPeers(t, sw, 40)
+	for _, peer := range peers {
+		t.Cleanup(func() { peer.Close() })
+	}
+
+	close(block)
+	closeDone := make(chan struct{})
+	go func() {
+		sw.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-closeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Swarm.Close blocked on connectedness event backpressure")
+	}
+}
+
 func TestConnectednessEventsSingleConn(t *testing.T) {
 	s1, sub1 := newSwarmWithSubscription(t)
 	s2, sub2 := newSwarmWithSubscription(t)

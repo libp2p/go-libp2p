@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -132,6 +133,137 @@ func TestEmitter_NormalOrder(t *testing.T) {
 	require.Empty(t, e.connected)
 	require.Empty(t, e.pendingDisconnect)
 	e.notifsLk.Unlock()
+}
+
+func TestEmitter_AddConnBackpressuresOnFullQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := &connectionEventsEmitter{
+		peerConnectednessCh: make(chan peerConnectednessEvent, 1),
+		connected:           make(map[*Conn]struct{}),
+		pendingDisconnect:   make(map[*Conn]struct{}),
+		ctx:                 ctx,
+		cancel:              cancel,
+		shutdownNotify:      make(chan struct{}),
+		onConnected:         func(*Conn) {},
+		onDisconnected:      func(*Conn) {},
+	}
+	c.peerConnectednessCh <- peerConnectednessEvent{PeerID: test.RandPeerIDFatal(t), Type: addConnEvent}
+
+	done := make(chan struct{})
+	conn := newTestConn(t)
+	go func() {
+		c.AddConn(conn)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("AddConn returned while the connectedness event queue was full")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	select {
+	case <-c.peerConnectednessCh:
+	default:
+		t.Fatal("expected the connectedness event queue to contain the blocking event")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("AddConn did not resume after connectedness event queue capacity became available")
+	}
+
+	c.notifsLk.Lock()
+	_, connected := c.connected[conn]
+	c.notifsLk.Unlock()
+	require.True(t, connected, "AddConn should dispatch Connected state after queueing the connectedness event")
+}
+
+func TestEmitter_RemoveConnBackpressuresOnFullQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn := newTestConn(t)
+	disconnected := make(chan struct{})
+	c := &connectionEventsEmitter{
+		peerConnectednessCh: make(chan peerConnectednessEvent, 1),
+		connected:           map[*Conn]struct{}{conn: {}},
+		pendingDisconnect:   make(map[*Conn]struct{}),
+		ctx:                 ctx,
+		cancel:              cancel,
+		shutdownNotify:      make(chan struct{}),
+		onConnected:         func(*Conn) {},
+		onDisconnected: func(*Conn) {
+			close(disconnected)
+		},
+	}
+	c.peerConnectednessCh <- peerConnectednessEvent{PeerID: test.RandPeerIDFatal(t), Type: removeConnEvent}
+
+	done := make(chan struct{})
+	go func() {
+		c.RemoveConn(conn)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("RemoveConn returned while the connectedness event queue was full")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	select {
+	case <-c.peerConnectednessCh:
+	default:
+		t.Fatal("expected the connectedness event queue to contain the blocking event")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("RemoveConn did not resume after connectedness event queue capacity became available")
+	}
+	select {
+	case <-disconnected:
+	case <-time.After(time.Second):
+		t.Fatal("RemoveConn did not dispatch Disconnected after queueing the connectedness event")
+	}
+}
+
+func TestEmitter_ShutdownUnblocksQueuedAddConn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := &connectionEventsEmitter{
+		peerConnectednessCh: make(chan peerConnectednessEvent, 1),
+		connected:           make(map[*Conn]struct{}),
+		pendingDisconnect:   make(map[*Conn]struct{}),
+		ctx:                 ctx,
+		cancel:              cancel,
+		shutdownNotify:      make(chan struct{}),
+		onConnected:         func(*Conn) {},
+		onDisconnected:      func(*Conn) {},
+	}
+	c.peerConnectednessCh <- peerConnectednessEvent{PeerID: test.RandPeerIDFatal(t), Type: addConnEvent}
+
+	done := make(chan struct{})
+	go func() {
+		c.AddConn(newTestConn(t))
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("AddConn returned before shutdown while the connectedness event queue was full")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	c.StartShutdown()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not unblock AddConn waiting on the connectedness event queue")
+	}
 }
 
 // TestEmitter_ConcurrentAddRemoveOrdering exercises many conns in parallel,
