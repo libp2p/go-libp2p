@@ -107,6 +107,10 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 			resp.Body.Close()
 			resp = nil
 		}
+		if maxSteps--; maxSteps < 0 {
+			return "", nil, errors.New("handshake took too many steps")
+		}
+
 		req = req.Clone(req.Context())
 		hs.AddHeader(req.Header)
 		if hs.ServerAuthenticated() {
@@ -124,11 +128,6 @@ func (a *ClientPeerIDAuth) runHandshake(rt http.RoundTripper, req *http.Request,
 		if err != nil {
 			resp.Body.Close()
 			return "", nil, err
-		}
-
-		if maxSteps--; maxSteps == 0 {
-			resp.Body.Close()
-			return "", nil, errors.New("handshake took too many steps")
 		}
 	}
 
