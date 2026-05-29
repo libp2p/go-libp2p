@@ -1,12 +1,15 @@
 package websocket
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -16,6 +19,7 @@ import (
 	gws "github.com/gorilla/websocket"
 	"github.com/libp2p/go-libp2p/core/network"
 	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 	"golang.org/x/sync/errgroup"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -319,39 +323,145 @@ func TestModernBrowserWSSFlow(t *testing.T) {
 	})
 }
 
-// TestFallbackHTTPHandler_HTTP2NeverReachesWSPath locks down the dispatch
-// invariant that lets h2 and WSS coexist on the same listener: every HTTP/2
-// request must reach the fallback handler, never the WebSocket upgrade path.
+// sendH2ExtendedConnect opens a raw HTTP/2 connection to hostPort and sends one
+// RFC 8441 extended CONNECT request (":method = CONNECT", ":protocol =
+// websocket"). This is how a browser starts a WebSocket over HTTP/2. The
+// net/http client cannot build such a request, so we write the frames
+// ourselves. It returns the response ":status" and body. If the server resets
+// the stream instead of replying, the request never reached the handler, so
+// the test fails.
+func sendH2ExtendedConnect(t *testing.T, hostPort string) (status string, body []byte) {
+	t.Helper()
+	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"h2"},
+	})
+	require.NoError(t, err)
+	defer conn.Close()
+	require.Equal(t, "h2", conn.ConnectionState().NegotiatedProtocol)
+
+	// HTTP/2 client preface + our (empty) SETTINGS, then the request headers.
+	_, err = conn.Write([]byte(http2.ClientPreface))
+	require.NoError(t, err)
+	framer := http2.NewFramer(conn, conn)
+	require.NoError(t, framer.WriteSettings())
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+
+	var hbuf bytes.Buffer
+	enc := hpack.NewEncoder(&hbuf)
+	for _, hf := range []hpack.HeaderField{
+		{Name: ":method", Value: "CONNECT"},
+		{Name: ":protocol", Value: "websocket"}, // the RFC 8441 marker
+		{Name: ":scheme", Value: "https"},
+		{Name: ":path", Value: "/"},
+		{Name: ":authority", Value: hostPort},
+		{Name: "sec-websocket-version", Value: "13"},
+		{Name: "sec-websocket-key", Value: "dGhlIHNhbXBsZSBub25jZQ=="},
+	} {
+		require.NoError(t, enc.WriteField(hf))
+	}
+	require.NoError(t, framer.WriteHeaders(http2.HeadersFrameParam{
+		StreamID:      1,
+		BlockFragment: hbuf.Bytes(),
+		EndHeaders:    true,
+		EndStream:     true,
+	}))
+
+	// Read response frames until the stream ends, collecting status and body.
+	dec := hpack.NewDecoder(4096, nil)
+	for range 30 {
+		f, err := framer.ReadFrame()
+		require.NoError(t, err)
+		switch fr := f.(type) {
+		case *http2.RSTStreamFrame:
+			t.Fatalf("server reset the stream (%v); the request never reached the handler", fr.ErrCode)
+		case *http2.HeadersFrame:
+			fields, err := dec.DecodeFull(fr.HeaderBlockFragment())
+			require.NoError(t, err)
+			for _, hf := range fields {
+				if hf.Name == ":status" {
+					status = hf.Value
+				}
+			}
+			if fr.StreamEnded() {
+				return status, body
+			}
+		case *http2.DataFrame:
+			body = append(body, fr.Data()...)
+			if fr.StreamEnded() {
+				return status, body
+			}
+		}
+	}
+	t.Fatal("server never ended the response stream")
+	return status, body
+}
+
+// TestFallbackHTTPHandler_HTTP2NeverReachesWSPath checks one rule that lets a
+// WebSocket and an HTTP/2 fallback share a single /tls/ws port: a WebSocket
+// request sent over HTTP/2 (RFC 8441 extended CONNECT) must go to the fallback
+// handler, not to gorilla's WebSocket upgrade path.
 //
-// This holds today because gorilla/websocket's IsWebSocketUpgrade only looks
-// at HTTP/1 Upgrade headers, which the HTTP/2 framer (RFC 7540 §8.1.2.2)
-// refuses to carry. If a future version of gorilla/websocket adds RFC 8441
-// ("Bootstrapping WebSockets with HTTP/2", extended CONNECT) and silently
-// extends IsWebSocketUpgrade to detect it, this test will start failing,
-// which is the right cue to revisit the dispatch comment in
-// listener.ServeHTTP and decide whether to embrace WS-over-h2 or pin the
-// behaviour.
+// Why this matters: listener.ServeHTTP decides using ws.IsWebSocketUpgrade,
+// which today only looks at the HTTP/1 Upgrade handshake. So an HTTP/2 extended
+// CONNECT falls through to the fallback handler. If a later gorilla/websocket
+// release teaches IsWebSocketUpgrade to detect extended CONNECT as well, the
+// same request would start taking the upgrade path. That is a real change in
+// behaviour, and we want this test to fail when it happens (see the RFC 8441
+// note in newListener).
+//
+// Checking this end to end means a real extended CONNECT has to reach the
+// handler. By default Go's HTTP/2 server does not advertise
+// SETTINGS_ENABLE_CONNECT_PROTOCOL, so it rejects extended CONNECT before any
+// handler runs (golang/go#71128). GODEBUG=http2xconnect=1 turns that
+// advertisement on, but Go reads it once at startup, so t.Setenv cannot set it.
+// The parent process therefore re-runs just this test in a child with that
+// GODEBUG set, and the child does the real work.
 func TestFallbackHTTPHandler_HTTP2NeverReachesWSPath(t *testing.T) {
+	const childEnv = "GO_LIBP2P_WS_EXTCONNECT_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		// Parent: re-run just this test in a child that accepts extended
+		// CONNECT, so the request reaches listener.ServeHTTP.
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v", "-test.count=1")
+		// Merge http2xconnect into any inherited GODEBUG rather than
+		// shadowing it; the last GODEBUG entry wins, so this keeps whatever
+		// the suite/CI already set while still enabling extended CONNECT.
+		godebug := "http2xconnect=1"
+		if prev := os.Getenv("GODEBUG"); prev != "" {
+			godebug = prev + ",http2xconnect=1"
+		}
+		cmd.Env = append(os.Environ(), "GODEBUG="+godebug, childEnv+"=1")
+		out, err := cmd.CombinedOutput()
+		if ctx.Err() == context.DeadlineExceeded {
+			t.Fatalf("child process timed out after 30s:\n%s", out)
+		}
+		require.NoError(t, err, "child process failed:\n%s", out)
+		// Guard against a silent pass: a -test.run that matches nothing also
+		// exits 0. Require the child to report this test as passed.
+		require.Contains(t, string(out), "--- PASS: "+t.Name(),
+			"child did not run the extended CONNECT test:\n%s", out)
+		return
+	}
+
+	// Child: the HTTP/2 server now delivers extended CONNECT to ServeHTTP.
 	var fallbackHits atomic.Int32
+	var gotMethod atomic.Value
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fallbackHits.Add(1)
-		// Record the protocol so a regression makes the failure obvious.
-		w.Header().Set("X-Proto", r.Proto)
+		gotMethod.Store(r.Method)
 		fmt.Fprint(w, "fallback")
 	})
-
 	hostPort := startWSSListener(t, handler)
 
-	// Force ALPN to h2 only, so the connection MUST be HTTP/2 or fail.
-	resp, err := httpsClient([]string{"h2"}).Get("https://" + hostPort + "/")
-	require.NoError(t, err)
-	defer resp.Body.Close()
+	status, body := sendH2ExtendedConnect(t, hostPort)
 
-	require.Equal(t, "HTTP/2.0", resp.Proto)
-	require.Equal(t, "HTTP/2.0", resp.Header.Get("X-Proto"))
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "200", status, "extended CONNECT must be answered by the fallback handler")
+	require.Equal(t, "fallback", string(body))
 	require.Equal(t, int32(1), fallbackHits.Load(),
-		"HTTP/2 request must reach the fallback handler, not the WebSocket upgrade path")
+		"WebSocket-over-HTTP/2 must reach the fallback handler, not the WebSocket upgrade path")
+	require.Equal(t, "CONNECT", gotMethod.Load(), "the handler must see the original extended CONNECT request")
 }
 
 // TestFallbackHTTPHandler_KeepAlive ensures the handshake-timeout AfterFunc
