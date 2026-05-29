@@ -217,9 +217,10 @@ func TestConnectednessEventDeadlock(t *testing.T) {
 	go func() {
 		defer close(done)
 		count := 0
+		// sleep to simulate a slow consumer
+		time.Sleep(1 * time.Second)
 		for count < N {
 			e := <-sub1.Out()
-			// sleep to simulate a slow consumer
 			evt, ok := e.(event.EvtPeerConnectednessChanged)
 			if !ok {
 				t.Error("invalid event received", e)
@@ -228,6 +229,8 @@ func TestConnectednessEventDeadlock(t *testing.T) {
 			if evt.Connectedness != network.Connected {
 				continue
 			}
+			// sleep to simulate a slow consumer
+			time.Sleep(20 * time.Millisecond)
 			count++
 			s1.ClosePeer(evt.Peer)
 		}
@@ -241,7 +244,7 @@ func TestConnectednessEventDeadlock(t *testing.T) {
 	}
 	select {
 	case <-done:
-	case <-time.After(100 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("expected all connectedness events to be completed")
 	}
 }
@@ -261,9 +264,7 @@ func TestConnectednessEventDeadlockWithDial(t *testing.T) {
 	// First check all connected events
 	done := make(chan struct{})
 	var subWG sync.WaitGroup
-	subWG.Add(1)
-	go func() {
-		defer subWG.Done()
+	subWG.Go(func() {
 		count := 0
 		for {
 			var e any
@@ -290,7 +291,7 @@ func TestConnectednessEventDeadlockWithDial(t *testing.T) {
 				cancel()
 			}
 		}
-	}()
+	})
 	var wg sync.WaitGroup
 	wg.Add(N)
 	for i := range N {

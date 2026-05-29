@@ -217,11 +217,11 @@ type Swarm struct {
 
 	dialRanker network.DialRanker
 
-	connectednessEventEmitter *connectednessEventEmitter
-	udpBHF                    *BlackHoleSuccessCounter
-	ipv6BHF                   *BlackHoleSuccessCounter
-	bhd                       *blackHoleDetector
-	readOnlyBHD               bool
+	connectionEventsEmitter *connectionEventsEmitter
+	udpBHF                  *BlackHoleSuccessCounter
+	ipv6BHF                 *BlackHoleSuccessCounter
+	bhd                     *blackHoleDetector
+	readOnlyBHD             bool
 }
 
 // NewSwarm constructs a Swarm.
@@ -254,7 +254,11 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 	s.transports.m = make(map[int]transport.Transport)
 	s.notifs.m = make(map[network.Notifiee]struct{})
 	s.directConnNotifs.m = make(map[peer.ID][]chan struct{})
-	s.connectednessEventEmitter = newConnectednessEventEmitter(s.Connectedness, emitter)
+	s.connectionEventsEmitter = newConnectionEventsEmitter(
+		s.Connectedness, emitter,
+		func(c *Conn) { s.notifyAll(func(f network.Notifiee) { f.Connected(s, c) }) },
+		func(c *Conn) { s.notifyAll(func(f network.Notifiee) { f.Disconnected(s, c) }) },
+	)
 
 	for _, opt := range opts {
 		if err := opt(s); err != nil {
@@ -326,8 +330,10 @@ func (s *Swarm) close() {
 	}
 
 	// Wait for everything to finish.
+	// We must wait for all the connection notifications to complete before
+	// closing the events emitter.
 	s.refs.Wait()
-	s.connectednessEventEmitter.Close()
+	s.connectionEventsEmitter.Close()
 	s.emitter.Close()
 
 	// Now close out any transports (if necessary). Do this after closing
@@ -416,18 +422,12 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	// * One will be decremented after the close notifications fire in Conn.doClose
 	// * The other will be decremented when Conn.start exits.
 	s.refs.Add(2)
-	// Take the notification lock before releasing the conns lock to block
-	// Disconnect notifications until after the Connect notifications done.
-	// This lock also ensures that swarm.refs.Wait() exits after we have
-	// enqueued the peer connectedness changed notification.
-	// TODO: Fix this fragility by taking a swarm ref for dial worker loop
-	c.notifyLk.Lock()
 	s.conns.Unlock()
-
-	s.connectednessEventEmitter.AddConn(p)
 
 	if !isLimited {
 		// Notify goroutines waiting for a direct connection
+		// do this before connected events, as there's no reason to stall this
+		// notification for the events.
 		//
 		// Go routines interested in waiting for direct connection first acquire this lock
 		// and then acquire s.conns.RLock. Do not acquire this lock before conns.Unlock to
@@ -439,10 +439,11 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 		delete(s.directConnNotifs.m, p)
 		s.directConnNotifs.Unlock()
 	}
-	s.notifyAll(func(f network.Notifiee) {
-		f.Connected(s, c)
-	})
-	c.notifyLk.Unlock()
+
+	// AddConn dispatches PeerConnectednessChanged and Notifiee.Connected before
+	// c.start() spawns the AcceptStream loop, so handlers see the conn before
+	// any inbound stream arrives.
+	s.connectionEventsEmitter.AddConn(c)
 
 	c.start()
 	return c, nil
@@ -785,6 +786,8 @@ func (s *Swarm) removeConn(c *Conn) {
 	p := c.RemotePeer()
 
 	s.conns.Lock()
+	defer s.conns.Unlock()
+
 	cs := s.conns.m[p]
 	for i, ci := range cs {
 		if ci == c {
@@ -800,7 +803,6 @@ func (s *Swarm) removeConn(c *Conn) {
 	if len(s.conns.m[p]) == 0 {
 		delete(s.conns.m, p)
 	}
-	s.conns.Unlock()
 }
 
 // String returns a string representation of Network.

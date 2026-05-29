@@ -30,8 +30,6 @@ type Conn struct {
 	closeOnce sync.Once
 	err       error
 
-	notifyLk sync.Mutex
-
 	streams struct {
 		sync.Mutex
 		m map[*Stream]struct{}
@@ -55,12 +53,10 @@ func (c *Conn) ID() string {
 	return fmt.Sprintf("%s-%d", c.RemotePeer().String()[:10], c.id)
 }
 
-// Close closes this connection.
-//
-// Note: This method won't wait for the close notifications to finish as that
-// would create a deadlock when called from an open notification (because all
-// open notifications must finish before we can fire off the close
-// notifications).
+// Close closes this connection. It does not wait for the Disconnected
+// notification to be dispatched to Notifiees: doClose spawns a goroutine for
+// that, tracked by swarm.refs, so Close is safe to call from inside a
+// Notifiee.Connected handler without deadlocking.
 func (c *Conn) Close() error {
 	c.closeOnce.Do(func() {
 		c.doClose(0)
@@ -90,28 +86,27 @@ func (c *Conn) doClose(errCode network.ConnErrorCode) {
 		c.err = c.conn.Close()
 	}
 
-	// Send the connectedness event after closing the connection.
-	// This ensures that both remote connection close and local connection
-	// close events are sent after the underlying transport connection is closed.
-	c.swarm.connectednessEventEmitter.RemoveConn(c.RemotePeer())
-
 	// This is just for cleaning up state. The connection has already been closed.
 	// We *could* optimize this but it really isn't worth it.
 	for s := range streams {
 		s.Reset()
 	}
 
-	// do this in a goroutine to avoid deadlocking if we call close in an open notification.
+	// Dispatch the close notifications in a goroutine. Two deadlocks are
+	// avoided by this:
+	//   - A PeerConnectednessChanged subscriber that calls Conn.Close would
+	//     otherwise call RemoveConn synchronously, blocking on the emitter's
+	//     event channel while the run loop is itself blocked waiting for the
+	//     subscriber to return.
+	//   - A Notifiee.Disconnected handler that calls Conn.Close (which is a
+	//     misuse — Disconnected fires because the conn is already closing)
+	//     would otherwise re-enter closeOnce.Do while the in-flight doClose
+	//     still holds it, deadlocking on sync.Once's internal mutex. We
+	//     tolerate the misuse rather than deadlock the caller.
+	// The s.refs ref added in addConn is released here.
 	go func() {
-		// prevents us from issuing close notifications before finishing the open notifications
-		c.notifyLk.Lock()
-		defer c.notifyLk.Unlock()
-
-		// Only notify for disconnection if we notified for connection
-		c.swarm.notifyAll(func(f network.Notifiee) {
-			f.Disconnected(c.swarm, c)
-		})
-		c.swarm.refs.Done()
+		defer c.swarm.refs.Done()
+		c.swarm.connectionEventsEmitter.RemoveConn(c)
 	}()
 }
 

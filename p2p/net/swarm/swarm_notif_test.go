@@ -8,6 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	. "github.com/libp2p/go-libp2p/p2p/net/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -180,4 +181,93 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 }
 func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn) {
 	nn.disconnected <- v
+}
+
+// TestNotifications_CloseFromConnected verifies that closing a conn from
+// inside a Notifiee.Connected handler does not deadlock.
+func TestNotifications_CloseFromConnected(t *testing.T) {
+	const timeout = 5 * time.Second
+
+	swarms := makeSwarms(t, 2)
+	defer func() {
+		for _, s := range swarms {
+			require.NoError(t, s.Close())
+		}
+	}()
+
+	connected := make(chan network.Conn, 8)
+	disconnected := make(chan network.Conn, 8)
+	swarms[0].Notify(&network.NotifyBundle{
+		ConnectedF: func(_ network.Network, c network.Conn) {
+			_ = c.Close()
+			connected <- c
+		},
+		DisconnectedF: func(_ network.Network, c network.Conn) {
+			disconnected <- c
+		},
+	})
+
+	swarms[0].Peerstore().AddAddrs(swarms[1].LocalPeer(), swarms[1].ListenAddresses(), peerstore.TempAddrTTL)
+	// DialPeer may return an error because the conn is closed from the
+	// notification handler before dial bookkeeping completes; we don't care.
+	_, _ = swarms[0].DialPeer(context.Background(), swarms[1].LocalPeer())
+
+	var connectedConn network.Conn
+	select {
+	case connectedConn = <-connected:
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for Connected notification")
+	}
+
+	select {
+	case dc := <-disconnected:
+		require.Same(t, connectedConn, dc, "Disconnected must fire for the same conn")
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for Disconnected notification")
+	}
+}
+
+// TestNotifications_CloseFromDisconnected verifies that calling Conn.Close
+// from inside a Notifiee.Disconnected handler does not deadlock. doClose
+// dispatches notifications in a goroutine, so closeOnce has already returned
+// by the time the handler runs and the re-entrant Close is a no-op.
+func TestNotifications_CloseFromDisconnected(t *testing.T) {
+	const timeout = 5 * time.Second
+
+	swarms := makeSwarms(t, 2)
+	defer func() {
+		for _, s := range swarms {
+			require.NoError(t, s.Close())
+		}
+	}()
+
+	connected := make(chan network.Conn, 8)
+	disconnected := make(chan network.Conn, 8)
+	swarms[0].Notify(&network.NotifyBundle{
+		ConnectedF: func(_ network.Network, c network.Conn) {
+			connected <- c
+		},
+		DisconnectedF: func(_ network.Network, c network.Conn) {
+			_ = c.Close()
+			disconnected <- c
+		},
+	})
+
+	swarms[0].Peerstore().AddAddrs(swarms[1].LocalPeer(), swarms[1].ListenAddresses(), peerstore.TempAddrTTL)
+	conn, err := swarms[0].DialPeer(context.Background(), swarms[1].LocalPeer())
+	require.NoError(t, err)
+
+	select {
+	case <-connected:
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for Connected notification")
+	}
+
+	require.NoError(t, conn.Close())
+
+	select {
+	case <-disconnected:
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for Disconnected notification (potential deadlock)")
+	}
 }
