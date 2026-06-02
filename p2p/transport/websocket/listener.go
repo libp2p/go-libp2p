@@ -14,8 +14,6 @@ import (
 
 	ws "github.com/gorilla/websocket"
 	logging "github.com/libp2p/go-libp2p/gologshim"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/transport"
@@ -68,7 +66,7 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 // tlsConf may be nil (for unencrypted websockets).
 // httpHandler may be nil; when non-nil it serves every request that is
 // not a WebSocket upgrade.
-func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration, httpHandler http.Handler) (*listener, error) {
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration, httpHandler http.Handler, serverConfig func(*http.Server)) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -143,32 +141,44 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		ConnContext: ln.ConnContext,
 		TLSConfig:   tlsConf,
 	}
-	// On a plaintext /ws listener with a fallback handler, wrap the handler
-	// so the same listener also accepts HTTP/2 cleartext (h2c). Reverse
-	// proxies that talk h2c to backends (Caddy, Traefik, nginx with the
-	// right config) get connection multiplexing for free; reverse proxies
-	// that only speak h1 to backends keep working through the same handler.
-	// On a /tls/ws listener we don't need this: h2 is negotiated via ALPN
-	// inside http.Server.ServeTLS.
-	if !parsed.isWSS && httpHandler != nil {
-		ln.server.Handler = h2c.NewHandler(ln, &http2.Server{})
+	if httpHandler != nil {
+		// A fallback request may run far longer than the handshake-timeout
+		// (HTTP/2 streams, HTTP/1.1 keep-alive), so bound connections with
+		// server-side timeouts. IdleTimeout caps idle keep-alive on both
+		// h1 and h2. ReadHeaderTimeout guards only h1 against slow-header
+		// clients; Go's HTTP/2 server ignores it. ReadTimeout and
+		// WriteTimeout are left unset on purpose, as they apply per request
+		// and would truncate large streamed responses.
+		ln.server.ReadHeaderTimeout = handshakeTimeout
+		ln.server.IdleTimeout = defaultHTTPIdleTimeout
+		if !parsed.isWSS {
+			// On a plaintext /ws listener, accept HTTP/2 cleartext (h2c)
+			// next to HTTP/1.1 so reverse proxies that speak h2c to
+			// backends (Caddy, Traefik, nginx) get HTTP/2 multiplexing.
+			// On /tls/ws, h2 is negotiated via ALPN inside ServeTLS.
+			p := new(http.Protocols)
+			p.SetHTTP1(true)
+			p.SetUnencryptedHTTP2(true)
+			ln.server.Protocols = p
+		}
+		// Let the caller tune timeouts and HTTP/2 settings; see
+		// [WithHTTPServerConfig]. The transport re-asserts the fields it
+		// must own afterwards so the hook cannot break request dispatch.
+		if serverConfig != nil {
+			serverConfig(&ln.server)
+		}
+		ln.server.Handler = ln
+		ln.server.ConnContext = ln.ConnContext
+		ln.server.TLSConfig = tlsConf
 	}
-	// Note on RFC 8441 (WebSocket-over-HTTP/2):
-	//
-	// We do NOT explicitly enable the HTTP/2 SETTINGS_ENABLE_CONNECT_PROTOCOL
-	// flag here, because Go's bundled http2 stack and golang.org/x/net/http2
-	// do not yet expose a per-server API for it (golang/go#71128). The flag
-	// is gated by a process-global GODEBUG=http2xconnect=1, which a library
-	// must not set on its own.
-	//
-	// The dispatch in ServeHTTP is, however, written to upgrade
-	// transparently: it defers the "is this a WebSocket upgrade?" decision
-	// to ws.IsWebSocketUpgrade. When upstream Go exposes the setting and
-	// gorilla/websocket adds server-side ext-CONNECT support (most likely
-	// by extending IsWebSocketUpgrade and Upgrader.Upgrade to recognise
-	// `:method=CONNECT, :protocol=websocket`), this listener will accept
-	// WS-over-HTTP/2 with no code change — only a gorilla bump and a
-	// future Go upgrade.
+	// RFC 8441 (WebSocket-over-HTTP/2) is intentionally not advertised: the
+	// server never enables SETTINGS_ENABLE_CONNECT_PROTOCOL, so browsers fall
+	// back to HTTP/1.1 for wss://, where gorilla/websocket can hijack the
+	// connection. Go gates that setting behind a process-global
+	// GODEBUG=http2xconnect=1 (golang/go#71128), which a library must not set.
+	// Dispatch in ServeHTTP defers the "is this a WebSocket upgrade?" decision
+	// to ws.IsWebSocketUpgrade, so if a future gorilla and Go add server-side
+	// ext-CONNECT support, this listener upgrades to it without code changes.
 	return ln, nil
 }
 

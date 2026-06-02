@@ -75,6 +75,11 @@ func WithTLSConfig(conf *tls.Config) Option {
 
 var defaultHandshakeTimeout = 15 * time.Second
 
+// defaultHTTPIdleTimeout bounds how long an idle fallback HTTP connection is
+// kept open. It applies whenever a fallback handler is configured via
+// [WithHTTPHandler], unless overridden with [WithHTTPServerConfig].
+var defaultHTTPIdleTimeout = 30 * time.Second
+
 // WithHandshakeTimeout sets a timeout for the websocket upgrade.
 func WithHandshakeTimeout(timeout time.Duration) Option {
 	return func(t *WebsocketTransport) error {
@@ -152,6 +157,31 @@ func WithHTTPHandler(h http.Handler) Option {
 	}
 }
 
+// WithHTTPServerConfig configures the [http.Server] that serves the fallback
+// handler set with [WithHTTPHandler], following the http2.ConfigureServer
+// pattern: the function tunes a server the transport owns. It runs once per
+// listener before the server starts, so callers can set timeouts and HTTP/2
+// settings:
+//
+//	websocket.WithHTTPServerConfig(func(s *http.Server) {
+//		s.IdleTimeout = 30 * time.Second
+//		s.ReadHeaderTimeout = 10 * time.Second
+//		s.HTTP2 = &http.HTTP2Config{MaxConcurrentStreams: 256}
+//	})
+//
+// The transport sets Handler, ConnContext, and TLSConfig (the latter from
+// [WithTLSConfig]) after the function runs and overwrites any change to them.
+// Avoid setting WriteTimeout or ReadTimeout if the handler streams large
+// responses, as they apply per request and would truncate it.
+//
+// This option has no effect unless [WithHTTPHandler] is also set.
+func WithHTTPServerConfig(fn func(*http.Server)) Option {
+	return func(t *WebsocketTransport) error {
+		t.httpServerConfig = fn
+		return nil
+	}
+}
+
 // WebsocketTransport is the actual go-libp2p transport
 type WebsocketTransport struct {
 	upgrader         transport.Upgrader
@@ -161,6 +191,7 @@ type WebsocketTransport struct {
 	sharedTcp        *tcpreuse.ConnMgr
 	handshakeTimeout time.Duration
 	httpHandler      http.Handler
+	httpServerConfig func(*http.Server)
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -321,7 +352,7 @@ func (t *WebsocketTransport) gatedMaListen(a ma.Multiaddr) (transport.GatedMaLis
 	if t.tlsConf != nil {
 		tlsConf = t.tlsConf.Clone()
 	}
-	l, err := newListener(a, tlsConf, t.sharedTcp, t.upgrader, t.handshakeTimeout, t.httpHandler)
+	l, err := newListener(a, tlsConf, t.sharedTcp, t.upgrader, t.handshakeTimeout, t.httpHandler, t.httpServerConfig)
 	if err != nil {
 		return nil, err
 	}
