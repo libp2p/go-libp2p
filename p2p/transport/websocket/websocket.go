@@ -88,68 +88,18 @@ func WithHandshakeTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithHTTPHandler installs an http.Handler that serves any non-upgrade
-// HTTP request that arrives on a WebSocket listener. This lets a libp2p node
-// share its WebSocket port with an ordinary HTTPS website.
+// WithHTTPHandler installs an http.Handler for requests that are not WebSocket
+// upgrades, letting a libp2p node share its WebSocket port with an ordinary
+// HTTP service behind the same TLS certificate.
 //
-// Why this matters: a /tls/ws listener is, on the wire, a normal HTTPS
-// endpoint that happens to accept WebSocket upgrades. By default the listener
-// rejects every request that is not a WebSocket upgrade, so a network observer
-// can fingerprint the port as "libp2p WSS" with a single HTTP probe. With a
-// fallback handler installed, the same port also serves real HTTP responses,
-// and the libp2p traffic looks indistinguishable from any other web traffic
-// behind the same TLS certificate. A censor that wants to block libp2p must
-// also block the website served from the fallback handler.
+// WebSocket upgrades go to the libp2p transport. Every other request
+// reaches the handler, over HTTP/1.1 or HTTP/2 on TLS listeners and over
+// HTTP/1.1 or HTTP/2 cleartext (h2c) on plaintext listeners. Without a handler,
+// non-upgrade requests get a 404.
 //
-// How requests are routed:
-//
-//   - Requests with a WebSocket upgrade (Connection: upgrade, Upgrade:
-//     websocket) go to the libp2p WebSocket transport, exactly as before.
-//   - Every other request reaches the fallback handler, regardless of
-//     HTTP version. On TLS listeners that means HTTP/1.1 and HTTP/2 (Go's
-//     http.Server.ServeTLS negotiates h2 via ALPN automatically). On
-//     plaintext listeners that means HTTP/1.1 and HTTP/2 cleartext (h2c):
-//     the listener is wrapped with [h2c.NewHandler] so reverse proxies
-//     that speak h2c to backends (Caddy, Traefik, nginx with the right
-//     config) get HTTP/2 multiplexing end-to-end, while proxies that only
-//     speak h1 keep working through the same listener.
-//   - If no fallback handler is configured, non-upgrade requests get a 404,
-//     which is the prior behaviour.
-//
-// The transport does not pre-screen clients by HTTP version. Operators that
-// want to force a specific minimum protocol can do so inside their own
-// http.Handler.
-//
-// HTTP/2 is negotiated automatically. Go's http.Server.ServeTLS calls
-// http2.ConfigureServer, which adds "h2" and "http/1.1" to the TLS ALPN list.
-// The two protocols then split cleanly:
-//
-//   - WebSocket clients only offer the "http/1.1" ALPN, so they always land
-//     on HTTP/1.1, where the gorilla/websocket Upgrader can hijack the
-//     connection.
-//   - HTTP/2 traffic cannot reach the WebSocket upgrade path: HTTP/2 forbids
-//     the Connection and Upgrade headers (RFC 7540 §8.1.2.2), and gorilla's
-//     server-side does not implement RFC 8441 (WebSockets over HTTP/2 via
-//     extended CONNECT). So gorilla.IsWebSocketUpgrade always returns false
-//     for h2 requests and they land on the fallback handler.
-//
-// If a future version of gorilla/websocket adds RFC 8441 support, the
-// dispatch automatically extends to it, because this code defers the
-// "is this a WebSocket upgrade?" decision to gorilla. The regression test
-// TestFallbackHTTPHandler_HTTP2NeverReachesWSPath pins the current
-// behaviour so any silent change is caught.
-//
-// The TLS certificate is shared. Both the WebSocket upgrade and the fallback
-// handler are served by the same http.Server with the same tls.Config (set
-// via [WithTLSConfig]), so a single certificate, for example one issued by
-// AutoTLS, covers all traffic on the port.
-//
-// The handler is invoked from many goroutines concurrently and must be safe
-// for concurrent use.
-//
-// This option also takes effect for plain /ws (non-TLS) listeners. The
-// censorship-resistance argument only applies to /tls/ws, but the routing
-// logic is the same.
+// The handler is invoked from many goroutines concurrently and must be safe for
+// concurrent use. Use [WithHTTPServerConfig] to set timeouts and HTTP/2
+// options on the underlying http.Server.
 func WithHTTPHandler(h http.Handler) Option {
 	return func(t *WebsocketTransport) error {
 		t.httpHandler = h

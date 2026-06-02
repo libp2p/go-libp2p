@@ -43,8 +43,7 @@ type listener struct {
 	wsurl     *url.URL
 
 	// httpHandler serves any request that is not a WebSocket upgrade.
-	// Nil means non-upgrade requests get a 404 (the historical behaviour).
-	// See [WithHTTPHandler] for the full rationale.
+	// Nil means non-upgrade requests get a 404. See [WithHTTPHandler].
 	httpHandler http.Handler
 }
 
