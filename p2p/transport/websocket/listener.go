@@ -44,10 +44,10 @@ type listener struct {
 	closed    chan struct{}
 	wsurl     *url.URL
 
-	// fallbackHTTPHandler serves any request that is not a WebSocket upgrade.
+	// httpHandler serves any request that is not a WebSocket upgrade.
 	// Nil means non-upgrade requests get a 404 (the historical behaviour).
-	// See [WithFallbackHTTPHandler] for the full rationale.
-	fallbackHTTPHandler http.Handler
+	// See [WithHTTPHandler] for the full rationale.
+	httpHandler http.Handler
 }
 
 var _ transport.GatedMaListener = &listener{}
@@ -66,9 +66,9 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-// fallbackHTTPHandler may be nil; when non-nil it serves every request that is
+// httpHandler may be nil; when non-nil it serves every request that is
 // not a WebSocket upgrade.
-func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration, fallbackHTTPHandler http.Handler) (*listener, error) {
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration, httpHandler http.Handler) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 			},
 			HandshakeTimeout: handshakeTimeout,
 		},
-		fallbackHTTPHandler: fallbackHTTPHandler,
+		httpHandler: httpHandler,
 	}
 	ln.server = http.Server{
 		Handler: ln,
@@ -150,7 +150,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 	// that only speak h1 to backends keep working through the same handler.
 	// On a /tls/ws listener we don't need this: h2 is negotiated via ALPN
 	// inside http.Server.ServeTLS.
-	if !parsed.isWSS && fallbackHTTPHandler != nil {
+	if !parsed.isWSS && httpHandler != nil {
 		ln.server.Handler = h2c.NewHandler(ln, &http2.Server{})
 	}
 	// Note on RFC 8441 (WebSocket-over-HTTP/2):
@@ -213,12 +213,12 @@ func (l *listener) extractConnFromContext(ctx context.Context) (*negotiatingConn
 func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Route non-WebSocket requests to the fallback handler if one is set.
 	// This is what lets a /tls/ws listener share a port with an ordinary
-	// HTTPS site; see [WithFallbackHTTPHandler]. The handler is invoked
+	// HTTPS site; see [WithHTTPHandler]. The handler is invoked
 	// for every HTTP version the listener accepts (h1 and h2 over TLS,
 	// h1 and h2c on plaintext) so callers do not have to pre-screen
 	// clients by HTTP version.
 	if !ws.IsWebSocketUpgrade(r) {
-		if l.fallbackHTTPHandler == nil {
+		if l.httpHandler == nil {
 			http.NotFound(w, r)
 			return
 		}
@@ -236,7 +236,7 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		l.fallbackHTTPHandler.ServeHTTP(w, r)
+		l.httpHandler.ServeHTTP(w, r)
 		return
 	}
 

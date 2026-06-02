@@ -64,7 +64,7 @@ func startWSSListener(t *testing.T, fallback http.Handler) string {
 	_, u := newSecureUpgrader(t)
 	opts := []Option{WithTLSConfig(tlsConf)}
 	if fallback != nil {
-		opts = append(opts, WithFallbackHTTPHandler(fallback))
+		opts = append(opts, WithHTTPHandler(fallback))
 	}
 	tpt, err := New(u, &network.NullResourceManager{}, nil, opts...)
 	require.NoError(t, err)
@@ -179,7 +179,7 @@ func TestFallbackHTTPHandler_PlainWS_H2C(t *testing.T) {
 	})
 
 	_, u := newSecureUpgrader(t)
-	tpt, err := New(u, &network.NullResourceManager{}, nil, WithFallbackHTTPHandler(handler))
+	tpt, err := New(u, &network.NullResourceManager{}, nil, WithHTTPHandler(handler))
 	require.NoError(t, err)
 
 	l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
@@ -222,7 +222,7 @@ func TestFallbackHTTPHandler_PlainWS(t *testing.T) {
 	})
 
 	_, u := newSecureUpgrader(t)
-	tpt, err := New(u, &network.NullResourceManager{}, nil, WithFallbackHTTPHandler(handler))
+	tpt, err := New(u, &network.NullResourceManager{}, nil, WithHTTPHandler(handler))
 	require.NoError(t, err)
 
 	l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/ws"))
@@ -483,7 +483,7 @@ func TestFallbackHTTPHandler_KeepAlive(t *testing.T) {
 	tpt, err := New(u, &network.NullResourceManager{}, nil,
 		WithTLSConfig(tlsConf),
 		WithHandshakeTimeout(200*time.Millisecond),
-		WithFallbackHTTPHandler(handler),
+		WithHTTPHandler(handler),
 	)
 	require.NoError(t, err)
 	l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/tls/ws"))

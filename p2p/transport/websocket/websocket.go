@@ -83,7 +83,7 @@ func WithHandshakeTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithFallbackHTTPHandler installs an http.Handler that serves any non-upgrade
+// WithHTTPHandler installs an http.Handler that serves any non-upgrade
 // HTTP request that arrives on a WebSocket listener. This lets a libp2p node
 // share its WebSocket port with an ordinary HTTPS website.
 //
@@ -145,22 +145,22 @@ func WithHandshakeTimeout(timeout time.Duration) Option {
 // This option also takes effect for plain /ws (non-TLS) listeners. The
 // censorship-resistance argument only applies to /tls/ws, but the routing
 // logic is the same.
-func WithFallbackHTTPHandler(h http.Handler) Option {
+func WithHTTPHandler(h http.Handler) Option {
 	return func(t *WebsocketTransport) error {
-		t.fallbackHTTPHandler = h
+		t.httpHandler = h
 		return nil
 	}
 }
 
 // WebsocketTransport is the actual go-libp2p transport
 type WebsocketTransport struct {
-	upgrader            transport.Upgrader
-	rcmgr               network.ResourceManager
-	tlsClientConf       *tls.Config
-	tlsConf             *tls.Config
-	sharedTcp           *tcpreuse.ConnMgr
-	handshakeTimeout    time.Duration
-	fallbackHTTPHandler http.Handler
+	upgrader         transport.Upgrader
+	rcmgr            network.ResourceManager
+	tlsClientConf    *tls.Config
+	tlsConf          *tls.Config
+	sharedTcp        *tcpreuse.ConnMgr
+	handshakeTimeout time.Duration
+	httpHandler      http.Handler
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -321,7 +321,7 @@ func (t *WebsocketTransport) gatedMaListen(a ma.Multiaddr) (transport.GatedMaLis
 	if t.tlsConf != nil {
 		tlsConf = t.tlsConf.Clone()
 	}
-	l, err := newListener(a, tlsConf, t.sharedTcp, t.upgrader, t.handshakeTimeout, t.fallbackHTTPHandler)
+	l, err := newListener(a, tlsConf, t.sharedTcp, t.upgrader, t.handshakeTimeout, t.httpHandler)
 	if err != nil {
 		return nil, err
 	}
