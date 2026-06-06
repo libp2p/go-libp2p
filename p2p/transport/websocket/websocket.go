@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -74,10 +75,59 @@ func WithTLSConfig(conf *tls.Config) Option {
 
 var defaultHandshakeTimeout = 15 * time.Second
 
+// defaultHTTPIdleTimeout bounds how long an idle fallback HTTP connection is
+// kept open. It applies whenever a fallback handler is configured via
+// [WithHTTPHandler], unless overridden with [WithHTTPServerConfig].
+var defaultHTTPIdleTimeout = 30 * time.Second
+
 // WithHandshakeTimeout sets a timeout for the websocket upgrade.
 func WithHandshakeTimeout(timeout time.Duration) Option {
 	return func(t *WebsocketTransport) error {
 		t.handshakeTimeout = timeout
+		return nil
+	}
+}
+
+// WithHTTPHandler installs an http.Handler for requests that are not WebSocket
+// upgrades, letting a libp2p node share its WebSocket port with an ordinary
+// HTTP service behind the same TLS certificate.
+//
+// WebSocket upgrades go to the libp2p transport. Every other request
+// reaches the handler, over HTTP/1.1 or HTTP/2 on TLS listeners and over
+// HTTP/1.1 or HTTP/2 cleartext (h2c) on plaintext listeners. Without a handler,
+// non-upgrade requests get a 404.
+//
+// The handler is invoked from many goroutines concurrently and must be safe for
+// concurrent use. Use [WithHTTPServerConfig] to set timeouts and HTTP/2
+// options on the underlying http.Server.
+func WithHTTPHandler(h http.Handler) Option {
+	return func(t *WebsocketTransport) error {
+		t.httpHandler = h
+		return nil
+	}
+}
+
+// WithHTTPServerConfig configures the [http.Server] that serves the fallback
+// handler set with [WithHTTPHandler], following the http2.ConfigureServer
+// pattern: the function tunes a server the transport owns. It runs once per
+// listener before the server starts, so callers can set timeouts and HTTP/2
+// settings:
+//
+//	websocket.WithHTTPServerConfig(func(s *http.Server) {
+//		s.IdleTimeout = 30 * time.Second
+//		s.ReadHeaderTimeout = 10 * time.Second
+//		s.HTTP2 = &http.HTTP2Config{MaxConcurrentStreams: 256}
+//	})
+//
+// The transport sets Handler, ConnContext, and TLSConfig (the latter from
+// [WithTLSConfig]) after the function runs and overwrites any change to them.
+// Avoid setting WriteTimeout or ReadTimeout if the handler streams large
+// responses, as they apply per request and would truncate it.
+//
+// This option has no effect unless [WithHTTPHandler] is also set.
+func WithHTTPServerConfig(fn func(*http.Server)) Option {
+	return func(t *WebsocketTransport) error {
+		t.httpServerConfig = fn
 		return nil
 	}
 }
@@ -90,6 +140,8 @@ type WebsocketTransport struct {
 	tlsConf          *tls.Config
 	sharedTcp        *tcpreuse.ConnMgr
 	handshakeTimeout time.Duration
+	httpHandler      http.Handler
+	httpServerConfig func(*http.Server)
 }
 
 var _ transport.Transport = (*WebsocketTransport)(nil)
@@ -250,7 +302,7 @@ func (t *WebsocketTransport) gatedMaListen(a ma.Multiaddr) (transport.GatedMaLis
 	if t.tlsConf != nil {
 		tlsConf = t.tlsConf.Clone()
 	}
-	l, err := newListener(a, tlsConf, t.sharedTcp, t.upgrader, t.handshakeTimeout)
+	l, err := newListener(a, tlsConf, t.sharedTcp, t.upgrader, t.handshakeTimeout, t.httpHandler, t.httpServerConfig)
 	if err != nil {
 		return nil, err
 	}

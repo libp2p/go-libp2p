@@ -56,7 +56,7 @@ func withDataRequestPolicy(drp dataRequestPolicyFunc) AutoNATOption {
 	}
 }
 
-func allowPrivateAddrs(s *autoNATSettings) error {
+func AllowPrivateAddrs(s *autoNATSettings) error {
 	s.allowPrivateAddrs = true
 	return nil
 }

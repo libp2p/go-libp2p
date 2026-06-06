@@ -41,6 +41,10 @@ type listener struct {
 	closeErr  error
 	closed    chan struct{}
 	wsurl     *url.URL
+
+	// httpHandler serves any request that is not a WebSocket upgrade.
+	// Nil means non-upgrade requests get a 404. See [WithHTTPHandler].
+	httpHandler http.Handler
 }
 
 var _ transport.GatedMaListener = &listener{}
@@ -59,7 +63,9 @@ func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
 
 // newListener creates a new listener from a raw net.Listener.
 // tlsConf may be nil (for unencrypted websockets).
-func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration) (*listener, error) {
+// httpHandler may be nil; when non-nil it serves every request that is
+// not a WebSocket upgrade.
+func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMgr, upgrader transport.Upgrader, handshakeTimeout time.Duration, httpHandler http.Handler, serverConfig func(*http.Server)) (*listener, error) {
 	parsed, err := parseWebsocketMultiaddr(a)
 	if err != nil {
 		return nil, err
@@ -124,6 +130,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 			},
 			HandshakeTimeout: handshakeTimeout,
 		},
+		httpHandler: httpHandler,
 	}
 	ln.server = http.Server{
 		Handler: ln,
@@ -133,6 +140,44 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config, sharedTcp *tcpreuse.ConnMg
 		ConnContext: ln.ConnContext,
 		TLSConfig:   tlsConf,
 	}
+	if httpHandler != nil {
+		// A fallback request may run far longer than the handshake-timeout
+		// (HTTP/2 streams, HTTP/1.1 keep-alive), so bound connections with
+		// server-side timeouts. IdleTimeout caps idle keep-alive on both
+		// h1 and h2. ReadHeaderTimeout guards only h1 against slow-header
+		// clients; Go's HTTP/2 server ignores it. ReadTimeout and
+		// WriteTimeout are left unset on purpose, as they apply per request
+		// and would truncate large streamed responses.
+		ln.server.ReadHeaderTimeout = handshakeTimeout
+		ln.server.IdleTimeout = defaultHTTPIdleTimeout
+		if !parsed.isWSS {
+			// On a plaintext /ws listener, accept HTTP/2 cleartext (h2c)
+			// next to HTTP/1.1 so reverse proxies that speak h2c to
+			// backends (Caddy, Traefik, nginx) get HTTP/2 multiplexing.
+			// On /tls/ws, h2 is negotiated via ALPN inside ServeTLS.
+			p := new(http.Protocols)
+			p.SetHTTP1(true)
+			p.SetUnencryptedHTTP2(true)
+			ln.server.Protocols = p
+		}
+		// Let the caller tune timeouts and HTTP/2 settings; see
+		// [WithHTTPServerConfig]. The transport re-asserts the fields it
+		// must own afterwards so the hook cannot break request dispatch.
+		if serverConfig != nil {
+			serverConfig(&ln.server)
+		}
+		ln.server.Handler = ln
+		ln.server.ConnContext = ln.ConnContext
+		ln.server.TLSConfig = tlsConf
+	}
+	// RFC 8441 (WebSocket-over-HTTP/2) is intentionally not advertised: the
+	// server never enables SETTINGS_ENABLE_CONNECT_PROTOCOL, so browsers fall
+	// back to HTTP/1.1 for wss://, where gorilla/websocket can hijack the
+	// connection. Go gates that setting behind a process-global
+	// GODEBUG=http2xconnect=1 (golang/go#71128), which a library must not set.
+	// Dispatch in ServeHTTP defers the "is this a WebSocket upgrade?" decision
+	// to ws.IsWebSocketUpgrade, so if a future gorilla and Go add server-side
+	// ext-CONNECT support, this listener upgrades to it without code changes.
 	return ln, nil
 }
 
@@ -175,6 +220,35 @@ func (l *listener) extractConnFromContext(ctx context.Context) (*negotiatingConn
 }
 
 func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Route non-WebSocket requests to the fallback handler if one is set.
+	// This is what lets a /tls/ws listener share a port with an ordinary
+	// HTTPS site; see [WithHTTPHandler]. The handler is invoked
+	// for every HTTP version the listener accepts (h1 and h2 over TLS,
+	// h1 and h2c on plaintext) so callers do not have to pre-screen
+	// clients by HTTP version.
+	if !ws.IsWebSocketUpgrade(r) {
+		if l.httpHandler == nil {
+			http.NotFound(w, r)
+			return
+		}
+		// Disarm the handshake-timeout that would otherwise close the
+		// underlying connection 15s after Accept. The fallback handler may
+		// run for longer than that (HTTP/2 streams, HTTP/1.1 keep-alive),
+		// so the timer must go away once we know a request has arrived.
+		// Unwrap serializes through sync.Once, so concurrent h2 streams
+		// on the same TCP connection all see the same result.
+		if nc, err := l.extractConnFromContext(r.Context()); err == nil {
+			if _, err := nc.Unwrap(); err != nil {
+				// The handshake-timeout fired between Accept and now; the
+				// connection is already closed. Nothing useful to send.
+				log.Debug("connection timed out before fallback request", "remote_addr", r.RemoteAddr)
+				return
+			}
+		}
+		l.httpHandler.ServeHTTP(w, r)
+		return
+	}
+
 	c, err := l.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// The upgrader writes a response for us.
@@ -287,28 +361,39 @@ func (c connWithScope) Close() error {
 
 type negotiatingConn struct {
 	connWithScope
-	ctx       context.Context
-	cancelCtx context.CancelFunc
-	stopClose func() bool
+	ctx        context.Context
+	cancelCtx  context.CancelFunc
+	stopClose  func() bool
+	disarmOnce sync.Once
+	timedOut   bool // written once inside disarmOnce, read after
 }
 
-// Close closes the negotiating conn and the underlying connWithScope
-// This will be called in case the tls handshake or websocket upgrade fails.
+// disarm stops the handshake-timeout AfterFunc set up in Accept and reports
+// whether the connection is still alive. Concurrent callers see the same
+// result, which the HTTP/2 fallback path needs when several streams share
+// one *negotiatingConn.
+func (c *negotiatingConn) disarm() (alive bool) {
+	c.disarmOnce.Do(func() {
+		if c.stopClose != nil {
+			c.timedOut = !c.stopClose()
+			c.stopClose = nil
+		}
+	})
+	return !c.timedOut
+}
+
+// Close closes the negotiating conn and the underlying connWithScope.
+// Called when the TLS handshake or WebSocket upgrade fails.
 func (c *negotiatingConn) Close() error {
 	defer c.cancelCtx()
-	if c.stopClose != nil {
-		c.stopClose()
-	}
+	c.disarm()
 	return c.connWithScope.Close()
 }
 
 func (c *negotiatingConn) Unwrap() (connWithScope, error) {
 	defer c.cancelCtx()
-	if c.stopClose != nil {
-		if !c.stopClose() {
-			return connWithScope{}, errors.New("timed out")
-		}
-		c.stopClose = nil
+	if !c.disarm() {
+		return connWithScope{}, errors.New("timed out")
 	}
 	return c.connWithScope, nil
 }

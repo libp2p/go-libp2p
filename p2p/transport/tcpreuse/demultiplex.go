@@ -85,6 +85,14 @@ func IsHTTP(s Prefix) bool {
 	switch string(s[:]) {
 	case "GET", "HEA", "POS", "PUT", "DEL", "CON", "OPT", "TRA", "PAT":
 		return true
+	case "PRI":
+		// HTTP/2 cleartext (h2c) connection preface starts with
+		// "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" (RFC 7540 §3.5). PRI is not a
+		// real HTTP method; the IETF chose it specifically because no h1
+		// method begins with those bytes, so this match is unambiguous.
+		// Routing h2c to the HTTP demux branch lets the WebSocket listener
+		// serve both h1 and h2c on the same plaintext port.
+		return true
 	default:
 		return false
 	}

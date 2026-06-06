@@ -34,13 +34,13 @@ func newTestRequests(addrs []ma.Multiaddr, sendDialData bool) (reqs []Request) {
 }
 
 func TestServerInvalidAddrsRejected(t *testing.T) {
-	c := newAutoNAT(t, nil, allowPrivateAddrs, withAmplificationAttackPreventionDialWait(0))
+	c := newAutoNAT(t, nil, AllowPrivateAddrs, withAmplificationAttackPreventionDialWait(0))
 	defer c.Close()
 	defer c.host.Close()
 
 	t.Run("no transport", func(t *testing.T) {
 		dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.OptDisableTCP))
-		an := newAutoNAT(t, dialer, allowPrivateAddrs)
+		an := newAutoNAT(t, dialer, AllowPrivateAddrs)
 		defer an.Close()
 		defer an.host.Close()
 
@@ -101,7 +101,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 
 	t.Run("too many address", func(t *testing.T) {
 		dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
-		an := newAutoNAT(t, dialer, allowPrivateAddrs)
+		an := newAutoNAT(t, dialer, AllowPrivateAddrs)
 		defer an.Close()
 		defer an.host.Close()
 
@@ -120,7 +120,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 
 	t.Run("msg too large", func(t *testing.T) {
 		dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
-		an := newAutoNAT(t, dialer, allowPrivateAddrs)
+		an := newAutoNAT(t, dialer, AllowPrivateAddrs)
 		defer an.Close()
 		defer an.host.Close()
 
@@ -142,7 +142,7 @@ func TestServerDataRequest(t *testing.T) {
 	// server will skip all tcp addresses
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
 	// ask for dial data for quic address
-	an := newAutoNAT(t, dialer, allowPrivateAddrs, withDataRequestPolicy(
+	an := newAutoNAT(t, dialer, AllowPrivateAddrs, withDataRequestPolicy(
 		func(_, dialAddr ma.Multiaddr) bool {
 			if _, err := dialAddr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 				return true
@@ -155,7 +155,7 @@ func TestServerDataRequest(t *testing.T) {
 	defer an.Close()
 	defer an.host.Close()
 
-	c := newAutoNAT(t, nil, allowPrivateAddrs)
+	c := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -192,7 +192,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 	const concurrentRequests = 5
 
 	stallChan := make(chan struct{})
-	an := newAutoNAT(t, nil, allowPrivateAddrs, withDataRequestPolicy(
+	an := newAutoNAT(t, nil, AllowPrivateAddrs, withDataRequestPolicy(
 		// stall all allowed requests
 		func(_, _ ma.Multiaddr) bool {
 			<-stallChan
@@ -206,7 +206,7 @@ func TestServerMaxConcurrentRequestsPerPeer(t *testing.T) {
 
 	// server will skip all tcp addresses
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
-	c := newAutoNAT(t, dialer, allowPrivateAddrs)
+	c := newAutoNAT(t, dialer, AllowPrivateAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -256,7 +256,7 @@ func TestServerDataRequestJitter(t *testing.T) {
 	// server will skip all tcp addresses
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
 	// ask for dial data for quic address
-	an := newAutoNAT(t, dialer, allowPrivateAddrs, withDataRequestPolicy(
+	an := newAutoNAT(t, dialer, AllowPrivateAddrs, withDataRequestPolicy(
 		func(_, dialAddr ma.Multiaddr) bool {
 			if _, err := dialAddr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 				return true
@@ -269,7 +269,7 @@ func TestServerDataRequestJitter(t *testing.T) {
 	defer an.Close()
 	defer an.host.Close()
 
-	c := newAutoNAT(t, nil, allowPrivateAddrs)
+	c := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -303,11 +303,11 @@ func TestServerDataRequestJitter(t *testing.T) {
 }
 
 func TestServerDial(t *testing.T) {
-	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10, 2), allowPrivateAddrs)
+	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10, 2), AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
-	c := newAutoNAT(t, nil, allowPrivateAddrs)
+	c := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -521,14 +521,14 @@ func TestServerDataRequestWithAmplificationAttackPrevention(t *testing.T) {
 	// server will skip all tcp addresses
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
 	// ask for dial data for quic address
-	an := newAutoNAT(t, dialer, allowPrivateAddrs,
+	an := newAutoNAT(t, dialer, AllowPrivateAddrs,
 		WithServerRateLimit(10, 10, 10, 2),
 		withAmplificationAttackPreventionDialWait(0),
 	)
 	defer an.Close()
 	defer an.host.Close()
 
-	c := newAutoNAT(t, nil, allowPrivateAddrs)
+	c := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -596,7 +596,7 @@ func TestDefaultAmplificationAttackPrevention(t *testing.T) {
 }
 
 func FuzzServerDialRequest(f *testing.F) {
-	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
+	a := newAutoNAT(f, nil, AllowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
 	c := newAutoNAT(f, nil)
 	idAndWait(f, c, a)
 	// reduce the streamTimeout before running this. TODO: fix this

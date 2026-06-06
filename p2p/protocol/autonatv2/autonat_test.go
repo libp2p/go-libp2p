@@ -98,7 +98,7 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 }
 
 func TestClientRequest(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -133,7 +133,7 @@ func TestClientRequest(t *testing.T) {
 }
 
 func TestClientServerError(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -177,7 +177,7 @@ func TestClientServerError(t *testing.T) {
 }
 
 func TestClientDataRequest(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -335,7 +335,7 @@ func TestAutoNATPrivateAndPublicAddrs(t *testing.T) {
 }
 
 func TestClientDialBacks(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -695,7 +695,7 @@ func TestPeerMap(t *testing.T) {
 }
 
 func FuzzClient(f *testing.F) {
-	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
+	a := newAutoNAT(f, nil, AllowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
 	c := newAutoNAT(f, nil)
 	idAndWait(f, c, a)
 
