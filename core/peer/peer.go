@@ -127,14 +127,14 @@ func Decode(s string) (ID, error) {
 		// base58 encoded sha256 or identity multihash
 		m, err := mh.FromB58String(s)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse peer ID: %s", err)
+			return "", fmt.Errorf("failed to parse peer ID: %w", err)
 		}
 		return ID(m), nil
 	}
 
 	c, err := cid.Decode(s)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse peer ID: %s", err)
+		return "", fmt.Errorf("failed to parse peer ID: %w", err)
 	}
 	return FromCid(c)
 }

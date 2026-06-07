@@ -51,7 +51,7 @@ var ErrInvalidSignature = errors.New("invalid signature or incorrect domain")
 func Seal(rec Record, privateKey crypto.PrivKey) (*Envelope, error) {
 	payload, err := rec.MarshalRecord()
 	if err != nil {
-		return nil, fmt.Errorf("error marshaling record: %v", err)
+		return nil, fmt.Errorf("error marshaling record: %w", err)
 	}
 
 	domain := rec.Domain()
