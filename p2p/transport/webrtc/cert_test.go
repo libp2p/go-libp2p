@@ -1,12 +1,42 @@
 package libp2pwebrtc
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 
 	"github.com/stretchr/testify/require"
 )
+
+// A fixed host key must always map to this exact /certhash. The fingerprint is
+// SHA-256 over the cert DER, so it is the value other peers cache and pin. This
+// vector catches any change in the derivation (HKDF, filippo.io/keygen, the
+// x509 encoder, or this code) that would silently rotate every node's
+// webrtc-direct multiaddr. filippo.io/keygen in particular documents that its
+// output may change before v1.0.0.
+//
+// Updating this value is a breaking, network-visible event: do not do it to
+// make a red test green without understanding why the derivation changed.
+func TestDeterministicCertificateGoldenVector(t *testing.T) {
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	privKey, _, err := crypto.GenerateEd25519Key(bytes.NewReader(seed))
+	require.NoError(t, err)
+
+	cert, err := newDeterministicCertificate(privKey)
+	require.NoError(t, err)
+
+	fps, err := cert.GetFingerprints()
+	require.NoError(t, err)
+	require.Equal(t, "sha-256", fps[0].Algorithm)
+	require.Equal(t,
+		"dd:6e:2d:63:b0:f0:61:9e:18:7a:03:1f:64:77:16:37:a0:41:8a:71:dc:d8:b9:d7:8c:6c:69:b1:f4:25:64:91",
+		fps[0].Value,
+	)
+}
 
 // Same host key, same cert, same /certhash. This is the property restart
 // stability depends on.

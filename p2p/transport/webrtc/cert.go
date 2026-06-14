@@ -46,12 +46,26 @@ package libp2pwebrtc
 // the window is static and rotation is skipped.
 // https://www.w3.org/TR/webtransport/#dom-webtransport-servercertificatehashes
 //
+// The serial/key derivation and deterministicSigner below are deliberately
+// kept local to this transport rather than shared with webtransport, even
+// though the two look similar today. WebRTC and WebTransport are independent on
+// the wire and in their browser implementations, and their cert requirements
+// may diverge; keeping each self-contained avoids coupling one transport's
+// behavior to the other.
+//
 // Every input to x509.CreateCertificate (serial, dates, public key, signature
-// nonce) must be deterministic so the DER bytes, and therefore /certhash,
-// are stable. The ECDSA key is HKDF-derived; signing goes through
-// deterministicSigner, which signs with nil rand. Go 1.24+ guarantees
-// deterministic ECDSA in that case.
+// nonce) must be deterministic so the DER bytes, and therefore /certhash, are
+// stable. The ECDSA key is HKDF-derived; signing goes through
+// deterministicSigner, which signs with nil rand, the Go 1.24+ deterministic
+// ECDSA path.
 // https://go.dev/doc/go1.24#cryptoecdsapkgcryptoecdsa
+//
+// DER byte-stability spans a single Go toolchain plus a fixed set of these
+// dependencies (filippo.io/keygen in particular documents that its output may
+// change before v1.0.0). TestDeterministicCertificateGoldenVector pins the
+// fingerprint for a fixed key so any keygen, bigmod, or x509 encoding change
+// that would rotate every node's /certhash fails CI instead of shipping
+// silently. Changing that golden value is a breaking, network-visible event.
 //
 // If a future browser starts validating remote DTLS cert dates, add rotation
 // using p2p/transport/webtransport/cert_manager.go as the template.
@@ -60,6 +74,8 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hkdf"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -70,7 +86,6 @@ import (
 	"time"
 
 	"filippo.io/keygen"
-	"golang.org/x/crypto/hkdf"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 
@@ -96,28 +111,31 @@ func newDeterministicCertificate(key ic.PrivKey) (*webrtc.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read host key bytes: %w", err)
 	}
-	r := hkdf.New(sha256.New, keyBytes, nil, []byte(deterministicCertHKDFInfo))
 
-	serialBytes := make([]byte, 8)
-	if _, err := io.ReadFull(r, serialBytes); err != nil {
-		return nil, fmt.Errorf("derive cert serial: %w", err)
-	}
-	serial := int64(binary.BigEndian.Uint64(serialBytes))
-	if serial < 0 {
-		serial = -serial
+	// HKDF expands the host key into the serial bytes followed by the ECDSA
+	// seed. The same key always yields the same bytes (RFC 5869), so every
+	// derived input below is deterministic.
+	const serialLen = 8
+	const seedLen = 192 / 8 // 192 bits of entropy for P-256, per filippo.io/keygen
+	material, err := hkdf.Key(sha256.New, keyBytes, nil, deterministicCertHKDFInfo, serialLen+seedLen)
+	if err != nil {
+		return nil, fmt.Errorf("derive cert material: %w", err)
 	}
 
-	ecdsaSeed := make([]byte, 192/8) // 192 bits of entropy for P-256, per filippo.io/keygen
-	if _, err := io.ReadFull(r, ecdsaSeed); err != nil {
-		return nil, fmt.Errorf("derive ECDSA seed: %w", err)
-	}
-	priv, err := keygen.ECDSA(elliptic.P256(), ecdsaSeed)
+	priv, err := keygen.ECDSA(elliptic.P256(), material[serialLen:])
 	if err != nil {
 		return nil, fmt.Errorf("derive ECDSA key: %w", err)
 	}
 
+	// Read the serial bytes as unsigned so the serial is never negative:
+	// x509.CreateCertificate rejects a negative SerialNumber, and an int64
+	// abs() cannot fix math.MinInt64 (negating it overflows back to itself).
+	// max(_, 1) keeps it positive when the bytes are all zero, as RFC 5280
+	// section 4.1.2.2 requires.
+	serial := new(big.Int).SetUint64(max(binary.BigEndian.Uint64(material[:serialLen]), 1))
+
 	tpl := &x509.Certificate{
-		SerialNumber:       big.NewInt(serial),
+		SerialNumber:       serial,
 		Subject:            pkix.Name{CommonName: "libp2p-webrtc-direct"},
 		Issuer:             pkix.Name{CommonName: "libp2p-webrtc-direct"},
 		NotBefore:          deterministicCertNotBefore,
@@ -125,12 +143,11 @@ func newDeterministicCertificate(key ic.PrivKey) (*webrtc.Certificate, error) {
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
 
-	// x509.CreateCertificate forwards its rand reader to the signer for the
-	// ECDSA nonce. deterministicSigner ignores that reader and signs with nil,
-	// which Go 1.24+ guarantees is deterministic. The HKDF stream is passed in
-	// as belt-and-braces, in case CreateCertificate ever reads rand for
-	// something else.
-	der, err := x509.CreateCertificate(r, tpl, tpl, priv.Public(), deterministicSigner{priv})
+	// CreateCertificate forwards rand only to the signer (the supplied non-nil
+	// SerialNumber means it never draws rand for that). deterministicSigner
+	// ignores the reader and signs with nil, the Go 1.24+ deterministic ECDSA
+	// path, so the DER bytes are reproducible regardless of the reader here.
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, priv.Public(), deterministicSigner{priv})
 	if err != nil {
 		return nil, fmt.Errorf("create x509 certificate: %w", err)
 	}
@@ -147,6 +164,8 @@ func newDeterministicCertificate(key ic.PrivKey) (*webrtc.Certificate, error) {
 // reproducible. Signing with rand=nil triggers Go 1.24+'s deterministic
 // ECDSA path:
 // https://go.dev/doc/go1.24#cryptoecdsapkgcryptoecdsa
+//
+// Kept local to this transport on purpose; see the file-level note above.
 type deterministicSigner struct {
 	priv *ecdsa.PrivateKey
 }
