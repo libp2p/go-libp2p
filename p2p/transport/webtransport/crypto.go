@@ -59,12 +59,13 @@ func generateCert(key ic.PrivKey, start, end time.Time) (*x509.Certificate, *ecd
 	if _, err := deterministicHKDFReader.Read(b); err != nil {
 		return nil, nil, err
 	}
-	serial := int64(binary.BigEndian.Uint64(b))
-	if serial < 0 {
-		serial = -serial
-	}
+	// Read the serial bytes as unsigned so the serial is never negative:
+	// x509.CreateCertificate rejects a negative SerialNumber, and an int64
+	// abs() cannot fix math.MinInt64. max(_, 1) keeps it positive when the
+	// bytes are all zero, as RFC 5280 section 4.1.2.2 requires.
+	serial := new(big.Int).SetUint64(max(binary.BigEndian.Uint64(b), 1))
 	certTempl := &x509.Certificate{
-		SerialNumber:          big.NewInt(serial),
+		SerialNumber:          serial,
 		Subject:               pkix.Name{},
 		NotBefore:             start,
 		NotAfter:              end,
@@ -152,6 +153,11 @@ func newDeterministicReader(seed []byte, salt []byte, info string) io.Reader {
 // that will produce deterministic signatures by ignoring the rand reader.
 // Go 1.24 produces deterministic ecdsa signatures when passed a nil random source.
 // See: https://go.dev/doc/go1.24#cryptoecdsapkgcryptoecdsa
+//
+// This and the serial derivation in generateCert are deliberately duplicated
+// here rather than shared with p2p/transport/webrtc. The two transports are
+// independent on the wire and in their browser implementations and may diverge;
+// keeping each self-contained avoids coupling their cert behavior.
 type deterministicSigner struct {
 	priv *ecdsa.PrivateKey
 }
