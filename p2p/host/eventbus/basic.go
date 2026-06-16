@@ -334,8 +334,6 @@ type wildcardNode struct {
 	nSinks        atomic.Int32
 	sinks         []*namedSink
 	metricsTracer MetricsTracer
-
-	slowConsumerTimer *time.Timer
 }
 
 func (n *wildcardNode) addSink(sink *namedSink) {
@@ -385,12 +383,7 @@ func (n *wildcardNode) emit(evt any) {
 		select {
 		case sink.ch <- evt:
 		default:
-			slowConsumerTimer := emitAndLogError(n.slowConsumerTimer, wildcardType, evt, sink)
-			defer func() {
-				n.Lock()
-				n.slowConsumerTimer = slowConsumerTimer
-				n.Unlock()
-			}()
+			emitAndLogError(wildcardType, evt, sink)
 		}
 	}
 	n.RUnlock()
@@ -410,8 +403,6 @@ type node struct {
 
 	sinks         []*namedSink
 	metricsTracer MetricsTracer
-
-	slowConsumerTimer *time.Timer
 }
 
 func newNode(typ reflect.Type, metricsTracer MetricsTracer) *node {
@@ -440,32 +431,24 @@ func (n *node) emit(evt any) {
 		select {
 		case sink.ch <- evt:
 		default:
-			n.slowConsumerTimer = emitAndLogError(n.slowConsumerTimer, n.typ, evt, sink)
+			emitAndLogError(n.typ, evt, sink)
 		}
 	}
 	n.lk.Unlock()
 }
 
-func emitAndLogError(timer *time.Timer, typ reflect.Type, evt any, sink *namedSink) *time.Timer {
+func emitAndLogError(typ reflect.Type, evt any, sink *namedSink) {
 	// Slow consumer. Log a warning if stalled for the timeout
-	if timer == nil {
-		timer = time.NewTimer(slowConsumerWarningTimeout)
-	} else {
-		timer.Reset(slowConsumerWarningTimeout)
-	}
+	timer := time.NewTimer(slowConsumerWarningTimeout)
+	defer timer.Stop()
 
 	select {
 	case sink.ch <- evt:
-		if !timer.Stop() {
-			<-timer.C
-		}
 	case <-timer.C:
 		log.Warn("subscriber is a slow consumer. This can lead to libp2p stalling and hard to debug issues.", "subscriber_name", sink.name, "event_type", typ)
 		// Continue to stall since there's nothing else we can do.
 		sink.ch <- evt
 	}
-
-	return timer
 }
 
 func sendSubscriberMetrics(metricsTracer MetricsTracer, sink *namedSink) {

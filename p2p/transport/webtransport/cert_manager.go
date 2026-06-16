@@ -166,7 +166,17 @@ func (m *certManager) AddrComponent() ma.Multiaddr {
 }
 
 func (m *certManager) SerializedCertHashes() [][]byte {
-	return m.serializedCertHashes
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+	if len(m.serializedCertHashes) == 0 {
+		return nil
+	}
+	res := make([][]byte, len(m.serializedCertHashes))
+	for i, h := range m.serializedCertHashes {
+		res[i] = make([]byte, len(h))
+		copy(res[i], h)
+	}
+	return res
 }
 
 func (m *certManager) cacheSerializedCertHashes() error {

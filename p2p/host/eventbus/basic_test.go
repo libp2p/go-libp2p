@@ -769,3 +769,68 @@ func BenchmarkSubscribeAndEmitter(b *testing.B) {
 		}
 	}
 }
+
+// TestWildcardSlowConsumerDeadlock ensures that concurrent emissions to a wildcard subscriber
+// do not result in a deadlock when the subscriber's channel is full. Previously, sharing a
+// single slowConsumerTimer pointer across concurrent emitters allowed a race condition
+// on the timer channel, leaving one of the emitters permanently blocked on timer drain.
+func TestWildcardSlowConsumerDeadlock(t *testing.T) {
+	bus := NewBus()
+	sub, err := bus.Subscribe(event.WildcardSubscription, BufSize(1))
+	require.NoError(t, err)
+	defer sub.Close()
+
+	em, err := bus.Emitter(new(EventB))
+	require.NoError(t, err)
+	defer em.Close()
+
+	// Fill buffer
+	em.Emit(EventB(1))
+
+	// Trigger slowConsumerTimer init.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		<-sub.Out()
+	}()
+	em.Emit(EventB(2)) // This leaves the buffer full
+
+	// Concurrent emitters
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		em.Emit(EventB(4))
+	}()
+	go func() {
+		defer wg.Done()
+		em.Emit(EventB(5))
+	}()
+
+	// Wait for timer to fire
+	time.Sleep(1500 * time.Millisecond)
+
+	// Drain channel
+	go func() {
+		for {
+			select {
+			case <-sub.Out():
+			case <-time.After(1 * time.Second):
+				return
+			}
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("DEADLOCK DETECTED: Emitters are stuck!")
+	}
+}
+
+
