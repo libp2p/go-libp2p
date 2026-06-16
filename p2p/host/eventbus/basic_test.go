@@ -832,5 +832,3 @@ func TestWildcardSlowConsumerDeadlock(t *testing.T) {
 		t.Fatal("DEADLOCK DETECTED: Emitters are stuck!")
 	}
 }
-
-
