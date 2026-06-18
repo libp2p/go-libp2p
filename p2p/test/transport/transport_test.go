@@ -355,9 +355,128 @@ var transportsToTest = []TransportTestCase{
 	},
 }
 
+// hasIPv6 reports whether the machine supports IPv6 loopback.
+// It is evaluated once at init time.
+var hasIPv6 = func() bool {
+	ln, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		return false
+	}
+	ln.Close()
+	return true
+}()
+
+// transportsToTestIPv6 contains IPv6 variants of the transports in transportsToTest.
+// Tests using these entries should skip when hasIPv6 is false.
+var transportsToTestIPv6 = []TransportTestCase{
+	{
+		Name: "TCP-IPv6 / Noise / Yamux",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(noise.ID, noise.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP-IPv6 / TLS / Yamux",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebSocket-IPv6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/tcp/0/ws"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "QUIC-IPv6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebTransport-IPv6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/quic-v1/webtransport"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "WebRTC-IPv6",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip6/::1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+}
+
+func init() {
+	transportsToTest = append(transportsToTest, transportsToTestIPv6...)
+}
+
+// skipIfNoIPv6 skips the current test if it is an IPv6 test and the machine
+// does not support IPv6 loopback.
+func skipIfNoIPv6(t *testing.T) {
+	t.Helper()
+	if !hasIPv6 && strings.Contains(t.Name(), "IPv6") {
+		t.Skip("skipping IPv6 test: machine does not support IPv6")
+	}
+}
+
 func TestPing(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -387,6 +506,7 @@ func TestBigPing(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -460,6 +580,7 @@ func TestLotsOfDataManyStreams(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -515,6 +636,7 @@ func TestManyStreams(t *testing.T) {
 	const streamCount = 128
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 			defer h1.Close()
@@ -580,6 +702,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 	const streamCount = 1024
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			if strings.Contains(tc.Name, "WebRTC") {
 				t.Skip("This test potentially exhausts the uint16 WebRTC stream ID space.")
 			}
@@ -739,6 +862,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 func TestListenerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -768,6 +892,7 @@ func TestListenerStreamResets(t *testing.T) {
 func TestDialerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -799,6 +924,7 @@ func TestDialerStreamResets(t *testing.T) {
 func TestStreamReadDeadline(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -853,6 +979,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -893,10 +1020,11 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 func TestCloseConnWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
 		// WebRTC doesn't have a connection when rcmgr blocks it, so there's nothing to close.
-		if tc.Name == "WebRTC" {
+		if strings.HasPrefix(tc.Name, "WebRTC") {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
@@ -933,10 +1061,11 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 // connection attempt
 func TestConnDroppedWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
-		if tc.Name != "WebRTC" {
+		if !strings.HasPrefix(tc.Name, "WebRTC") {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockRcmgr := mocknetwork.NewMockResourceManager(ctrl)
@@ -977,6 +1106,7 @@ func TestConnDroppedWhenBlocked(t *testing.T) {
 func TestConnClosedWhenRemoteCloses(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer server.Close()
@@ -1017,6 +1147,7 @@ func TestErrorCodes(t *testing.T) {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			server := tc.HostGenerator(t, TransportTestCaseOpts{})
 			client := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer server.Close()
@@ -1096,7 +1227,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebRTC" {
+				if strings.HasPrefix(tc.Name, "WebRTC") {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
@@ -1124,7 +1255,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("NewStreamErrorByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebRTC" {
+				if strings.HasPrefix(tc.Name, "WebRTC") {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
