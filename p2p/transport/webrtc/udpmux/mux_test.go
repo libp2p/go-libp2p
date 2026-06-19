@@ -31,6 +31,44 @@ func setupMapping(t *testing.T, ufrag string, from net.PacketConn, m *UDPMux) {
 	require.NoError(t, err)
 }
 
+func getSTUNBindingRequestWithUsername(username string) *stun.Message {
+	msg := stun.New()
+	msg.SetType(stun.BindingRequest)
+	uattr := stun.RawAttribute{
+		Type:  stun.AttrUsername,
+		Value: []byte(username),
+	}
+	uattr.AddTo(msg)
+	msg.Encode()
+	return msg
+}
+
+// In WebRTC Direct v2 the STUN USERNAME carries distinct server and client
+// ufrags ("server_ufrag:client_ufrag"). The mux must key on the server (local)
+// ufrag, since that is the ufrag pion uses to retrieve the muxed connection,
+// while still surfacing the client ufrag on the Candidate.
+func TestAcceptV2DistinctUfrags(t *testing.T) {
+	c := newPacketConn(t)
+	defer c.Close()
+	m := NewUDPMux(c)
+	m.Start()
+	defer m.Close()
+
+	serverUfrag := "libp2p+webrtc+v2/browserClientPassword1234"
+	clientUfrag := "browserClientUfrag"
+
+	from := newPacketConn(t)
+	msg := getSTUNBindingRequestWithUsername(serverUfrag + ":" + clientUfrag)
+	_, err := from.WriteTo(msg.Raw, m.GetListenAddresses()[0])
+	require.NoError(t, err)
+
+	cand, err := m.Accept(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, serverUfrag, cand.Ufrag)
+	require.Equal(t, clientUfrag, cand.RemoteUfrag)
+	require.Equal(t, from.LocalAddr(), cand.Addr)
+}
+
 func newPacketConn(t *testing.T) net.PacketConn {
 	t.Helper()
 	udpPort0 := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0}

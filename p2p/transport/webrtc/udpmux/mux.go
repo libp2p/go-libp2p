@@ -32,8 +32,15 @@ const ReceiveBufSize = 1500
 const maxAddrsPerUfrag = 32
 
 type Candidate struct {
+	// Ufrag is the local (server) ICE ufrag, parsed from the part of the STUN
+	// USERNAME attribute before the ':'. pion retrieves a muxed connection by
+	// its local ufrag, so the mux is keyed on this value.
 	Ufrag string
-	Addr  *net.UDPAddr
+	// RemoteUfrag is the dialing peer's (client) ICE ufrag, parsed from the part
+	// of the STUN USERNAME attribute after the ':'. In WebRTC Direct v1 it is
+	// identical to Ufrag; in v2 the two differ.
+	RemoteUfrag string
+	Addr        *net.UDPAddr
 }
 
 // UDPMux multiplexes multiple ICE connections over a single net.PacketConn,
@@ -203,18 +210,18 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 		return false
 	}
 
-	ufrag, err := ufragFromSTUNMessage(msg)
+	serverUfrag, clientUfrag, err := ufragsFromSTUNMessage(msg)
 	if err != nil {
-		log.Debug("could not find STUN username", "error", err)
+		log.Debug("could not parse STUN username", "error", err)
 		return false
 	}
 
-	connCreated, conn := mux.getOrCreateConn(ufrag, isIPv6, mux, udpAddr)
+	connCreated, conn := mux.getOrCreateConn(serverUfrag, isIPv6, mux, udpAddr)
 	if connCreated {
 		select {
-		case mux.queue <- Candidate{Addr: udpAddr, Ufrag: ufrag}:
+		case mux.queue <- Candidate{Addr: udpAddr, Ufrag: serverUfrag, RemoteUfrag: clientUfrag}:
 		default:
-			log.Debug("queue full, dropping incoming candidate", "ufrag", ufrag, "addr", udpAddr)
+			log.Debug("queue full, dropping incoming candidate", "ufrag", serverUfrag, "addr", udpAddr)
 			conn.Close()
 			return false
 		}
@@ -243,25 +250,27 @@ type ufragConnKey struct {
 	isIPv6 bool
 }
 
-// ufragFromSTUNMessage returns the local or ufrag
-// from the STUN username attribute. Local ufrag is the ufrag of the
-// peer which initiated the connectivity check, e.g in a connectivity
-// check from A to B, the username attribute will be B_ufrag:A_ufrag
-// with the local ufrag value being A_ufrag. In case of ice-lite, the
-// localUfrag value will always be the remote peer's ufrag since ICE-lite
-// implementations do not generate connectivity checks. In our specific
-// case, since the local and remote ufrag is equal, we can return
-// either value.
-func ufragFromSTUNMessage(msg *stun.Message) (string, error) {
+// ufragsFromSTUNMessage returns the local (server) and remote (client) ufrag
+// from the STUN USERNAME attribute. For a connectivity check from client A to
+// server B the USERNAME is "B_ufrag:A_ufrag" (RFC 8445 §7.2.2,
+// "<remote-ufrag>:<local-ufrag>" from the sender's perspective). B's pion ICE
+// agent retrieves a muxed connection by its local (server) ufrag, so we key the
+// mux on B_ufrag (the part before the ':').
+//
+// In WebRTC Direct v1 the two ufrags are identical. In v2 they differ:
+// B_ufrag is "libp2p+webrtc+v2/<client_pwd>" and A_ufrag is the client ufrag.
+// An ufrag never contains a ':' (RFC 8445 ice-char), so splitting on the first
+// ':' is unambiguous.
+func ufragsFromSTUNMessage(msg *stun.Message) (serverUfrag, clientUfrag string, err error) {
 	attr, err := msg.Get(stun.AttrUsername)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	index := bytes.Index(attr, []byte{':'})
 	if index == -1 {
-		return "", fmt.Errorf("invalid STUN username attribute")
+		return "", "", fmt.Errorf("invalid STUN username attribute")
 	}
-	return string(attr[index+1:]), nil
+	return string(attr[:index]), string(attr[index+1:]), nil
 }
 
 // RemoveConnByUfrag removes the connection associated with the ufrag and all the
