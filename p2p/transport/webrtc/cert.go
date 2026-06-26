@@ -70,11 +70,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hkdf"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -139,11 +139,12 @@ func newDeterministicCertificate(key ic.PrivKey) (*webrtc.Certificate, error) {
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
 
-	// CreateCertificate forwards rand only to the signer (the supplied non-nil
-	// SerialNumber means it never draws rand for that). deterministicSigner
-	// ignores the reader and signs with nil, the Go 1.24+ deterministic ECDSA
-	// path, so the DER bytes are reproducible regardless of the reader here.
-	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, priv.Public(), deterministicSigner{priv})
+	// CreateCertificate must not draw entropy here: SerialNumber is set (so no
+	// random serial) and deterministicSigner signs with nil rand. failingReader
+	// keeps that invariant local to the call: if a future stdlib change starts
+	// consuming rand, cert creation fails loudly instead of silently producing a
+	// non-deterministic cert that rotates every /certhash.
+	der, err := x509.CreateCertificate(failingReader{}, tpl, tpl, priv.Public(), deterministicSigner{priv})
 	if err != nil {
 		return nil, fmt.Errorf("create x509 certificate: %w", err)
 	}
@@ -172,4 +173,14 @@ func (ds deterministicSigner) Public() crypto.PublicKey { return ds.priv.Public(
 
 func (ds deterministicSigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	return ds.priv.Sign(nil, digest, opts)
+}
+
+// failingReader is the rand source passed to x509.CreateCertificate. A
+// deterministic cert must consume no entropy, so any Read here means a code or
+// stdlib change started drawing randomness and would silently rotate the
+// /certhash. Failing the Read turns that into an error at cert creation.
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) {
+	return 0, errors.New("deterministic cert creation must not consume entropy")
 }
