@@ -8,37 +8,32 @@ package libp2pwebrtc
 //
 // Why this is safe:
 //
-//   - The DTLS cert is not the identity credential. Peer identity comes from
+//   - The DTLS cert is not the identity credential: peer identity comes from
 //     a Noise XX handshake run inside DTLS, with both cert fingerprints
 //     bound into the Noise prologue.
 //     webrtc-direct: https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md
 //     noise: https://github.com/libp2p/specs/blob/master/noise/README.md
 //
-//   - The libp2p spec tells the server to disable DTLS fingerprint
-//     verification, since the server does not know the client cert in
-//     advance. The server therefore inspects no cert details beyond the
-//     handshake.
+//   - The server disables DTLS fingerprint verification: per the libp2p spec
+//     it does not know the client cert in advance, so it inspects no cert
+//     details beyond the handshake.
 //
-//   - Browser DTLS verifies the server cert only by matching its SHA-256
-//     against the SDP a=fingerprint line the browser builds from /certhash.
-//     Self-signed peer certs have no trust chain; NotBefore and NotAfter are
-//     not part of the check. RFC 8122 (which defines a=fingerprint) requires
-//     only the fingerprint match.
+//   - The browser verifies the server cert by SHA-256 fingerprint alone: it
+//     matches the cert against the SDP a=fingerprint line built from
+//     /certhash. Self-signed peer certs have no trust chain, and RFC 8122
+//     (which defines a=fingerprint) requires only the fingerprint match, not
+//     NotBefore or NotAfter.
 //     https://datatracker.ietf.org/doc/html/rfc8122
 //
-//   - The 365-day validity cap in the W3C WebRTC spec applies only to certs
-//     the browser generates for itself, not to the remote peer cert /certhash
-//     points to.
-//     https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-generatecertificate
-//
-//   - Pion rejects a local cert whose NotAfter has already passed when
-//     constructing a PeerConnection. It does not check NotBefore. The
+//   - Pion checks only NotAfter, not NotBefore: it rejects a local cert whose
+//     NotAfter has already passed when constructing a PeerConnection. The
 //     hardcoded NotAfter below stays valid into the next century.
 //
-//   - Browser interop is empirically robust across very different cert
-//     lifetimes. js-libp2p rotates every 14 days, rust-libp2p has its own
-//     scheme, and earlier go-libp2p used pion's ~30-day default. All three
-//     interoperate with Chrome, Firefox, and Safari today.
+//   - No lifetime cap touches the remote peer cert: the W3C WebRTC 365-day
+//     cap applies only to certs the browser generates for itself, not to the
+//     cert /certhash points to. With no check enforcing a maximum lifetime,
+//     the static window below interoperates with Chrome, Firefox, and Safari.
+//     https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-generatecertificate
 //
 // Compared to p2p/transport/webtransport/crypto.go, WebTransport must rotate
 // every 14 days because the W3C WebTransport spec hard-caps
@@ -104,8 +99,9 @@ var (
 
 // newDeterministicCertificate returns a webrtc.Certificate whose SHA-256
 // fingerprint (the /certhash component) depends only on the host private
-// key. The cert uses ECDSA P-256, the only ECDSA curve Chromium accepts in
-// WebRTC DTLS; RSA works but produces larger, slower certs.
+// key. The cert uses ECDSA P-256, the curve RFC 8827 mandates for WebRTC DTLS
+// and the most interoperable choice across browsers; RSA works but produces
+// larger, slower certs.
 func newDeterministicCertificate(key ic.PrivKey) (*webrtc.Certificate, error) {
 	keyBytes, err := key.Raw()
 	if err != nil {
