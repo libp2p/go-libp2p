@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"bytes"
 	"sync"
 	"time"
 
@@ -173,8 +174,7 @@ func (m *certManager) SerializedCertHashes() [][]byte {
 	}
 	res := make([][]byte, len(m.serializedCertHashes))
 	for i, h := range m.serializedCertHashes {
-		res[i] = make([]byte, len(h))
-		copy(res[i], h)
+		res[i] = bytes.Clone(h)
 	}
 	return res
 }
