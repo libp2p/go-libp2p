@@ -770,65 +770,57 @@ func BenchmarkSubscribeAndEmitter(b *testing.B) {
 	}
 }
 
-// TestWildcardSlowConsumerDeadlock ensures that concurrent emissions to a wildcard subscriber
-// do not result in a deadlock when the subscriber's channel is full. Previously, sharing a
-// single slowConsumerTimer pointer across concurrent emitters allowed a race condition
-// on the timer channel, leaving one of the emitters permanently blocked on timer drain.
-func TestWildcardSlowConsumerDeadlock(t *testing.T) {
-	bus := NewBus()
-	sub, err := bus.Subscribe(event.WildcardSubscription, BufSize(1))
+// queueSignalTracer is a no-op MetricsTracer that reports when an emit has
+// reached the point of queuing an event on a sink. At that point the wildcard
+// emit already holds the node read lock, which is the state the close-during-
+// stall test needs before it closes the subscription.
+type queueSignalTracer struct {
+	queued chan struct{}
+}
+
+func (queueSignalTracer) EventEmitted(reflect.Type)         {}
+func (queueSignalTracer) AddSubscriber(reflect.Type)        {}
+func (queueSignalTracer) RemoveSubscriber(reflect.Type)     {}
+func (queueSignalTracer) SubscriberQueueLength(string, int) {}
+func (queueSignalTracer) SubscriberQueueFull(string, bool)  {}
+func (t queueSignalTracer) SubscriberEventQueued(string) {
+	select {
+	case t.queued <- struct{}{}:
+	default:
+	}
+}
+
+// TestWildcardCloseUnblocksStalledEmit covers the slow-consumer safety valve: an
+// emit stalled on a full wildcard subscriber, holding the node read lock, must
+// be released when the subscription is closed. wildcardNode.removeSink starts
+// draining the channel before it takes the write lock; were the order reversed,
+// Close would deadlock against the read lock the stalled emit still holds.
+func TestWildcardCloseUnblocksStalledEmit(t *testing.T) {
+	queued := make(chan struct{}, 1)
+	bus := NewBus(WithMetricsTracer(queueSignalTracer{queued: queued}))
+
+	// An unbuffered subscriber has nowhere to put the event, so the emit below
+	// stalls immediately without a fill step.
+	sub, err := bus.Subscribe(event.WildcardSubscription, BufSize(0))
 	require.NoError(t, err)
-	defer sub.Close()
 
 	em, err := bus.Emitter(new(EventB))
 	require.NoError(t, err)
 	defer em.Close()
 
-	// Fill buffer
-	em.Emit(EventB(1))
-
-	// Trigger slowConsumerTimer init.
+	emitReturned := make(chan struct{})
 	go func() {
-		time.Sleep(100 * time.Millisecond)
-		<-sub.Out()
-	}()
-	em.Emit(EventB(2)) // This leaves the buffer full
-
-	// Concurrent emitters
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		em.Emit(EventB(4))
-	}()
-	go func() {
-		defer wg.Done()
-		em.Emit(EventB(5))
+		em.Emit(EventB(0))
+		close(emitReturned)
 	}()
 
-	// Wait for timer to fire
-	time.Sleep(1500 * time.Millisecond)
+	<-queued // the emit now holds the read lock and is stalled on the send
 
-	// Drain channel
-	go func() {
-		for {
-			select {
-			case <-sub.Out():
-			case <-time.After(1 * time.Second):
-				return
-			}
-		}
-	}()
-
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
+	require.NoError(t, sub.Close())
 
 	select {
-	case <-done:
+	case <-emitReturned:
 	case <-time.After(5 * time.Second):
-		t.Fatal("DEADLOCK DETECTED: Emitters are stuck!")
+		t.Fatal("Close did not unblock the stalled emit")
 	}
 }
