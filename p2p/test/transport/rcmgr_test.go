@@ -25,6 +25,7 @@ import (
 func TestResourceManagerIsUsed(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			skipIfNoIPv6(t)
 			for _, testDialer := range []bool{true, false} {
 				t.Run(tc.Name+fmt.Sprintf(" test_dialer=%v", testDialer), func(t *testing.T) {
 
@@ -84,7 +85,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						}
 						return nil
 					})
-					if tc.Name == "WebRTC" {
+					if strings.HasPrefix(tc.Name, "WebRTC") {
 						// webrtc receive buffer is a fix sized buffer allocated up front
 						connScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any())
 					}
