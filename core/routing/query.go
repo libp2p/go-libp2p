@@ -70,18 +70,23 @@ func (e *eventChannel) waitThenClose() {
 // the internal context expire.
 func (e *eventChannel) send(ctx context.Context, ev *QueryEvent) {
 	e.mu.Lock()
-	// Closed.
-	if e.ch == nil {
+	ch := e.ch
+	if ch == nil {
 		e.mu.Unlock()
 		return
 	}
+	e.mu.Unlock()
+
+	defer func() {
+		_ = recover()
+	}()
+
 	// in case the passed context is unrelated, wait on both.
 	select {
-	case e.ch <- ev:
+	case ch <- ev:
 	case <-e.ctx.Done():
 	case <-ctx.Done():
 	}
-	e.mu.Unlock()
 }
 
 // RegisterForQueryEvents registers a query event channel with the given
