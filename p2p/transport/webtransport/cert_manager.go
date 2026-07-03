@@ -1,12 +1,12 @@
 package libp2pwebtransport
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
-	"bytes"
 	"sync"
 	"time"
 
