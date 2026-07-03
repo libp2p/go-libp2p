@@ -3,9 +3,7 @@ package eventbus
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"reflect"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -158,62 +156,6 @@ func (m *mockLogger) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.logs = nil
-}
-
-func TestEmitLogsErrorOnStall(t *testing.T) {
-	oldLogger := log
-	defer func() {
-		log = oldLogger
-	}()
-	ml := mockLogger{}
-	log = slog.New(slog.NewTextHandler(&ml, nil))
-
-	bus1 := NewBus()
-	bus2 := NewBus()
-
-	eventSub, err := bus1.Subscribe(new(EventA))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wildcardSub, err := bus2.Subscribe(event.WildcardSubscription)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	testCases := []event.Subscription{eventSub, wildcardSub}
-	eventBuses := []event.Bus{bus1, bus2}
-
-	for i, sub := range testCases {
-		bus := eventBuses[i]
-		em, err := bus.Emitter(new(EventA))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer em.Close()
-
-		go func() {
-			for i := 0; i < subSettingsDefault.buffer+2; i++ {
-				em.Emit(EventA{})
-			}
-		}()
-
-		require.EventuallyWithT(t, func(collect *assert.CollectT) {
-			logs := ml.Logs()
-			found := false
-			for _, log := range logs {
-				if strings.Contains(log, "slow consumer") {
-					found = true
-					break
-				}
-			}
-			assert.True(collect, found, "expected to find slow consumer log")
-		}, 3*time.Second, 500*time.Millisecond)
-		ml.Clear()
-
-		// Close the subscriber so the worker can finish.
-		sub.Close()
-	}
 }
 
 func TestEmitOnClosed(t *testing.T) {
@@ -767,60 +709,5 @@ func BenchmarkSubscribeAndEmitter(b *testing.B) {
 			bus.Subscribe(new(EventA))
 			bus.Emitter(new(EventA))
 		}
-	}
-}
-
-// queueSignalTracer is a no-op MetricsTracer that reports when an emit has
-// reached the point of queuing an event on a sink. At that point the wildcard
-// emit already holds the node read lock, which is the state the close-during-
-// stall test needs before it closes the subscription.
-type queueSignalTracer struct {
-	queued chan struct{}
-}
-
-func (queueSignalTracer) EventEmitted(reflect.Type)         {}
-func (queueSignalTracer) AddSubscriber(reflect.Type)        {}
-func (queueSignalTracer) RemoveSubscriber(reflect.Type)     {}
-func (queueSignalTracer) SubscriberQueueLength(string, int) {}
-func (queueSignalTracer) SubscriberQueueFull(string, bool)  {}
-func (t queueSignalTracer) SubscriberEventQueued(string) {
-	select {
-	case t.queued <- struct{}{}:
-	default:
-	}
-}
-
-// TestWildcardCloseUnblocksStalledEmit covers the slow-consumer safety valve: an
-// emit stalled on a full wildcard subscriber, holding the node read lock, must
-// be released when the subscription is closed. wildcardNode.removeSink starts
-// draining the channel before it takes the write lock; were the order reversed,
-// Close would deadlock against the read lock the stalled emit still holds.
-func TestWildcardCloseUnblocksStalledEmit(t *testing.T) {
-	queued := make(chan struct{}, 1)
-	bus := NewBus(WithMetricsTracer(queueSignalTracer{queued: queued}))
-
-	// An unbuffered subscriber has nowhere to put the event, so the emit below
-	// stalls immediately without a fill step.
-	sub, err := bus.Subscribe(event.WildcardSubscription, BufSize(0))
-	require.NoError(t, err)
-
-	em, err := bus.Emitter(new(EventB))
-	require.NoError(t, err)
-	defer em.Close()
-
-	emitReturned := make(chan struct{})
-	go func() {
-		em.Emit(EventB(0))
-		close(emitReturned)
-	}()
-
-	<-queued // the emit now holds the read lock and is stalled on the send
-
-	require.NoError(t, sub.Close())
-
-	select {
-	case <-emitReturned:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Close did not unblock the stalled emit")
 	}
 }

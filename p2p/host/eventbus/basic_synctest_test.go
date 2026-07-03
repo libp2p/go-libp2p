@@ -24,21 +24,15 @@ import (
 // synctest gives us a fake clock, so the one-second warning timeout fires
 // instantly and deterministically instead of relying on real sleeps.
 func TestWildcardSlowConsumerNoDeadlock(t *testing.T) {
-	// Capture log output to confirm the slow-consumer path actually ran.
-	defer func(orig *slog.Logger) { log = orig }(log)
-	logs := &mockLogger{}
-	log = slog.New(slog.NewTextHandler(logs, nil))
-
 	synctest.Test(t, func(t *testing.T) {
 		const emitters = 3
 
-		bus := NewBus()
+		// Capture log output to confirm the slow-consumer path actually ran.
+		logs := &mockLogger{}
+		bus := NewBus(withLogger(slog.New(slog.NewTextHandler(logs, nil))))
 		sub, err := bus.Subscribe(event.WildcardSubscription, BufSize(1))
 		require.NoError(t, err)
-		// The wildcard subscription is intentionally left open: wildcardSub.Close
-		// starts a drain goroutine that only returns once the subscription channel
-		// closes, which never happens for wildcard subs. Closing it here would
-		// leave that goroutine running and trip synctest's end-of-test check.
+		defer sub.Close()
 
 		em, err := bus.Emitter(new(EventB))
 		require.NoError(t, err)
@@ -92,6 +86,108 @@ func TestWildcardSlowConsumerNoDeadlock(t *testing.T) {
 		// reports as a deadlock.
 		for range emitters {
 			<-done
+		}
+	})
+}
+
+// TestWildcardSubCloseReleasesDrainGoroutine checks that closing a wildcard
+// subscription does not leak the drain goroutine started by removeSink. If the
+// drainer is still blocked when the bubble ends, synctest reports a deadlock.
+func TestWildcardSubCloseReleasesDrainGoroutine(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		bus := NewBus()
+		sub, err := bus.Subscribe(event.WildcardSubscription)
+		require.NoError(t, err)
+		require.NoError(t, sub.Close())
+	})
+}
+
+// TestWildcardCloseUnblocksStalledEmit covers the slow-consumer safety valve: an
+// emit stalled on a full wildcard subscriber, holding the node read lock, must
+// be released when the subscription is closed. wildcardNode.removeSink starts
+// draining the channel before it takes the write lock; were the order reversed,
+// Close would deadlock against the read lock the stalled emit still holds.
+func TestWildcardCloseUnblocksStalledEmit(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// The stalled emit warns as part of this test; keep it out of the output.
+		bus := NewBus()
+
+		// An unbuffered subscriber has nowhere to put the event, so the emit below
+		// stalls immediately without a fill step.
+		sub, err := bus.Subscribe(event.WildcardSubscription, BufSize(0))
+		require.NoError(t, err)
+
+		em, err := bus.Emitter(new(EventB))
+		require.NoError(t, err)
+		defer em.Close()
+
+		emitReturned := make(chan struct{})
+		go func() {
+			em.Emit(EventB(0))
+			close(emitReturned)
+		}()
+
+		// Sleep past the warning timeout: the emit stalls, warns, and is now in
+		// the deepest stall state — a bare send with no timeout escape, still
+		// holding the node read lock.
+		time.Sleep(slowConsumerWarningTimeout + time.Millisecond)
+		synctest.Wait()
+
+		// Close must free the stalled emit; synctest reports a deadlock if not.
+		require.NoError(t, sub.Close())
+		<-emitReturned
+	})
+}
+
+func TestEmitLogsErrorOnStall(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ml := mockLogger{}
+		logger := slog.New(slog.NewTextHandler(&ml, nil))
+
+		bus1 := NewBus(withLogger(logger))
+		bus2 := NewBus(withLogger(logger))
+
+		eventSub, err := bus1.Subscribe(new(EventA))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		wildcardSub, err := bus2.Subscribe(event.WildcardSubscription)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testCases := []event.Subscription{eventSub, wildcardSub}
+		eventBuses := []event.Bus{bus1, bus2}
+
+		for i, sub := range testCases {
+			bus := eventBuses[i]
+			em, err := bus.Emitter(new(EventA))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer em.Close()
+
+			go func() {
+				for i := 0; i < subSettingsDefault.buffer+2; i++ {
+					em.Emit(EventA{})
+				}
+			}()
+
+			time.Sleep(3 * time.Second)
+			logs := ml.Logs()
+			found := false
+			for _, log := range logs {
+				if strings.Contains(log, "slow consumer") {
+					found = true
+					break
+				}
+			}
+			require.True(t, found, "expected to find slow consumer log")
+			ml.Clear()
+
+			// Close the subscriber so the worker can finish.
+			sub.Close()
 		}
 	})
 }

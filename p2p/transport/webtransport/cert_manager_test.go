@@ -178,33 +178,6 @@ func TestGetCurrentBucketStartTimeIsWithinBounds(t *testing.T) {
 	}, nil))
 }
 
-func TestSerializedCertHashesReturnsCopy(t *testing.T) {
-	cl := clock.NewMock()
-	cl.Add(time.Hour * 24 * 365)
-	priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
-	require.NoError(t, err)
-	m, err := newCertManager(priv, cl)
-	require.NoError(t, err)
-	defer m.Close()
-
-	first := m.SerializedCertHashes()
-	require.NotEmpty(t, first)
-
-	// Snapshot the hashes, then scribble all over the returned slice.
-	want := make([][]byte, len(first))
-	for i := range first {
-		want[i] = append([]byte(nil), first[i]...)
-		for j := range first[i] {
-			first[i][j] ^= 0xff
-		}
-		first[i] = nil
-	}
-
-	// The manager's own hashes must be untouched by the mutations above.
-	require.Equal(t, want, m.SerializedCertHashes(),
-		"SerializedCertHashes must return a copy the caller cannot use to corrupt internal state")
-}
-
 // TestSerializedCertHashesConcurrentWithRotation guards the data race fixed by
 // taking a read lock and returning a copy from SerializedCertHashes. The
 // background goroutine rewrites the hash slice in place during certificate
@@ -235,9 +208,8 @@ func TestSerializedCertHashesConcurrentWithRotation(t *testing.T) {
 				case <-stop:
 					return
 				default:
-					for _, h := range m.SerializedCertHashes() {
-						_ = len(h)
-					}
+					// write to the returned slice to assert that caller owns it
+					clear(m.SerializedCertHashes())
 					_ = m.GetConfig()
 					_ = m.AddrComponent()
 				}

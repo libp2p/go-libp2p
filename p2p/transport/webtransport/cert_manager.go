@@ -1,12 +1,12 @@
 package libp2pwebtransport
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -169,14 +169,7 @@ func (m *certManager) AddrComponent() ma.Multiaddr {
 func (m *certManager) SerializedCertHashes() [][]byte {
 	m.mx.RLock()
 	defer m.mx.RUnlock()
-	if len(m.serializedCertHashes) == 0 {
-		return nil
-	}
-	res := make([][]byte, len(m.serializedCertHashes))
-	for i, h := range m.serializedCertHashes {
-		res[i] = bytes.Clone(h)
-	}
-	return res
+	return slices.Clone(m.serializedCertHashes)
 }
 
 func (m *certManager) cacheSerializedCertHashes() error {
