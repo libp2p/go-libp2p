@@ -339,10 +339,29 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
-		Name: "WebRTC",
+		// WebRTC-v1 dials with the v1 flow (SDP munging).
+		Name: "WebRTC-v1",
 		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
-			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New, libp2pwebrtc.WithDialerVersion(1)))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		// WebRTC-v2 dials with the v2 flow (no SDP munging). The listener accepts
+		// both versions and picks one from the ufrag prefix, so only the dialer
+		// needs the option; the same generator is fine for both hosts.
+		Name: "WebRTC-v2",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Transport(libp2pwebrtc.New, libp2pwebrtc.WithDialerVersion(2)))
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
@@ -893,7 +912,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 func TestCloseConnWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
 		// WebRTC doesn't have a connection when rcmgr blocks it, so there's nothing to close.
-		if tc.Name == "WebRTC" {
+		if strings.Contains(tc.Name, "WebRTC") {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
@@ -933,7 +952,7 @@ func TestCloseConnWhenBlocked(t *testing.T) {
 // connection attempt
 func TestConnDroppedWhenBlocked(t *testing.T) {
 	for _, tc := range transportsToTest {
-		if tc.Name != "WebRTC" {
+		if !strings.Contains(tc.Name, "WebRTC") {
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {
@@ -1096,7 +1115,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("StreamResetByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebRTC" {
+				if strings.Contains(tc.Name, "WebRTC") {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
@@ -1124,7 +1143,7 @@ func TestErrorCodes(t *testing.T) {
 			})
 
 			t.Run("NewStreamErrorByConnCloseWithError", func(t *testing.T) {
-				if tc.Name == "WebRTC" {
+				if strings.Contains(tc.Name, "WebRTC") {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
