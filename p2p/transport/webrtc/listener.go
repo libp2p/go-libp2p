@@ -32,67 +32,6 @@ var _ network.ConnMultiaddrs = &connMultiaddrs{}
 func (c *connMultiaddrs) LocalMultiaddr() ma.Multiaddr  { return c.local }
 func (c *connMultiaddrs) RemoteMultiaddr() ma.Multiaddr { return c.remote }
 
-// The "libp2p+webrtc+" namespace selects the WebRTC Direct handshake version via
-// the ICE username fragment. v1 ("libp2p+webrtc+v1/") munges the SDP; v2
-// ("libp2p+webrtc+v2/") does not, because Chromium's WebRTC-NoSdpMangleUfrag
-// field trial rejects an offer whose ICE ufrag was munged. A v2 client instead
-// leaves its local credentials untouched and puts its own ICE password in the
-// server ufrag as "libp2p+webrtc+v2/<client_pwd>", which the server reads back
-// from the STUN USERNAME with no SDP exchange. A server MUST reject a version it
-// does not recognize rather than guess one. v2 was introduced in
-// https://github.com/libp2p/specs/pull/715; the spec lives at
-// https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md and the
-// js-libp2p implementation at https://github.com/libp2p/js-libp2p/pull/3480.
-const (
-	ufragPrefixV1 = "libp2p+webrtc+v1/"
-	ufragPrefixV2 = "libp2p+webrtc+v2/"
-)
-
-const (
-	// ICE credential bounds, per RFC 8839 section 5.4
-	// (ufrag = 4*256ice-char, password = 22*256ice-char).
-	iceUfragMinLen   = 4
-	icePwdMinLen     = 22
-	iceCredentialMax = 256
-)
-
-// ice-char is ASCII-only, so any string that passes isICECharString has exactly
-// one byte per character. The len() byte count used by isICEUfrag/isICEPwd then
-// equals both the ice-char count and the UTF-16 length that js-libp2p measures,
-// so the two implementations accept the same credentials; non-ice-char input
-// (including any multi-byte UTF-8) is rejected by both regardless of how each
-// counts length.
-
-// isICEChar reports whether b is in the RFC 8839 ice-char set
-// (ALPHA / DIGIT / "+" / "/").
-func isICEChar(b byte) bool {
-	return (b >= 'a' && b <= 'z') ||
-		(b >= 'A' && b <= 'Z') ||
-		(b >= '0' && b <= '9') ||
-		b == '+' || b == '/'
-}
-
-func isICECharString(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if !isICEChar(s[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-// isICEUfrag reports whether s is a syntactically valid ICE username fragment
-// (RFC 8839 section 5.4: ufrag = 4*256ice-char).
-func isICEUfrag(s string) bool {
-	return len(s) >= iceUfragMinLen && len(s) <= iceCredentialMax && isICECharString(s)
-}
-
-// isICEPwd reports whether s is a syntactically valid ICE password
-// (RFC 8839 section 5.4: password = 22*256ice-char).
-func isICEPwd(s string) bool {
-	return len(s) >= icePwdMinLen && len(s) <= iceCredentialMax && isICECharString(s)
-}
-
 const (
 	candidateSetupTimeout = 10 * time.Second
 	// This is higher than other transports(64) as there's no way to detect a peer that has gone away after
@@ -196,8 +135,8 @@ func (l *listener) listen() {
 
 			conn, err := l.handleCandidate(ctx, candidate)
 			if err != nil {
-				l.mux.RemoveConnByUfrag(candidate.Ufrag)
-				log.Debug("could not accept connection", "ufrag", candidate.Ufrag, "error", err)
+				l.mux.RemoveConnByUfrag(candidate.LocalUfrag)
+				log.Debug("could not accept connection", "ufrag", candidate.LocalUfrag, "error", err)
 				return
 			}
 
@@ -257,37 +196,11 @@ func (l *listener) setupConnection(
 		}
 	}()
 
-	// candidate.Ufrag is the server (local) ufrag and candidate.RemoteUfrag is the
-	// client ufrag, parsed from the STUN USERNAME ("server_ufrag:client_ufrag",
-	// RFC 8445 section 7.2.2). Both come from an attacker-controlled STUN packet
-	// and are templated into the inferred SDP offer and pion's ICE credentials, so
-	// reject anything that is not a valid ICE username fragment (ice-char, length
-	// 4..256) per RFC 8839 section 5.4 before using it.
-	serverUfrag := candidate.Ufrag
-	clientUfrag := candidate.RemoteUfrag
-	if !isICEUfrag(serverUfrag) || !isICEUfrag(clientUfrag) {
-		return nil, fmt.Errorf("invalid ICE ufrag in STUN username")
-	}
-	// Select the version explicitly from the server ufrag prefix. The client
-	// password lets us render a valid remote (client) SDP offer: in v1 the client
-	// uses one shared value (client password == client ufrag); in v2 the client
-	// encodes its password into the server ufrag as "libp2p+webrtc+v2/<client_pwd>".
-	// An unrecognized version is rejected, never treated as v1. See https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md.
-	var clientPwd string
-	switch {
-	case strings.HasPrefix(serverUfrag, ufragPrefixV2):
-		pwd := strings.TrimPrefix(serverUfrag, ufragPrefixV2)
-		// The recovered value becomes the inferred offer's ice-pwd, so it must be a
-		// valid ICE password (ice-char, length 22..256) per RFC 8839 section 5.4.
-		if !isICEPwd(pwd) {
-			return nil, fmt.Errorf("invalid v2 ufrag %q: recovered client password is not a valid ICE password", serverUfrag)
-		}
-		clientPwd = pwd
-	case strings.HasPrefix(serverUfrag, ufragPrefixV1):
-		clientPwd = clientUfrag
-	default:
-		return nil, fmt.Errorf("unsupported WebRTC Direct version in ufrag %q", serverUfrag)
-	}
+	// The udpmux has already parsed and validated the STUN USERNAME: LocalUfrag is
+	// the server (local) ufrag, RemoteUfrag the client ufrag, and RemotePwd the
+	// client ICE password (recovered per WebRTC Direct version). See
+	// udpmux.credentialsFromSTUNMessage.
+	serverUfrag := candidate.LocalUfrag
 
 	settingEngine := webrtc.SettingEngine{LoggerFactory: pionLoggerFactory}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
@@ -321,7 +234,7 @@ func (l *listener) setupConnection(
 	// ufrag and password. pion validates the full "server_ufrag:client_ufrag"
 	// USERNAME on inbound checks, so the remote ice-ufrag must be the client ufrag.
 	if err := w.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
-		SDP:  createClientSDP(candidate.Addr, clientUfrag, clientPwd),
+		SDP:  createClientSDP(candidate.Addr, candidate.RemoteUfrag, candidate.RemotePwd),
 		Type: webrtc.SDPTypeOffer,
 	}); err != nil {
 		return nil, err

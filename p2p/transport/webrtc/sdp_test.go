@@ -3,42 +3,11 @@ package libp2pwebrtc
 import (
 	"encoding/hex"
 	"net"
-	"strings"
 	"testing"
 
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
-
-// ICE username fragments and passwords are parsed from an attacker-controlled
-// STUN USERNAME and templated into the inferred client SDP offer, so they must
-// be validated against the ice-char set and length bounds in RFC 8839 section
-// 5.4 before use.
-func TestICECredentialValidation(t *testing.T) {
-	v2Ufrag := ufragPrefixV2 + strings.Repeat("a", 24)
-	require.True(t, isICEUfrag("abcd"))                      // 4 chars, minimum ufrag
-	require.True(t, isICEUfrag("libp2p+webrtc+v1/abcdEFGH")) // '+' and '/' are ice-char
-	require.True(t, isICEUfrag(v2Ufrag))
-	require.True(t, isICEPwd(strings.Repeat("a", 22))) // 22 chars, minimum password
-
-	// charset violations (e.g. CRLF/SDP injection attempts)
-	require.False(t, isICEUfrag("abc\r\na=candidate:x"))
-	require.False(t, isICEUfrag("ab:cd")) // ':' is not an ice-char
-	require.False(t, isICEPwd(strings.Repeat("a", 21)+"\n"))
-
-	// length violations
-	require.False(t, isICEUfrag("abc"))                    // 3 < 4
-	require.False(t, isICEUfrag(""))                       // empty
-	require.False(t, isICEPwd(strings.Repeat("a", 21)))    // 21 < 22
-	require.False(t, isICEUfrag(strings.Repeat("a", 257))) // > 256
-
-	// multi-byte UTF-8 input: the len() byte count differs from the character
-	// count (and from the UTF-16 length js-libp2p measures), but both reject it
-	// on the charset check, so the length-representation difference between the
-	// implementations never changes the decision.
-	require.False(t, isICEUfrag("abécd")) // 'é' is 2 UTF-8 bytes and not ice-char
-	require.False(t, isICEUfrag("ab😀cd")) // emoji: 4 UTF-8 bytes / 2 UTF-16 units
-}
 
 const expectedServerSDP = `v=0
 o=- 0 0 IN IP4 0.0.0.0

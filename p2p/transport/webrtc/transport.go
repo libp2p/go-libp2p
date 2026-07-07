@@ -29,6 +29,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 	"github.com/libp2p/go-msgio"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -89,10 +90,12 @@ type WebRTCTransport struct {
 
 	listenUDP func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
 
-	// dialerVersion picks which WebRTC Direct handshake to use when dialing: 0
-	// (unset) and 1 use v1 (SDP munging), 2 uses v2 (no munging; the client
-	// password rides in the server ufrag). The listener accepts both either way;
-	// it detects the version from the ICE username fragment prefix. See https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md.
+	// dialerVersion picks which WebRTC Direct handshake to use when dialing: 1
+	// uses v1 (SDP munging), 2 uses v2 (no munging; the client password rides in
+	// the server ufrag). New defaults it to 1, and WithDialerVersion only accepts
+	// 1 or 2, so dial never sees the confusing 0 value. The listener accepts both
+	// either way; it detects the version from the ICE username fragment prefix.
+	// See https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md.
 	dialerVersion int
 
 	// timeouts
@@ -186,6 +189,9 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		},
 
 		maxInFlightConnections: DefaultMaxInFlightConnections,
+
+		// Default to v1; WithDialerVersion can override it before dial time.
+		dialerVersion: 1,
 	}
 	for _, opt := range opts {
 		if err := opt(transport); err != nil {
@@ -342,13 +348,13 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	// no-munging behavior (the WebRTC-NoSdpMangleUfrag field trial,
 	// https://webrtc-review.googlesource.com/c/src/+/385721) in stable, giving
 	// servers and other implementations a grace period to adopt v2 first.
-	case 0, 1:
+	case 1:
 		localUfrag = genUfrag()
 		localPwd = localUfrag
 		serverUfrag = localUfrag
 	case 2:
 		localUfrag, localPwd = genV2ClientCredentials()
-		serverUfrag = ufragPrefixV2 + localPwd
+		serverUfrag = udpmux.UfragPrefixV2 + localPwd
 	default:
 		return nil, fmt.Errorf("unsupported WebRTC Direct dialer version %d", t.dialerVersion)
 	}
@@ -466,7 +472,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 }
 
 func genUfrag() string {
-	return ufragPrefixV1 + randIceString(32)
+	return udpmux.UfragPrefixV1 + randIceString(32)
 }
 
 // genV2ClientCredentials returns a random ICE ufrag and password for the WebRTC
