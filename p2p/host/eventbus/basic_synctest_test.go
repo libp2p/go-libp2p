@@ -3,7 +3,9 @@
 package eventbus
 
 import (
+	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -110,7 +112,7 @@ func TestWildcardSubCloseReleasesDrainGoroutine(t *testing.T) {
 func TestWildcardCloseUnblocksStalledEmit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// The stalled emit warns as part of this test; keep it out of the output.
-		bus := NewBus()
+		bus := NewBus(withLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
 
 		// An unbuffered subscriber has nowhere to put the event, so the emit below
 		// stalls immediately without a fill step.
@@ -128,12 +130,15 @@ func TestWildcardCloseUnblocksStalledEmit(t *testing.T) {
 		}()
 
 		// Sleep past the warning timeout: the emit stalls, warns, and is now in
-		// the deepest stall state — a bare send with no timeout escape, still
+		// the deepest stall state, a bare send with no timeout escape, still
 		// holding the node read lock.
 		time.Sleep(slowConsumerWarningTimeout + time.Millisecond)
 		synctest.Wait()
 
-		// Close must free the stalled emit; synctest reports a deadlock if not.
+		// Close must free the stalled emit. A regression here parks Close on
+		// wildcardNode's write lock, and a goroutine blocked on a sync.RWMutex is
+		// not durably blocked, so synctest cannot call it a deadlock: the package
+		// hangs until go test -timeout fires.
 		require.NoError(t, sub.Close())
 		<-emitReturned
 	})
@@ -148,46 +153,42 @@ func TestEmitLogsErrorOnStall(t *testing.T) {
 		bus2 := NewBus(withLogger(logger))
 
 		eventSub, err := bus1.Subscribe(new(EventA))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		wildcardSub, err := bus2.Subscribe(event.WildcardSubscription)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		testCases := []event.Subscription{eventSub, wildcardSub}
 		eventBuses := []event.Bus{bus1, bus2}
+		names := []string{"typed sub", "wildcard sub"}
 
 		for i, sub := range testCases {
-			bus := eventBuses[i]
-			em, err := bus.Emitter(new(EventA))
-			if err != nil {
-				t.Fatal(err)
-			}
+			em, err := eventBuses[i].Emitter(new(EventA))
+			require.NoError(t, err)
 			defer em.Close()
 
+			// Overfill the subscriber's queue so the last emits hit the slow path.
 			go func() {
-				for i := 0; i < subSettingsDefault.buffer+2; i++ {
+				for range subSettingsDefault.buffer + 2 {
 					em.Emit(EventA{})
 				}
 			}()
 
-			time.Sleep(3 * time.Second)
-			logs := ml.Logs()
-			found := false
-			for _, log := range logs {
-				if strings.Contains(log, "slow consumer") {
-					found = true
-					break
-				}
-			}
-			require.True(t, found, "expected to find slow consumer log")
-			ml.Clear()
+			// Pass the warning timeout on the fake clock, then let the stalled
+			// emitter warn.
+			time.Sleep(slowConsumerWarningTimeout + time.Millisecond)
+			synctest.Wait()
 
-			// Close the subscriber so the worker can finish.
-			sub.Close()
+			// Close the subscriber so the emitter can finish. Assert only once it
+			// has: a failed assertion unwinds the bubble's root goroutine, and a
+			// still-stalled emitter would then turn the failure into a timeout.
+			require.NoError(t, sub.Close())
+			synctest.Wait()
+
+			require.True(t, slices.ContainsFunc(ml.Logs(), func(l string) bool {
+				return strings.Contains(l, "slow consumer")
+			}), "expected to find slow consumer log for %s", names[i])
+			ml.Clear()
 		}
 	})
 }
