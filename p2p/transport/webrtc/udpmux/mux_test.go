@@ -31,6 +31,86 @@ func setupMapping(t *testing.T, ufrag string, from net.PacketConn, m *UDPMux) {
 	require.NoError(t, err)
 }
 
+func getSTUNBindingRequestWithUsername(username string) *stun.Message {
+	msg := stun.New()
+	msg.SetType(stun.BindingRequest)
+	uattr := stun.RawAttribute{
+		Type:  stun.AttrUsername,
+		Value: []byte(username),
+	}
+	uattr.AddTo(msg)
+	msg.Encode()
+	return msg
+}
+
+// v1Ufrag builds a valid WebRTC Direct v1 ICE ufrag from a short seed. Tests
+// that drive the mux through the real inbound STUN path (via setupMapping) need
+// credentials that credentialsFromSTUNMessage accepts; bare seeds like "a" have
+// no version prefix and would be dropped.
+func v1Ufrag(seed string) string {
+	return UfragPrefixV1 + seed
+}
+
+// In WebRTC Direct v2 the STUN USERNAME carries distinct server and client
+// ufrags ("server_ufrag:client_ufrag"). The mux must key on the server (local)
+// ufrag, since that is the ufrag pion uses to retrieve the muxed connection,
+// while still surfacing the client ufrag on the Candidate.
+func TestAcceptV2DistinctUfrags(t *testing.T) {
+	c := newPacketConn(t)
+	defer c.Close()
+	m := NewUDPMux(c)
+	m.Start()
+	defer m.Close()
+
+	clientPwd := "browserClientPassword1234"
+	serverUfrag := UfragPrefixV2 + clientPwd
+	clientUfrag := "browserClientUfrag"
+
+	from := newPacketConn(t)
+	msg := getSTUNBindingRequestWithUsername(serverUfrag + ":" + clientUfrag)
+	_, err := from.WriteTo(msg.Raw, m.GetListenAddresses()[0])
+	require.NoError(t, err)
+
+	cand, err := m.Accept(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, serverUfrag, cand.LocalUfrag)
+	require.Equal(t, clientUfrag, cand.RemoteUfrag)
+	// v2 recovers the client's ICE password from the server ufrag.
+	require.Equal(t, clientPwd, cand.RemotePwd)
+	require.Equal(t, from.LocalAddr(), cand.Addr)
+}
+
+// A STUN binding request whose USERNAME fails validation must be dropped before
+// the mux allocates a connection or queues a candidate, so nothing reaches the
+// listener via Accept.
+func TestAcceptRejectsInvalidCredentials(t *testing.T) {
+	for _, username := range []string{
+		"nocolon",                               // no ':' separator
+		":" + v1Ufrag("a"),                      // empty server ufrag
+		"ab:" + v1Ufrag("a"),                    // server ufrag too short
+		"noprefix:noprefix",                     // valid ice-chars but unknown version
+		UfragPrefixV2 + "short:" + v1Ufrag("a"), // v2 recovered password too short
+	} {
+		t.Run(username, func(t *testing.T) {
+			c := newPacketConn(t)
+			defer c.Close()
+			m := NewUDPMux(c)
+			m.Start()
+			defer m.Close()
+
+			from := newPacketConn(t)
+			msg := getSTUNBindingRequestWithUsername(username)
+			_, err := from.WriteTo(msg.Raw, m.GetListenAddresses()[0])
+			require.NoError(t, err)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			_, err = m.Accept(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+		})
+	}
+}
+
 func newPacketConn(t *testing.T) net.PacketConn {
 	t.Helper()
 	udpPort0 := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0}
@@ -47,7 +127,7 @@ func TestAccept(t *testing.T) {
 	m.Start()
 	defer m.Close()
 
-	ufrags := []string{"a", "b", "c", "d"}
+	ufrags := []string{v1Ufrag("a"), v1Ufrag("b"), v1Ufrag("c"), v1Ufrag("d")}
 	conns := make([]net.PacketConn, len(ufrags))
 	for i, ufrag := range ufrags {
 		conns[i] = newPacketConn(t)
@@ -56,7 +136,7 @@ func TestAccept(t *testing.T) {
 	for i, ufrag := range ufrags {
 		c, err := m.Accept(context.Background())
 		require.NoError(t, err)
-		require.Equal(t, c.Ufrag, ufrag)
+		require.Equal(t, c.LocalUfrag, ufrag)
 		require.Equal(t, c.Addr, conns[i].LocalAddr())
 	}
 
@@ -84,7 +164,7 @@ func TestGetConn(t *testing.T) {
 	m.Start()
 	defer m.Close()
 
-	ufrags := []string{"a", "b", "c", "d"}
+	ufrags := []string{v1Ufrag("a"), v1Ufrag("b"), v1Ufrag("c"), v1Ufrag("d")}
 	conns := make([]net.PacketConn, len(ufrags))
 	for i, ufrag := range ufrags {
 		conns[i] = newPacketConn(t)
@@ -93,7 +173,7 @@ func TestGetConn(t *testing.T) {
 	for i, ufrag := range ufrags {
 		c, err := m.Accept(context.Background())
 		require.NoError(t, err)
-		require.Equal(t, c.Ufrag, ufrag)
+		require.Equal(t, c.LocalUfrag, ufrag)
 		require.Equal(t, c.Addr, conns[i].LocalAddr())
 	}
 
@@ -140,7 +220,7 @@ func TestRemoveConnByUfrag(t *testing.T) {
 	defer m.Close()
 
 	// Map each ufrag to two addresses
-	ufrag := "a"
+	ufrag := v1Ufrag("a")
 	count := 10
 	conns := make([]net.PacketConn, count)
 	for i := range 10 {
@@ -161,7 +241,7 @@ func TestRemoveConnByUfrag(t *testing.T) {
 	m.RemoveConnByUfrag(ufrag)
 
 	// All connections should now be associated with b
-	ufrag = "b"
+	ufrag = v1Ufrag("b")
 	for i := range 10 {
 		setupMapping(t, ufrag, conns[i], m)
 	}
@@ -176,7 +256,7 @@ func TestRemoveConnByUfrag(t *testing.T) {
 	}
 
 	// Should be different even if the address is the same
-	mc1, err := m.GetConn("a", conns[0].LocalAddr())
+	mc1, err := m.GetConn(v1Ufrag("a"), conns[0].LocalAddr())
 	require.NoError(t, err)
 	if mc1 == mc {
 		t.Fatalf("expected the two connections to be different")
@@ -192,7 +272,7 @@ func TestMuxedConnection(t *testing.T) {
 	msgCount := 3
 	connCount := 3
 
-	ufrags := []string{"a", "b", "c"}
+	ufrags := []string{v1Ufrag("a"), v1Ufrag("b"), v1Ufrag("c")}
 	addrUfragMap := make(map[string]string)
 	ufragConnsMap := make(map[string][]net.PacketConn)
 	for _, ufrag := range ufrags {
@@ -268,7 +348,7 @@ func TestAddrsPerUfragCap(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	key := ufragConnKey{ufrag: ufrag, isIPv6: false}
+	key := ufragConnKey{localUfrag: ufrag, isIPv6: false}
 	m.mx.Lock()
 	require.Len(t, m.ufragAddrMap[key], maxAddrsPerUfrag)
 	require.Len(t, m.addrMap, maxAddrsPerUfrag)

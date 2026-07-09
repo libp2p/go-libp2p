@@ -20,26 +20,26 @@ const queueLen = 128
 
 // muxedConnection provides a net.PacketConn abstraction
 // over packetQueue and adds the ability to store addresses
-// from which this connection (indexed by ufrag) received
-// data.
+// from which this connection (indexed by its local ufrag)
+// received data.
 type muxedConnection struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	queue  chan packet
-	mux    *UDPMux
-	ufrag  string
+	ctx        context.Context
+	cancel     context.CancelFunc
+	queue      chan packet
+	mux        *UDPMux
+	localUfrag string
 }
 
 var _ net.PacketConn = &muxedConnection{}
 
-func newMuxedConnection(mux *UDPMux, ufrag string) *muxedConnection {
+func newMuxedConnection(mux *UDPMux, localUfrag string) *muxedConnection {
 	ctx, cancel := context.WithCancel(mux.ctx)
 	return &muxedConnection{
-		ctx:    ctx,
-		cancel: cancel,
-		queue:  make(chan packet, queueLen),
-		mux:    mux,
-		ufrag:  ufrag,
+		ctx:        ctx,
+		cancel:     cancel,
+		queue:      make(chan packet, queueLen),
+		mux:        mux,
+		localUfrag: localUfrag,
 	}
 }
 
@@ -83,7 +83,7 @@ func (c *muxedConnection) Close() error {
 	// must trigger the other.
 	// Doing this here ensures we don't need to call both RemoveConnByUfrag
 	// and close on all code paths.
-	c.mux.RemoveConnByUfrag(c.ufrag)
+	c.mux.RemoveConnByUfrag(c.localUfrag)
 	return nil
 }
 

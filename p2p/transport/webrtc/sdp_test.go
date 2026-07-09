@@ -68,8 +68,20 @@ a=max-message-size:16384
 func TestRenderClientSDP(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826}
 	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
-	sdp := createClientSDP(addr, ufrag)
+	sdp := createClientSDP(addr, ufrag, ufrag)
 	require.Equal(t, expectedClientSDP, sdp)
+}
+
+// In WebRTC Direct v2 the inferred client offer carries distinct ice-ufrag and
+// ice-pwd values: the client ufrag from the STUN USERNAME and the client
+// password recovered from the "libp2p+webrtc+v2/<client_pwd>" server ufrag.
+func TestRenderClientSDPV2DistinctCredentials(t *testing.T) {
+	addr := &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826}
+	clientUfrag := "browserClientUfrag"
+	clientPwd := "browserClientPassword1234"
+	sdp := createClientSDP(addr, clientUfrag, clientPwd)
+	require.Contains(t, sdp, "a=ice-ufrag:"+clientUfrag+"\n")
+	require.Contains(t, sdp, "a=ice-pwd:"+clientPwd+"\n")
 }
 
 func BenchmarkRenderClientSDP(b *testing.B) {
@@ -77,7 +89,7 @@ func BenchmarkRenderClientSDP(b *testing.B) {
 	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
 
 	for i := 0; i < b.N; i++ {
-		createClientSDP(addr, ufrag)
+		createClientSDP(addr, ufrag, ufrag)
 	}
 }
 

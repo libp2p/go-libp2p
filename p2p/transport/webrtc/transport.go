@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 	"github.com/libp2p/go-msgio"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -87,6 +88,14 @@ type WebRTCTransport struct {
 
 	listenUDP func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
 
+	// dialerVersion picks which WebRTC Direct handshake to use when dialing: 1
+	// uses v1 (SDP munging), 2 uses v2 (no munging; the client password rides in
+	// the server ufrag). New defaults it to 1, and WithDialerVersion only accepts
+	// 1 or 2, so dial never sees the confusing 0 value. The listener accepts both
+	// either way; it detects the version from the ICE username fragment prefix.
+	// See https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md.
+	dialerVersion int
+
 	// timeouts
 	peerConnectionTimeouts iceTimeouts
 
@@ -97,6 +106,24 @@ type WebRTCTransport struct {
 var _ tpt.Transport = &WebRTCTransport{}
 
 type Option func(*WebRTCTransport) error
+
+// WithDialerVersion picks which WebRTC Direct handshake to use when dialing. It
+// must be 1 (v1, SDP munging) or 2 (v2, no munging); any other value, including
+// 0, is rejected. With the option unset, dialing defaults to v1. The listener
+// accepts both either way. Browsers will need v2 once Chromium's
+// WebRTC-NoSdpMangleUfrag field trial ships; this option lets a go dialer use the
+// same v2 wire format. See https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md.
+func WithDialerVersion(version int) Option {
+	return func(t *WebRTCTransport) error {
+		switch version {
+		case 1, 2:
+			t.dialerVersion = version
+			return nil
+		default:
+			return fmt.Errorf("unknown WebRTC Direct dialer version %d", version)
+		}
+	}
+}
 
 type iceTimeouts struct {
 	Disconnect time.Duration
@@ -148,6 +175,9 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		},
 
 		maxInFlightConnections: DefaultMaxInFlightConnections,
+
+		// Default to v1; WithDialerVersion can override it before dial time.
+		dialerVersion: 1,
 	}
 	for _, opt := range opts {
 		if err := opt(transport); err != nil {
@@ -287,17 +317,38 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		return nil, fmt.Errorf("resolve udp address: %w", err)
 	}
 
-	// Instead of encoding the local fingerprint we
-	// generate a random UUID as the connection ufrag.
-	// The only requirement here is that the ufrag and password
-	// must be equal, which will allow the server to determine
-	// the password using the STUN message.
-	ufrag := genUfrag()
+	// The server has no signaling channel, so it must infer our ICE credentials
+	// from the STUN connectivity checks.
+	//
+	// In v1 we generate a single random value, prefixed with "libp2p+webrtc+v1/",
+	// and use it as both our local ufrag and password and as the server's. The
+	// server reads it from the STUN USERNAME and derives the password from it.
+	//
+	// In v2 our local ufrag and password are independent random values (as a
+	// browser's would be) and we encode our password into the server ufrag as
+	// "libp2p+webrtc+v2/<pwd>", so the server can recover it from the STUN
+	// USERNAME without us munging our local SDP. See https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md.
+	var localUfrag, localPwd, serverUfrag string
+	switch t.dialerVersion {
+	// TODO: flip the default to v2 roughly 12 months after Chromium ships its
+	// no-munging behavior (the WebRTC-NoSdpMangleUfrag field trial,
+	// https://webrtc-review.googlesource.com/c/src/+/385721) in stable, giving
+	// servers and other implementations a grace period to adopt v2 first.
+	case 1:
+		localUfrag = genUfrag()
+		localPwd = localUfrag
+		serverUfrag = localUfrag
+	case 2:
+		localUfrag, localPwd = genV2ClientCredentials()
+		serverUfrag = udpmux.UfragPrefixV2 + localPwd
+	default:
+		return nil, fmt.Errorf("unsupported WebRTC Direct dialer version %d", t.dialerVersion)
+	}
 
 	settingEngine := webrtc.SettingEngine{
 		LoggerFactory: pionLoggerFactory,
 	}
-	settingEngine.SetICECredentials(ufrag, ufrag)
+	settingEngine.SetICECredentials(localUfrag, localPwd)
 	settingEngine.DetachDataChannels()
 	// use the first best address candidate
 	settingEngine.SetPrflxAcceptanceMinWait(0)
@@ -335,7 +386,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		return nil, fmt.Errorf("set local description: %w", err)
 	}
 
-	answerSDPString, err := createServerSDP(raddr, ufrag, *remoteMultihash)
+	answerSDPString, err := createServerSDP(raddr, serverUfrag, *remoteMultihash)
 	if err != nil {
 		return nil, fmt.Errorf("render server SDP: %w", err)
 	}
@@ -407,22 +458,28 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 }
 
 func genUfrag() string {
-	const (
-		uFragAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
-		uFragPrefix   = "libp2p+webrtc+v1/"
-		uFragIdLength = 32
-		uFragLength   = len(uFragPrefix) + uFragIdLength
-	)
+	return udpmux.UfragPrefixV1 + randIceString(32)
+}
 
+// genV2ClientCredentials returns a random ICE ufrag and password for the WebRTC
+// Direct v2 dial flow. Unlike v1, the two values are independent and carry no
+// prefix; the password is instead encoded into the server ufrag as
+// "libp2p+webrtc+v2/<pwd>". Both are 32 ice-chars, comfortably above the RFC
+// 8839 section 5.4 minimums (4 for the ufrag, 22 for the password).
+func genV2ClientCredentials() (ufrag, pwd string) {
+	return randIceString(32), randIceString(32)
+}
+
+// randIceString returns a string of n characters drawn from the ICE ufrag/pwd
+// alphabet (the alphanumeric subset of RFC 8839 ice-char, also used by browsers).
+func randIceString(n int) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 	seed := [32]byte{}
 	rand.Read(seed[:])
-	r := mrand.New(mrand.New(mrand.NewChaCha8(seed)))
-	b := make([]byte, uFragLength)
-	for i := range len(uFragPrefix) {
-		b[i] = uFragPrefix[i]
-	}
-	for i := len(uFragPrefix); i < uFragLength; i++ {
-		b[i] = uFragAlphabet[r.IntN(len(uFragAlphabet))]
+	r := mrand.New(mrand.NewChaCha8(seed))
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = alphabet[r.IntN(len(alphabet))]
 	}
 	return string(b)
 }

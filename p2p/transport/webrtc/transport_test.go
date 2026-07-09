@@ -221,6 +221,119 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 	}
 }
 
+// TestTransportWebRTC_v2Dial runs the v2 (no SDP munging) dial flow end to end
+// against the standard listener: a full ICE + DTLS + Noise handshake plus a
+// two-way stream. The listener detects v2 from the ICE username fragment prefix
+// with no extra configuration.
+func TestTransportWebRTC_v2Dial(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	tr1, connectingPeer := getTransport(t, WithDialerVersion(2))
+	listenMultiaddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+	defer listener.Close()
+
+	streamChan := make(chan network.MuxedStream)
+	go func() {
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+		assert.NoError(t, err)
+		t.Cleanup(func() { conn.Close() })
+		stream, err := conn.AcceptStream()
+		assert.NoError(t, err)
+		streamChan <- stream
+	}()
+
+	conn, err := listener.Accept()
+	require.NoError(t, err)
+	defer conn.Close()
+	require.Equal(t, connectingPeer, conn.RemotePeer())
+
+	stream, err := conn.OpenStream(context.Background())
+	require.NoError(t, err)
+	_, err = stream.Write([]byte("test"))
+	require.NoError(t, err)
+
+	var str network.MuxedStream
+	select {
+	case str = <-streamChan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream opening timed out")
+	}
+	buf := make([]byte, 100)
+	str.SetReadDeadline(time.Now().Add(5 * time.Second))
+	n, err := str.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, "test", string(buf[:n]))
+}
+
+// TestTransportWebRTC_ListenerAcceptsBothVersions confirms a single listener
+// accepts both v1 and v2 dialers concurrently, dispatching on the ICE username
+// fragment prefix.
+func TestTransportWebRTC_ListenerAcceptsBothVersions(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr := ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct")
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+	defer listener.Close()
+
+	for _, version := range []int{1, 2} {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			client, connectingPeer := getTransport(t, WithDialerVersion(version))
+			done := make(chan struct{})
+			go func() {
+				conn, err := client.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+				assert.NoError(t, err)
+				if conn != nil {
+					t.Cleanup(func() { conn.Close() })
+				}
+				close(done)
+			}()
+
+			conn, err := listener.Accept()
+			require.NoError(t, err)
+			defer conn.Close()
+			require.Equal(t, connectingPeer, conn.RemotePeer())
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("dial timed out")
+			}
+		})
+	}
+}
+
+// WithDialerVersion requires an explicit, known version: it accepts 1/2 and
+// rejects 0 or unknown values rather than silently defaulting.
+func TestWithDialerVersion(t *testing.T) {
+	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
+	require.NoError(t, err)
+
+	for _, version := range []int{1, 2} {
+		_, err := New(privKey, nil, nil, &network.NullResourceManager{}, netListenUDP, WithDialerVersion(version))
+		require.NoError(t, err, "version %d should be accepted", version)
+	}
+
+	for _, version := range []int{0, 3} {
+		_, err := New(privKey, nil, nil, &network.NullResourceManager{}, netListenUDP, WithDialerVersion(version))
+		require.Error(t, err, "version %d should be rejected", version)
+	}
+}
+
+// An unknown dialer version is rejected at dial time, not treated as v1.
+func TestTransportWebRTC_DialerRejectsUnknownVersion(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listener, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/webrtc-direct"))
+	require.NoError(t, err)
+	defer listener.Close()
+
+	client, _ := getTransport(t)
+	// set directly to simulate a future/unknown version (WithDialerVersion would
+	// reject it earlier); the dial must error rather than assume v1
+	client.dialerVersion = 3
+	_, err = client.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+	require.ErrorContains(t, err, "unsupported WebRTC Direct dialer version")
+}
+
 // WithListenerMaxInFlightConnections sets the maximum number of connections that are in-flight, i.e
 // they are being negotiated, or are waiting to be accepted.
 func WithListenerMaxInFlightConnections(m uint32) Option {
