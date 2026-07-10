@@ -4,6 +4,9 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
+	"runtime"
+	"slices"
+	"sync"
 	"testing"
 	"testing/quick"
 	"time"
@@ -174,4 +177,97 @@ func TestGetCurrentBucketStartTimeIsWithinBounds(t *testing.T) {
 		bucketStart := getCurrentBucketStartTime(start.Add(-clockSkewAllowance), offset)
 		return !bucketStart.After(start.Add(-clockSkewAllowance)) || bucketStart.Equal(start.Add(-clockSkewAllowance))
 	}, nil))
+}
+
+// TestSerializedCertHashesReturnsOuterCopy guards the copy in
+// SerializedCertHashes. cacheSerializedCertHashes truncates the hash slice and
+// re-appends into the same backing array across rotations, so returning the
+// manager's own slice would expose the caller to it changing underneath them.
+//
+// Only the outer slice is checked, matching what SerializedCertHashes promises.
+// Do not extend this to scribble over the hash bytes: they are shared with the
+// manager by design, so want aliases them and cannot be an oracle for their
+// contents. Such a test would zero the manager's live certificate hashes and
+// still report PASS.
+func TestSerializedCertHashesReturnsOuterCopy(t *testing.T) {
+	cl := clock.NewMock()
+	cl.Add(time.Hour * 24 * 365)
+	priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
+	require.NoError(t, err)
+	m, err := newCertManager(priv, cl)
+	require.NoError(t, err)
+	defer m.Close()
+
+	first := m.SerializedCertHashes()
+	require.NotEmpty(t, first)
+	want := slices.Clone(first)
+
+	// Scribble over the outer slots the way an owning caller may.
+	clear(first)
+
+	require.Equal(t, want, m.SerializedCertHashes(),
+		"caller must own the outer slice returned by SerializedCertHashes")
+}
+
+// TestSerializedCertHashesConcurrentWithRotation guards the read lock and the
+// copy in SerializedCertHashes. The background goroutine rewrites the hash slice
+// in place during certificate rotation, so a caller reading the slice at the same
+// time used to race with that write and could see a torn result. Run with -race
+// it fails on both an unsynchronized getter and one that hands out the manager's
+// own slice.
+func TestSerializedCertHashesConcurrentWithRotation(t *testing.T) {
+	cl := clock.NewMock()
+	cl.Add(time.Hour * 24 * 365)
+	priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
+	require.NoError(t, err)
+	m, err := newCertManager(priv, cl)
+	require.NoError(t, err)
+	defer m.Close()
+
+	firstConf := m.GetConfig()
+
+	// Readers hammer the getters while certificates roll in the background. Run
+	// with -race: without the read lock the getter races with
+	// cacheSerializedCertHashes rewriting the slice during rotation, and without
+	// the copy the store below lands in the manager's own backing array. The
+	// sibling getters share the same lock, so read them here too.
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	for range 4 {
+		wg.Go(func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					// Write to a slot the caller owns. An indexed store is compiled
+					// to an instrumented write; clear() lowers to a bulk memclr in
+					// the runtime, which carries no instrumentation, so the race
+					// detector would never see it.
+					if h := m.SerializedCertHashes(); len(h) > 0 {
+						h[0] = nil
+					}
+					_ = m.GetConfig()
+					_ = m.AddrComponent()
+					// Yield: four spinning readers otherwise starve the rotation
+					// loop below, which costs seconds on a low-core CI runner.
+					runtime.Gosched()
+				}
+			}
+		})
+	}
+
+	// Advancing past a validity period forces the background goroutine to roll
+	// the config, which rewrites the shared serializedCertHashes slice.
+	for range 50 {
+		cl.Add(certValidity)
+		runtime.Gosched()
+	}
+
+	close(stop)
+	wg.Wait()
+
+	// Confirm rotation actually happened, so the reads above really did overlap
+	// with writes rather than racing nothing.
+	require.NotSame(t, firstConf, m.GetConfig(), "expected at least one certificate rotation")
 }

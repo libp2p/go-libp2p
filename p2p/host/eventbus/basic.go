@@ -3,7 +3,9 @@ package eventbus
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,6 +27,7 @@ type basicBus struct {
 	nodes         map[reflect.Type]*node
 	wildcard      *wildcardNode
 	metricsTracer MetricsTracer
+	log           *slog.Logger
 }
 
 var _ event.Bus = (*basicBus)(nil)
@@ -65,7 +68,8 @@ func (e *emitter) Close() error {
 func NewBus(opts ...Option) event.Bus {
 	bus := &basicBus{
 		nodes:    map[reflect.Type]*node{},
-		wildcard: &wildcardNode{},
+		wildcard: &wildcardNode{log: log},
+		log:      log,
 	}
 	for _, opt := range opts {
 		opt(bus)
@@ -78,7 +82,7 @@ func (b *basicBus) withNode(typ reflect.Type, cb func(*node), async func(*node))
 
 	n, ok := b.nodes[typ]
 	if !ok {
-		n = newNode(typ, b.metricsTracer)
+		n = newNode(typ, b.metricsTracer, b.log)
 		b.nodes[typ] = n
 	}
 
@@ -334,8 +338,7 @@ type wildcardNode struct {
 	nSinks        atomic.Int32
 	sinks         []*namedSink
 	metricsTracer MetricsTracer
-
-	slowConsumerTimer *time.Timer
+	log           *slog.Logger
 }
 
 func (n *wildcardNode) addSink(sink *namedSink) {
@@ -350,22 +353,36 @@ func (n *wildcardNode) addSink(sink *namedSink) {
 }
 
 func (n *wildcardNode) removeSink(ch chan any) {
-	go func() {
-		// drain the event channel, will return when closed and drained.
-		// this is necessary to unblock publishes to this channel.
-		for range ch {
+	// Drain the event channel to unblock stalled emits, which hold the read
+	// lock; without this the Lock below would deadlock against them.
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for {
+			select {
+			case <-ch:
+			case <-done:
+				// The write lock has been acquired: the sink is invisible to new
+				// emits and in-flight ones have completed, so only buffered
+				// events remain. Sweep them and exit.
+				for {
+					select {
+					case <-ch:
+					default:
+						return
+					}
+				}
+			}
 		}
-	}()
+	})
 	n.nSinks.Add(-1) // ok to do outside the lock
 	n.Lock()
-	for i := 0; i < len(n.sinks); i++ {
-		if n.sinks[i].ch == ch {
-			n.sinks[i], n.sinks[len(n.sinks)-1] = n.sinks[len(n.sinks)-1], nil
-			n.sinks = n.sinks[:len(n.sinks)-1]
-			break
-		}
-	}
+	n.sinks = slices.DeleteFunc(n.sinks, func(s *namedSink) bool { return s.ch == ch })
 	n.Unlock()
+	// We could close ch itself here, which would also end the subscriber's
+	// Out() range like typed subs do.
+	close(done)
+	wg.Wait()
 }
 
 var wildcardType = reflect.TypeOf(event.WildcardSubscription)
@@ -385,12 +402,7 @@ func (n *wildcardNode) emit(evt any) {
 		select {
 		case sink.ch <- evt:
 		default:
-			slowConsumerTimer := emitAndLogError(n.slowConsumerTimer, wildcardType, evt, sink)
-			defer func() {
-				n.Lock()
-				n.slowConsumerTimer = slowConsumerTimer
-				n.Unlock()
-			}()
+			emitAndLogError(n.log, wildcardType, evt, sink)
 		}
 	}
 	n.RUnlock()
@@ -410,14 +422,14 @@ type node struct {
 
 	sinks         []*namedSink
 	metricsTracer MetricsTracer
-
-	slowConsumerTimer *time.Timer
+	log           *slog.Logger
 }
 
-func newNode(typ reflect.Type, metricsTracer MetricsTracer) *node {
+func newNode(typ reflect.Type, metricsTracer MetricsTracer, log *slog.Logger) *node {
 	return &node{
 		typ:           typ,
 		metricsTracer: metricsTracer,
+		log:           log,
 	}
 }
 
@@ -440,32 +452,24 @@ func (n *node) emit(evt any) {
 		select {
 		case sink.ch <- evt:
 		default:
-			n.slowConsumerTimer = emitAndLogError(n.slowConsumerTimer, n.typ, evt, sink)
+			emitAndLogError(n.log, n.typ, evt, sink)
 		}
 	}
 	n.lk.Unlock()
 }
 
-func emitAndLogError(timer *time.Timer, typ reflect.Type, evt any, sink *namedSink) *time.Timer {
+func emitAndLogError(log *slog.Logger, typ reflect.Type, evt any, sink *namedSink) {
 	// Slow consumer. Log a warning if stalled for the timeout
-	if timer == nil {
-		timer = time.NewTimer(slowConsumerWarningTimeout)
-	} else {
-		timer.Reset(slowConsumerWarningTimeout)
-	}
+	timer := time.NewTimer(slowConsumerWarningTimeout)
+	defer timer.Stop()
 
 	select {
 	case sink.ch <- evt:
-		if !timer.Stop() {
-			<-timer.C
-		}
 	case <-timer.C:
 		log.Warn("subscriber is a slow consumer. This can lead to libp2p stalling and hard to debug issues.", "subscriber_name", sink.name, "event_type", typ)
 		// Continue to stall since there's nothing else we can do.
 		sink.ch <- evt
 	}
-
-	return timer
 }
 
 func sendSubscriberMetrics(metricsTracer MetricsTracer, sink *namedSink) {
