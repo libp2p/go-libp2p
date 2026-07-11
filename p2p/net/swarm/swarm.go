@@ -907,7 +907,6 @@ func (r ResolverFromMaDNS) ResolveDNSAddr(ctx context.Context, expectedPeerID pe
 	resolved := make([]ma.Multiaddr, 0, len(addrs))
 	toResolve := make([]ma.Multiaddr, 0, len(addrs))
 
-
 	for _, addr := range addrs {
 		if startsWithDNSADDR(addr) {
 			toResolve = append(toResolve, addr)
