@@ -896,7 +896,6 @@ func (r ResolverFromMaDNS) ResolveDNSAddr(ctx context.Context, expectedPeerID pe
 	if recursionLimit <= 0 {
 		return []ma.Multiaddr{maddr}, nil
 	}
-	var resolved, toResolve []ma.Multiaddr
 	addrs, err := r.Resolve(ctx, maddr)
 	if err != nil {
 		return nil, err
@@ -904,6 +903,10 @@ func (r ResolverFromMaDNS) ResolveDNSAddr(ctx context.Context, expectedPeerID pe
 	if len(addrs) > outputLimit {
 		addrs = addrs[:outputLimit]
 	}
+
+	resolved := make([]ma.Multiaddr, 0, len(addrs))
+	toResolve := make([]ma.Multiaddr, 0, len(addrs))
+
 
 	for _, addr := range addrs {
 		if startsWithDNSADDR(addr) {
