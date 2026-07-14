@@ -433,7 +433,7 @@ func (m *probeManager) UpdateAddrs(addrs []ma.Multiaddr) {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
-	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	slices.SortFunc(addrs, ma.Multiaddr.Compare)
 	statuses := make(map[string]*addrStatus, len(addrs))
 	for _, addr := range addrs {
 		k := string(addr.Bytes())

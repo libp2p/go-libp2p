@@ -449,6 +449,53 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 	}
 }
 
+func TestAddrsManagerConfirmedAddrsIncludesSecondaryTransports(t *testing.T) {
+	// A node listening on every transport kubo enables by default, on two UDP
+	// sockets: one reachable, one not. Each UDP bucket interleaves under
+	// Multiaddr.Compare (webrtc-direct sorts before its quic-v1 primary), and
+	// getConfirmedAddrs and Addrs merge the buckets with helpers that
+	// silently drop entries on unsorted input: removeNotInSource must keep
+	// all confirmed addrs in both the reachable and unreachable buckets, and
+	// removeInSource must remove every confirmed-unreachable addr from Addrs.
+	tcp := ma.StringCast("/ip4/1.2.3.4/tcp/4001")
+	wsSNI := ma.StringCast("/ip4/1.2.3.4/tcp/4001/tls/sni/*.example.net/ws")
+	quicPub := ma.StringCast("/ip4/1.2.3.4/udp/4002/quic-v1")
+	webrtcPub := ma.StringCast("/ip4/1.2.3.4/udp/4002/webrtc-direct")
+	wtPub := ma.StringCast("/ip4/1.2.3.4/udp/4002/quic-v1/webtransport")
+	quicPriv := ma.StringCast("/ip4/1.2.3.4/udp/4001/quic-v1")
+	webrtcPriv := ma.StringCast("/ip4/1.2.3.4/udp/4001/webrtc-direct")
+	wtPriv := ma.StringCast("/ip4/1.2.3.4/udp/4001/quic-v1/webtransport")
+	reachableAddrs := []ma.Multiaddr{tcp, wsSNI, quicPub, webrtcPub, wtPub}
+	unreachableAddrs := []ma.Multiaddr{quicPriv, webrtcPriv, wtPriv}
+	listenAddrs := append(slices.Clone(reachableAddrs), unreachableAddrs...)
+
+	// The UDP socket on port 4001 is unreachable, everything else is reachable.
+	am := newAddrsManagerTestCase(t, addrsManagerArgs{
+		ListenAddrs: func() []ma.Multiaddr { return listenAddrs },
+		AutoNATClient: mockAutoNATClient{
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				rch := network.ReachabilityPublic
+				if port, err := reqs[0].Addr.ValueForProtocol(ma.P_UDP); err == nil && port == "4001" {
+					rch = network.ReachabilityPrivate
+				}
+				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: rch}, nil
+			},
+		},
+	})
+	defer am.Close()
+
+	require.Eventually(t, func() bool {
+		reachable, unreachable, _ := am.ConfirmedAddrs()
+		return len(reachable) == len(reachableAddrs) && len(unreachable) == len(unreachableAddrs)
+	}, 5*time.Second, 50*time.Millisecond, "expected all listen addrs to be confirmed")
+
+	reachable, unreachable, unknown := am.ConfirmedAddrs()
+	matest.AssertMultiaddrsMatch(t, reachableAddrs, reachable)
+	matest.AssertMultiaddrsMatch(t, unreachableAddrs, unreachable)
+	require.Empty(t, unknown)
+	matest.AssertMultiaddrsMatch(t, reachableAddrs, am.Addrs())
+}
+
 func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 	quic1 := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
 	quic2 := ma.StringCast("/ip4/1.2.3.5/udp/1/quic-v1")
