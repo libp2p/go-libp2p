@@ -363,9 +363,7 @@ const (
 	maxRecentDialsWindow = targetConfidence + 2
 	// highConfidenceAddrProbeInterval is the maximum interval between probes for an address
 	highConfidenceAddrProbeInterval = 1 * time.Hour
-	// highConfidenceSecondaryAddrProbeInterval is the maximum interval between probes for an address
-	highConfidenceSecondaryAddrProbeInterval = 3 * time.Hour
-	// maxProbeResultTTL is the maximum time to keep probe results for a primary address
+	// maxProbeResultTTL is the maximum time to keep probe results for an address
 	maxProbeResultTTL = maxRecentDialsWindow * highConfidenceAddrProbeInterval
 )
 
@@ -665,8 +663,7 @@ func (s *addrStatus) requiredProbeCountForConfirmation(now time.Time) int {
 	}
 	lastOutcome := s.outcomes[len(s.outcomes)-1]
 	// If the last probe result is old, we need to retest
-	if d := now.Sub(lastOutcome.At); (s.primary == nil && d > highConfidenceAddrProbeInterval) ||
-		(d > highConfidenceSecondaryAddrProbeInterval) {
+	if now.Sub(lastOutcome.At) > highConfidenceAddrProbeInterval {
 		return 1
 	}
 	// if the last probe result was different from reachability, probe again.

@@ -254,17 +254,21 @@ func TestProbeManager(t *testing.T) {
 		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{tcp, websocket}, reachable)
 		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{quic, webrtc}, unreachable)
 
-		// After highConfidenceAddrProbeInterval (1h), only primaries need refresh.
-		// websocket inherits from tcp (Public), webrtc has longer refresh interval (3h).
+		// After highConfidenceAddrProbeInterval (1h) every probed address needs a
+		// refresh: tcp and quic (primaries) plus webrtc (a secondary with a Private
+		// primary, so it doesn't inherit and refreshes on the same cadence).
+		// websocket inherits Public from tcp and is never probed.
 		for range 2 {
 			cl.Add(highConfidenceAddrProbeInterval + 1*time.Millisecond)
 			reqs := nextProbe(pm)
-			// Only tcp and quic need refresh; websocket inherits, webrtc has 3h interval
-			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic}, extractAddrs(reqs))
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, webrtc}, extractAddrs(reqs))
 			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 			reqs = nextProbe(pm)
-			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic}, extractAddrs(reqs))
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, webrtc}, extractAddrs(reqs))
 			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+			reqs = nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
 
 			reqs = nextProbe(pm)
 			require.Empty(t, reqs)
@@ -273,24 +277,6 @@ func TestProbeManager(t *testing.T) {
 		reachable, unreachable, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
 		matest.AssertMultiaddrsMatch(t, reachable, []ma.Multiaddr{tcp, websocket})
 		matest.AssertMultiaddrsMatch(t, unreachable, []ma.Multiaddr{quic, webrtc})
-
-		// After highConfidenceSecondaryAddrProbeInterval (3h), webrtc needs refresh too.
-		// We've advanced 2h+2ms, need to reach 3h+ for webrtc's refresh.
-		// Also need to exceed 1h since last tcp/quic refresh for them to need refresh.
-		cl.Add(highConfidenceSecondaryAddrProbeInterval - 2*highConfidenceAddrProbeInterval + 1*time.Millisecond)
-		reqs = nextProbe(pm)
-		// tcp, quic, and webrtc need refresh; websocket still inherits from tcp
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
-		reqs = nextProbe(pm)
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
-		reqs = nextProbe(pm)
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
-
-		reqs = nextProbe(pm)
-		require.Empty(t, reqs)
 	})
 }
 
@@ -594,6 +580,84 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 		case <-notify:
 		case <-time.After(1 * time.Second):
 			t.Fatal("expected probe")
+		}
+	})
+
+	t.Run("secondary addr stays confirmed across the result TTL", func(t *testing.T) {
+		// quic-v1 (primary) is unreachable, webrtc-direct (secondary sharing the
+		// socket) is reachable. Since the primary isn't Public the secondary
+		// doesn't inherit and keeps its own status, refreshed on the 1h cadence.
+		// Advancing well past maxProbeResultTTL (5h) must not drop it to Unknown:
+		// before the fix the secondary refreshed only every 3h and expired out of
+		// the 5h window.
+		quic := ma.StringCast("/ip4/1.1.1.1/udp/1/quic-v1")
+		webrtc := ma.StringCast("/ip4/1.1.1.1/udp/1/webrtc-direct")
+
+		notify := make(chan struct{}, 1)
+		drainNotify := func() {
+			for {
+				select {
+				case <-notify:
+				default:
+					return
+				}
+			}
+		}
+		mockClient := mockAutoNATClient{
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				select {
+				case notify <- struct{}{}:
+				default:
+				}
+				if reqs[0].Addr.Equal(webrtc) {
+					return autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPublic}, nil
+				}
+				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPrivate}, nil
+			},
+		}
+
+		cl := clock.NewMock()
+		tr := newTracker(mockClient, cl)
+		tr.UpdateAddrs([]ma.Multiaddr{quic, webrtc})
+		assertFirstEvent(t, tr, []ma.Multiaddr{quic, webrtc})
+
+		drainEvent := func() {
+			select {
+			case <-tr.reachabilityUpdateCh:
+			default:
+			}
+		}
+
+		time.Sleep(100 * time.Millisecond) // let the background goroutine process the new addrs
+		cl.Add(1)                          // fire the initial probe timer
+		time.Sleep(100 * time.Millisecond) // let the probes run
+		drainNotify()
+		reachable, unreachable, _ := tr.ConfirmedAddrs()
+		require.Equal(t, []ma.Multiaddr{webrtc}, reachable)
+		require.Equal(t, []ma.Multiaddr{quic}, unreachable)
+
+		// Refresh repeatedly past the 5h TTL. Each cycle advances just past the
+		// 1h refresh interval plus one ticker interval so a refresh fires. The
+		// confirmed reachability must not change: a flap to Unknown (before the
+		// fix) shows up as a spurious reachability-update event.
+		for range 6 {
+			drainNotify()
+			drainEvent()
+			cl.Add(highConfidenceAddrProbeInterval + defaultReachabilityRefreshInterval + time.Millisecond)
+			select {
+			case <-notify:
+			case <-time.After(1 * time.Second):
+				t.Fatal("expected a refresh probe")
+			}
+			time.Sleep(100 * time.Millisecond) // let the probe results settle
+			select {
+			case <-tr.reachabilityUpdateCh:
+				t.Fatal("unexpected reachability change: secondary flapped")
+			default:
+			}
+			reachable, _, unknown := tr.ConfirmedAddrs()
+			require.Equal(t, []ma.Multiaddr{webrtc}, reachable, "secondary must stay reachable")
+			require.Empty(t, unknown)
 		}
 	})
 }
