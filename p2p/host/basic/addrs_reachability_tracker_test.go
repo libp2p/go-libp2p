@@ -658,11 +658,12 @@ func TestRefreshReachability(t *testing.T) {
 		pm := newProbeManager(time.Now)
 		pm.UpdateAddrs([]ma.Multiaddr{pub1})
 		r := &addrsReachabilityTracker{
-			ctx:          ctx,
-			cancel:       cancel,
-			client:       mockClient,
-			probeManager: pm,
-			clock:        clock.New(),
+			ctx:            ctx,
+			cancel:         cancel,
+			client:         mockClient,
+			probeManager:   pm,
+			clock:          clock.New(),
+			maxConcurrency: defaultMaxConcurrency,
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
