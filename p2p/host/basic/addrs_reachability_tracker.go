@@ -834,7 +834,7 @@ func assignPrimaryAddrs(statuses map[string]*addrStatus) {
 				score += 1
 			case ma.P_WEBTRANSPORT:
 				score += 1 << 1
-			case ma.P_WEBRTC:
+			case ma.P_WEBRTC_DIRECT:
 				score += 1 << 2
 			case ma.P_WS, ma.P_WSS:
 				score += 1 << 3
