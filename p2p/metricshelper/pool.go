@@ -22,5 +22,6 @@ func PutStringSlice(s *[]string) {
 	if c := cap(*s); c < capacity {
 		panic(fmt.Sprintf("expected a string slice with capacity 8 or greater, got %d", c))
 	}
+	clear(*s)
 	stringPool.Put(s)
 }
