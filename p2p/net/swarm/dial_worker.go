@@ -208,9 +208,8 @@ loop:
 			// If they have errored, record the error in pr. If they have succeeded,
 			// respond with the connection.
 			// If they are pending, add them to tojoin.
-			// If we haven't seen any of the addresses before, add them to todial.
-			var todial []ma.Multiaddr
-			var tojoin []*addrDial
+			todial := make([]ma.Multiaddr, 0, len(addrRanking))
+			tojoin := make([]*addrDial, 0, len(addrRanking))
 
 			for _, adelay := range addrRanking {
 				ad, ok := w.trackedDials[string(adelay.Addr.Bytes())]

@@ -13,7 +13,8 @@ import (
 // best address for the relay. Instead we should rely on the addresses provided by the
 // relay in response to the reservation request.
 func cleanupAddressSet(addrs []ma.Multiaddr) []ma.Multiaddr {
-	var public, private []ma.Multiaddr
+	public := make([]ma.Multiaddr, 0, len(addrs))
+	private := make([]ma.Multiaddr, 0, len(addrs))
 
 	for _, a := range addrs {
 		if isRelayAddr(a) {

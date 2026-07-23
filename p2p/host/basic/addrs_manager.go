@@ -710,6 +710,12 @@ func areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 // diffAddrs diffs prev and current addrs and returns added, maintained, and removed addrs.
 // Both prev and current are expected to be sorted using ma.Compare()
 func diffAddrs(prev, current []ma.Multiaddr) (added, maintained, removed []ma.Multiaddr) {
+	added = make([]ma.Multiaddr, 0, len(current))
+	removed = make([]ma.Multiaddr, 0, len(prev))
+
+	minLen := min(len(current), len(prev))
+	maintained = make([]ma.Multiaddr, 0, minLen)
+
 	i, j := 0, 0
 	for i < len(prev) && j < len(current) {
 		cmp := prev[i].Compare(current[j])
