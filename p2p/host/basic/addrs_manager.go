@@ -479,7 +479,7 @@ func (a *addrsManager) applyAddrsFactory(addrs []ma.Multiaddr) []ma.Multiaddr {
 	addrs = append(addrs[:0], af...)
 	// Add certhashes for the addresses provided by the user via address factory.
 	addrs = a.addCertHashes(ma.Unique(addrs))
-	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	slices.SortFunc(addrs, ma.Multiaddr.Compare)
 	return addrs
 }
 
@@ -514,6 +514,12 @@ func (a *addrsManager) ConfirmedAddrs() (reachable []ma.Multiaddr, unreachable [
 
 func (a *addrsManager) getConfirmedAddrs(localAddrs []ma.Multiaddr) (reachableAddrs, unreachableAddrs, unknownAddrs []ma.Multiaddr) {
 	reachableAddrs, unreachableAddrs, unknownAddrs = a.addrsReachabilityTracker.ConfirmedAddrs()
+	// Don't rely on tracker's ordering. removeNotInSource here and removeInSource in
+	// getDialableAddrs require sorted input; unsorted input silently drops
+	// confirmed addrs.
+	slices.SortFunc(reachableAddrs, ma.Multiaddr.Compare)
+	slices.SortFunc(unreachableAddrs, ma.Multiaddr.Compare)
+	slices.SortFunc(unknownAddrs, ma.Multiaddr.Compare)
 	return removeNotInSource(reachableAddrs, localAddrs), removeNotInSource(unreachableAddrs, localAddrs), removeNotInSource(unknownAddrs, localAddrs)
 }
 
@@ -551,7 +557,7 @@ func (a *addrsManager) getLocalAddrs() []ma.Multiaddr {
 	// using identify.
 	finalAddrs = a.addCertHashes(finalAddrs)
 	finalAddrs = ma.Unique(finalAddrs)
-	slices.SortFunc(finalAddrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	slices.SortFunc(finalAddrs, ma.Multiaddr.Compare)
 	return finalAddrs
 }
 
@@ -691,8 +697,8 @@ func areAddrsDifferent(prev, current []ma.Multiaddr) bool {
 	if len(prev) != len(current) {
 		return true
 	}
-	slices.SortFunc(prev, func(a, b ma.Multiaddr) int { return a.Compare(b) })
-	slices.SortFunc(current, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	slices.SortFunc(prev, ma.Multiaddr.Compare)
+	slices.SortFunc(current, ma.Multiaddr.Compare)
 	for i := range prev {
 		if !prev[i].Equal(current[i]) {
 			return true
