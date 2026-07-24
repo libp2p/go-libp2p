@@ -197,25 +197,9 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 	} else {
 		filteredReqs = reqs
 	}
-	an.mx.Lock()
-	// nil after Close; host shutdown can have in-flight reachability checks
-	if an.peers == nil {
-		an.mx.Unlock()
-		return Result{}, ErrNoPeers
-	}
-	now := time.Now()
-	var p peer.ID
-	for pr := range an.peers.Shuffled() {
-		if t := an.throttlePeer[pr]; t.After(now) {
-			continue
-		}
-		p = pr
-		an.throttlePeer[p] = time.Now().Add(an.throttlePeerDuration)
-		break
-	}
-	an.mx.Unlock()
-	if p == "" {
-		return Result{}, ErrNoPeers
+	p, err := an.pickServer()
+	if err != nil {
+		return Result{}, err
 	}
 	res, err := an.cli.GetReachability(ctx, p, filteredReqs)
 	if err != nil {
@@ -231,6 +215,28 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 	}
 	log.Debug("reachability check successful", "peer", p)
 	return res, nil
+}
+
+// pickServer returns an autonatv2 server that isn't currently throttled, and throttles
+// it for throttlePeerDuration. It returns ErrNoPeers if there is no such server, or if
+// autonat has been closed.
+func (an *AutoNAT) pickServer() (peer.ID, error) {
+	an.mx.Lock()
+	defer an.mx.Unlock()
+
+	// nil after Close; host shutdown can have in-flight reachability checks
+	if an.peers == nil {
+		return "", ErrNoPeers
+	}
+	now := time.Now()
+	for p := range an.peers.Shuffled() {
+		if t := an.throttlePeer[p]; t.After(now) {
+			continue
+		}
+		an.throttlePeer[p] = time.Now().Add(an.throttlePeerDuration)
+		return p, nil
+	}
+	return "", ErrNoPeers
 }
 
 func (an *AutoNAT) updatePeer(p peer.ID) {
