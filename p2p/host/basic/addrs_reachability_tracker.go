@@ -349,7 +349,7 @@ const (
 	// This is used to prevent infinite probing of an address whose status is indeterminate for any reason.
 	maxRecentDialsPerAddr = 10
 	// confidence is the absolute difference between the number of successes and failures for an address
-	// targetConfidence is the confidence threshold for an address after which we wait for `maxProbeInterval`
+	// targetConfidence is the confidence threshold for an address after which we wait for `highConfidenceAddrProbeInterval`
 	// before probing again.
 	targetConfidence = 3
 	// minConfidence is the confidence threshold for an address to be considered reachable or unreachable
@@ -359,7 +359,7 @@ const (
 	//
 	// +2 allows for 1 invalid probe result. Consider a string of successes, after which we have a single failure
 	// and then a success(...S S S S F S). The confidence in the targetConfidence window  will be equal to
-	// targetConfidence, the last F and S cancel each other, and we won't probe again for maxProbeInterval.
+	// targetConfidence, the last F and S cancel each other, and we won't probe again for highConfidenceAddrProbeInterval.
 	maxRecentDialsWindow = targetConfidence + 2
 	// highConfidenceAddrProbeInterval is the maximum interval between probes for an address
 	highConfidenceAddrProbeInterval = 1 * time.Hour
