@@ -174,7 +174,9 @@ func (an *AutoNAT) Close() {
 	an.wg.Wait()
 	an.srv.Close()
 	an.cli.Close()
+	an.mx.Lock()
 	an.peers = nil
+	an.mx.Unlock()
 }
 
 // GetReachability makes a single dial request for checking reachability for requested addresses
@@ -196,6 +198,11 @@ func (an *AutoNAT) GetReachability(ctx context.Context, reqs []Request) (Result,
 		filteredReqs = reqs
 	}
 	an.mx.Lock()
+	// nil after Close; host shutdown can have in-flight reachability checks
+	if an.peers == nil {
+		an.mx.Unlock()
+		return Result{}, ErrNoPeers
+	}
 	now := time.Now()
 	var p peer.ID
 	for pr := range an.peers.Shuffled() {
