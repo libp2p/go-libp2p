@@ -10,7 +10,6 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -710,17 +709,35 @@ func TestRefreshReachability(t *testing.T) {
 	})
 
 	t.Run("quits on cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		block := make(chan struct{})
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+
+		// An addr per worker, so every worker holds a probe and a refresh that
+		// honors cancellation reaches the client exactly maxConcurrency times.
+		// (A fresh addr admits only targetConfidence concurrent probes, so a
+		// single addr couldn't guarantee a probe for every worker.)
+		addrs := make([]ma.Multiaddr, 0, defaultMaxConcurrency)
+		for i := range defaultMaxConcurrency {
+			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.1.1.1/tcp/%d", i+1)))
+		}
+
+		inFlight := make(chan struct{}, defaultMaxConcurrency)
+		var probes atomic.Int32
 		mockClient := mockAutoNATClient{
-			F: func(_ context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
-				block <- struct{}{}
-				return autonatv2.Result{}, nil
+			F: func(ctx context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
+				// Checked on the test goroutine below. Failing here instead would
+				// risk logging to a t that has already completed.
+				if probes.Add(1) > defaultMaxConcurrency {
+					return autonatv2.Result{}, autonatv2.ErrNoPeers // persistent: unwinds the workers
+				}
+				inFlight <- struct{}{}
+				<-ctx.Done() // keep the probe in flight until it's cancelled
+				return autonatv2.Result{}, ctx.Err()
 			},
 		}
 
 		pm := newProbeManager(time.Now)
-		pm.UpdateAddrs([]ma.Multiaddr{pub1})
+		pm.UpdateAddrs(addrs)
 		r := &addrsReachabilityTracker{
 			ctx:            ctx,
 			cancel:         cancel,
@@ -729,32 +746,28 @@ func TestRefreshReachability(t *testing.T) {
 			clock:          clock.New(),
 			maxConcurrency: defaultMaxConcurrency,
 		}
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			result := r.refreshReachability()
-			assert.False(t, <-result.BackoffCh)
-			assert.Equal(t, pm.InProgressProbes(), 0)
-		}()
 
-		cancel()
-		time.Sleep(50 * time.Millisecond) // wait for the cancellation to be processed
-
-	outer:
+		result := r.refreshReachability()
+		// Only cancel once every worker is parked inside the client, so cancellation
+		// has to interrupt probes that are genuinely running.
 		for range defaultMaxConcurrency {
 			select {
-			case <-block:
-			default:
-				break outer
+			case <-inFlight:
+			case <-time.After(5 * time.Second):
+				t.Fatal("expected every worker to have a probe in flight")
 			}
 		}
+		cancel()
+
 		select {
-		case <-block:
-			t.Fatal("expected no more requests")
-		case <-time.After(50 * time.Millisecond):
+		case backoff := <-result.BackoffCh:
+			// The workers are done, so probes is final.
+			require.Equal(t, int32(defaultMaxConcurrency), probes.Load(), "started a new probe after cancellation")
+			require.False(t, backoff)
+		case <-time.After(5 * time.Second):
+			t.Fatal("refreshReachability didn't return after cancellation")
 		}
-		wg.Wait()
+		require.Equal(t, 0, pm.InProgressProbes())
 	})
 
 	t.Run("handles refusals", func(t *testing.T) {
