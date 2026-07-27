@@ -638,6 +638,10 @@ func quicSimnet(isPubliclyReachably bool, router *simnet.SimpleFirewallRouter) l
 				router.SetAddrPubliclyReachable(address)
 			}
 			c := simnet.NewSimConn(address)
+			// AddNode only wires the router -> conn direction. The conn ->
+			// router direction needs the router set as the up receiver, else
+			// the first write panics.
+			c.SetUpPacketReceiver(router)
 			router.AddNode(address, c)
 			return c, nil
 		}))
