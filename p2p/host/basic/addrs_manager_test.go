@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	mrand "math/rand/v2"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -19,6 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multiaddr/matest"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,6 +112,9 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		pid, err = peer.IDFromPrivateKey(signKey)
 		require.NoError(tb, err)
 	}
+
+	_, isCertified := addrStore.(peerstore.CertifiedAddrBook)
+	disableSignedPeerRecord := !isCertified
 	am, err := newAddrsManager(
 		eb,
 		args.NATManager,
@@ -118,7 +125,7 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		args.AutoNATClient,
 		true,
 		prometheus.DefaultRegisterer,
-		false,
+		disableSignedPeerRecord,
 		args.DisableNonPublicAddrPublishing,
 		signKey,
 		addrStore,
@@ -669,5 +676,232 @@ func BenchmarkRemoveIfNotInSource(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		removeNotInSource(slices.Clone(addrs[:5]), addrs[:])
+	}
+}
+
+// TestAddrsReachabilityStress stress tests addrs reachability logic. It goes through all combinations of
+// public, private, and unknown responses for a few public address combinations and asserts that the
+// output is expected.
+func TestAddrsReachabilityStress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		getAddrs := func(ip string, port int, protocols ...int) []ma.Multiaddr {
+			const certHash = "uEiAsGPzpiPGQzSlVHRXrUCT5EkTV7YFrV4VZ3hpEKTd_zg"
+
+			ipProtocol := "ip4"
+			if strings.Contains(ip, ":") {
+				ipProtocol = "ip6"
+			}
+			prefix := fmt.Sprintf("/%s/%s", ipProtocol, ip)
+
+			addrs := make([]ma.Multiaddr, 0, len(protocols))
+			for _, p := range protocols {
+				switch p {
+				case ma.P_QUIC_V1:
+					addrs = append(addrs, ma.StringCast(fmt.Sprintf("%s/udp/%d/quic-v1", prefix, port)))
+				case ma.P_TCP:
+					addrs = append(addrs, ma.StringCast(fmt.Sprintf("%s/tcp/%d", prefix, port)))
+				case ma.P_WEBTRANSPORT:
+					addrs = append(addrs, ma.StringCast(fmt.Sprintf(
+						"%s/udp/%d/quic-v1/webtransport/certhash/%s",
+						prefix, port, certHash,
+					)))
+				case ma.P_WEBRTC_DIRECT:
+					addrs = append(addrs, ma.StringCast(fmt.Sprintf(
+						"%s/udp/%d/webrtc-direct/certhash/%s",
+						prefix, port, certHash,
+					)))
+				case ma.P_WSS:
+					addrs = append(addrs, ma.StringCast(fmt.Sprintf("%s/tcp/%d/wss", prefix, port)))
+				default:
+					t.Fatalf("unsupported protocol: %d", p)
+				}
+			}
+			return addrs
+		}
+
+		publicAddrs1 := getAddrs(
+			"2.2.2.2",
+			8080,
+			ma.P_QUIC_V1,
+			ma.P_TCP,
+			ma.P_WEBTRANSPORT,
+			ma.P_WEBRTC_DIRECT,
+			ma.P_WSS,
+		)
+		publicAddrs2 := getAddrs(
+			"2001::1",
+			8080,
+			ma.P_QUIC_V1,
+			ma.P_WEBRTC_DIRECT,
+			ma.P_WSS,
+		)
+		privateAddrs1 := getAddrs(
+			"192.168.1.1",
+			8080,
+			ma.P_QUIC_V1,
+			ma.P_TCP,
+			ma.P_WEBTRANSPORT,
+			ma.P_WEBRTC_DIRECT,
+			ma.P_WSS,
+		)
+
+		allAddrs := slices.Clone(publicAddrs1)
+		allAddrs = append(allAddrs, publicAddrs2...)
+		allAddrs = append(allAddrs, privateAddrs1...)
+
+		trackedAddrs := slices.DeleteFunc(slices.Clone(allAddrs), func(addr ma.Multiaddr) bool {
+			return !manet.IsPublicAddr(addr)
+		})
+		reachabilities := [...]network.Reachability{
+			network.ReachabilityUnknown,
+			network.ReachabilityPublic,  // reachable
+			network.ReachabilityPrivate, // unreachable
+		}
+		combinationCount := 1
+		for range trackedAddrs {
+			combinationCount *= len(reachabilities)
+		}
+
+		for combination := range combinationCount {
+			reachability := make(map[string]network.Reachability, len(trackedAddrs))
+			state := combination
+			for _, addr := range trackedAddrs {
+				reachability[string(addr.Bytes())] = reachabilities[state%len(reachabilities)]
+				state /= len(reachabilities)
+			}
+			testReachability(t, combination, allAddrs, reachability)
+		}
+	})
+}
+
+type mockAddrStore struct{}
+
+// SetAddrs implements [addrStore].
+func (m mockAddrStore) SetAddrs(peer.ID, []ma.Multiaddr, time.Duration) {
+}
+
+var _ addrStore = mockAddrStore{}
+
+func testReachability(
+	t *testing.T,
+	combination int,
+	allAddrs []ma.Multiaddr,
+	reachability map[string]network.Reachability,
+) {
+	signKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	pid, err := peer.IDFromPrivateKey(signKey)
+	require.NoError(t, err)
+
+	client := mockAutoNATClient{
+		func(_ context.Context, requests []autonatv2.Request) (autonatv2.Result, error) {
+			x := mrand.IntN(100)
+			time.Sleep(time.Duration(x) * time.Millisecond)
+			for i, req := range requests {
+				if manet.IsPrivateAddr(req.Addr) {
+					// the incorrect reply is deliberate the caller should check this
+					return autonatv2.Result{
+						Addr:         req.Addr,
+						Idx:          i,
+						Reachability: network.ReachabilityPublic,
+					}, nil
+				}
+				rch := reachability[string(req.Addr.Bytes())]
+				switch rch {
+				case network.ReachabilityPublic, network.ReachabilityPrivate:
+					return autonatv2.Result{
+						Addr:         req.Addr,
+						Idx:          i,
+						Reachability: rch,
+					}, nil
+				case network.ReachabilityUnknown:
+					continue
+				default:
+					panic(fmt.Sprintf("unexpected reachability: %d", rch))
+				}
+			}
+			return autonatv2.Result{AllAddrsRefused: true}, nil
+		},
+	}
+	am := newAddrsManagerTestCase(t, addrsManagerArgs{
+		ListenAddrs:  func() []ma.Multiaddr { return allAddrs },
+		AddrsFactory: func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs },
+		AddrStoreArgs: addrStoreArgs{
+			AddrStore: mockAddrStore{},
+			HostID:    pid,
+			SignKey:   signKey,
+		},
+		AutoNATClient: client,
+	})
+	defer am.Close()
+
+	time.Sleep(1 * time.Minute)
+
+	hasProtocol := func(addr ma.Multiaddr, protocol int) bool {
+		for _, component := range addr {
+			if component.Code() == protocol {
+				return true
+			}
+		}
+		return false
+	}
+	effectiveReachability := func(addr ma.Multiaddr) network.Reachability {
+		rch, ok := reachability[string(addr.Bytes())]
+		if !ok {
+			return network.ReachabilityUnknown
+		}
+
+		thinWaist, err := thinWaistPart(addr)
+		if err != nil {
+			return rch
+		}
+		var primary ma.Multiaddr
+		switch {
+		case hasProtocol(addr, ma.P_WEBTRANSPORT),
+			hasProtocol(addr, ma.P_WEBRTC_DIRECT):
+			primary = thinWaist.Encapsulate(ma.StringCast("/quic-v1"))
+		case hasProtocol(addr, ma.P_WSS):
+			primary = thinWaist
+		}
+		if primary != nil &&
+			reachability[string(primary.Bytes())] == network.ReachabilityPublic {
+			rch = network.ReachabilityPublic
+		}
+		return rch
+	}
+
+	var expectedReachable, expectedUnreachable, expectedUnknown []ma.Multiaddr
+	for _, addr := range allAddrs {
+		if manet.IsPrivateAddr(addr) {
+			continue
+		}
+		rch := effectiveReachability(addr)
+		switch rch {
+		case network.ReachabilityPublic:
+			expectedReachable = append(expectedReachable, addr)
+		case network.ReachabilityPrivate:
+			expectedUnreachable = append(expectedUnreachable, addr)
+		case network.ReachabilityUnknown:
+			expectedUnknown = append(expectedUnknown, addr)
+		}
+	}
+
+	reachable, unreachable, unknown := am.ConfirmedAddrs()
+	if !matest.AssertMultiaddrsMatch(t, expectedReachable, reachable) {
+		t.Fatalf("failed reachable check for combination: %d", combination)
+	}
+	if !matest.AssertMultiaddrsMatch(t, expectedUnreachable, unreachable) {
+		t.Fatalf("failed unreachable check for combination: %d", combination)
+	}
+	if !matest.AssertMultiaddrsMatch(t, expectedUnknown, unknown) {
+		t.Fatalf("failed unknown check for combination: %d", combination)
+	}
+
+	expectedAddrs := slices.DeleteFunc(slices.Clone(allAddrs), func(a ma.Multiaddr) bool {
+		rch := effectiveReachability(a)
+		return rch == network.ReachabilityPrivate && !manet.IsPrivateAddr(a)
+	})
+	if !matest.AssertMultiaddrsMatch(t, expectedAddrs, am.Addrs()) {
+		t.Fatalf("failed addrs check for combination: %d", combination)
 	}
 }
