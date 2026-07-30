@@ -10,7 +10,6 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -254,17 +253,21 @@ func TestProbeManager(t *testing.T) {
 		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{tcp, websocket}, reachable)
 		matest.AssertMultiaddrsMatch(t, []ma.Multiaddr{quic, webrtc}, unreachable)
 
-		// After highConfidenceAddrProbeInterval (1h), only primaries need refresh.
-		// websocket inherits from tcp (Public), webrtc has longer refresh interval (3h).
+		// After highConfidenceAddrProbeInterval (1h) every probed address needs a
+		// refresh: tcp and quic (primaries) plus webrtc (a secondary with a Private
+		// primary, so it doesn't inherit and refreshes on the same cadence).
+		// websocket inherits Public from tcp and is never probed.
 		for range 2 {
 			cl.Add(highConfidenceAddrProbeInterval + 1*time.Millisecond)
 			reqs := nextProbe(pm)
-			// Only tcp and quic need refresh; websocket inherits, webrtc has 3h interval
-			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic}, extractAddrs(reqs))
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, webrtc}, extractAddrs(reqs))
 			pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
 			reqs = nextProbe(pm)
-			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic}, extractAddrs(reqs))
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, webrtc}, extractAddrs(reqs))
 			pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
+			reqs = nextProbe(pm)
+			matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
+			pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
 
 			reqs = nextProbe(pm)
 			require.Empty(t, reqs)
@@ -273,24 +276,6 @@ func TestProbeManager(t *testing.T) {
 		reachable, unreachable, _ = pm.AppendConfirmedAddrs(nil, nil, nil)
 		matest.AssertMultiaddrsMatch(t, reachable, []ma.Multiaddr{tcp, websocket})
 		matest.AssertMultiaddrsMatch(t, unreachable, []ma.Multiaddr{quic, webrtc})
-
-		// After highConfidenceSecondaryAddrProbeInterval (3h), webrtc needs refresh too.
-		// We've advanced 2h+2ms, need to reach 3h+ for webrtc's refresh.
-		// Also need to exceed 1h since last tcp/quic refresh for them to need refresh.
-		cl.Add(highConfidenceSecondaryAddrProbeInterval - 2*highConfidenceAddrProbeInterval + 1*time.Millisecond)
-		reqs = nextProbe(pm)
-		// tcp, quic, and webrtc need refresh; websocket still inherits from tcp
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{tcp, quic, webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: tcp, Idx: 0, Reachability: network.ReachabilityPublic}, nil)
-		reqs = nextProbe(pm)
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{quic, webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: quic, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
-		reqs = nextProbe(pm)
-		matest.AssertEqualMultiaddrs(t, []ma.Multiaddr{webrtc}, extractAddrs(reqs))
-		pm.CompleteProbe(reqs, autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPrivate}, nil)
-
-		reqs = nextProbe(pm)
-		require.Empty(t, reqs)
 	})
 }
 
@@ -596,6 +581,84 @@ func TestAddrsReachabilityTracker(t *testing.T) {
 			t.Fatal("expected probe")
 		}
 	})
+
+	t.Run("secondary addr stays confirmed across the result TTL", func(t *testing.T) {
+		// quic-v1 (primary) is unreachable, webrtc-direct (secondary sharing the
+		// socket) is reachable. Since the primary isn't Public the secondary
+		// doesn't inherit and keeps its own status, refreshed on the 1h cadence.
+		// Advancing well past maxProbeResultTTL (5h) must not drop it to Unknown:
+		// before the fix the secondary refreshed only every 3h and expired out of
+		// the 5h window.
+		quic := ma.StringCast("/ip4/1.1.1.1/udp/1/quic-v1")
+		webrtc := ma.StringCast("/ip4/1.1.1.1/udp/1/webrtc-direct")
+
+		notify := make(chan struct{}, 1)
+		drainNotify := func() {
+			for {
+				select {
+				case <-notify:
+				default:
+					return
+				}
+			}
+		}
+		mockClient := mockAutoNATClient{
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				select {
+				case notify <- struct{}{}:
+				default:
+				}
+				if reqs[0].Addr.Equal(webrtc) {
+					return autonatv2.Result{Addr: webrtc, Idx: 0, Reachability: network.ReachabilityPublic}, nil
+				}
+				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPrivate}, nil
+			},
+		}
+
+		cl := clock.NewMock()
+		tr := newTracker(mockClient, cl)
+		tr.UpdateAddrs([]ma.Multiaddr{quic, webrtc})
+		assertFirstEvent(t, tr, []ma.Multiaddr{quic, webrtc})
+
+		drainEvent := func() {
+			select {
+			case <-tr.reachabilityUpdateCh:
+			default:
+			}
+		}
+
+		time.Sleep(100 * time.Millisecond) // let the background goroutine process the new addrs
+		cl.Add(1)                          // fire the initial probe timer
+		time.Sleep(100 * time.Millisecond) // let the probes run
+		drainNotify()
+		reachable, unreachable, _ := tr.ConfirmedAddrs()
+		require.Equal(t, []ma.Multiaddr{webrtc}, reachable)
+		require.Equal(t, []ma.Multiaddr{quic}, unreachable)
+
+		// Refresh repeatedly past the 5h TTL. Each cycle advances just past the
+		// 1h refresh interval plus one ticker interval so a refresh fires. The
+		// confirmed reachability must not change: a flap to Unknown (before the
+		// fix) shows up as a spurious reachability-update event.
+		for range 6 {
+			drainNotify()
+			drainEvent()
+			cl.Add(highConfidenceAddrProbeInterval + defaultReachabilityRefreshInterval + time.Millisecond)
+			select {
+			case <-notify:
+			case <-time.After(1 * time.Second):
+				t.Fatal("expected a refresh probe")
+			}
+			time.Sleep(100 * time.Millisecond) // let the probe results settle
+			select {
+			case <-tr.reachabilityUpdateCh:
+				t.Fatal("unexpected reachability change: secondary flapped")
+			default:
+			}
+			reachable, _, unknown := tr.ConfirmedAddrs()
+			require.Equal(t, []ma.Multiaddr{webrtc}, reachable, "secondary must stay reachable")
+			require.Empty(t, unknown)
+		}
+	})
 }
 
 func TestRefreshReachability(t *testing.T) {
@@ -646,50 +709,65 @@ func TestRefreshReachability(t *testing.T) {
 	})
 
 	t.Run("quits on cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		block := make(chan struct{})
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+
+		// An addr per worker, so every worker holds a probe and a refresh that
+		// honors cancellation reaches the client exactly maxConcurrency times.
+		// (A fresh addr admits only targetConfidence concurrent probes, so a
+		// single addr couldn't guarantee a probe for every worker.)
+		addrs := make([]ma.Multiaddr, 0, defaultMaxConcurrency)
+		for i := range defaultMaxConcurrency {
+			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.1.1.1/tcp/%d", i+1)))
+		}
+
+		inFlight := make(chan struct{}, defaultMaxConcurrency)
+		var probes atomic.Int32
 		mockClient := mockAutoNATClient{
-			F: func(_ context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
-				block <- struct{}{}
-				return autonatv2.Result{}, nil
+			F: func(ctx context.Context, _ []autonatv2.Request) (autonatv2.Result, error) {
+				// Checked on the test goroutine below. Failing here instead would
+				// risk logging to a t that has already completed.
+				if probes.Add(1) > defaultMaxConcurrency {
+					return autonatv2.Result{}, autonatv2.ErrNoPeers // persistent: unwinds the workers
+				}
+				inFlight <- struct{}{}
+				<-ctx.Done() // keep the probe in flight until it's cancelled
+				return autonatv2.Result{}, ctx.Err()
 			},
 		}
 
 		pm := newProbeManager(time.Now)
-		pm.UpdateAddrs([]ma.Multiaddr{pub1})
+		pm.UpdateAddrs(addrs)
 		r := &addrsReachabilityTracker{
-			ctx:          ctx,
-			cancel:       cancel,
-			client:       mockClient,
-			probeManager: pm,
-			clock:        clock.New(),
+			ctx:            ctx,
+			cancel:         cancel,
+			client:         mockClient,
+			probeManager:   pm,
+			clock:          clock.New(),
+			maxConcurrency: defaultMaxConcurrency,
 		}
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			result := r.refreshReachability()
-			assert.False(t, <-result.BackoffCh)
-			assert.Equal(t, pm.InProgressProbes(), 0)
-		}()
 
-		cancel()
-		time.Sleep(50 * time.Millisecond) // wait for the cancellation to be processed
-
-	outer:
+		result := r.refreshReachability()
+		// Only cancel once every worker is parked inside the client, so cancellation
+		// has to interrupt probes that are genuinely running.
 		for range defaultMaxConcurrency {
 			select {
-			case <-block:
-			default:
-				break outer
+			case <-inFlight:
+			case <-time.After(5 * time.Second):
+				t.Fatal("expected every worker to have a probe in flight")
 			}
 		}
+		cancel()
+
 		select {
-		case <-block:
-			t.Fatal("expected no more requests")
-		case <-time.After(50 * time.Millisecond):
+		case backoff := <-result.BackoffCh:
+			// The workers are done, so probes is final.
+			require.Equal(t, int32(defaultMaxConcurrency), probes.Load(), "started a new probe after cancellation")
+			require.False(t, backoff)
+		case <-time.After(5 * time.Second):
+			t.Fatal("refreshReachability didn't return after cancellation")
 		}
-		wg.Wait()
+		require.Equal(t, 0, pm.InProgressProbes())
 	})
 
 	t.Run("handles refusals", func(t *testing.T) {

@@ -413,7 +413,7 @@ func (a *addrsManager) notifyAddrsUpdated(emitter event.Emitter, localAddrsEmitt
 		}
 	}
 	if areAddrsDifferent(previous.addrs, current.addrs) {
-		log.Debug("host addresses updated", "addrs", current.localAddrs)
+		log.Debug("host addresses updated", "addrs", current.addrs)
 		a.emitLocalAddrsUpdated(localAddrsEmitter, current.addrs, previous.addrs)
 	}
 

@@ -36,8 +36,12 @@ jobs:
       - uses: libp2p/test-plans/.github/actions/run-transport-interop-test@master
         with:
           test-filter: go-libp2p-head
-          # Known incompatiblity between the draft versions of WebTransport
-          test-ignore: "go-libp2p-head x go-v0.46 (webtransport)|go-libp2p-head x go-v0.45 (webtransport)"
+          # WebTransport renamed its handshake identifiers between IETF draft
+          # versions, so a node on the newer draft cannot dial one still on the
+          # older draft. Browser to go-libp2p is unaffected, and that is the
+          # direction WebTransport exists for; go to go uses /quic-v1 anyway.
+          # Explanation: https://github.com/libp2p/go-libp2p/pull/3532
+          test-ignore: "go-libp2p-head x go-v0.48 (webtransport)|go-libp2p-head x go-v0.47 (webtransport)|go-libp2p-head x go-v0.46 (webtransport)"
           extra-versions: ${{ github.workspace }}/test-plans/ping-version.json
           s3-cache-bucket: ${{ vars.S3_LIBP2P_BUILD_CACHE_BUCKET_NAME }}
           s3-access-key-id: ${{ vars.S3_LIBP2P_BUILD_CACHE_AWS_ACCESS_KEY_ID }}
