@@ -207,7 +207,9 @@ func (rf *relayFinder) background(ctx context.Context) {
 	workTimer := rf.conf.clock.InstantTimer(rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter))
 	defer workTimer.Stop()
 
-	go rf.cleanupDisconnectedPeers(ctx)
+	rf.refCount.Go(func() {
+		rf.cleanupDisconnectedPeers(ctx)
+	})
 
 	// update addrs on starting the relay finder.
 	rf.updateAddrs()

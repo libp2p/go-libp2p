@@ -49,7 +49,7 @@ type QueryEvent struct {
 
 type routingQueryKey struct{}
 type eventChannel struct {
-	mu  sync.Mutex
+	mu  sync.RWMutex
 	ctx context.Context
 	ch  chan<- *QueryEvent
 }
@@ -59,20 +59,22 @@ type eventChannel struct {
 func (e *eventChannel) waitThenClose() {
 	<-e.ctx.Done()
 	e.mu.Lock()
-	close(e.ch)
-	// 1. Signals that we're done.
-	// 2. Frees memory (in case we end up hanging on to this for a while).
-	e.ch = nil
+	if e.ch != nil {
+		close(e.ch)
+		// 1. Signals that we're done.
+		// 2. Frees memory (in case we end up hanging on to this for a while).
+		e.ch = nil
+	}
 	e.mu.Unlock()
 }
 
 // send sends an event on the event channel, aborting if either the passed or
 // the internal context expire.
 func (e *eventChannel) send(ctx context.Context, ev *QueryEvent) {
-	e.mu.Lock()
+	e.mu.RLock()
 	// Closed.
 	if e.ch == nil {
-		e.mu.Unlock()
+		e.mu.RUnlock()
 		return
 	}
 	// in case the passed context is unrelated, wait on both.
@@ -81,7 +83,7 @@ func (e *eventChannel) send(ctx context.Context, ev *QueryEvent) {
 	case <-e.ctx.Done():
 	case <-ctx.Done():
 	}
-	e.mu.Unlock()
+	e.mu.RUnlock()
 }
 
 // RegisterForQueryEvents registers a query event channel with the given
