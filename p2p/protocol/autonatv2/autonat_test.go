@@ -97,6 +97,16 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 	require.ErrorIs(t, err, ErrPrivateAddrs)
 }
 
+func TestGetReachabilityAfterClose(t *testing.T) {
+	// The host closes autonat before the address manager, whose reachability
+	// tracker workers may still issue checks during shutdown.
+	an := newAutoNAT(t, nil)
+	an.Close()
+	res, err := an.GetReachability(context.Background(), []Request{{Addr: ma.StringCast("/ip4/1.2.3.4/udp/10/quic-v1")}})
+	require.ErrorIs(t, err, ErrNoPeers)
+	require.Equal(t, Result{}, res)
+}
+
 func TestClientRequest(t *testing.T) {
 	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
