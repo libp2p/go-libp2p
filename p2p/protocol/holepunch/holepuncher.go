@@ -50,14 +50,15 @@ type holePuncher struct {
 	filter AddrFilter
 }
 
-func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma.Multiaddr, tracer *tracer, filter AddrFilter) *holePuncher {
+func newHolePuncher(h host.Host, ids identify.IDService, listenAddrs func() []ma.Multiaddr, directDialTimeout time.Duration, tracer *tracer, filter AddrFilter) *holePuncher {
 	hp := &holePuncher{
-		host:        h,
-		ids:         ids,
-		active:      make(map[peer.ID]struct{}),
-		tracer:      tracer,
-		filter:      filter,
-		listenAddrs: listenAddrs,
+		host:              h,
+		ids:               ids,
+		active:            make(map[peer.ID]struct{}),
+		tracer:            tracer,
+		filter:            filter,
+		listenAddrs:       listenAddrs,
+		directDialTimeout: directDialTimeout,
 	}
 	hp.ctx, hp.ctxCancel = context.WithCancel(context.Background())
 	h.Network().Notify((*netNotifiee)(hp))
