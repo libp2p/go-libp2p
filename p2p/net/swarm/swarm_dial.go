@@ -352,7 +352,7 @@ type resolveErr struct {
 
 func chainResolvers(ctx context.Context, addrs []ma.Multiaddr, outputLimit int, resolvers []resolver) ([]ma.Multiaddr, []resolveErr) {
 	nextAddrs := make([]ma.Multiaddr, 0, len(addrs))
-	errs := make([]resolveErr, 0)
+	errs := make([]resolveErr, 0, len(addrs))
 	for _, r := range resolvers {
 		for _, a := range addrs {
 			if !r.canResolve(a) {
@@ -388,7 +388,7 @@ func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) []ma.Multiad
 		},
 	}
 
-	var skipped []ma.Multiaddr
+	skipped := make([]ma.Multiaddr, 0, len(pi.Addrs))
 	skipResolver := resolver{
 		canResolve: func(addr ma.Multiaddr) bool {
 			tpt := s.TransportForDialing(addr)
@@ -486,7 +486,7 @@ var quicDraft29DialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Bas
 // know are going to fail or for which we have a better alternative.
 func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAddrs []ma.Multiaddr, addrErrs []TransportError) {
 	lisAddrs, _ := s.InterfaceListenAddresses()
-	var ourAddrs []ma.Multiaddr
+	ourAddrs := make([]ma.Multiaddr, 0, len(lisAddrs))
 	for _, addr := range lisAddrs {
 		// we're only sure about filtering out /ip4 and /ip6 addresses, so far
 		ma.ForEach(addr, func(c ma.Component) bool {

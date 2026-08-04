@@ -703,6 +703,9 @@ func (ids *idService) getSignedRecord(snapshot *identifySnapshot) []byte {
 
 // diff takes two slices of strings (a and b) and computes which elements were added and removed in b
 func diff(a, b []protocol.ID) (added, removed []protocol.ID) {
+	added = make([]protocol.ID, 0, len(b))
+	removed = make([]protocol.ID, 0, len(a))
+
 	// This is O(n^2), but it's fine because the slices are small.
 	for _, x := range b {
 		var found bool

@@ -79,6 +79,7 @@ func NoDelayDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 //
 // We dial lowest ports first as they are more likely to be the listen port.
 func DefaultDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
+	totalAddrs := len(addrs)
 	relay, addrs := filterAddrs(addrs, isRelayAddr)
 	pvt, addrs := filterAddrs(addrs, manet.IsPrivateAddr)
 	public, addrs := filterAddrs(addrs, func(a ma.Multiaddr) bool { return isProtocolAddr(a, ma.P_IP4) || isProtocolAddr(a, ma.P_IP6) })
@@ -89,7 +90,7 @@ func DefaultDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 		relayOffset = RelayDelay
 	}
 
-	res := make([]network.AddrDelay, 0, len(addrs))
+	res := make([]network.AddrDelay, 0, totalAddrs)
 	res = append(res, getAddrDelay(pvt, PrivateTCPDelay, PrivateQUICDelay, PrivateOtherDelay, 0)...)
 	res = append(res, getAddrDelay(public, PublicTCPDelay, PublicQUICDelay, PublicOtherDelay, 0)...)
 	res = append(res, getAddrDelay(relay, PublicTCPDelay, PublicQUICDelay, PublicOtherDelay, relayOffset)...)
