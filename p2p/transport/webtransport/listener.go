@@ -87,12 +87,17 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 				log.Debug("serving failed", "addr", ln.Addr(), "error", err)
 				return
 			}
-			err = ln.startHandshake(conn)
+			raw, ok := conn.(*quic.Conn)
+			if !ok {
+				_ = conn.CloseWithError(1, "connection does not expose a raw QUIC connection")
+				continue
+			}
+			err = ln.startHandshake(raw)
 			if err != nil {
 				log.Debug("failed to start handshake", "error", err)
 				continue
 			}
-			go ln.server.ServeQUICConn(conn)
+			go ln.server.ServeQUICConn(raw)
 		}
 	}()
 	return ln, nil

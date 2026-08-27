@@ -174,15 +174,23 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 	return c, nil
 }
 
-func (t *transport) addConn(conn *quic.Conn, c *conn) {
+func (t *transport) addConn(conn quicreuse.QUICConn, c *conn) {
+	raw, ok := conn.(*quic.Conn)
+	if !ok {
+		return
+	}
 	t.connMx.Lock()
-	t.conns[conn] = c
+	t.conns[raw] = c
 	t.connMx.Unlock()
 }
 
-func (t *transport) removeConn(conn *quic.Conn) {
+func (t *transport) removeConn(conn quicreuse.QUICConn) {
+	raw, ok := conn.(*quic.Conn)
+	if !ok {
+		return
+	}
 	t.connMx.Lock()
-	delete(t.conns, conn)
+	delete(t.conns, raw)
 	t.connMx.Unlock()
 }
 

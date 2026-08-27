@@ -214,9 +214,14 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 	if err != nil {
 		return nil, nil, err
 	}
+	raw, ok := conn.(*quic.Conn)
+	if !ok {
+		_ = conn.CloseWithError(1, "connection does not expose a raw QUIC connection")
+		return nil, nil, errors.New("webtransport: QUIC connection does not expose a raw connection")
+	}
 	dialer := webtransport.Dialer{
 		DialAddr: func(_ context.Context, _ string, _ *tls.Config, _ *quic.Config) (*quic.Conn, error) {
-			return conn, nil
+			return raw, nil
 		},
 		QUICConfig: t.connManager.ClientConfig().Clone(),
 	}
@@ -229,7 +234,7 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 		conn.CloseWithError(1, "")
 		return nil, nil, fmt.Errorf("invalid response status code: %d", rsp.StatusCode)
 	}
-	return sess, conn, err
+	return sess, raw, err
 }
 
 func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p peer.ID, certHashes []multihash.DecodedMultihash) (*connSecurityMultiaddrs, error) {
