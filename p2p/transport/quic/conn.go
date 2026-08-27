@@ -8,12 +8,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
 )
 
 type conn struct {
-	quicConn  *quic.Conn
+	quicConn  quicreuse.QUICConn
 	transport *transport
 	scope     network.ConnManagementScope
 
@@ -26,12 +27,16 @@ type conn struct {
 }
 
 func (c *conn) As(target any) bool {
-	if t, ok := target.(**quic.Conn); ok {
-		*t = c.quicConn
-		return true
+	raw, ok := c.quicConn.(*quic.Conn)
+	if !ok {
+		return false
 	}
-
-	return false
+	p, ok := target.(**quic.Conn)
+	if !ok {
+		return false
+	}
+	*p = raw
+	return true
 }
 
 var _ tpt.CapableConn = &conn{}

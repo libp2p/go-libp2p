@@ -17,7 +17,7 @@ import (
 )
 
 type Listener interface {
-	Accept(context.Context) (*quic.Conn, error)
+	Accept(context.Context) (QUICConn, error)
 	Addr() net.Addr
 	Multiaddrs() []ma.Multiaddr
 	io.Closer
@@ -106,7 +106,7 @@ func (l *quicListener) Add(association any, tlsConf *tls.Config, allowWindowIncr
 	}
 
 	ln := &listener{
-		queue:             make(chan *quic.Conn, queueLen),
+		queue:             make(chan QUICConn, queueLen),
 		acceptLoopRunning: l.running,
 		addr:              l.l.Addr(),
 		addrs:             l.addrs,
@@ -175,7 +175,7 @@ const queueLen = 16
 
 // A listener for a single ALPN protocol (set).
 type listener struct {
-	queue             chan *quic.Conn
+	queue             chan QUICConn
 	acceptLoopRunning chan struct{}
 	addr              net.Addr
 	addrs             []ma.Multiaddr
@@ -185,7 +185,7 @@ type listener struct {
 
 var _ Listener = &listener{}
 
-func (l *listener) add(c *quic.Conn) {
+func (l *listener) add(c QUICConn) {
 	select {
 	case l.queue <- c:
 	default:
@@ -193,7 +193,7 @@ func (l *listener) add(c *quic.Conn) {
 	}
 }
 
-func (l *listener) Accept(ctx context.Context) (*quic.Conn, error) {
+func (l *listener) Accept(ctx context.Context) (QUICConn, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
