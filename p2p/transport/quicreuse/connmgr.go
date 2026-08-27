@@ -26,16 +26,42 @@ import (
 var log = gologshim.Logger("quicreuse")
 
 type QUICListener interface {
-	Accept(ctx context.Context) (*quic.Conn, error)
+	Accept(ctx context.Context) (QUICConn, error)
 	Close() error
 	Addr() net.Addr
 }
 
-var _ QUICListener = &quic.Listener{}
+// QUICConn is the connection interface flowing through quicreuse and the
+// QUIC transport. Wrappers that own stream acceptance (e.g. shared
+// libp2p/ethp2p connections) implement the interface directly.
+type QUICConn interface {
+	AcceptStream(context.Context) (*quic.Stream, error)
+	OpenStreamSync(context.Context) (*quic.Stream, error)
+	CloseWithError(quic.ApplicationErrorCode, string) error
+	ConnectionState() quic.ConnectionState
+	Context() context.Context
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
+}
+
+// nativeQUICListener adapts a *quic.Listener to QUICListener.
+type nativeQUICListener struct {
+	*quic.Listener
+}
+
+func (l *nativeQUICListener) Accept(ctx context.Context) (QUICConn, error) {
+	conn, err := l.Listener.Accept(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
+var _ QUICListener = &nativeQUICListener{}
 
 type QUICTransport interface {
 	Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error)
-	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error)
+	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (QUICConn, error)
 	WriteTo(b []byte, addr net.Addr) (int, error)
 	ReadNonQUICPacket(ctx context.Context, b []byte) (int, net.Addr, error)
 	io.Closer
@@ -306,7 +332,7 @@ func WithAssociation(ctx context.Context, association any) context.Context {
 // - Any other listening transport
 // - Any transport previously used for dialing
 // If none of these are available, it'll create a new transport.
-func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool) (*quic.Conn, error) {
+func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn *quic.Conn, delta uint64) bool) (QUICConn, error) {
 	naddr, v, err := FromQuicMultiaddr(raddr)
 	if err != nil {
 		return nil, err
@@ -414,7 +440,19 @@ type wrappedQUICTransport struct {
 var _ QUICTransport = (*wrappedQUICTransport)(nil)
 
 func (t *wrappedQUICTransport) Listen(tlsConf *tls.Config, conf *quic.Config) (QUICListener, error) {
-	return t.Transport.Listen(tlsConf, conf)
+	ln, err := t.Transport.Listen(tlsConf, conf)
+	if err != nil {
+		return nil, err
+	}
+	return &nativeQUICListener{ln}, nil
+}
+
+func (t *wrappedQUICTransport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (QUICConn, error) {
+	conn, err := t.Transport.Dial(ctx, addr, tlsConf, conf)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 func newQUICTransport(
