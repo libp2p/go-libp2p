@@ -862,8 +862,7 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 		}
 		innerErr := dialErr.DialErrors[0].Cause
 
-		var peerIDMismatchErr sec.ErrPeerIDMismatch
-		if errors.As(innerErr, &peerIDMismatchErr) {
+		if peerIDMismatchErr, ok := errors.AsType[sec.ErrPeerIDMismatch](innerErr); ok {
 			return peerIDMismatchErr.Actual, nil
 		}
 

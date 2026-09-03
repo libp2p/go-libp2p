@@ -279,9 +279,7 @@ func (nn *netNotifiee) Connected(_ network.Network, conn network.Conn) {
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
 	if conn.Stat().Direction == network.DirInbound && isRelayAddress(conn.RemoteMultiaddr()) {
-		hs.refCount.Add(1)
-		go func() {
-			defer hs.refCount.Done()
+		hs.refCount.Go(func() {
 
 			select {
 			// waiting for Identify here will allow us to access the peer's public and observed addresses
@@ -295,7 +293,7 @@ func (nn *netNotifiee) Connected(_ network.Network, conn network.Conn) {
 			if err != nil {
 				log.Debug("attempt to perform DirectConnect failed", "remote_peer", conn.RemotePeer(), "err", err)
 			}
-		}()
+		})
 	}
 }
 

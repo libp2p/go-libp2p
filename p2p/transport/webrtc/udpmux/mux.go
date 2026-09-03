@@ -100,11 +100,9 @@ func NewUDPMux(socket net.PacketConn) *UDPMux {
 }
 
 func (mux *UDPMux) Start() {
-	mux.wg.Add(1)
-	go func() {
-		defer mux.wg.Done()
+	mux.wg.Go(func() {
 		mux.readLoop()
-	}()
+	})
 }
 
 // GetListenAddresses implements ice.UDPMux

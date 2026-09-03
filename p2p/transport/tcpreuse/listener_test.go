@@ -119,9 +119,7 @@ func TestListenerSingle(t *testing.T) {
 			for range N {
 				c, _, err := l.Accept()
 				require.NoError(t, err)
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					cc := multistream.NewMSSelect(c, "a")
 					defer cc.Close()
 					buf := make([]byte, 30)
@@ -132,7 +130,7 @@ func TestListenerSingle(t *testing.T) {
 					if !assert.Equal(t, "hello-multistream", string(buf[:n])) {
 						return
 					}
-				}()
+				})
 			}
 			wg.Wait()
 		})
@@ -170,9 +168,7 @@ func TestListenerSingle(t *testing.T) {
 			var wg sync.WaitGroup
 			for range N {
 				c := <-wh.conns
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
 					if !assert.NoError(t, err) {
@@ -184,7 +180,7 @@ func TestListenerSingle(t *testing.T) {
 					if !assert.Equal(t, "hello", string(buf)) {
 						return
 					}
-				}()
+				})
 			}
 			wg.Wait()
 		})
@@ -224,9 +220,7 @@ func TestListenerSingle(t *testing.T) {
 			var wg sync.WaitGroup
 			for range N {
 				c := <-wh.conns
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
 					if !assert.NoError(t, err) {
@@ -238,7 +232,7 @@ func TestListenerSingle(t *testing.T) {
 					if !assert.Equal(t, "hello", string(buf)) {
 						return
 					}
-				}()
+				})
 			}
 			wg.Wait()
 		})
@@ -348,17 +342,13 @@ func TestListenerMultiplexed(t *testing.T) {
 		}()
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range N {
 				c, _, err := msl.Accept()
 				if !assert.NoError(t, err) {
 					return
 				}
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					cc := multistream.NewMSSelect(c, "a")
 					defer cc.Close()
 					buf := make([]byte, 20)
@@ -369,18 +359,14 @@ func TestListenerMultiplexed(t *testing.T) {
 					if !assert.Equal(t, "multistream", string(buf[:n])) {
 						return
 					}
-				}()
+				})
 			}
-		}()
+		})
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range N {
 				c := <-wh.conns
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
 					if !assert.NoError(t, err) {
@@ -392,18 +378,14 @@ func TestListenerMultiplexed(t *testing.T) {
 					if !assert.Equal(t, "websocket", string(buf)) {
 						return
 					}
-				}()
+				})
 			}
-		}()
+		})
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range N {
 				c := <-whs.conns
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					defer c.Close()
 					msgType, buf, err := c.ReadMessage()
 					if !assert.NoError(t, err) {
@@ -415,9 +397,9 @@ func TestListenerMultiplexed(t *testing.T) {
 					if !assert.Equal(t, "websocket-tls", string(buf)) {
 						return
 					}
-				}()
+				})
 			}
-		}()
+		})
 		wg.Wait()
 	}
 }

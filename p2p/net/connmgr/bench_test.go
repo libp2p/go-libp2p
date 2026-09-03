@@ -27,9 +27,7 @@ func BenchmarkLockContention(b *testing.B) {
 	var wg sync.WaitGroup
 
 	for range 16 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for {
 				select {
 				case <-kill:
@@ -38,7 +36,7 @@ func BenchmarkLockContention(b *testing.B) {
 					cm.TagPeer(conns[rand.Intn(len(conns))].RemotePeer(), "another-tag", 1)
 				}
 			}
-		}()
+		})
 	}
 
 	b.ResetTimer()
