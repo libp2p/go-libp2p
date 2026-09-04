@@ -10,7 +10,6 @@
   <a href="http://libp2p.io/"><img src="https://img.shields.io/badge/project-libp2p-yellow.svg?style=flat-square" /></a>
   <a href="https://pkg.go.dev/github.com/libp2p/go-libp2p"><img src="https://pkg.go.dev/badge/github.com/libp2p/go-libp2p.svg" alt="Go Reference"></a>
   <a href="https://discuss.libp2p.io"><img src="https://img.shields.io/discourse/https/discuss.libp2p.io/posts.svg"/></a>
-  <a href="https://marcopolo.github.io/FlakyTests/"><img src="https://marcopolo.github.io/FlakyTests/current-score.svg"/></a>
 </p>
 
 # Table of Contents <!-- omit in toc -->
@@ -146,7 +145,6 @@ Some notable users of go-libp2p are:
 - [EdgeVPN](https://github.com/mudler/edgevpn) - A decentralized, immutable, portable VPN and reverse proxy over p2p.
 - [Kairos](https://github.com/kairos-io/kairos) - A Kubernetes-focused, Cloud Native Linux meta-distribution.
 - [Oasis Core](https://github.com/oasisprotocol/oasis-core) - The consensus and runtime layers of the [Oasis protocol](https://oasisprotocol.org/).
-- [Spacemesh](https://github.com/spacemeshos/go-spacemesh/) - The Go implementation of the [Spacemesh protocol](https://spacemesh.io/), a novel layer one blockchain
 - [Tau](https://github.com/taubyte/tau/) - Open source distributed Platform as a Service (PaaS)
 
 Please open a pull request if you want your project (min. 250 GitHub stars) to be added here.
