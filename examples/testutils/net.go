@@ -14,7 +14,7 @@ func FindFreePort(t *testing.T, host string, maxAttempts int) (int, error) {
 		host = "localhost"
 	}
 
-	for i := 0; i < maxAttempts; i++ {
+	for range maxAttempts {
 		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(host, "0"))
 		if err != nil {
 			t.Logf("unable to resolve tcp addr: %v", err)
