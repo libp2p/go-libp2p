@@ -46,7 +46,7 @@ func TestListenAddr(t *testing.T) {
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
 
-		var multiaddrsStrings []string
+		multiaddrsStrings := make([]string, 0, 1)
 		for _, a := range []ma.Multiaddr{ln.Multiaddr()} {
 			multiaddrsStrings = append(multiaddrsStrings, a.String())
 		}
@@ -60,7 +60,7 @@ func TestListenAddr(t *testing.T) {
 		defer ln.Close()
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
-		var multiaddrsStrings []string
+		multiaddrsStrings := make([]string, 0, 1)
 		for _, a := range []ma.Multiaddr{ln.Multiaddr()} {
 			multiaddrsStrings = append(multiaddrsStrings, a.String())
 		}

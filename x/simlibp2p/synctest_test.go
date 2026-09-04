@@ -1,5 +1,3 @@
-//go:build go1.25
-
 package simlibp2p_test
 
 import (

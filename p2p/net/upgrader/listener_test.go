@@ -229,9 +229,7 @@ func TestConcurrentAccept(t *testing.T) {
 	errCh := make(chan error, num)
 	var wg sync.WaitGroup
 	for range num {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			conn, err := dial(t, u, ln.Multiaddr(), id, &network.NullScope{})
 			if err != nil {
@@ -242,7 +240,7 @@ func TestConcurrentAccept(t *testing.T) {
 
 			_, err = conn.AcceptStream() // wait for conn to be accepted.
 			errCh <- err
-		}()
+		})
 	}
 
 	time.Sleep(200 * time.Millisecond)

@@ -43,7 +43,7 @@ type BasicConnMgr struct {
 	connCount atomic.Int32
 	// to be accessed atomically. This is mimicking the implementation of a sync.Once.
 	// Take care of correct alignment when modifying this struct.
-	trimCount uint64
+	trimCount atomic.Uint64
 
 	lastTrimMu sync.RWMutex
 	lastTrim   time.Time
@@ -165,7 +165,7 @@ func (cm *BasicConnMgr) ForceTrim() {
 	}
 
 	cm.trimMutex.Lock()
-	defer atomic.AddUint64(&cm.trimCount, 1)
+	defer cm.trimCount.Add(1)
 	defer cm.trimMutex.Unlock()
 
 	// Trim connections without paying attention to the silence period.
@@ -368,15 +368,15 @@ func (cm *BasicConnMgr) background() {
 
 func (cm *BasicConnMgr) doTrim() {
 	// This logic is mimicking the implementation of sync.Once in the standard library.
-	count := atomic.LoadUint64(&cm.trimCount)
+	count := cm.trimCount.Load()
 	cm.trimMutex.Lock()
 	defer cm.trimMutex.Unlock()
-	if count == atomic.LoadUint64(&cm.trimCount) {
+	if count == cm.trimCount.Load() {
 		cm.trim()
 		cm.lastTrimMu.Lock()
 		cm.lastTrim = cm.clock.Now()
 		cm.lastTrimMu.Unlock()
-		atomic.AddUint64(&cm.trimCount, 1)
+		cm.trimCount.Add(1)
 	}
 }
 

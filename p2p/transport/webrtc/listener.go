@@ -97,11 +97,9 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	l.mux = udpmux.NewUDPMux(socket)
 	l.mux.Start()
 
-	l.wg.Add(1)
-	go func() {
-		defer l.wg.Done()
+	l.wg.Go(func() {
 		l.listen()
-	}()
+	})
 
 	return l, err
 }

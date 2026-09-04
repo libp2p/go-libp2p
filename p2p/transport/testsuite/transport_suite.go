@@ -182,9 +182,7 @@ func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiadd
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var err error
 		connA, err = list.Accept()
 		if err != nil {
@@ -200,9 +198,7 @@ func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiadd
 				return
 			}
 
-			sWg.Add(1)
-			go func() {
-				defer sWg.Done()
+			sWg.Go(func() {
 
 				data, err := io.ReadAll(s)
 				if err != nil {
@@ -227,10 +223,10 @@ func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiadd
 					return
 				}
 				s.Close()
-			}()
+			})
 		}
 		sWg.Wait()
-	}()
+	})
 
 	if !tb.CanDial(list.Multiaddr()) {
 		t.Error("CanDial should have returned true")
