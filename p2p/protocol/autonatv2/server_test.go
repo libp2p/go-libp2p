@@ -105,7 +105,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		defer an.Close()
 		defer an.host.Close()
 
-		var addrs []ma.Multiaddr
+		addrs := make([]ma.Multiaddr, 0, 100)
 		for i := range 100 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 2000+i)))
 		}
@@ -124,7 +124,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		defer an.Close()
 		defer an.host.Close()
 
-		var addrs []ma.Multiaddr
+		addrs := make([]ma.Multiaddr, 0, 10000)
 		for i := range 10000 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 2000+i)))
 		}

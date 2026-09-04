@@ -82,8 +82,7 @@ func makeSwarmWithNoListenAddrs(t *testing.T, opts ...Option) *Swarm {
 	require.NoError(t, err)
 
 	upgrader := makeUpgrader(t, s)
-	var tcpOpts []tcp.Option
-	tcpOpts = append(tcpOpts, tcp.DisableReuseport())
+	tcpOpts := []tcp.Option{tcp.DisableReuseport()}
 	tcpTransport, err := tcp.NewTCPTransport(upgrader, nil, nil, tcpOpts...)
 	require.NoError(t, err)
 	if err := s.AddTransport(tcpTransport); err != nil {
@@ -388,7 +387,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 }
 
 func TestDialQueueNextBatch(t *testing.T) {
-	addrs := make([]ma.Multiaddr, 0)
+	addrs := make([]ma.Multiaddr, 0, 10)
 	for i := range 10 {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i)))
 	}

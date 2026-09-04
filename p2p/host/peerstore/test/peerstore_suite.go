@@ -291,8 +291,8 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 
 func testBasicPeerstore(ps pstore.Peerstore) func(t *testing.T) {
 	return func(t *testing.T) {
-		var pids []peer.ID
 		addrs := getAddrs(t, 10)
+		pids := make([]peer.ID, 0, len(addrs))
 
 		for _, a := range addrs {
 			priv, _, err := crypto.GenerateKeyPair(crypto.RSA, 2048)
