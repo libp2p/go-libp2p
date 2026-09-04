@@ -22,7 +22,9 @@ func FindFreePort(t *testing.T, host string, maxAttempts int) (int, error) {
 		}
 		l, err := net.ListenTCP("tcp", addr)
 		if err != nil {
-			l.Close()
+			if l != nil {
+				l.Close()
+			}
 			t.Logf("unable to listen on addr %q: %v", addr, err)
 			continue
 		}
