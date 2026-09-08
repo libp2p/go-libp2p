@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -408,4 +409,40 @@ func TestConcurrentAuth(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// TestServerPeerIDAuth_OversizedClientPublicKey rejects a client-initiated
+// handshake whose public key would overflow the opaque scratch buffer, without panicking.
+func TestServerPeerIDAuth_OversizedClientPublicKey(t *testing.T) {
+	serverKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	auth := ServerPeerIDAuth{
+		PrivKey: serverKey,
+		ValidHostnameFn: func(s string) bool {
+			return s == "example.com"
+		},
+		TokenTTL: time.Hour,
+		NoTLS:    true,
+	}
+	ts := httptest.NewServer(&auth)
+	t.Cleanup(ts.Close)
+
+	largeKey := bytes.Repeat([]byte{0xAB}, 900)
+	challenge := bytes.Repeat([]byte{0x11}, 32)
+	authHeader := fmt.Sprintf(
+		`libp2p-PeerID challenge-server="%s", public-key="%s"`,
+		base64.URLEncoding.EncodeToString(challenge),
+		base64.URLEncoding.EncodeToString(largeKey),
+	)
+
+	req, err := http.NewRequest("GET", ts.URL, nil)
+	require.NoError(t, err)
+	req.Host = "example.com"
+	req.Header.Set("Authorization", authHeader)
+
+	resp, err := ts.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
