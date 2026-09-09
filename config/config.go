@@ -97,6 +97,7 @@ type Config struct {
 	PeerKey crypto.PrivKey
 
 	QUICReuse          []fx.Option
+	QUICReuseOptions   []quicreuse.Option
 	Transports         []fx.Option
 	Muxers             []tptu.StreamMuxer
 	SecurityTransports []Security
@@ -416,8 +417,20 @@ func (cfg *Config) addTransports() ([]fx.Option, error) {
 				if !cfg.DisableMetrics {
 					opts = append(opts, quicreuse.EnableMetrics(cfg.PrometheusRegisterer))
 				}
+				opts = append(opts, cfg.QUICReuseOptions...)
 				cm, err := quicreuse.NewConnManager(key, tokenGenerator, opts...)
 				if err != nil {
+					// The swarm has not been constructed yet, so its shutdown hook
+					// cannot release the resources allocated by the default options.
+					if cfg.ResourceManager != nil {
+						cfg.ResourceManager.Close()
+					}
+					if cfg.ConnManager != nil {
+						cfg.ConnManager.Close()
+					}
+					if cfg.Peerstore != nil {
+						cfg.Peerstore.Close()
+					}
 					return nil, err
 				}
 				lifecycle.Append(fx.StopHook(cm.Close))
@@ -471,6 +484,9 @@ func (cfg *Config) newBasicHost(swrm *swarm.Swarm, eventBus event.Bus, an *auton
 }
 
 func (cfg *Config) validate() error {
+	if cfg.QUICReuse != nil && len(cfg.QUICReuseOptions) != 0 {
+		return errors.New("QUICReuseOptions cannot be combined with a custom QUICReuse constructor")
+	}
 	if cfg.EnableAutoRelay && !cfg.Relay {
 		return fmt.Errorf("cannot enable autorelay; relay is not enabled")
 	}

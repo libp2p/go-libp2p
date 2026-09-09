@@ -99,6 +99,16 @@ func Muxer(name string, muxer network.Multiplexer) Option {
 	}
 }
 
+// QUICReuseOptions configures the default QUIC connection manager, preserving
+// its resource manager integration, metrics, and shutdown hooks.
+// It cannot be combined with a custom constructor supplied through QUICReuse.
+func QUICReuseOptions(opts ...quicreuse.Option) Option {
+	return func(cfg *Config) error {
+		cfg.QUICReuseOptions = append(cfg.QUICReuseOptions, opts...)
+		return nil
+	}
+}
+
 func QUICReuse(constructor any, opts ...quicreuse.Option) Option {
 	return func(cfg *Config) error {
 		tag := `group:"quicreuseopts"`

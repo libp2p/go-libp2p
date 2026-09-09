@@ -3,6 +3,7 @@ package quicreuse
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,7 +37,25 @@ func WithQlogTracerDir(dir string) Option {
 
 func DisableReuseport() Option {
 	return func(m *ConnManager) error {
-		m.enableReuseport = false
+		m.enableReuseport4 = false
+		m.enableReuseport6 = false
+		return nil
+	}
+}
+
+// DisableReuseportForNetwork disables socket reuse for udp4 or udp6 only.
+// Dials on that network use dedicated UDP sockets instead of sharing listening
+// or dialing sockets. This prevents hole punching on the selected network.
+func DisableReuseportForNetwork(network string) Option {
+	return func(m *ConnManager) error {
+		switch network {
+		case "udp4":
+			m.enableReuseport4 = false
+		case "udp6":
+			m.enableReuseport6 = false
+		default:
+			return fmt.Errorf("invalid reuseport network %q: must be udp4 or udp6", network)
+		}
 		return nil
 	}
 }

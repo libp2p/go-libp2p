@@ -49,9 +49,10 @@ type QUICTransport interface {
 // If reuseport is disabled using the `DisableReuseport` option, listen addresses are not used for
 // dialing.
 type ConnManager struct {
-	reuseUDP4       *reuse
-	reuseUDP6       *reuse
-	enableReuseport bool
+	reuseUDP4        *reuse
+	reuseUDP6        *reuse
+	enableReuseport4 bool
+	enableReuseport6 bool
 
 	listenUDP          listenUDP
 	sourceIPSelectorFn func() (SourceIPSelector, error)
@@ -96,7 +97,8 @@ const (
 // NewConnManager returns a new ConnManager
 func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.TokenGeneratorKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
-		enableReuseport:    true,
+		enableReuseport4:   true,
+		enableReuseport6:   true,
 		quicListeners:      make(map[string]quicListenerEntry),
 		srk:                statelessResetKey,
 		tokenKey:           tokenKey,
@@ -132,8 +134,10 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 		}
 		return true
 	}
-	if cm.enableReuseport {
+	if cm.enableReuseport4 {
 		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, cm.verifySourceAddress)
+	}
+	if cm.enableReuseport6 {
 		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey, cm.listenUDP, cm.sourceIPSelectorFn, cm.connContext, cm.verifySourceAddress)
 	}
 	return cm, nil
@@ -172,6 +176,9 @@ func (c *ConnManager) LendTransport(network string, tr QUICTransport, conn net.P
 	reuse, err := c.getReuse(network)
 	if err != nil {
 		return nil, err
+	}
+	if reuse == nil {
+		return nil, errors.New("cannot lend a transport when socket reuse is disabled for the network")
 	}
 	return refCountedTr.borrowDoneSignal, reuse.AddTransport(refCountedTr, localAddr)
 }
@@ -215,7 +222,7 @@ func (c *ConnManager) ListenQUICAndAssociate(association any, addr ma.Multiaddr,
 		key = tr.LocalAddr().String()
 		entry = quicListenerEntry{ln: ln}
 	}
-	if c.enableReuseport && association != nil {
+	if reuse, _ := c.getReuse(netw); reuse != nil && association != nil {
 		if _, ok := entry.ln.transport.(*refcountedTransport); !ok {
 			log.Warn("reuseport is enabled, association is non-nil, but the transport is not a refcountedTransport.")
 		}
@@ -268,15 +275,15 @@ func (c *ConnManager) SharedNonQUICPacketConn(_ string, laddr *net.UDPAddr) (net
 			tr:              t.QUICTransport,
 		}, nil
 	}
-	return nil, errors.New("expected to be able to share with a QUIC listener, but the QUIC listener is not using a refcountedTransport. `DisableReuseport` should not be set")
+	return nil, errors.New("expected to be able to share with a QUIC listener, but socket reuse is disabled for this listener")
 }
 
 func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (RefCountedQUICTransport, error) {
-	if c.enableReuseport {
-		reuse, err := c.getReuse(network)
-		if err != nil {
-			return nil, err
-		}
+	reuse, err := c.getReuse(network)
+	if err != nil {
+		return nil, err
+	}
+	if reuse != nil {
 		tr, err := reuse.TransportForListen(network, laddr)
 		if err != nil {
 			return nil, err
@@ -351,11 +358,11 @@ func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (RefC
 // If reuseport is enabled, it attempts to reuse the QUIC Transport previously used for listening with `ListenQuicAndAssociate`
 // with the same `association`. If it fails to do so, it uses any other previously used transport.
 func (c *ConnManager) TransportWithAssociationForDial(association any, network string, raddr *net.UDPAddr) (RefCountedQUICTransport, error) {
-	if c.enableReuseport {
-		reuse, err := c.getReuse(network)
-		if err != nil {
-			return nil, err
-		}
+	reuse, err := c.getReuse(network)
+	if err != nil {
+		return nil, err
+	}
+	if reuse != nil {
 		return reuse.TransportWithAssociationForDial(association, network, raddr)
 	}
 
@@ -393,13 +400,14 @@ func (c *ConnManager) Protocols() []int {
 }
 
 func (c *ConnManager) Close() error {
-	if !c.enableReuseport {
-		return nil
+	var err4, err6 error
+	if c.reuseUDP6 != nil {
+		err6 = c.reuseUDP6.Close()
 	}
-	if err := c.reuseUDP6.Close(); err != nil {
-		return err
+	if c.reuseUDP4 != nil {
+		err4 = c.reuseUDP4.Close()
 	}
-	return c.reuseUDP4.Close()
+	return errors.Join(err6, err4)
 }
 
 func (c *ConnManager) ClientConfig() *quic.Config {

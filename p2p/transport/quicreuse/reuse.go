@@ -40,7 +40,7 @@ var _ QUICTransport = &singleOwnerTransport{}
 var _ RefCountedQUICTransport = (*singleOwnerTransport)(nil)
 
 func (c *singleOwnerTransport) IncreaseCount() {}
-func (c *singleOwnerTransport) DecreaseCount() { c.Transport.Close() }
+func (c *singleOwnerTransport) DecreaseCount() { c.Close() }
 func (c *singleOwnerTransport) LocalAddr() net.Addr {
 	return c.packetConn.LocalAddr()
 }
