@@ -2,6 +2,7 @@ package eventbus
 
 import (
 	"fmt"
+	"log/slog"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -75,5 +76,14 @@ func WithMetricsTracer(metricsTracer MetricsTracer) Option {
 	return func(bus *basicBus) {
 		bus.metricsTracer = metricsTracer
 		bus.wildcard.metricsTracer = metricsTracer
+	}
+}
+
+// withLogger sets the logger used by the bus. Defaults to the shared eventbus
+// logger.
+func withLogger(logger *slog.Logger) Option {
+	return func(bus *basicBus) {
+		bus.log = logger
+		bus.wildcard.log = logger
 	}
 }

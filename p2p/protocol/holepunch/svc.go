@@ -148,8 +148,7 @@ func (s *Service) waitForPublicAddr() {
 		// service is closed
 		return
 	}
-	s.holePuncher = newHolePuncher(s.host, s.ids, s.listenAddrs, s.tracer, s.filter)
-	s.holePuncher.directDialTimeout = s.directDialTimeout
+	s.holePuncher = newHolePuncher(s.host, s.ids, s.listenAddrs, s.directDialTimeout, s.tracer, s.filter)
 	close(s.hasPublicAddrsChan)
 }
 

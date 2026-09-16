@@ -33,12 +33,9 @@ func sha256Multihash(t *testing.T, b []byte) multihash.DecodedMultihash {
 
 func generateCertWithKey(t *testing.T, key crypto.PrivateKey, start, end time.Time) *x509.Certificate {
 	t.Helper()
-	serial := int64(mrand.Uint64())
-	if serial < 0 {
-		serial = -serial
-	}
+	serial := new(big.Int).SetUint64(max(mrand.Uint64(), 1))
 	certTempl := &x509.Certificate{
-		SerialNumber:          big.NewInt(serial),
+		SerialNumber:          serial,
 		Subject:               pkix.Name{},
 		NotBefore:             start,
 		NotAfter:              end,

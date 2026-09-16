@@ -14,6 +14,10 @@ import (
 // The fingerprint used to render a client SDP is arbitrary since
 // it fingerprint verification is disabled in favour of a noise
 // handshake. The max message size is fixed to 16384 bytes.
+//
+// The ice-ufrag and ice-pwd are rendered separately. In WebRTC Direct v1 they
+// are the same shared value; in v2 the client ufrag and the recovered client
+// password differ. See https://github.com/libp2p/specs/blob/master/webrtc/webrtc-direct.md.
 const clientSDP = `v=0
 o=- 0 0 IN %[1]s %[2]s
 s=-
@@ -24,14 +28,14 @@ m=application %[3]d UDP/DTLS/SCTP webrtc-datachannel
 a=mid:0
 a=ice-options:ice2
 a=ice-ufrag:%[4]s
-a=ice-pwd:%[4]s
+a=ice-pwd:%[5]s
 a=fingerprint:sha-256 ba:78:16:bf:8f:01:cf:ea:41:41:40:de:5d:ae:22:23:b0:03:61:a3:96:17:7a:9c:b4:10:ff:61:f2:00:15:ad
 a=setup:actpass
 a=sctp-port:5000
 a=max-message-size:16384
 `
 
-func createClientSDP(addr *net.UDPAddr, ufrag string) string {
+func createClientSDP(addr *net.UDPAddr, ufrag, pwd string) string {
 	ipVersion := "IP4"
 	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
@@ -42,6 +46,7 @@ func createClientSDP(addr *net.UDPAddr, ufrag string) string {
 		addr.IP,
 		addr.Port,
 		ufrag,
+		pwd,
 	)
 }
 

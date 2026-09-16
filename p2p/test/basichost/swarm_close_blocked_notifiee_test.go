@@ -35,6 +35,9 @@ func TestCloseWithBlockingConnectedNotifee(t *testing.T) {
 			}, Count: 100},
 		}, simnet.StaticLatency(latency/2), simlibp2p.NetworkSettings{})
 		require.NoError(t, err)
+		// SimpleLibp2pNetwork does not start the network; without this no link
+		// driver runs and packets only pile up in the link's queue.
+		sn.Start()
 		defer sn.Close()
 		defer func() {
 			for _, h := range meta.Nodes {

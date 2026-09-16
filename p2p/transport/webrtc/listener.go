@@ -135,8 +135,8 @@ func (l *listener) listen() {
 
 			conn, err := l.handleCandidate(ctx, candidate)
 			if err != nil {
-				l.mux.RemoveConnByUfrag(candidate.Ufrag)
-				log.Debug("could not accept connection", "ufrag", candidate.Ufrag, "error", err)
+				l.mux.RemoveConnByUfrag(candidate.LocalUfrag)
+				log.Debug("could not accept connection", "ufrag", candidate.LocalUfrag, "error", err)
 				return
 			}
 
@@ -196,9 +196,15 @@ func (l *listener) setupConnection(
 		}
 	}()
 
+	// The udpmux has already parsed and validated the STUN USERNAME: LocalUfrag is
+	// the server (local) ufrag, RemoteUfrag the client ufrag, and RemotePwd the
+	// client ICE password (recovered per WebRTC Direct version). See
+	// udpmux.credentialsFromSTUNMessage.
+	serverUfrag := candidate.LocalUfrag
+
 	settingEngine := webrtc.SettingEngine{LoggerFactory: pionLoggerFactory}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
-	settingEngine.SetICECredentials(candidate.Ufrag, candidate.Ufrag)
+	settingEngine.SetICECredentials(serverUfrag, serverUfrag)
 	settingEngine.SetLite(true)
 	settingEngine.SetICEUDPMux(l.mux)
 	settingEngine.SetIncludeLoopbackCandidate(true)
@@ -224,9 +230,11 @@ func (l *listener) setupConnection(
 	}
 
 	errC := addOnConnectionStateChangeCallback(w.PeerConnection)
-	// Infer the client SDP from the incoming STUN message by setting the ice-ufrag.
+	// Infer the client SDP offer from the incoming STUN message using the client
+	// ufrag and password. pion validates the full "server_ufrag:client_ufrag"
+	// USERNAME on inbound checks, so the remote ice-ufrag must be the client ufrag.
 	if err := w.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
-		SDP:  createClientSDP(candidate.Addr, candidate.Ufrag),
+		SDP:  createClientSDP(candidate.Addr, candidate.RemoteUfrag, candidate.RemotePwd),
 		Type: webrtc.SDPTypeOffer,
 	}); err != nil {
 		return nil, err
@@ -244,7 +252,7 @@ func (l *listener) setupConnection(
 		return nil, ctx.Err()
 	case err := <-errC:
 		if err != nil {
-			return nil, fmt.Errorf("peer connection failed for ufrag: %s", candidate.Ufrag)
+			return nil, fmt.Errorf("peer connection failed for ufrag: %s", serverUfrag)
 		}
 	}
 
