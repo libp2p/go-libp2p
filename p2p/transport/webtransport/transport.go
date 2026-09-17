@@ -214,13 +214,13 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 	if err != nil {
 		return nil, nil, err
 	}
-	dialer := webtransport.Dialer{
-		DialAddr: func(_ context.Context, _ string, _ *tls.Config, _ *quic.Config) (*quic.Conn, error) {
-			return conn, nil
-		},
-		QUICConfig: t.connManager.ClientConfig().Clone(),
+	wtr := &webtransport.Transport{}
+	clientConn, err := wtr.NewClientConn(conn)
+	if err != nil {
+		conn.CloseWithError(1, "")
+		return nil, nil, err
 	}
-	rsp, sess, err := dialer.Dial(ctx, url, nil)
+	rsp, sess, err := clientConn.Dial(ctx, url, nil)
 	if err != nil {
 		conn.CloseWithError(1, "")
 		return nil, nil, err
