@@ -120,7 +120,7 @@ func TestChunkedMergeMemoryCost(t *testing.T) {
 	w := pbio.NewDelimitedWriter(&buf)
 	for chunk := range numChunks {
 		msg := &pb.Identify{}
-		for i := 0; i < protocolsPerChunk; i++ {
+		for i := range protocolsPerChunk {
 			msg.Protocols = append(msg.Protocols, fmt.Sprintf("/x/%d/%d", chunk, i))
 		}
 		if err := w.WriteMsg(msg); err != nil {

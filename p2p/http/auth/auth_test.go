@@ -386,9 +386,7 @@ func TestConcurrentAuth(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	for i := range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			clientKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
 			require.NoError(t, err)
 
@@ -405,7 +403,7 @@ func TestConcurrentAuth(t *testing.T) {
 			respBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, reqBody, respBody)
-		}()
+		})
 	}
 	wg.Wait()
 }

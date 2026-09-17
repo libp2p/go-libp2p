@@ -238,9 +238,7 @@ func TestResourceManagerServicePeerInbound(t *testing.T) {
 	var once sync.Once
 	for range 3 {
 		eg.Add(1)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			err := echos[2].Echo(echos[0].Host.ID(), "hello libp2p")
 			if err != nil {
@@ -249,7 +247,7 @@ func TestResourceManagerServicePeerInbound(t *testing.T) {
 					close(ready)
 				})
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	eg.Wait()

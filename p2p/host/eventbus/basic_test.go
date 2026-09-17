@@ -76,13 +76,11 @@ func TestSub(t *testing.T) {
 	var event EventB
 
 	var wait sync.WaitGroup
-	wait.Add(1)
 
-	go func() {
+	wait.Go(func() {
 		defer sub.Close()
 		event = (<-sub.Out()).(EventB)
-		wait.Done()
-	}()
+	})
 
 	em, err := bus.Emitter(new(EventB))
 	if err != nil {
@@ -111,15 +109,15 @@ func TestGetAllEventTypes(t *testing.T) {
 
 	evts := bus.GetAllEventTypes()
 	require.Len(t, evts, 1)
-	require.Equal(t, reflect.TypeOf((*EventB)(nil)).Elem(), evts[0])
+	require.Equal(t, reflect.TypeFor[EventB](), evts[0])
 
 	_, err = bus.Emitter(new(EventA))
 	require.NoError(t, err)
 
 	evts = bus.GetAllEventTypes()
 	require.Len(t, evts, 2)
-	require.Contains(t, evts, reflect.TypeOf((*EventB)(nil)).Elem())
-	require.Contains(t, evts, reflect.TypeOf((*EventA)(nil)).Elem())
+	require.Contains(t, evts, reflect.TypeFor[EventB]())
+	require.Contains(t, evts, reflect.TypeFor[EventA]())
 }
 
 func TestEmitNoSubNoBlock(t *testing.T) {
@@ -382,13 +380,11 @@ func TestSubType(t *testing.T) {
 	var event fmt.Stringer
 
 	var wait sync.WaitGroup
-	wait.Add(1)
 
-	go func() {
+	wait.Go(func() {
 		defer sub.Close()
 		event = (<-sub.Out()).(EventA)
-		wait.Done()
-	}()
+	})
 
 	em, err := bus.Emitter(new(EventA))
 	if err != nil {

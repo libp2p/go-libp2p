@@ -272,9 +272,7 @@ func (ids *idService) loop(ctx context.Context) {
 	// * this Go routine busy looping over all peers in sendPushes
 	// * another push being queued in the triggerPush channel
 	triggerPush := make(chan struct{}, 1)
-	ids.refCount.Add(1)
-	go func() {
-		defer ids.refCount.Done()
+	ids.refCount.Go(func() {
 
 		for {
 			select {
@@ -284,7 +282,7 @@ func (ids *idService) loop(ctx context.Context) {
 				ids.sendPushes(ctx)
 			}
 		}
-	}()
+	})
 
 	for {
 		select {

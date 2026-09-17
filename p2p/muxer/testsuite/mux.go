@@ -403,16 +403,14 @@ func SubtestStreamOpenStress(t *testing.T, tr network.Multiplexer) {
 			if err != nil {
 				break
 			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				str.Close()
 				select {
 				case recv <- struct{}{}:
 				default:
 					t.Error("too many stream")
 				}
-			}()
+			})
 		}
 	}()
 

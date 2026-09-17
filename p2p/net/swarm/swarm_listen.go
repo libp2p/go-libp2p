@@ -171,9 +171,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 			}
 
 			log.Debug("swarm listener accepted connection", "local_multiaddr", c.LocalMultiaddr(), "remote_multiaddr", c.RemoteMultiaddr())
-			s.refs.Add(1)
-			go func() {
-				defer s.refs.Done()
+			s.refs.Go(func() {
 				_, err := s.addConn(c, network.DirInbound)
 				switch err {
 				case nil:
@@ -184,7 +182,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 					log.Warn("adding connection failed", "to", a, "err", err)
 					return
 				}
-			}()
+			})
 		}
 	}()
 	return nil

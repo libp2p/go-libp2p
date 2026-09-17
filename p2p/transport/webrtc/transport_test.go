@@ -3,9 +3,11 @@ package libp2pwebrtc
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha3"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net"
 	"os"
@@ -26,7 +28,6 @@ import (
 	quicproxy "github.com/quic-go/quic-go/integrationtests/tools/proxy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/sha3"
 )
 
 var netListenUDP ListenUDPFn = func(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
@@ -177,7 +178,7 @@ func TestTransportWebRTC_ListenFailsOnNonWebRTCMultiaddr(t *testing.T) {
 // using assert inside goroutines, refer: https://github.com/stretchr/testify/issues/772#issuecomment-945166599
 func TestTransportWebRTC_DialFailsOnUnsupportedHashFunction(t *testing.T) {
 	tr, _ := getTransport(t)
-	hash := sha3.New512()
+	hash := hash.Hash(sha3.New512())
 	certhash := func() string {
 		_, err := hash.Write([]byte("test-data"))
 		require.NoError(t, err)
@@ -372,9 +373,7 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 	}()
 
 	for range count {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ctr, _ := getTransport(t)
 			conn, err := ctr.Dial(ctx, listener.Multiaddr(), listeningPeer)
 			select {
@@ -384,7 +383,7 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 				assert.NotNil(t, conn)
 				t.Cleanup(func() { conn.Close() })
 			}
-		}()
+		})
 	}
 
 	select {
@@ -541,9 +540,7 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 		var wg sync.WaitGroup
 		var doneStreams atomic.Int32
 		for range numListeners {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for {
 					var nn int32
 					if nn = doneStreams.Add(1); nn > int32(numStreams) {
@@ -556,7 +553,7 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 					require.NoError(t, err)
 					s.Close()
 				}
-			}()
+			})
 		}
 		wg.Wait()
 		readerDone <- struct{}{}
@@ -570,9 +567,7 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 	var cnt atomic.Int32
 	var streamsStarted atomic.Int32
 	for range numWriters {
-		writerWG.Add(1)
-		go func() {
-			defer writerWG.Done()
+		writerWG.Go(func() {
 			buf := make([]byte, size)
 			for {
 				var nn int32
@@ -597,7 +592,7 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 				s.Close()
 				t.Log("completed stream: ", cnt.Add(1), s.(*stream).id)
 			}
-		}()
+		})
 	}
 	writerWG.Wait()
 	select {
@@ -834,9 +829,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 
 	t.Run("RemoteClosesStream", func(t *testing.T) {
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			lconn, err := listener.Accept()
 			require.NoError(t, err)
 			t.Cleanup(func() { lconn.Close() })
@@ -845,7 +838,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 			require.NoError(t, err)
 			time.Sleep(100 * time.Millisecond)
 			_ = stream.Close()
-		}()
+		})
 
 		buf := make([]byte, 2)
 
@@ -990,9 +983,7 @@ func TestMaxInFlightRequests(t *testing.T) {
 	var wg sync.WaitGroup
 	var success, fails atomic.Int32
 	for range count + 1 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			dialer, _ := getTransport(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
@@ -1003,7 +994,7 @@ func TestMaxInFlightRequests(t *testing.T) {
 				t.Log("failed to dial:", err)
 				fails.Add(1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	require.Equal(t, count, int(success.Load()), "expected exactly 3 dial successes")
@@ -1140,9 +1131,7 @@ func TestConnectionClosedWhenRemoteCloses(t *testing.T) {
 	accepted := make(chan struct{})
 	dialer, _ := getTransport(t)
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		c, err := listener.Accept()
 		close(accepted)
 		if !assert.NoError(t, err) {
@@ -1151,7 +1140,7 @@ func TestConnectionClosedWhenRemoteCloses(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return c.IsClosed()
 		}, 5*time.Second, 50*time.Millisecond)
-	}()
+	})
 
 	c, err := dialer.Dial(context.Background(), listener.Multiaddr(), p)
 	require.NoError(t, err)

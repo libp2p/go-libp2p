@@ -45,7 +45,7 @@ func main() {
 
 	// Make a bunch of clients that all ping the server at various times
 	wg := sync.WaitGroup{}
-	for i := 0; i < ClientCount; i++ {
+	for i := range ClientCount {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

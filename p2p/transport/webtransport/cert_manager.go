@@ -129,10 +129,8 @@ func (m *certManager) background(hostKey ic.PrivKey) {
 	d := m.currentConfig.End().Add(-clockSkewAllowance).Sub(m.clock.Now())
 	log.Debug("setting timer", "duration", d.String())
 	t := m.clock.Timer(d)
-	m.refCount.Add(1)
 
-	go func() {
-		defer m.refCount.Done()
+	m.refCount.Go(func() {
 		defer t.Stop()
 
 		for {
@@ -151,7 +149,7 @@ func (m *certManager) background(hostKey ic.PrivKey) {
 				m.mx.Unlock()
 			}
 		}
-	}()
+	})
 }
 
 func (m *certManager) GetConfig() *tls.Config {

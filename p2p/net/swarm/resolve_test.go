@@ -35,8 +35,8 @@ func TestSwarmResolver(t *testing.T) {
 	require.Equal(t, "/ip4/127.0.0.1", res[0].String())
 
 	t.Run("Test Limits", func(t *testing.T) {
-		var ipaddrs []net.IPAddr
-		var manyDNSAddrs []string
+		ipaddrs := make([]net.IPAddr, 0, 255)
+		manyDNSAddrs := make([]string, 0, 255)
 		for i := range 255 {
 			ip := "1.2.3." + strconv.Itoa(i)
 			ipaddrs = append(ipaddrs, net.IPAddr{IP: net.ParseIP(ip)})

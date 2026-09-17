@@ -92,12 +92,10 @@ func echo(t *testing.T, c transport.CapableConn) {
 		if err != nil {
 			break
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer str.Close()
 			echoStream(t, str)
-		}()
+		})
 	}
 }
 
@@ -112,11 +110,9 @@ func serve(t *testing.T, l transport.Listener) {
 		}
 		defer c.Close()
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			echo(t, c)
-		}()
+		})
 	}
 }
 
@@ -191,11 +187,9 @@ func SubtestStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr,
 		}
 		defer l.Close()
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			serve(t, l)
-		}()
+		})
 
 		c, err := tb.Dial(context.Background(), l.Multiaddr(), peerA)
 		if err != nil {
@@ -206,11 +200,9 @@ func SubtestStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr,
 
 		// serve the outgoing conn, because some muxers assume
 		// that we _always_ call serve. (this is an error?)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			echo(t, c)
-		}()
+		})
 
 		var openWg sync.WaitGroup
 		for i := 0; i < opt.StreamNum; i++ {
@@ -278,44 +270,34 @@ func SubtestStreamOpenStress(t *testing.T, ta, tb transport.Transport, maddr ma.
 	}()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range workers {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for i := 0; i < count; i++ {
 					s, err := connA.OpenStream(context.Background())
 					if err != nil {
 						t.Error(err)
 						return
 					}
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						fullClose(t, s)
-					}()
+					})
 				}
-			}()
+			})
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := 0; i < count*workers; i++ {
 			str, err := connB.AcceptStream()
 			if err != nil {
 				break
 			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				fullClose(t, str)
-			}()
+			})
 		}
-	}()
+	})
 
 	timeout := time.After(StressTestTimeout)
 	done := make(chan struct{})
@@ -342,9 +324,7 @@ func SubtestStreamReset(t *testing.T, ta, tb transport.Transport, maddr ma.Multi
 	}
 	defer l.Close()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 
 		muxa, err := l.Accept()
 		if err != nil {
@@ -371,7 +351,7 @@ func SubtestStreamReset(t *testing.T, ta, tb transport.Transport, maddr ma.Multi
 			t.Error("should have failed to write")
 		}
 
-	}()
+	})
 
 	muxb, err := tb.Dial(context.Background(), l.Multiaddr(), peerA)
 	if err != nil {

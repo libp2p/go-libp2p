@@ -579,8 +579,8 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	defer serverTransport.(io.Closer).Close()
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 
-	var drop uint32
-	dropCallback := func(quicproxy.Direction, net.Addr, net.Addr, []byte) bool { return atomic.LoadUint32(&drop) > 0 }
+	var drop atomic.Uint32
+	dropCallback := func(quicproxy.Direction, net.Addr, net.Addr, []byte) bool { return drop.Load() > 0 }
 	proxyConn, cleanup := newUDPConnLocalhost(t, 0)
 	proxy := quicproxy.Proxy{
 		Conn:       proxyConn,
@@ -617,7 +617,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 
 	// Stop forwarding packets and close the server.
 	// This prevents the CONNECTION_CLOSE from reaching the client.
-	atomic.StoreUint32(&drop, 1)
+	drop.Store(1)
 	ln.Close()
 	(<-connChan).Close()
 	proxyLocalPort := proxy.LocalAddr().(*net.UDPAddr).Port
@@ -629,7 +629,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	require.NoError(t, err)
 	defer ln.Close()
 	// Now that the new server is up, re-enable packet forwarding.
-	atomic.StoreUint32(&drop, 0)
+	drop.Store(0)
 
 	proxyConn, cleanup = newUDPConnLocalhost(t, proxyLocalPort)
 	defer cleanup()

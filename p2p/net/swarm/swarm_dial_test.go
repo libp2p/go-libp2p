@@ -393,8 +393,7 @@ func TestBlackHoledAddrBlocked(t *testing.T) {
 	defer cancel()
 	conn, err := s.DialPeer(ctx, p)
 	require.Nil(t, conn)
-	var de *DialError
-	if !errors.As(err, &de) {
+	if _, ok := errors.AsType[*DialError](err); !ok {
 		t.Fatalf("expected to receive an error of type *DialError, got %s of type %T", err, err)
 	}
 	require.ErrorIs(t, err, ErrDialRefusedBlackHole)
