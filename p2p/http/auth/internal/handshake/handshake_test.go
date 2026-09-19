@@ -337,6 +337,34 @@ func FuzzServerHandshakeNoPanic(f *testing.F) {
 	})
 }
 
+// TestClientInitiatedOversizedPublicKeyNoPanic ensures a client-initiated
+// handshake with a large public-key param returns an error instead of
+// panicking when the opaque value would exceed the server's fixed scratch buffer.
+func TestClientInitiatedOversizedPublicKeyNoPanic(t *testing.T) {
+	serverKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	// Large enough that opaque JSON (HMAC + client-public-key + metadata) exceeds
+	// the 1024-byte scratch buffer, but the Authorization header stays under maxHeaderSize.
+	largeKey := bytes.Repeat([]byte{0xAB}, 900)
+	challenge := bytes.Repeat([]byte{0x11}, challengeLen)
+	hdr := fmt.Sprintf(
+		`libp2p-PeerID challenge-server="%s", public-key="%s"`,
+		base64.URLEncoding.EncodeToString(challenge),
+		base64.URLEncoding.EncodeToString(largeKey),
+	)
+	require.LessOrEqual(t, len(hdr), maxHeaderSize)
+
+	h := PeerIDAuthHandshakeServer{
+		Hostname: "example.com",
+		PrivKey:  serverKey,
+		Hmac:     hmac.New(sha256.New, make([]byte, 32)),
+	}
+	require.NoError(t, h.ParseHeaderVal([]byte(hdr)))
+	err = h.Run()
+	require.ErrorIs(t, err, errTooBig)
+}
+
 func BenchmarkOpaqueStateWrite(b *testing.B) {
 	zeroBytes := [32]byte{}
 	hmac := hmac.New(sha256.New, zeroBytes[:])
