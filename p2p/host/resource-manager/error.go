@@ -22,8 +22,7 @@ func logValuesStreamLimit(scope, edge string, dir network.Direction, stat networ
 		logValues = append(logValues, "edge", edge)
 	}
 	logValues = append(logValues, "direction", dir)
-	var e *ErrStreamOrConnLimitExceeded
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*ErrStreamOrConnLimitExceeded](err); ok {
 		logValues = append(logValues,
 			"current", e.current,
 			"attempted", e.attempted,
@@ -41,8 +40,7 @@ func logValuesConnLimit(scope, edge string, dir network.Direction, usefd bool, s
 		logValues = append(logValues, "edge", edge)
 	}
 	logValues = append(logValues, "direction", dir, "usefd", usefd)
-	var e *ErrStreamOrConnLimitExceeded
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*ErrStreamOrConnLimitExceeded](err); ok {
 		logValues = append(logValues,
 			"current", e.current,
 			"attempted", e.attempted,
@@ -68,8 +66,7 @@ func logValuesMemoryLimit(scope, edge string, stat network.ScopeStat, err error)
 	if edge != "" {
 		logValues = append(logValues, "edge", edge)
 	}
-	var e *ErrMemoryLimitExceeded
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*ErrMemoryLimitExceeded](err); ok {
 		logValues = append(logValues,
 			"current", e.current,
 			"attempted", e.attempted,

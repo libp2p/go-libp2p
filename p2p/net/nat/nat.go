@@ -75,11 +75,9 @@ func DiscoverNAT(ctx context.Context) (*NAT, error) {
 		ctxCancel: cancel,
 	}
 	nat.extAddr.Store(&extAddr)
-	nat.refCount.Add(1)
-	go func() {
-		defer nat.refCount.Done()
+	nat.refCount.Go(func() {
 		nat.background()
-	}()
+	})
 	return nat, nil
 }
 

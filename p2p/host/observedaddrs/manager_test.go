@@ -511,7 +511,7 @@ func TestObservedAddrsManager(t *testing.T) {
 			o.maybeRecordObservation(webTransport6Conns[i], resWebTransportAddrs[idx])
 			idx++
 		}
-		var allAddrs []ma.Multiaddr
+		allAddrs := make([]ma.Multiaddr, 0, len(resTCPAddrs)+len(resQuicAddrs)+len(resWebTransportWithCertHashAddrs))
 		allAddrs = append(allAddrs, resTCPAddrs[:]...)
 		allAddrs = append(allAddrs, resQuicAddrs[:]...)
 		allAddrs = append(allAddrs, resWebTransportWithCertHashAddrs[:]...)

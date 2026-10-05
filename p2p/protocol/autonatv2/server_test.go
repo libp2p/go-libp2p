@@ -105,7 +105,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		defer an.Close()
 		defer an.host.Close()
 
-		var addrs []ma.Multiaddr
+		addrs := make([]ma.Multiaddr, 0, 100)
 		for i := range 100 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 2000+i)))
 		}
@@ -124,7 +124,7 @@ func TestServerInvalidAddrsRejected(t *testing.T) {
 		defer an.Close()
 		defer an.host.Close()
 
-		var addrs []ma.Multiaddr
+		addrs := make([]ma.Multiaddr, 0, 10000)
 		for i := range 10000 {
 			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 2000+i)))
 		}
@@ -433,9 +433,7 @@ func TestRateLimiterStress(t *testing.T) {
 		var success, dialDataSuccesses atomic.Int64
 		var wg sync.WaitGroup
 		for range 5 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for range 2 * 60 {
 					for j, p := range peers {
 						if r.Accept(p) {
@@ -449,7 +447,7 @@ func TestRateLimiterStress(t *testing.T) {
 					}
 					cl.AdvanceBy(time.Second)
 				}
-			}()
+			})
 		}
 		wg.Wait()
 		if int(success.Load()) > 10*r.RPM || int(success.Load()) < 9*r.RPM {
@@ -481,16 +479,14 @@ func TestReadDialData(t *testing.T) {
 			r, w := io.Pipe()
 			msg := &pb.Message{}
 			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				mw := pbio.NewDelimitedWriter(w)
 				err := sendDialData(make([]byte, msgSize), N, mw, msg)
 				if err != nil {
 					t.Error(err)
 				}
 				mw.Close()
-			}()
+			})
 			err := readDialData(N, r)
 			require.NoError(t, err)
 			wg.Wait()
@@ -500,16 +496,14 @@ func TestReadDialData(t *testing.T) {
 			r, w := io.Pipe()
 			msg := &pb.Message{}
 			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				mw := pbio.NewDelimitedWriter(w)
 				err := sendDialData(make([]byte, msgSize), N, mw, msg)
 				if err != nil {
 					t.Error(err)
 				}
 				mw.Close()
-			}()
+			})
 			err := readDialData(N, r)
 			require.NoError(t, err)
 			wg.Wait()

@@ -102,9 +102,7 @@ func (l *listener) handleIncoming() {
 			"local_multiaddr", maconn.LocalMultiaddr(),
 			"remote_multiaddr", maconn.RemoteMultiaddr())
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			ctx, cancel := context.WithTimeout(l.ctx, l.upgrader.acceptTimeout)
 			defer cancel()
@@ -142,7 +140,7 @@ func (l *listener) handleIncoming() {
 				}
 				conn.CloseWithError(network.ConnRateLimited)
 			}
-		}()
+		})
 	}
 }
 

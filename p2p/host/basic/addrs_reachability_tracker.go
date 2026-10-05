@@ -254,15 +254,13 @@ func (r *addrsReachabilityTracker) refreshReachability() reachabilityTask {
 	}
 	resCh := make(chan bool, 1)
 	ctx, cancel := context.WithTimeout(r.ctx, 5*time.Minute)
-	r.wg.Add(1)
 	// We run probes provided by addrsTracker. It stops probing when any
 	// of the following happens:
 	// - there are no more probes to run
 	// - context is completed
 	// - there are too many consecutive failures from the client
 	// - the client has no valid peers to probe
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		defer cancel()
 		client := &errCountingClient{autonatv2Client: r.client, MaxConsecutiveErrors: maxConsecutiveErrors}
 		var backoff atomic.Bool
@@ -293,7 +291,7 @@ func (r *addrsReachabilityTracker) refreshReachability() reachabilityTask {
 		}
 		wg.Wait()
 		resCh <- backoff.Load()
-	}()
+	})
 	return reachabilityTask{Cancel: cancel, BackoffCh: resCh}
 }
 

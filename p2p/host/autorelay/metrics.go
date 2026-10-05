@@ -275,8 +275,7 @@ func getReservationRequestStatus(err error) string {
 	}
 
 	status := "err other"
-	var re client.ReservationError
-	if errors.As(err, &re) {
+	if re, ok := errors.AsType[client.ReservationError](err); ok {
 		switch re.Status {
 		case pbv2.Status_CONNECTION_FAILED:
 			return "connection failed"

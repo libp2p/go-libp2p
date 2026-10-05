@@ -570,7 +570,7 @@ func locationHeaderToMultiaddrURI(original *url.URL, locationHeader string) (*ur
 		return nil, errors.New("network path reference not supported")
 	}
 
-	firstSegment := strings.SplitN(locationHeader, "/", 2)[0]
+	firstSegment, _, _ := strings.Cut(locationHeader, "/")
 	if strings.Contains(firstSegment, ":") {
 		// This location contains a scheme, so it's an absolute uri.
 		return url.Parse(locationHeader)

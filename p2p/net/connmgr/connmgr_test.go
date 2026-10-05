@@ -24,12 +24,12 @@ type tconn struct {
 	network.Conn
 
 	peer             peer.ID
-	closed           uint32 // to be used atomically. Closed if 1
+	closed           atomic.Uint32 // to be used atomically. Closed if 1
 	disconnectNotify func(net network.Network, conn network.Conn)
 }
 
 func (c *tconn) Close() error {
-	atomic.StoreUint32(&c.closed, 1)
+	c.closed.Store(1)
 	if c.disconnectNotify != nil {
 		c.disconnectNotify(nil, c)
 	}
@@ -37,7 +37,7 @@ func (c *tconn) Close() error {
 }
 
 func (c *tconn) CloseWithError(_ network.ConnErrorCode) error {
-	atomic.StoreUint32(&c.closed, 1)
+	c.closed.Store(1)
 	if c.disconnectNotify != nil {
 		c.disconnectNotify(nil, c)
 	}
@@ -45,7 +45,7 @@ func (c *tconn) CloseWithError(_ network.ConnErrorCode) error {
 }
 
 func (c *tconn) isClosed() bool {
-	return atomic.LoadUint32(&c.closed) == 1
+	return c.closed.Load() == 1
 }
 
 func (c *tconn) RemotePeer() peer.ID {
@@ -951,8 +951,7 @@ func TestSafeConcurrency(t *testing.T) {
 		const concurrency = 10
 		var wg sync.WaitGroup
 		for range concurrency {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				// add conns. This mimics new connection events
 				pis := peerInfos{p1, p2}
 				for i := range runs {
@@ -962,17 +961,14 @@ func TestSafeConcurrency(t *testing.T) {
 					s.peers[pi.id].conns[randConn(t, nil)] = cl.Now()
 					s.Unlock()
 				}
-				wg.Done()
-			}()
+			})
 
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				pis := peerInfos{p1, p2}
 				for range runs {
 					pis.SortByValueAndStreams(ss, false)
 				}
-				wg.Done()
-			}()
+			})
 		}
 
 		wg.Wait()

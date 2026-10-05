@@ -1,5 +1,3 @@
-//go:build go1.25
-
 package basichost_test
 
 import (

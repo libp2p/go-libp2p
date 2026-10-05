@@ -64,11 +64,9 @@ func (r *AutoRelay) IsPeerInBackoff(peerID peer.ID) bool {
 }
 
 func (r *AutoRelay) Start() {
-	r.refCount.Add(1)
-	go func() {
-		defer r.refCount.Done()
+	r.refCount.Go(func() {
 		r.background()
-	}()
+	})
 }
 
 func (r *AutoRelay) background() {
