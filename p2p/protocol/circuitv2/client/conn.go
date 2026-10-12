@@ -113,7 +113,9 @@ func (c *Conn) RemoteAddr() net.Addr {
 var _ network.ConnStat = (*Conn)(nil)
 
 func (c *Conn) Stat() network.ConnStats {
-	return c.stat
+	stat := c.stat
+	stat.Limited = true
+	return stat 
 }
 
 // tagHop tags the underlying relay connection so that it can be (somewhat) protected from the
