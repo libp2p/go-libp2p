@@ -151,6 +151,9 @@ func (l *listener) Accept() (transport.CapableConn, error) {
 		if !c.IsClosed() {
 			return c, nil
 		}
+		// The remote side closed the connection before it was accepted.
+		// Close it on our side too so its resource scope is released.
+		c.Close()
 	}
 	if strings.Contains(l.err.Error(), "use of closed network connection") {
 		return nil, transport.ErrListenerClosed
