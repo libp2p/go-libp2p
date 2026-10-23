@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -313,7 +314,21 @@ func TestServerDial(t *testing.T) {
 
 	idAndWait(t, c, an)
 
-	unreachableAddr := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+	// Use a local endpoint that immediately closes raw TCP connections so failure
+	// is deterministic and does not depend on an external network timeout.
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+	unreachableAddr := ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", ln.Addr().(*net.TCPAddr).Port))
 	hostAddrs := c.host.Addrs()
 
 	t.Run("unreachable addr", func(t *testing.T) {

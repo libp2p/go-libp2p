@@ -57,7 +57,11 @@ func newPeer(t *testing.T) (crypto.PrivKey, peer.ID) {
 }
 
 func makeSwarm(t *testing.T) *Swarm {
-	s := makeSwarmWithNoListenAddrs(t, WithDialTimeout(1*time.Second))
+	return makeSwarmWithDialTimeout(t, time.Second)
+}
+
+func makeSwarmWithDialTimeout(t *testing.T, timeout time.Duration) *Swarm {
+	s := makeSwarmWithNoListenAddrs(t, WithDialTimeout(timeout))
 	if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0")); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +231,7 @@ func TestDialWorkerLoopConcurrent(t *testing.T) {
 }
 
 func TestDialWorkerLoopFailure(t *testing.T) {
-	s1 := makeSwarm(t)
+	s1 := makeSwarmWithDialTimeout(t, 100*time.Millisecond)
 	defer s1.Close()
 
 	_, p2 := newPeer(t)
@@ -252,7 +256,7 @@ func TestDialWorkerLoopFailure(t *testing.T) {
 }
 
 func TestDialWorkerLoopConcurrentFailure(t *testing.T) {
-	s1 := makeSwarm(t)
+	s1 := makeSwarmWithDialTimeout(t, 100*time.Millisecond)
 	defer s1.Close()
 
 	_, p2 := newPeer(t)
@@ -338,7 +342,7 @@ func TestDialWorkerLoopConcurrentMix(t *testing.T) {
 }
 
 func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
-	s1 := makeSwarm(t)
+	s1 := makeSwarmWithDialTimeout(t, 100*time.Millisecond)
 	defer s1.Close()
 
 	_, p2 := newPeer(t)
@@ -713,7 +717,7 @@ loop:
 		select {
 		case <-recvCh:
 			return errors.New("didn't expect a dial attempt")
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(20 * time.Millisecond):
 		}
 	} else {
 		// ensure that we do receive the final error response

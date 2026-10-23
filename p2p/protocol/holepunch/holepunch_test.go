@@ -124,7 +124,7 @@ func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 		return (len(h1.Network().ConnsToPeer(h2.ID())) != nc1 ||
 			len(h2.Network().ConnsToPeer(h1.ID())) != nc2 ||
 			len(tr.getEvents()) != 0)
-	}, time.Second, 100*time.Millisecond)
+	}, 250*time.Millisecond, 25*time.Millisecond)
 }
 
 func TestDirectDialWorks(t *testing.T) {

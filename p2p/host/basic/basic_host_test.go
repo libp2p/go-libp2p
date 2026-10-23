@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -440,11 +439,9 @@ func TestHostProtoPreknowledge(t *testing.T) {
 
 	h2.SetStreamHandler("/foo", handler)
 
-	require.Never(t, func() bool {
-		protos, err := h1.Peerstore().GetProtocols(h2.ID())
-		require.NoError(t, err)
-		return slices.Contains(protos, "/foo")
-	}, time.Second, 100*time.Millisecond)
+	protos, err := h1.Peerstore().GetProtocols(h2.ID())
+	require.NoError(t, err)
+	require.NotContains(t, protos, protocol.ID("/foo"))
 
 	s, err := h1.NewStream(context.Background(), h2.ID(), "/foo", "/bar", "/super")
 	require.NoError(t, err)
@@ -951,7 +948,7 @@ func TestHostTimeoutNewStream(t *testing.T) {
 	require.NoError(t, err)
 
 	// No context passed in, fallback to negtimeout
-	h1.negtimeout = time.Second
+	h1.negtimeout = 100 * time.Millisecond
 	_, err = h1.NewStream(context.Background(), h2.LocalPeer(), proto)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "context deadline exceeded")

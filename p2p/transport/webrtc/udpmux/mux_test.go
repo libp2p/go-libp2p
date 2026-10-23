@@ -103,7 +103,7 @@ func TestAcceptRejectsInvalidCredentials(t *testing.T) {
 			_, err := from.WriteTo(msg.Raw, m.GetListenAddresses()[0])
 			require.NoError(t, err)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
 			_, err = m.Accept(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -143,7 +143,7 @@ func TestAccept(t *testing.T) {
 	for i, ufrag := range ufrags {
 		// should not be accepted
 		setupMapping(t, ufrag, conns[i], m)
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 		_, err := m.Accept(ctx)
 		require.Error(t, err)
@@ -151,7 +151,7 @@ func TestAccept(t *testing.T) {
 		// should not be accepted
 		cc := newPacketConn(t)
 		setupMapping(t, ufrag, cc, m)
-		ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel = context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 		_, err = m.Accept(ctx)
 		require.Error(t, err)

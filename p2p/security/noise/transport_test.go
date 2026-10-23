@@ -111,7 +111,7 @@ func TestDeadlines(t *testing.T) {
 	defer init.Close()
 	defer resp.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	_, err := initTransport.SecureOutbound(ctx, init, respTransport.localID)

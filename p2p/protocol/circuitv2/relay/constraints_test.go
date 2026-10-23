@@ -121,7 +121,7 @@ func TestConstraints(t *testing.T) {
 
 func TestConstraintsCleanup(t *testing.T) {
 	const limit = 7
-	validity := 500 * time.Millisecond
+	validity := 100 * time.Millisecond
 	expiry := time.Now().Add(validity)
 	res := &Resources{
 		MaxReservations:        limit,

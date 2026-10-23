@@ -194,7 +194,7 @@ func TestInterceptAccept(t *testing.T) {
 			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 			defer cancel()
 			// The basic host dials the first connection.
 			if strings.Contains(tc.Name, "WebRTC") {

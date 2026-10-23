@@ -186,7 +186,7 @@ func newSilentPeer(t *testing.T) (peer.ID, ma.Multiaddr, net.Listener) {
 }
 
 func TestDialWait(t *testing.T) {
-	const dialTimeout = 5 * time.Second
+	const dialTimeout = 100 * time.Millisecond
 
 	swarms := makeSwarms(t, 1, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	s1 := swarms[0]
@@ -426,7 +426,7 @@ func TestDialBackoff(t *testing.T) {
 }
 
 func TestDialBackoffClears(t *testing.T) {
-	const dialTimeout = 3 * time.Second
+	const dialTimeout = 100 * time.Millisecond
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
@@ -538,7 +538,7 @@ func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {
 }
 
 func TestDialSimultaneousJoin(t *testing.T) {
-	const dialTimeout = 3 * time.Second
+	const dialTimeout = 250 * time.Millisecond
 
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
@@ -569,7 +569,7 @@ func TestDialSimultaneousJoin(t *testing.T) {
 	}()
 
 	// wait a bit for the dial to take hold
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// start a second dial to s2 that uses the real s2 addrs
 	go func() {

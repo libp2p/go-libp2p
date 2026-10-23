@@ -137,7 +137,7 @@ func TestSingleCandidate(t *testing.T) {
 
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
 	// test that we don't add any more relays
-	require.Never(t, func() bool { return numRelays(h) > 1 }, 200*time.Millisecond, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 1 }, 100*time.Millisecond, 25*time.Millisecond)
 	require.Equal(t, 1, counter, "expected the peer source callback to only have been called once")
 }
 
@@ -168,7 +168,7 @@ func TestSingleRelay(t *testing.T) {
 
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 5*time.Second, 100*time.Millisecond)
 	// test that we don't add any more relays
-	require.Never(t, func() bool { return numRelays(h) > 1 }, 200*time.Millisecond, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 1 }, 100*time.Millisecond, 25*time.Millisecond)
 }
 
 func TestWaitForCandidates(t *testing.T) {
@@ -188,7 +188,7 @@ func TestWaitForCandidates(t *testing.T) {
 
 	// make sure we don't add any relays yet
 	// We need to wait until we have at least 2 candidates before we connect.
-	require.Never(t, func() bool { return numRelays(h) > 0 }, 200*time.Millisecond, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 0 }, 100*time.Millisecond, 25*time.Millisecond)
 
 	r2 := newRelay(t)
 	t.Cleanup(func() { r2.Close() })
@@ -523,7 +523,7 @@ func TestMinInterval(t *testing.T) {
 
 	cl.AdvanceBy(400 * time.Millisecond)
 	// The second call to peerSource should happen after 1 second
-	require.Never(t, func() bool { return numRelays(h) > 0 }, 500*time.Millisecond, 100*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 0 }, 100*time.Millisecond, 10*time.Millisecond)
 	cl.AdvanceBy(600 * time.Millisecond)
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 }
@@ -554,7 +554,7 @@ func TestNoBusyLoop0MinInterval(t *testing.T) {
 		cl.AdvanceBy(time.Second)
 		val := calledTimes.Load()
 		return val >= 2
-	}, 500*time.Millisecond, 100*time.Millisecond)
+	}, 100*time.Millisecond, 10*time.Millisecond)
 	val := calledTimes.Load()
 	require.Less(t, val, uint64(2))
 }
@@ -633,6 +633,6 @@ func TestAutoRelayAddrsEvent(t *testing.T) {
 	select {
 	case e := <-sub.Out():
 		t.Fatal("expected no more events after all reservations obtained; got: ", e.(event.EvtAutoRelayAddrsUpdated))
-	case <-time.After(1 * time.Second):
+	case <-time.After(250 * time.Millisecond):
 	}
 }

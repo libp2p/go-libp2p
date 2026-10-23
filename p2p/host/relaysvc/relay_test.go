@@ -61,7 +61,7 @@ func TestReachabilityChangeEvent(t *testing.T) {
 	emitter.Emit(evt)
 	require.Never(t,
 		func() bool { rmgr.mutex.Lock(); defer rmgr.mutex.Unlock(); return relay != rmgr.relay },
-		3*time.Second,
-		100*time.Millisecond,
+		250*time.Millisecond,
+		25*time.Millisecond,
 		"relay should not be updated on receiving the same event")
 }

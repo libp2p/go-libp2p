@@ -43,13 +43,13 @@ func sayPrivateStreamHandler(t *testing.T) network.StreamHandler {
 	}
 }
 
-func makeAutoNATRefuseDialRequest(t *testing.T, done chan struct{}) host.Host {
+func makeAutoNATRefuseDialRequest(t *testing.T, done chan struct{}, handled chan<- struct{}) host.Host {
 	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	h.SetStreamHandler(AutoNATProto, sayRefusedStreamHandler(t, done))
+	h.SetStreamHandler(AutoNATProto, sayRefusedStreamHandler(t, done, handled))
 	return h
 }
 
-func sayRefusedStreamHandler(t *testing.T, done chan struct{}) network.StreamHandler {
+func sayRefusedStreamHandler(t *testing.T, done chan struct{}, handled chan<- struct{}) network.StreamHandler {
 	return func(s network.Stream) {
 		defer s.Close()
 		r := pbio.NewDelimitedReader(s, network.MessageSizeMax)
@@ -70,7 +70,14 @@ func sayRefusedStreamHandler(t *testing.T, done chan struct{}) network.StreamHan
 			Type:         pb.Message_DIAL_RESPONSE.Enum(),
 			DialResponse: newDialResponseError(pb.Message_E_DIAL_REFUSED, "dial refused"),
 		}
-		w.WriteMsg(&res)
+		if err := w.WriteMsg(&res); err != nil {
+			t.Error(err)
+			return
+		}
+		select {
+		case handled <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -248,14 +255,20 @@ func TestAutoNATDialRefused(t *testing.T) {
 	expectEvent(t, s, network.ReachabilityPublic, 10*time.Second)
 
 	done := make(chan struct{})
-	hs.SetStreamHandler(AutoNATProto, sayRefusedStreamHandler(t, done))
-	hps := makeAutoNATRefuseDialRequest(t, done)
+	handled := make(chan struct{}, 1)
+	hs.SetStreamHandler(AutoNATProto, sayRefusedStreamHandler(t, done, handled))
+	hps := makeAutoNATRefuseDialRequest(t, done, handled)
 	connect(t, hps, hc)
 	identifyAsServer(hps, hc)
+	select {
+	case <-handled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("expected an AutoNAT dial request to be refused")
+	}
 
 	require.Never(t, func() bool {
 		return an.Status() != network.ReachabilityPublic
-	}, 3*time.Second, 1*time.Second, "Expected probe to not change reachability from public")
+	}, 250*time.Millisecond, 25*time.Millisecond, "Expected probe to not change reachability from public")
 	close(done)
 }
 

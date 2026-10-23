@@ -660,7 +660,7 @@ func TestListenerAddr(t *testing.T) {
 	require.Regexp(t, `^wss://127\.0\.0\.1:[\d]+$`, l2.Addr().String())
 }
 func TestHandshakeTimeout(t *testing.T) {
-	handshakeTimeout := 200 * time.Millisecond
+	handshakeTimeout := 100 * time.Millisecond
 	_, upgrader := newUpgrader(t)
 	tlsconf := generateTLSConfig(t)
 	transport, err := New(upgrader, &network.NullResourceManager{}, nil, WithHandshakeTimeout(handshakeTimeout), WithTLSConfig(tlsconf))

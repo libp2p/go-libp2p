@@ -393,9 +393,10 @@ func TestClientDialBacks(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		handler func(network.Stream)
-		success bool
+		name            string
+		handler         func(network.Stream)
+		dialBackTimeout time.Duration
+		success         bool
 	}{
 		{
 			name: "correct dial attempt",
@@ -428,7 +429,8 @@ func TestClientDialBacks(t *testing.T) {
 			success: true,
 		},
 		{
-			name: "no dial attempt",
+			name:            "no dial attempt",
+			dialBackTimeout: 100 * time.Millisecond,
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
 				if _, _, err := readReq(r); err != nil {
@@ -483,7 +485,8 @@ func TestClientDialBacks(t *testing.T) {
 			success: false,
 		},
 		{
-			name: "invalid nonce",
+			name:            "invalid nonce",
+			dialBackTimeout: 100 * time.Millisecond,
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
 				addrs, nonce, err := readReq(r)
@@ -541,8 +544,14 @@ func TestClientDialBacks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			addrs := an.host.Addrs()
 			b.SetStreamHandler(DialProtocol, tc.handler)
+			ctx := context.Background()
+			if tc.dialBackTimeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, tc.dialBackTimeout)
+				defer cancel()
+			}
 			res, err := an.GetReachability(
-				context.Background(),
+				ctx,
 				[]Request{
 					{Addr: addrs[0], SendDialData: true},
 					{Addr: addrs[1]},

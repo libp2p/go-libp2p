@@ -985,7 +985,7 @@ func TestMaxInFlightRequests(t *testing.T) {
 	for range count + 1 {
 		wg.Go(func() {
 			dialer, _ := getTransport(t)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 			defer cancel()
 			if conn, err := dialer.Dial(ctx, ln.Multiaddr(), listeningPeer); err == nil {
 				success.Add(1)

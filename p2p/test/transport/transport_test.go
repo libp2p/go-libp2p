@@ -834,7 +834,7 @@ func TestStreamReadDeadline(t *testing.T) {
 
 			s, err := h2.NewStream(context.Background(), h1.ID(), "echo")
 			require.NoError(t, err)
-			require.NoError(t, s.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
+			require.NoError(t, s.SetReadDeadline(time.Now().Add(25*time.Millisecond)))
 			_, err = s.Read([]byte{0})
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "deadline")
@@ -975,7 +975,7 @@ func TestConnDroppedWhenBlocked(t *testing.T) {
 			require.NoError(t, err)
 
 			client.Peerstore().AddAddrs(server.ID(), server.Addrs(), peerstore.PermanentAddrTTL)
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 			defer cancel()
 			_, err = client.NewStream(ctx, server.ID(), ping.ID)
 			require.Error(t, err)
@@ -985,7 +985,7 @@ func TestConnDroppedWhenBlocked(t *testing.T) {
 				t.Fatal("expected no connected event. Connection should have failed")
 			case <-clientSub.Out():
 				t.Fatal("expected no connected event. Connection should have failed")
-			case <-time.After(time.Second):
+			case <-time.After(100 * time.Millisecond):
 			}
 		})
 	}

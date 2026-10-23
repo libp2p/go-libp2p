@@ -72,7 +72,7 @@ func TestNoStreamOverTransientConnection(t *testing.T) {
 	err = h1.Connect(context.Background(), h2Info)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	ctx = network.WithNoDial(ctx, "test")
 	_, err = h1.NewStream(ctx, h2.ID(), "/testprotocol")

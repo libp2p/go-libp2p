@@ -221,7 +221,7 @@ func TestRelayLimitTime(t *testing.T) {
 	})
 
 	rc := relay.DefaultResources()
-	rc.Limit.Duration = time.Second
+	rc.Limit.Duration = 100 * time.Millisecond
 
 	r, err := relay.New(hosts[1], relay.WithResources(rc))
 	if err != nil {
@@ -261,7 +261,7 @@ func TestRelayLimitTime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(250 * time.Millisecond)
 	n, err := s.Write([]byte("should be closed"))
 	if n > 0 {
 		t.Fatalf("expected to write 0 bytes, wrote %d", n)
