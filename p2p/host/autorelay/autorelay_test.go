@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +17,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
+	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -634,5 +638,106 @@ func TestAutoRelayAddrsEvent(t *testing.T) {
 	case e := <-sub.Out():
 		t.Fatal("expected no more events after all reservations obtained; got: ", e.(event.EvtAutoRelayAddrsUpdated))
 	case <-time.After(1 * time.Second):
+	}
+}
+
+// blockingCloseBus wraps an event.Bus and holds Close on the relay finder's
+// connectedness subscription until release is closed. cleanupDisconnectedPeers
+// closes that subscription on its way out, so parking it there pins the
+// goroutine in a known state and turns the shutdown race into a deterministic
+// assertion.
+type blockingCloseBus struct {
+	event.Bus
+
+	subscribedOnce sync.Once
+	subscribed     chan struct{} // closed once the relay finder has subscribed
+	closingOnce    sync.Once
+	closing        chan struct{} // closed when that subscription's Close is entered
+	release        chan struct{} // close to let that Close return
+}
+
+const relayFinderSubName = "autorelay (relay finder)"
+
+func (b *blockingCloseBus) Subscribe(eventType any, opts ...event.SubscriptionOpt) (event.Subscription, error) {
+	sub, err := b.Bus.Subscribe(eventType, opts...)
+	if err != nil || sub.Name() != relayFinderSubName {
+		return sub, err
+	}
+	b.subscribedOnce.Do(func() { close(b.subscribed) })
+	return &blockingCloseSub{Subscription: sub, bus: b}, nil
+}
+
+type blockingCloseSub struct {
+	event.Subscription
+	bus *blockingCloseBus
+}
+
+func (s *blockingCloseSub) Close() error {
+	s.bus.closingOnce.Do(func() { close(s.bus.closing) })
+	<-s.bus.release
+	return s.Subscription.Close()
+}
+
+// TestCloseWaitsForDisconnectedPeerCleanup checks that AutoRelay.Close (and so
+// relayFinder.Stop) does not return while the relay finder's disconnected peer
+// cleanup goroutine is still running.
+func TestCloseWaitsForDisconnectedPeerCleanup(t *testing.T) {
+	bus := &blockingCloseBus{
+		Bus:        eventbus.NewBus(),
+		subscribed: make(chan struct{}),
+		closing:    make(chan struct{}),
+		release:    make(chan struct{}),
+	}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(bus.release) }) }
+	defer release()
+
+	h := blankhost.NewBlankHost(swarmt.GenSwarm(t), blankhost.WithEventBus(bus))
+	defer h.Close()
+
+	ar, err := autorelay.NewAutoRelay(h, autorelay.WithPeerSource(func(context.Context, int) <-chan peer.AddrInfo {
+		ch := make(chan peer.AddrInfo)
+		close(ch)
+		return ch
+	}))
+	require.NoError(t, err)
+
+	em, err := bus.Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	require.NoError(t, err)
+	defer em.Close()
+	require.NoError(t, em.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate}))
+	ar.Start()
+
+	select {
+	case <-bus.subscribed:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("relay finder never subscribed to EvtPeerConnectednessChanged as %q", relayFinderSubName)
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		defer close(closed)
+		ar.Close()
+	}()
+
+	select {
+	case <-bus.closing:
+	case <-time.After(10 * time.Second):
+		t.Fatal("cleanup goroutine did not exit after Close cancelled it")
+	}
+
+	// The cleanup goroutine is now parked in Close and cannot make progress,
+	// so if it is tracked, ar.Close cannot have returned.
+	select {
+	case <-closed:
+		t.Fatal("Close returned while the cleanup goroutine was still running")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	release()
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close did not return after the cleanup goroutine exited")
 	}
 }
