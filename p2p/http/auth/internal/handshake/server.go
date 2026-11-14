@@ -280,6 +280,11 @@ func (h *PeerIDAuthHandshakeServer) addOpaqueParam() error {
 	if err != nil {
 		return err
 	}
+	// Reject when Marshal grew past the fixed scratch buffer; otherwise
+	// h.buf[len(opaqueVal):] panics (e.g. client-initiated large public keys).
+	if len(opaqueVal) > len(h.buf) {
+		return errTooBig
+	}
 	h.hb.writeParamB64(h.buf[len(opaqueVal):], "opaque", opaqueVal)
 	return nil
 }
@@ -304,6 +309,9 @@ func (h *PeerIDAuthHandshakeServer) addBearerParam() error {
 	bearerToken, err := h.opaque.Marshal(h.Hmac, h.buf[:0])
 	if err != nil {
 		return err
+	}
+	if len(bearerToken) > len(h.buf) {
+		return errTooBig
 	}
 	h.hb.writeParamB64(h.buf[len(bearerToken):], "bearer", bearerToken)
 	return nil

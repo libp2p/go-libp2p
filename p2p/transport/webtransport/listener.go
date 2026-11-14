@@ -71,6 +71,12 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 				EnableDatagrams: true,
 			},
 			CheckOrigin: func(_ *http.Request) bool { return true },
+			// Advertise session flow-control limits. Without them Safari 26 reports
+			// the session as ready but never opens a stream on it
+			// (quic-go/webtransport-go#355). The values are the largest the settings
+			// carry and never bind; the QUIC limits from quicreuse and the resource
+			// manager remain the effective caps.
+			Config: &webtransport.Config{MaxIncomingStreams: 1 << 60, MaxIncomingUniStreams: 1 << 60, MaxIncomingData: 1 << 60},
 		},
 		pendingConns: make(map[*quic.Conn]*negotiatingConn),
 	}
