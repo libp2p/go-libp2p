@@ -2,6 +2,7 @@ package holepunch
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -66,5 +67,29 @@ func TestWaitForPublicAddr_NoDeadlockOnCancel(t *testing.T) {
 	case <-closed:
 	case <-time.After(time.Second):
 		t.Fatal("Close blocked after waitForPublicAddr cancellation")
+	}
+}
+
+// TestFilterHolePunchAddrs covers the gate applied to addresses received in a
+// DCUtR CONNECT: only public IPs survive, and the count is capped so a single
+// message cannot trigger an unbounded number of dials.
+func TestFilterHolePunchAddrs(t *testing.T) {
+	public := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+	got := filterHolePunchAddrs([]ma.Multiaddr{
+		public,
+		ma.StringCast("/ip4/127.0.0.1/tcp/1"),    // loopback
+		ma.StringCast("/ip4/10.0.0.1/tcp/1"),     // private
+		ma.StringCast("/dns4/example.com/tcp/1"), // DNS resolves to a peer-controlled IP
+	})
+	if len(got) != 1 || !got[0].Equal(public) {
+		t.Fatalf("expected only the public IP, got %v", got)
+	}
+
+	many := make([]ma.Multiaddr, 0, maxHolePunchAddrs+10)
+	for i := 0; i < maxHolePunchAddrs+10; i++ {
+		many = append(many, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", 1+i)))
+	}
+	if n := len(filterHolePunchAddrs(many)); n != maxHolePunchAddrs {
+		t.Fatalf("expected cap at %d, got %d", maxHolePunchAddrs, n)
 	}
 }
