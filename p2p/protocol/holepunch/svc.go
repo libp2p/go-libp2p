@@ -208,7 +208,7 @@ func (s *Service) incomingHolePunch(str network.Stream) (rtt time.Duration, remo
 		obsDial = s.filter.FilterRemote(str.Conn().RemotePeer(), obsDial)
 	}
 	// Dial only the public IPs the peer sent, after any AddrFilter.
-	obsDial = filterHolePunchAddrs(obsDial)
+	obsDial = ma.FilterAddrs(obsDial, isPublicIPAddr)
 
 	log.Debug("received hole punch request", "peer", str.Conn().RemotePeer(), "addrs", obsDial)
 	if len(obsDial) == 0 {

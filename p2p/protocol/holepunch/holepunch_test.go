@@ -528,6 +528,7 @@ func TestFailuresOnResponder(t *testing.T) {
 						ma.StringCast("/ip4/127.0.0.1/tcp/1234"),
 						ma.StringCast("/ip4/10.1.2.3/tcp/22"),
 						ma.StringCast("/ip6/::1/tcp/1234"),
+						ma.StringCast("/dns4/example.com/tcp/443"),
 					}),
 				})
 				time.Sleep(10 * time.Second)

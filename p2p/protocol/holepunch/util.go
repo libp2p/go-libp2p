@@ -21,21 +21,6 @@ func isRelayAddress(a ma.Multiaddr) bool {
 	return err == nil
 }
 
-// maxHolePunchAddrs caps the peer-supplied addresses dialed per DCUtR message,
-// matching autonatv2's maxPeerAddresses.
-const maxHolePunchAddrs = 50
-
-// filterHolePunchAddrs keeps only the public, IP-based addresses worth
-// hole-punching to, capped at maxHolePunchAddrs. Callers run it after any
-// AddrFilter, so it has the final say on what the hole puncher dials.
-func filterHolePunchAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	addrs = ma.FilterAddrs(addrs, isPublicIPAddr)
-	if len(addrs) > maxHolePunchAddrs {
-		addrs = addrs[:maxHolePunchAddrs]
-	}
-	return addrs
-}
-
 // isPublicIPAddr reports whether a is a public IP address. DNS names are
 // rejected: IsPublicAddr accepts them, but they resolve to a peer-controlled IP.
 func isPublicIPAddr(a ma.Multiaddr) bool {
