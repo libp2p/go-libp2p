@@ -280,9 +280,28 @@ func (s *Service) handleNewStream(str network.Stream) {
 // DirectConnect is only exposed for testing purposes.
 // TODO: find a solution for this.
 func (s *Service) DirectConnect(p peer.ID) error {
-	<-s.hasPublicAddrsChan
+	return s.DirectConnectContext(context.Background(), p)
+}
+
+// DirectConnectContext attempts a direct connection to p, as the service does
+// on its own for an inbound relayed connection: a direct dial if the peerstore
+// has a public address of p, then up to three hole punching rounds over the
+// relayed connection. It waits until the host has a public address to offer.
+//
+// Once ctx is done the call stops waiting and ends its dial, stream and punch
+// in progress, and returns ctx.Err(); the next call to p can then start at
+// once instead of failing with ErrHolePunchActive. It returns ErrClosed if the
+// service is closed first, including while it waits for a public address.
+func (s *Service) DirectConnectContext(ctx context.Context, p peer.ID) error {
+	select {
+	case <-s.hasPublicAddrsChan:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.ctx.Done():
+		return ErrClosed
+	}
 	s.holePuncherMx.Lock()
 	holePuncher := s.holePuncher
 	s.holePuncherMx.Unlock()
-	return holePuncher.DirectConnect(p)
+	return holePuncher.DirectConnectContext(ctx, p)
 }
