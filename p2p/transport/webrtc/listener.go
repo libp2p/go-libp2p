@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -20,6 +21,8 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
+	"github.com/pion/ice/v4"
+	"github.com/pion/stun/v3"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -212,6 +215,7 @@ func (l *listener) setupConnection(
 		l.transport.peerConnectionTimeouts.Failed,
 		l.transport.peerConnectionTimeouts.Keepalive,
 	)
+	settingEngine.SetICEBindingRequestHandler(newSelectFirstAuthenticatedPair())
 	// This is higher than the path MTU due to a bug in the sctp chunking logic.
 	// Remove this after https://github.com/pion/sctp/pull/301 is included
 	// in a release.
@@ -330,6 +334,31 @@ func (l *listener) Addr() net.Addr {
 
 func (l *listener) Multiaddr() ma.Multiaddr {
 	return l.localMultiaddr
+}
+
+// newSelectFirstAuthenticatedPair returns an ICE binding request handler for
+// the listener's lite agent. pion calls it for every binding request that
+// passed the STUN message integrity check; returning true selects the pair.
+//
+// The dialer (controlling) may send its DTLS ClientHello as soon as one of its
+// checks succeeds, while setting USE-CANDIDATE only on a later check: browsers
+// do this, sometimes seconds later. A lite agent selects a pair only on
+// nomination, and pion starts DTLS only once a pair is selected, so the
+// handshake would wait for that nomination. Instead, select the pair of the
+// first authenticated check (the dialer already holds a working path) and
+// still move to any other pair the dialer nominates later.
+func newSelectFirstAuthenticatedPair() func(m *stun.Message, local, remote ice.Candidate, pair *ice.CandidatePair) bool {
+	var selected atomic.Pointer[ice.CandidatePair]
+	return func(m *stun.Message, _, _ ice.Candidate, pair *ice.CandidatePair) bool {
+		if selected.CompareAndSwap(nil, pair) {
+			return true
+		}
+		if m.Contains(stun.AttrUseCandidate) && selected.Load() != pair {
+			selected.Store(pair)
+			return true
+		}
+		return false
+	}
 }
 
 // addOnConnectionStateChangeCallback adds the OnConnectionStateChange to the PeerConnection.
