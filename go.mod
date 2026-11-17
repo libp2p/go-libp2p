@@ -46,6 +46,7 @@ require (
 	github.com/multiformats/go-varint v0.1.0
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pion/datachannel v1.5.10
+	github.com/pion/dtls/v3 v3.1.2
 	github.com/pion/ice/v4 v4.0.10
 	github.com/pion/logging v0.2.4
 	github.com/pion/sctp v1.8.39
@@ -81,7 +82,6 @@ require (
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pandatix/go-abnf v0.5.5 // indirect
-	github.com/pion/dtls/v3 v3.1.2 // indirect
 	github.com/pion/interceptor v0.1.40 // indirect
 	github.com/pion/mdns/v2 v2.0.7 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
