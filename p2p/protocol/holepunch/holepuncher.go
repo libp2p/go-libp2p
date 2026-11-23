@@ -86,6 +86,14 @@ func (hp *holePuncher) beginDirectConnect(p peer.ID) error {
 // It first attempts a direct dial (if we have a public address of that peer), and then
 // coordinates a hole punch over the given relay connection.
 func (hp *holePuncher) DirectConnect(p peer.ID) error {
+	return hp.DirectConnectContext(context.Background(), p)
+}
+
+// DirectConnectContext is DirectConnect bounded by ctx: once ctx is done, the
+// direct dial, the hole punching stream and the punch in progress end, and the
+// call returns ctx.Err() after releasing the per-peer slot, so that a new
+// attempt to p can start at once.
+func (hp *holePuncher) DirectConnectContext(ctx context.Context, p peer.ID) error {
 	log.Debug("beginDirectConnect", "source_peer", hp.host.ID(), "destination_peer", p)
 	if err := hp.beginDirectConnect(p); err != nil {
 		return err
@@ -97,10 +105,19 @@ func (hp *holePuncher) DirectConnect(p peer.ID) error {
 		hp.activeMx.Unlock()
 	}()
 
-	return hp.directConnect(p)
+	// The call ends with the caller's context or with the hole puncher.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(hp.ctx, cancel)()
+
+	err := hp.directConnect(ctx, p)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
-func (hp *holePuncher) directConnect(rp peer.ID) error {
+func (hp *holePuncher) directConnect(ctx context.Context, rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
 	if getDirectConnection(hp.host, rp) != nil {
 		log.Debug("already connected", "source_peer", hp.host.ID(), "destination_peer", rp)
@@ -112,7 +129,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 	// attempt a direct connection ONLY if we have a public address for the remote peer
 	for _, a := range hp.host.Peerstore().Addrs(rp) {
 		if !isRelayAddress(a) && manet.IsPublicAddr(a) {
-			forceDirectConnCtx := network.WithForceDirectDial(hp.ctx, "hole-punching")
+			forceDirectConnCtx := network.WithForceDirectDial(ctx, "hole-punching")
 			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, hp.directDialTimeout)
 
 			tstart := time.Now()
@@ -142,7 +159,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 		if i == maxRetries {
 			isClient = true
 		}
-		addrs, obsAddrs, rtt, err := hp.initiateHolePunch(rp)
+		addrs, obsAddrs, rtt, err := hp.initiateHolePunch(ctx, rp)
 		if err != nil {
 			hp.tracer.ProtocolError(rp, err)
 			return err
@@ -161,8 +178,8 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			}
 			hp.tracer.StartHolePunch(rp, addrs, rtt)
 			hp.tracer.HolePunchAttempt(pi.ID)
-			ctx, cancel := context.WithTimeout(hp.ctx, hp.directDialTimeout)
-			err := holePunchConnect(ctx, hp.host, pi, isClient)
+			punchCtx, cancel := context.WithTimeout(ctx, hp.directDialTimeout)
+			err := holePunchConnect(punchCtx, hp.host, pi, isClient)
 			cancel()
 			dt := time.Since(start)
 			hp.tracer.EndHolePunch(rp, dt, err)
@@ -171,9 +188,9 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 				hp.tracer.HolePunchFinished("initiator", i, addrs, obsAddrs, getDirectConnection(hp.host, rp))
 				return nil
 			}
-		case <-hp.ctx.Done():
+		case <-ctx.Done():
 			timer.Stop()
-			return hp.ctx.Err()
+			return ctx.Err()
 		}
 		if i == maxRetries {
 			hp.tracer.HolePunchFinished("initiator", maxRetries, addrs, obsAddrs, nil)
@@ -184,8 +201,8 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 
 // initiateHolePunch opens a new hole punching coordination stream,
 // exchanges the addresses and measures the RTT.
-func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multiaddr, time.Duration, error) {
-	hpCtx := network.WithAllowLimitedConn(hp.ctx, "hole-punch")
+func (hp *holePuncher) initiateHolePunch(ctx context.Context, rp peer.ID) ([]ma.Multiaddr, []ma.Multiaddr, time.Duration, error) {
+	hpCtx := network.WithAllowLimitedConn(ctx, "hole-punch")
 	sCtx := network.WithNoDial(hpCtx, "hole-punch")
 
 	str, err := hp.host.NewStream(sCtx, rp, Protocol)
@@ -193,6 +210,8 @@ func (hp *holePuncher) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, []ma.Multi
 		return nil, nil, 0, fmt.Errorf("failed to open hole-punching stream: %w", err)
 	}
 	defer str.Close()
+	// The exchange blocks on the stream: end it with ctx.
+	defer context.AfterFunc(ctx, func() { str.Reset() })()
 	log.Debug("initiateHolePunch", "remote_peer", str.Conn().RemotePeer(), "remote_multiaddr", str.Conn().RemoteMultiaddr())
 
 	addr, obsAddr, rtt, err := hp.initiateHolePunchImpl(str)
