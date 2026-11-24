@@ -423,6 +423,11 @@ these blocked requests it means your resource limits are too low for your usage.
 If you see a rare sudden spike, this is okay and it means the resource manager
 protected you from some anomaly.
 
+Two values of the metric's `scope` label are not scopes: `connLimiter` counts
+connections blocked by the limit on connections per IP subnet (see
+`WithLimitPerSubnet` and `WithNetworkPrefixLimit`), and `connRateLimiter` counts
+connections blocked by the connection rate limiter (see `WithConnRateLimiters`).
+
 ### How to disable limits
 
 Sometimes disabling all limits is useful when you want to see how much

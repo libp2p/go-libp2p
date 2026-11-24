@@ -83,7 +83,9 @@ func (s scopeClass) MarshalJSON() ([]byte, error) {
 		span = name[idx+5:]
 	}
 	// System and Transient scope
-	if name == "system" || name == "transient" || name == "allowlistedSystem" || name == "allowlistedTransient" {
+	// The connection limiters aren't scopes, but report the connections they block like one
+	if name == "system" || name == "transient" || name == "allowlistedSystem" || name == "allowlistedTransient" ||
+		name == connLimiterName || name == connRateLimiterName {
 		return json.Marshal(struct {
 			Class string
 			Span  string `json:",omitempty"`
