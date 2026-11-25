@@ -2,7 +2,6 @@ package rcmgr
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -382,14 +381,29 @@ func (r *resourceManager) OpenConnection(dir network.Direction, usefd bool, endp
 	return r.openConnection(dir, usefd, endpoint, ipAddr)
 }
 
+// Names under which the connections blocked by the per IP limit and by the
+// rate limiter are reported. They are used as the scope name in trace events.
+const (
+	connLimiterName     = "connLimiter"
+	connRateLimiterName = "connRateLimiter"
+)
+
+// blockConn reports a connection that was rejected before it got a scope.
+func (r *resourceManager) blockConn(limiter string, dir network.Direction, usefd bool) {
+	r.metrics.BlockConn(dir, usefd)
+	r.trace.BlockAddConn(limiter, dir, usefd, 0, 0, 0)
+}
+
 func (r *resourceManager) openConnection(dir network.Direction, usefd bool, endpoint multiaddr.Multiaddr, ip netip.Addr) (network.ConnManagementScope, error) {
 	if !r.connRateLimiter.Allow(ip) {
-		return nil, errors.New("rate limit exceeded")
+		r.blockConn(connRateLimiterName, dir, usefd)
+		return nil, fmt.Errorf("connection rate limit exceeded for %s: %w", endpoint, network.ErrResourceLimitExceeded)
 	}
 
 	if ip.IsValid() {
 		if ok := r.connLimiter.addConn(ip); !ok {
-			return nil, fmt.Errorf("connections per ip limit exceeded for %s", endpoint)
+			r.blockConn(connLimiterName, dir, usefd)
+			return nil, fmt.Errorf("connections per ip limit exceeded for %s: %w", endpoint, network.ErrResourceLimitExceeded)
 		}
 	}
 

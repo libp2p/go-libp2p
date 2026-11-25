@@ -1,8 +1,14 @@
 package rcmgr
 
 import (
+	"compress/gzip"
+	"io"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -1172,4 +1178,85 @@ func TestVerifySourceAddressRateLimiter(t *testing.T) {
 	}
 	require.False(t, rcmgr.VerifySourceAddress(na2))
 	require.True(t, rcmgr.VerifySourceAddress(na2))
+}
+
+type blockedConnRecorder struct {
+	MetricsReporter
+	mu     sync.Mutex
+	metric int
+	scopes []string
+}
+
+func (r *blockedConnRecorder) AllowConn(network.Direction, bool) {}
+
+func (r *blockedConnRecorder) BlockConn(network.Direction, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.metric++
+}
+
+func (r *blockedConnRecorder) ConsumeEvent(evt TraceEvt) {
+	if evt.Type != TraceBlockAddConnEvt {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.scopes = append(r.scopes, evt.Name)
+}
+
+// Connections rejected by the per IP limit and by the rate limiter are
+// reported like the ones rejected by a scope limit.
+func TestConnLimiterRejectionsAreReported(t *testing.T) {
+	addr := multiaddr.StringCast("/ip4/1.2.3.4/tcp/1")
+	for _, tc := range []struct {
+		name  string
+		opt   Option
+		scope string
+	}{
+		{
+			name:  "per IP limit",
+			opt:   WithLimitPerSubnet([]ConnLimitPerSubnet{{ConnCount: 1, PrefixLength: 32}}, nil),
+			scope: connLimiterName,
+		},
+		{
+			name:  "rate limit",
+			opt:   WithConnRateLimiters(&rate.Limiter{GlobalLimit: rate.Limit{RPS: 0.00001, Burst: 1}}),
+			scope: connRateLimiterName,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &blockedConnRecorder{}
+			tracePath := filepath.Join(t.TempDir(), "trace.json.gz")
+			rcmgr, err := NewResourceManager(NewFixedLimiter(InfiniteLimits), tc.opt,
+				WithMetrics(rec), WithTraceReporter(rec), WithTrace(tracePath), WithMetricsDisabled())
+			require.NoError(t, err)
+			defer rcmgr.Close()
+
+			first, err := rcmgr.OpenConnection(network.DirInbound, true, addr)
+			require.NoError(t, err)
+
+			_, err = rcmgr.OpenConnection(network.DirInbound, true, addr)
+			require.ErrorIs(t, err, network.ErrResourceLimitExceeded)
+			require.ErrorContains(t, err, addr.String())
+
+			rec.mu.Lock()
+			defer rec.mu.Unlock()
+			require.Equal(t, []string{tc.scope}, rec.scopes)
+			require.Equal(t, 1, rec.metric)
+
+			// The trace file has the event, and the events after it.
+			first.Done()
+			require.NoError(t, rcmgr.Close())
+			f, err := os.Open(tracePath)
+			require.NoError(t, err)
+			defer f.Close()
+			gz, err := gzip.NewReader(f)
+			require.NoError(t, err)
+			out, err := io.ReadAll(gz)
+			require.NoError(t, err)
+			blocked := strings.Index(string(out), `"Scope":{"Class":"`+tc.scope+`"}`)
+			require.NotEqual(t, -1, blocked, string(out))
+			require.Contains(t, string(out)[blocked:], string(TraceRemoveConnEvt))
+		})
+	}
 }
