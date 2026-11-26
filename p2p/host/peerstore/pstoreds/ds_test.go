@@ -259,6 +259,37 @@ func TestDsConsumePeerRecordReplacesStaleAddrs(t *testing.T) {
 	}
 }
 
+// Removing several addresses in one SetAddrs call must remove exactly those
+// addresses. Distinct TTLs pin the stored (expiry-sorted) order to a1, a2, a3.
+func TestDsSetAddrsRemovesOnlyRequestedAddrs(t *testing.T) {
+	for name, dsFactory := range dstores {
+		t.Run(name, func(t *testing.T) {
+			opts := DefaultOpts()
+			clk := mockclock.NewMock()
+			opts.Clock = clk
+
+			ds, closeDs := dsFactory(t)
+			defer closeDs()
+			ab, err := NewAddrBook(context.Background(), ds, opts)
+			require.NoError(t, err)
+			defer ab.Close()
+
+			const p = peer.ID("peer-del")
+			a1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+			a2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+			a3 := ma.StringCast("/ip4/1.2.3.4/tcp/3")
+
+			ab.AddAddr(p, a1, 1*time.Hour)
+			ab.AddAddr(p, a2, 2*time.Hour)
+			ab.AddAddr(p, a3, 3*time.Hour)
+			require.ElementsMatch(t, []ma.Multiaddr{a1, a2, a3}, ab.Addrs(p))
+
+			ab.SetAddrs(p, []ma.Multiaddr{a1, a3}, 0)
+			require.ElementsMatch(t, []ma.Multiaddr{a2}, ab.Addrs(p))
+		})
+	}
+}
+
 func TestDsKeyBook(t *testing.T) {
 	for name, dsFactory := range dstores {
 		t.Run(name, func(t *testing.T) {

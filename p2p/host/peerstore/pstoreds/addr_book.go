@@ -680,30 +680,13 @@ func (ab *dsAddrBook) setAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Duratio
 	return pr.flush(ab.ds)
 }
 
-// deletes addresses in place, avoiding copies until we encounter the first deletion.
-// does not preserve order, but entries are re-sorted before flushing to disk anyway.
+// deletes addresses in place.
 func deleteInPlace(s []*pb.AddrBookRecord_AddrEntry, addrs []ma.Multiaddr) []*pb.AddrBookRecord_AddrEntry {
-	if s == nil || len(addrs) == 0 {
-		return s
-	}
-	survived := len(s)
-Outer:
-	for i, addr := range s {
-		for _, del := range addrs {
-			if !bytes.Equal(del.Bytes(), addr.Addr) {
-				continue
-			}
-			survived--
-			// if there are no survivors, bail out
-			if survived == 0 {
-				break Outer
-			}
-			s[i] = s[survived]
-			// we've already dealt with s[i], move to the next
-			continue Outer
-		}
-	}
-	return s[:survived]
+	return slices.DeleteFunc(s, func(e *pb.AddrBookRecord_AddrEntry) bool {
+		return slices.ContainsFunc(addrs, func(del ma.Multiaddr) bool {
+			return bytes.Equal(del.Bytes(), e.Addr)
+		})
+	})
 }
 
 func (ab *dsAddrBook) deleteAddrs(p peer.ID, addrs []ma.Multiaddr) (err error) {
