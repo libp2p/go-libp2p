@@ -333,7 +333,8 @@ func TestTagClosureDropsQueuedBumps(t *testing.T) {
 	seg.Lock()
 	require.NoError(t, tag.Bump(blocker, 1000))
 
-	ids := []peer.ID{blocker}
+	ids := make([]peer.ID, 0, 33)
+	ids = append(ids, blocker)
 	for range 32 {
 		id := tu.RandPeerIDFatal(t)
 		ids = append(ids, id)
