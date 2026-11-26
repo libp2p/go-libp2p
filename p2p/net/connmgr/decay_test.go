@@ -316,6 +316,46 @@ func TestTagClosure(t *testing.T) {
 	require.Error(t, tag1.Bump(id, 5))
 }
 
+// Bumps that are still queued when a tag is closed must not resurrect the tag
+// on peers after the closure has been processed.
+func TestTagClosureDropsQueuedBumps(t *testing.T) {
+	mgr, decay, _ := testDecayTracker(t)
+
+	tag, err := decay.RegisterDecayingTag("beep", TestResolution, connmgr.DecayFixed(1), connmgr.BumpOverwrite())
+	require.NoError(t, err)
+	other, err := decay.RegisterDecayingTag("bop", TestResolution, connmgr.DecayFixed(1), connmgr.BumpOverwrite())
+	require.NoError(t, err)
+
+	// Stall the decayer loop on the first bump, so the rest of the bumps and
+	// the closure are all queued by the time it resumes.
+	blocker := tu.RandPeerIDFatal(t)
+	seg := mgr.segments.get(blocker)
+	seg.Lock()
+	require.NoError(t, tag.Bump(blocker, 1000))
+
+	ids := []peer.ID{blocker}
+	for range 32 {
+		id := tu.RandPeerIDFatal(t)
+		ids = append(ids, id)
+		require.NoError(t, tag.Bump(id, 1000))
+	}
+	require.NoError(t, tag.Close())
+	seg.Unlock()
+
+	// Wait until the closure and every bump queued before it were processed.
+	require.Eventually(t, func() bool { return len(mgr.closeTagCh) == 0 }, time.Second, time.Millisecond)
+	sentinel := tu.RandPeerIDFatal(t)
+	require.NoError(t, other.Bump(sentinel, 1))
+	waitForTag(t, mgr, sentinel)
+
+	for _, id := range ids {
+		if info := mgr.GetTagInfo(id); info != nil {
+			require.NotContains(t, info.Tags, "beep")
+			require.Zero(t, info.Value)
+		}
+	}
+}
+
 func testDecayTracker(tb testing.TB) (*BasicConnMgr, connmgr.Decayer, *clock.Mock) {
 	mockClock := clock.NewMock()
 	cfg := &DecayerCfg{
