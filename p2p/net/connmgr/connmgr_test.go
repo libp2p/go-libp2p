@@ -1089,7 +1089,8 @@ func TestForceTrimClosesProtectedWhenNeeded(t *testing.T) {
 			defer cm.Close()
 			not := cm.Notifee()
 
-			var unprotected, protected []network.Conn
+			unprotected := make([]network.Conn, 0, tc.unprotected)
+			protected := make([]network.Conn, 0, tc.protected)
 			for range tc.unprotected {
 				c := randConn(t, not.Disconnected)
 				not.Connected(nil, c)
