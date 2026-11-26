@@ -89,9 +89,14 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						connScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any())
 					}
 					connScope.EXPECT().Done().MinTimes(1)
-					// udp transports won't have FD
-					udpTransportRegex := regexp.MustCompile(`QUIC|WebTransport|WebRTC`)
+					// udp transports won't have FD, and neither does a relayed connection
+					udpTransportRegex := regexp.MustCompile(`QUIC|WebTransport|WebRTC|Circuit`)
 					expectFd := !udpTransportRegex.MatchString(tc.Name)
+					if !testDialer && strings.Contains(tc.Name, "Circuit") {
+						// The upgrader's listener accounts for an FD on every
+						// connection it accepts, relayed ones included.
+						expectFd = true
+					}
 
 					if !testDialer && (strings.Contains(tc.Name, "QUIC") || strings.Contains(tc.Name, "WebTransport")) {
 						rcmgr.EXPECT().VerifySourceAddress(gomock.Any()).Return(false)

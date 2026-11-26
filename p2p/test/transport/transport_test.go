@@ -27,6 +27,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/control"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -37,8 +38,11 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
@@ -76,6 +80,56 @@ func transformOpts(opts TransportTestCaseOpts) []config.Option {
 		libp2pOpts = append(libp2pOpts, libp2p.ResourceManager(opts.ResourceManager))
 	}
 	return libp2pOpts
+}
+
+// testRelays has the peer IDs of the relays started for the Circuit-v2 test case.
+var testRelays sync.Map
+
+func isTestRelay(p peer.ID) bool {
+	_, ok := testRelays.Load(p)
+	return ok
+}
+
+// relayExemptGater allows everything on connections to a test relay, and asks
+// the wrapped gater about everything else.
+type relayExemptGater struct{ connmgr.ConnectionGater }
+
+func (g relayExemptGater) InterceptPeerDial(p peer.ID) bool {
+	return isTestRelay(p) || g.ConnectionGater.InterceptPeerDial(p)
+}
+
+func (g relayExemptGater) InterceptAddrDial(p peer.ID, a ma.Multiaddr) bool {
+	return isTestRelay(p) || g.ConnectionGater.InterceptAddrDial(p, a)
+}
+
+func (g relayExemptGater) InterceptSecured(dir network.Direction, p peer.ID, addrs network.ConnMultiaddrs) bool {
+	return isTestRelay(p) || g.ConnectionGater.InterceptSecured(dir, p, addrs)
+}
+
+func (g relayExemptGater) InterceptUpgraded(c network.Conn) (bool, control.DisconnectReason) {
+	if isTestRelay(c.RemotePeer()) {
+		return true, 0
+	}
+	return g.ConnectionGater.InterceptUpgraded(c)
+}
+
+// relayExemptRcmgr doesn't account for connections and streams to a test relay,
+// and passes everything else to the wrapped resource manager.
+type relayExemptRcmgr struct{ network.ResourceManager }
+
+func (r relayExemptRcmgr) OpenConnection(dir network.Direction, usefd bool, a ma.Multiaddr) (network.ConnManagementScope, error) {
+	if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err != nil {
+		// Hosts of the Circuit-v2 test case only connect directly to their relay.
+		return &network.NullScope{}, nil
+	}
+	return r.ResourceManager.OpenConnection(dir, usefd, a)
+}
+
+func (r relayExemptRcmgr) OpenStream(p peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+	if isTestRelay(p) {
+		return &network.NullScope{}, nil
+	}
+	return r.ResourceManager.OpenStream(p, dir)
 }
 
 func selfSignedTLSConfig(t *testing.T) *tls.Config {
@@ -368,6 +422,62 @@ var transportsToTest = []TransportTestCase{
 				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"))
 			}
 			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		// The listener is only reachable through a relay. The connections to
+		// the relay use QUIC.
+		Name: "Circuit-v2",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			// The tests are about the relayed connection, so the connection
+			// to the relay isn't shown to their gater and resource manager.
+			if opts.ConnGater != nil {
+				opts.ConnGater = relayExemptGater{opts.ConnGater}
+			}
+			if opts.ResourceManager != nil {
+				opts.ResourceManager = relayExemptRcmgr{opts.ResourceManager}
+			}
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts,
+				libp2p.Transport(libp2pquic.NewTransport),
+				libp2p.NoListenAddrs,
+				libp2p.EnableRelay(), // NoListenAddrs disables it
+			)
+			if opts.NoListen {
+				h, err := libp2p.New(libp2pOpts...)
+				require.NoError(t, err)
+				return h
+			}
+
+			relayHost, err := libp2p.New(
+				libp2p.Transport(libp2pquic.NewTransport),
+				libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"),
+				libp2p.DisableRelay(),
+				libp2p.ResourceManager(&network.NullResourceManager{}),
+			)
+			require.NoError(t, err)
+			testRelays.Store(relayHost.ID(), struct{}{})
+			t.Cleanup(func() { relayHost.Close() })
+			// No limits, so that the relayed connection isn't a limited one.
+			_, err = relay.New(relayHost, relay.WithInfiniteLimits())
+			require.NoError(t, err)
+
+			relayInfo := peer.AddrInfo{ID: relayHost.ID(), Addrs: relayHost.Addrs()}
+			relayAddrs, err := peer.AddrInfoToP2pAddrs(&relayInfo)
+			require.NoError(t, err)
+			circuitAddrs := make([]ma.Multiaddr, 0, len(relayAddrs))
+			for _, a := range relayAddrs {
+				circuitAddrs = append(circuitAddrs, a.Encapsulate(ma.StringCast("/p2p-circuit")))
+			}
+			libp2pOpts = append(libp2pOpts,
+				libp2p.ListenAddrStrings("/p2p-circuit"),
+				libp2p.AddrsFactory(func([]ma.Multiaddr) []ma.Multiaddr { return circuitAddrs }),
+			)
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			_, err = client.Reserve(context.Background(), h, relayInfo)
 			require.NoError(t, err)
 			return h
 		},
@@ -871,6 +981,9 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "Circuit") {
+				t.Skip("A relay finds the target by its peer ID, so a wrong peer ID never reaches the security negotiation.")
+			}
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer h1.Close()
@@ -1031,7 +1144,8 @@ func TestErrorCodes(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		if strings.HasPrefix(tc.Name, "WebTransport") {
-			t.Skipf("skipping: %s, not implemented", tc.Name)
+			// Not implemented. Not t.Skip: that would end the test before
+			// the transports after this one have run.
 			continue
 		}
 		t.Run(tc.Name, func(t *testing.T) {

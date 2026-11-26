@@ -2,7 +2,10 @@ package client
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -24,12 +27,20 @@ var (
 	StatLimitData     = statLimitData{}
 )
 
+// closeTimeout is how long a closed Conn waits for the remote side to close
+// its end, before it resets the stream to the relay.
+var closeTimeout = 5 * time.Second
+
 type Conn struct {
 	stream network.Stream
 	remote peer.AddrInfo
 	stat   network.ConnStats
 
 	client *Client
+
+	closeOnce sync.Once
+	closed    atomic.Bool
+	readMu    sync.Mutex // held while reading from stream
 }
 
 type NetAddr struct {
@@ -50,12 +61,52 @@ func (n *NetAddr) String() string {
 // Conn interface
 var _ manet.Conn = (*Conn)(nil)
 
+// Close closes the write side of the stream to the relay, and resets the
+// stream once the remote side has closed its end or closeTimeout has passed.
+//
+// Resetting the stream right away would drop what was written last, here or
+// at the relay. That is the muxer's GoAway frame with the error code, when the
+// connection is closed with an error.
 func (c *Conn) Close() error {
-	c.untagHop()
-	return c.stream.Reset()
+	c.closeOnce.Do(func() {
+		c.untagHop()
+		if err := c.stream.CloseWrite(); err != nil {
+			c.stream.Reset()
+			return
+		}
+		c.closed.Store(true)
+		// Interrupt a Read in progress.
+		c.stream.SetReadDeadline(time.Now())
+		go c.waitForRemoteClose()
+	})
+	return nil
+}
+
+func (c *Conn) waitForRemoteClose() {
+	// Wait for the Read that Close interrupted.
+	c.readMu.Lock()
+	defer c.readMu.Unlock()
+	// The timeout doesn't use the read deadline, which belongs to the caller.
+	c.stream.SetReadDeadline(time.Time{})
+	timeout := time.AfterFunc(closeTimeout, func() { c.stream.Reset() })
+	defer timeout.Stop()
+	if _, err := io.Copy(io.Discard, c.stream); err != nil {
+		c.stream.Reset()
+		return
+	}
+	c.stream.Close()
 }
 
 func (c *Conn) Read(buf []byte) (int, error) {
+	if c.closed.Load() {
+		return 0, net.ErrClosed
+	}
+	c.readMu.Lock()
+	defer c.readMu.Unlock()
+	// Check again: waitForRemoteClose may have had the lock.
+	if c.closed.Load() {
+		return 0, net.ErrClosed
+	}
 	return c.stream.Read(buf)
 }
 
@@ -64,10 +115,16 @@ func (c *Conn) Write(buf []byte) (int, error) {
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {
+	if c.closed.Load() {
+		return net.ErrClosed
+	}
 	return c.stream.SetDeadline(t)
 }
 
 func (c *Conn) SetReadDeadline(t time.Time) error {
+	if c.closed.Load() {
+		return net.ErrClosed
+	}
 	return c.stream.SetReadDeadline(t)
 }
 
