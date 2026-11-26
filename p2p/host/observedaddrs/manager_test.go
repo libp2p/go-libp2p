@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
@@ -40,6 +41,42 @@ func requireEqualAddrs(t *testing.T, a, b []ma.Multiaddr) {
 
 func newConn(local, remote ma.Multiaddr) *mockConn {
 	return &mockConn{local: local, remote: remote}
+}
+
+// With only UDP observations, the emitted NAT device type event must be for
+// UDP, not TCP.
+func TestNATDeviceTypeEventTransport(t *testing.T) {
+	origInterval := natTypeChangeTickrInterval
+	natTypeChangeTickrInterval = 50 * time.Millisecond
+
+	quicListenAddr := ma.StringCast("/ip4/0.0.0.0/udp/1/quic-v1")
+	eb := eventbus.NewBus()
+	sub, err := eb.Subscribe(new(event.EvtNATDeviceTypeChanged))
+	require.NoError(t, err)
+	defer sub.Close()
+
+	o, err := newManagerWithListenAddrs(eb, func() []ma.Multiaddr { return []ma.Multiaddr{quicListenAddr} })
+	require.NoError(t, err)
+	o.Start(swarmt.GenSwarm(t))
+	t.Cleanup(func() {
+		o.Close()
+		natTypeChangeTickrInterval = origInterval
+	})
+
+	observed := ma.StringCast("/ip4/2.2.2.2/udp/2/quic-v1")
+	for i := range 5 * maxExternalThinWaistAddrsPerLocalAddr {
+		c := newConn(quicListenAddr, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.%d/udp/1/quic-v1", i)))
+		o.maybeRecordObservation(c, observed)
+	}
+
+	select {
+	case e := <-sub.Out():
+		evt := e.(event.EvtNATDeviceTypeChanged)
+		require.Equal(t, network.NATTransportUDP, evt.TransportProtocol)
+		require.Equal(t, network.NATDeviceTypeEndpointIndependent, evt.NatDeviceType)
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected a NAT device type changed event")
+	}
 }
 
 func TestObservedAddrsManager(t *testing.T) {

@@ -329,7 +329,7 @@ func (o *Manager) eventHandler(identifySub event.Subscription, natEmitter event.
 				)
 			}
 		case <-natTypeTicker.C:
-			newUDPNAT, newTCPNAT := o.getNATType()
+			newTCPNAT, newUDPNAT := o.getNATType()
 			if newUDPNAT != udpNATType {
 				natEmitter.Emit(event.EvtNATDeviceTypeChanged{
 					TransportProtocol: network.NATTransportUDP,
