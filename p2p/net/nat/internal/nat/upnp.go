@@ -104,7 +104,7 @@ func serviceVisitor(ctx context.Context, rootDevice *goupnp.RootDevice, outNats 
 			if err != nil {
 				*outErrs = append(*outErrs, err)
 			} else if isNat {
-				*outNats = append(*outNats, &upnp_NAT{client, make(map[int]int), "UPNP (IP1)", rootDevice})
+				*outNats = append(*outNats, &upnp_NAT{client, make(map[portMapping]int), "UPNP (IP1)", rootDevice})
 			}
 
 		case internetgateway2.URN_WANIPConnection_2:
@@ -121,7 +121,7 @@ func serviceVisitor(ctx context.Context, rootDevice *goupnp.RootDevice, outNats 
 			if err != nil {
 				*outErrs = append(*outErrs, err)
 			} else if isNat {
-				*outNats = append(*outNats, &upnp_NAT{client, make(map[int]int), "UPNP (IP2)", rootDevice})
+				*outNats = append(*outNats, &upnp_NAT{client, make(map[portMapping]int), "UPNP (IP2)", rootDevice})
 			}
 
 		case internetgateway2.URN_WANPPPConnection_1:
@@ -134,7 +134,7 @@ func serviceVisitor(ctx context.Context, rootDevice *goupnp.RootDevice, outNats 
 			if err != nil {
 				*outErrs = append(*outErrs, err)
 			} else if isNat {
-				*outNats = append(*outNats, &upnp_NAT{client, make(map[int]int), "UPNP (PPP1)", rootDevice})
+				*outNats = append(*outNats, &upnp_NAT{client, make(map[portMapping]int), "UPNP (PPP1)", rootDevice})
 			}
 		}
 	}
@@ -146,9 +146,16 @@ type upnp_NAT_Client interface {
 	DeletePortMappingCtx(context.Context, string, uint16, string) error
 }
 
+// portMapping identifies a mapping. TCP and UDP mappings of the same internal
+// port are separate mappings on the router.
+type portMapping struct {
+	protocol     string
+	internalPort int
+}
+
 type upnp_NAT struct {
 	c          upnp_NAT_Client
-	ports      map[int]int
+	ports      map[portMapping]int
 	typ        string
 	rootDevice *goupnp.RootDevice
 }
@@ -186,7 +193,7 @@ func (u *upnp_NAT) AddPortMapping(ctx context.Context, protocol string, internal
 
 	timeoutInSeconds := uint32(timeout / time.Second)
 
-	if externalPort := u.ports[internalPort]; externalPort > 0 {
+	if externalPort := u.ports[portMapping{protocol, internalPort}]; externalPort > 0 {
 		err = u.c.AddPortMappingCtx(ctx, "", uint16(externalPort), mapProtocol(protocol), uint16(internalPort), ip.String(), true, description, timeoutInSeconds)
 		if err == nil {
 			return externalPort, nil
@@ -197,7 +204,7 @@ func (u *upnp_NAT) AddPortMapping(ctx context.Context, protocol string, internal
 		externalPort := randomPort()
 		err = u.c.AddPortMappingCtx(ctx, "", uint16(externalPort), mapProtocol(protocol), uint16(internalPort), ip.String(), true, description, timeoutInSeconds)
 		if err == nil {
-			u.ports[internalPort] = externalPort
+			u.ports[portMapping{protocol, internalPort}] = externalPort
 			return externalPort, nil
 		}
 	}
@@ -206,8 +213,8 @@ func (u *upnp_NAT) AddPortMapping(ctx context.Context, protocol string, internal
 }
 
 func (u *upnp_NAT) DeletePortMapping(ctx context.Context, protocol string, internalPort int) error {
-	if externalPort := u.ports[internalPort]; externalPort > 0 {
-		delete(u.ports, internalPort)
+	if externalPort := u.ports[portMapping{protocol, internalPort}]; externalPort > 0 {
+		delete(u.ports, portMapping{protocol, internalPort})
 		return u.c.DeletePortMappingCtx(ctx, "", uint16(externalPort), mapProtocol(protocol))
 	}
 
