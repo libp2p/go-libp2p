@@ -1071,3 +1071,53 @@ func TestErrorCode(t *testing.T) {
 	_, err = cr.NewStream(context.Background())
 	require.ErrorIs(t, err, &network.ConnError{ErrorCode: network.ConnGarbageCollected, Remote: true})
 }
+
+// ForceTrim must get down to the low watermark, closing protected connections
+// once it has run out of unprotected ones.
+func TestForceTrimClosesProtectedWhenNeeded(t *testing.T) {
+	const lowWater = 5
+	for _, tc := range []struct {
+		name                   string
+		unprotected, protected int
+	}{
+		{name: "unprotected cover more than half", unprotected: 10, protected: 10},
+		{name: "unprotected cover less than half", unprotected: 4, protected: 16},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cm, err := NewConnManager(lowWater, 100, WithGracePeriod(time.Hour), WithSilencePeriod(time.Hour))
+			require.NoError(t, err)
+			defer cm.Close()
+			not := cm.Notifee()
+
+			unprotected := make([]network.Conn, 0, tc.unprotected)
+			protected := make([]network.Conn, 0, tc.protected)
+			for range tc.unprotected {
+				c := randConn(t, not.Disconnected)
+				not.Connected(nil, c)
+				unprotected = append(unprotected, c)
+			}
+			for range tc.protected {
+				c := randConn(t, not.Disconnected)
+				not.Connected(nil, c)
+				cm.Protect(c.RemotePeer(), "test")
+				// protected peers are valuable, so unprotected ones sort first.
+				cm.TagPeer(c.RemotePeer(), "test", 100)
+				protected = append(protected, c)
+			}
+
+			cm.ForceTrim()
+
+			for _, c := range unprotected {
+				require.True(t, c.(*tconn).isClosed(), "unprotected conns should be closed first")
+			}
+			open := 0
+			for _, c := range protected {
+				if !c.(*tconn).isClosed() {
+					open++
+				}
+			}
+			require.Equal(t, lowWater, open, "protected conns left open")
+			require.Equal(t, lowWater, cm.GetInfo().ConnCount)
+		})
+	}
+}
