@@ -740,3 +740,38 @@ func TestHandshakeTimeout(t *testing.T) {
 		}
 	})
 }
+
+// A dial to a /tls/sni/<name>/ws address must hand the caller's context to the
+// TCP dial. With a context that is already done, no TCP connection may be
+// established.
+func TestDialWssSNIRespectsContext(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	accepted := make(chan struct{}, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		c.Close()
+		accepted <- struct{}{}
+	}()
+
+	_, u := newSecureUpgrader(t)
+	tpt, err := New(u, &network.NullResourceManager{}, nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	port := ln.Addr().(*net.TCPAddr).Port
+	_, err = tpt.Dial(ctx, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/tls/sni/example.com/ws", port)), "peer")
+	require.Error(t, err)
+
+	select {
+	case <-accepted:
+		t.Fatal("TCP connection was established although the dial context was already canceled")
+	case <-time.After(200 * time.Millisecond):
+	}
+}

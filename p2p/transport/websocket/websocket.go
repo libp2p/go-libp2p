@@ -266,18 +266,13 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr, sco
 			// We set the `.Host` to the sni field so that the host header gets properly set.
 			wsurl.Host = sni + ":" + wsurl.Port()
 			// Setting the NetDial because we already have the resolved IP address, so we can avoid another resolution.
-			dialer.NetDial = func(network, address string) (net.Conn, error) {
-				var tcpAddr *net.TCPAddr
-				var err error
+			// NetDialContext, not NetDial: the latter ignores both ctx and the handshake timeout.
+			dialer.NetDialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 				if address == wsurl.Host {
-					tcpAddr, err = net.ResolveTCPAddr(network, ipPortAddr) // Use our already resolved IP address
-				} else {
-					tcpAddr, err = net.ResolveTCPAddr(network, address)
+					address = ipPortAddr // Use our already resolved IP address
 				}
-				if err != nil {
-					return nil, err
-				}
-				return net.DialTCP("tcp", nil, tcpAddr)
+				var d net.Dialer
+				return d.DialContext(ctx, network, address)
 			}
 		} else {
 			dialer.TLSClientConfig = t.tlsClientConf
