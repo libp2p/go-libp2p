@@ -1232,11 +1232,6 @@ func TestErrorCodes(t *testing.T) {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
 				}
-				if strings.Contains(tc.Name, "Circuit") {
-					// Closing a relayed connection resets the stream to the
-					// relay, which drops the GoAway frame with the error code.
-					t.Skipf("skipping: %s, not implemented", tc.Name)
-				}
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				s, err := client.NewStream(ctx, server.ID(), "/test")
@@ -1264,11 +1259,6 @@ func TestErrorCodes(t *testing.T) {
 				if strings.Contains(tc.Name, "WebRTC") {
 					t.Skipf("skipping: %s, not implemented", tc.Name)
 					return
-				}
-				if strings.Contains(tc.Name, "Circuit") {
-					// Closing a relayed connection resets the stream to the
-					// relay, which drops the GoAway frame with the error code.
-					t.Skipf("skipping: %s, not implemented", tc.Name)
 				}
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
