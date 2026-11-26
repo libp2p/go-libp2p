@@ -422,7 +422,7 @@ func (cm *BasicConnMgr) getConnsToCloseEmergency(target int) []network.Conn {
 		target -= len(inf.conns)
 		s.Unlock()
 	}
-	if len(selected) >= target {
+	if target <= 0 {
 		// We found enough connections that were not protected.
 		return selected
 	}
@@ -433,7 +433,11 @@ func (cm *BasicConnMgr) getConnsToCloseEmergency(target int) []network.Conn {
 	cm.plk.RLock()
 	for _, s := range cm.segments.buckets {
 		s.Lock()
-		for _, inf := range s.peers {
+		for id, inf := range s.peers {
+			if _, ok := cm.protected[id]; !ok {
+				// unprotected peers were all selected above.
+				continue
+			}
 			candidates = append(candidates, inf)
 		}
 		s.Unlock()
