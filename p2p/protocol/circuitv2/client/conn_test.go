@@ -80,6 +80,10 @@ func TestConnCloseResetsAfterTimeout(t *testing.T) {
 		t.Fatal("Close didn't interrupt the Read")
 	}
 
+	// A deadline set after Close doesn't postpone the reset.
+	require.ErrorIs(t, c.SetReadDeadline(time.Now().Add(time.Hour)), net.ErrClosed)
+	require.ErrorIs(t, c.SetDeadline(time.Now().Add(time.Hour)), net.ErrClosed)
+
 	// The remote side sees EOF and keeps its end open. Its writes fail once
 	// the stream is reset.
 	_, err := io.ReadAll(rs)

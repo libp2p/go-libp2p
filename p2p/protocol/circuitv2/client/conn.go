@@ -86,7 +86,10 @@ func (c *Conn) waitForRemoteClose() {
 	// Wait for the Read that Close interrupted.
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
-	c.stream.SetReadDeadline(time.Now().Add(closeTimeout))
+	// The timeout doesn't use the read deadline, which belongs to the caller.
+	c.stream.SetReadDeadline(time.Time{})
+	timeout := time.AfterFunc(closeTimeout, func() { c.stream.Reset() })
+	defer timeout.Stop()
 	if _, err := io.Copy(io.Discard, c.stream); err != nil {
 		c.stream.Reset()
 		return
@@ -112,10 +115,16 @@ func (c *Conn) Write(buf []byte) (int, error) {
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {
+	if c.closed.Load() {
+		return net.ErrClosed
+	}
 	return c.stream.SetDeadline(t)
 }
 
 func (c *Conn) SetReadDeadline(t time.Time) error {
+	if c.closed.Load() {
+		return net.ErrClosed
+	}
 	return c.stream.SetReadDeadline(t)
 }
 
