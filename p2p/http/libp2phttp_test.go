@@ -20,6 +20,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 	libp2phttp "github.com/libp2p/go-libp2p/p2p/http"
 	httpauth "github.com/libp2p/go-libp2p/p2p/http/auth"
 	httpping "github.com/libp2p/go-libp2p/p2p/http/ping"
@@ -358,6 +360,25 @@ func TestRoundTrippers(t *testing.T) {
 	}
 }
 
+func TestConstrainedRoundTripperConcurrentGetPeerMetadata(t *testing.T) {
+	serverID := test.RandPeerIDFatal(t)
+	meta := libp2phttp.PeerMeta{"/hello": {Path: "/hello/"}}
+	var h libp2phttp.Host
+	h.SetPeerMetadata(serverID, meta)
+	rt, err := h.NewConstrainedRoundTripper(peer.AddrInfo{ID: serverID, Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/1/http")}})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			got, err := rt.(libp2phttp.PeerMetadataGetter).GetPeerMetadata()
+			assert.NoError(t, err)
+			assert.Equal(t, libp2phttp.PeerMeta{"/hello": {Path: "/hello/"}}, got)
+		})
+	}
+	wg.Wait()
+}
+
 func TestPlainOldHTTPServer(t *testing.T) {
 	mux := http.NewServeMux()
 	wk := libp2phttp.WellKnownHandler{}
@@ -472,6 +493,48 @@ func TestHostZeroValue(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "hello", string(body), "expected response from server")
+}
+
+func TestHostZeroValueConcurrentPeerMetadata(t *testing.T) {
+	server := libp2phttp.Host{
+		InsecureAllowHTTP: true,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("hello")) }))
+	go server.Serve()
+	defer server.Close()
+
+	serverInfo := peer.AddrInfo{Addrs: server.Addrs()}
+	setID, otherID := test.RandPeerIDFatal(t), test.RandPeerIDFatal(t)
+	meta := libp2phttp.PeerMeta{"/hello": {Path: "/hello/"}}
+	// Each operation is the first use of a fresh Host, at the same time as a SetPeerMetadata.
+	ops := []struct {
+		name string
+		op   func(*testing.T, *libp2phttp.Host)
+	}{
+		{"NamespacedClient", func(t *testing.T, h *libp2phttp.Host) {
+			_, err := h.NamespacedClient("/hello", serverInfo)
+			assert.NoError(t, err)
+		}},
+		{"SetPeerMetadata", func(_ *testing.T, h *libp2phttp.Host) { h.SetPeerMetadata(otherID, meta) }},
+		{"AddPeerMetadata", func(_ *testing.T, h *libp2phttp.Host) { h.AddPeerMetadata(otherID, meta) }},
+		{"GetPeerMetadata", func(_ *testing.T, h *libp2phttp.Host) { h.GetPeerMetadata(otherID) }},
+		{"RemovePeerMetadata", func(_ *testing.T, h *libp2phttp.Host) { h.RemovePeerMetadata(otherID) }},
+	}
+	for _, tc := range ops {
+		t.Run(tc.name, func(t *testing.T) {
+			var h libp2phttp.Host
+			var wg sync.WaitGroup
+			start := make(chan struct{})
+			wg.Go(func() { <-start; tc.op(t, &h) })
+			wg.Go(func() { <-start; h.SetPeerMetadata(setID, meta) })
+			close(start)
+			wg.Wait()
+
+			_, ok := h.GetPeerMetadata(setID)
+			assert.True(t, ok)
+		})
+	}
 }
 
 func TestHTTPS(t *testing.T) {
