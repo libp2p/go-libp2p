@@ -199,6 +199,8 @@ type Host struct {
 
 	// peerMetadata is an LRU cache of a peer's well-known protocol map.
 	peerMetadata *lru.Cache[peer.ID, PeerMeta]
+	// createPeerMetadata is used to lazily create peerMetadata in a thread-safe way.
+	createPeerMetadata sync.Once
 	// createHTTPTransport is used to lazily create the httpTransport in a thread-safe way.
 	createHTTPTransport sync.Once
 	// createDefaultClientRoundTripper is used to lazily create the default
@@ -221,6 +223,12 @@ func newPeerMetadataCache() *lru.Cache[peer.ID, PeerMeta] {
 		panic(err)
 	}
 	return peerMetadata
+}
+
+func (h *Host) peerMetadataInit() {
+	h.createPeerMetadata.Do(func() {
+		h.peerMetadata = newPeerMetadataCache()
+	})
 }
 
 func (h *Host) httpTransportInit() {
@@ -636,20 +644,26 @@ type roundTripperForSpecificServer struct {
 	targetServerAddr string
 	sni              string
 	scheme           string
+	cachedProtosMu   sync.Mutex
 	cachedProtos     PeerMeta
 }
 
 func (rt *roundTripperForSpecificServer) GetPeerMetadata() (PeerMeta, error) {
 	// Do we already have the peer's protocol mapping?
-	if rt.cachedProtos != nil {
-		return rt.cachedProtos, nil
+	rt.cachedProtosMu.Lock()
+	cached := rt.cachedProtos
+	rt.cachedProtosMu.Unlock()
+	if cached != nil {
+		return cached, nil
 	}
 
 	// if the underlying roundtripper implements GetPeerMetadata, use that
 	if g, ok := rt.RoundTripper.(PeerMetadataGetter); ok {
 		wk, err := g.GetPeerMetadata()
 		if err == nil {
+			rt.cachedProtosMu.Lock()
 			rt.cachedProtos = wk
+			rt.cachedProtosMu.Unlock()
 			return wk, nil
 		}
 	}
@@ -659,7 +673,9 @@ func (rt *roundTripperForSpecificServer) GetPeerMetadata() (PeerMeta, error) {
 	defer cancel()
 	wk, err := rt.httpHost.getAndStorePeerMetadata(ctx, rt, rt.server)
 	if err == nil {
+		rt.cachedProtosMu.Lock()
 		rt.cachedProtos = wk
+		rt.cachedProtosMu.Unlock()
 		return wk, nil
 	}
 	return wk, err
@@ -1083,9 +1099,7 @@ func normalizeHTTPMultiaddr(addr ma.Multiaddr) (ma.Multiaddr, bool) {
 // returns it. Will only store the peer's protocol mapping if the server ID is
 // provided.
 func (h *Host) getAndStorePeerMetadata(ctx context.Context, roundtripper http.RoundTripper, server peer.ID) (PeerMeta, error) {
-	if h.peerMetadata == nil {
-		h.peerMetadata = newPeerMetadataCache()
-	}
+	h.peerMetadataInit()
 	if meta, ok := h.peerMetadata.Get(server); server != "" && ok {
 		return meta, nil
 	}
@@ -1176,18 +1190,14 @@ func requestPeerMeta(ctx context.Context, roundtripper http.RoundTripper, wellKn
 // SetPeerMetadata adds a peer's protocol metadata to the http host. Useful if
 // you have out-of-band knowledge of a peer's protocol mapping.
 func (h *Host) SetPeerMetadata(server peer.ID, meta PeerMeta) {
-	if h.peerMetadata == nil {
-		h.peerMetadata = newPeerMetadataCache()
-	}
+	h.peerMetadataInit()
 	h.peerMetadata.Add(server, meta)
 }
 
 // AddPeerMetadata merges the given peer's protocol metadata to the http host. Useful if
 // you have out-of-band knowledge of a peer's protocol mapping.
 func (h *Host) AddPeerMetadata(server peer.ID, meta PeerMeta) {
-	if h.peerMetadata == nil {
-		h.peerMetadata = newPeerMetadataCache()
-	}
+	h.peerMetadataInit()
 	origMeta, ok := h.peerMetadata.Get(server)
 	if !ok {
 		h.peerMetadata.Add(server, meta)
@@ -1199,17 +1209,13 @@ func (h *Host) AddPeerMetadata(server peer.ID, meta PeerMeta) {
 
 // GetPeerMetadata gets a peer's cached protocol metadata from the http host.
 func (h *Host) GetPeerMetadata(server peer.ID) (PeerMeta, bool) {
-	if h.peerMetadata == nil {
-		return nil, false
-	}
+	h.peerMetadataInit()
 	return h.peerMetadata.Get(server)
 }
 
 // RemovePeerMetadata removes a peer's protocol metadata from the http host
 func (h *Host) RemovePeerMetadata(server peer.ID) {
-	if h.peerMetadata == nil {
-		return
-	}
+	h.peerMetadataInit()
 	h.peerMetadata.Remove(server)
 }
 
