@@ -216,6 +216,12 @@ func (d *decayer) process() {
 			}
 
 		case bmp = <-d.bumpTagCh:
+			if bmp.tag.closed.Load() {
+				// The tag was closed while this bump was queued. Applying it
+				// could re-add the tag after its closure has been processed,
+				// leaving a value that never decays.
+				continue
+			}
 			var (
 				now       = d.clock.Now()
 				peer, tag = bmp.peer, bmp.tag
